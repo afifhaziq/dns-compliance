@@ -25,23 +25,20 @@ func Capture(ctx context.Context, rawURL string) ([]byte, error) {
 	chromeCtx, chromeCancel := chromedp.NewContext(allocCtx)
 	defer chromeCancel()
 
-	var buf []byte
+	var pageBuf []byte
 	if err := chromedp.Run(chromeCtx,
-		// Render at a standard desktop width before navigating
 		chromedp.EmulateViewport(1920, 1080),
 		chromedp.Navigate(rawURL),
 		chromedp.ActionFunc(func(ctx context.Context) error {
-			// Measure the full page height after load
 			_, _, contentSize, _, _, _, err := page.GetLayoutMetrics().Do(ctx)
 			if err != nil {
 				return err
 			}
-			// Expand the viewport to the full page height so nothing is clipped
 			fullH := int64(math.Ceil(contentSize.Height))
 			if err := emulation.SetDeviceMetricsOverride(1920, fullH, 1, false).Do(ctx); err != nil {
 				return err
 			}
-			buf, err = page.CaptureScreenshot().
+			pageBuf, err = page.CaptureScreenshot().
 				WithFormat(page.CaptureScreenshotFormatPng).
 				WithCaptureBeyondViewport(true).
 				Do(ctx)
@@ -50,5 +47,12 @@ func Capture(ctx context.Context, rawURL string) ([]byte, error) {
 	); err != nil {
 		return nil, err
 	}
-	return buf, nil
+
+	// Wrap the page screenshot in a Chrome-like browser mockup.
+	// Fall back to the raw screenshot if framing fails.
+	framed, err := addBrowserFrame(chromeCtx, pageBuf, rawURL)
+	if err != nil {
+		return pageBuf, nil
+	}
+	return framed, nil
 }

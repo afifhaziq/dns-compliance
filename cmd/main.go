@@ -101,8 +101,7 @@ func runSweep(ctx context.Context, urls []string, cfg pipeline.Config, conn *grp
 	log.Printf("Sweep complete in %s — %d compliant, %d non-compliant",
 		time.Since(start).Round(time.Second), compliant, nonCompliant)
 
-	screenshotDir := filepath.Join("screenshots", start.Format("2006-01-02T15-04-05"))
-	paths := saveScreenshots(results, screenshotDir)
+	paths := saveScreenshots(results, start)
 
 	if conn != nil {
 		report := buildReport(results)
@@ -131,18 +130,19 @@ func printTable(results []pipeline.SiteResult, paths map[string]string) {
 	w.Flush()
 }
 
-func saveScreenshots(results []pipeline.SiteResult, dir string) map[string]string {
+func saveScreenshots(results []pipeline.SiteResult, sweepTime time.Time) map[string]string {
 	paths := make(map[string]string)
+	timestamp := sweepTime.Format("2006-01-02T15-04-05")
 	for _, r := range results {
 		if len(r.Screenshot) == 0 {
 			continue
 		}
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		siteDir := filepath.Join("screenshots", hostnameFromURL(r.URL))
+		if err := os.MkdirAll(siteDir, 0755); err != nil {
 			log.Printf("creating screenshot dir: %v", err)
 			continue
 		}
-		filename := hostnameFromURL(r.URL) + ".png"
-		path := filepath.Join(dir, filename)
+		path := filepath.Join(siteDir, timestamp+".png")
 		if err := os.WriteFile(path, r.Screenshot, 0644); err != nil {
 			log.Printf("saving screenshot for %s: %v", r.URL, err)
 			continue
