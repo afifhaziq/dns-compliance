@@ -3,6 +3,7 @@ package screenshot
 import (
 	"context"
 
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 )
 
@@ -25,7 +26,13 @@ func Capture(ctx context.Context, rawURL string) ([]byte, error) {
 	var buf []byte
 	if err := chromedp.Run(chromeCtx,
 		chromedp.Navigate(rawURL),
-		chromedp.FullScreenshot(&buf, 90),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			var err error
+			buf, err = page.CaptureScreenshot().
+				WithFormat(page.CaptureScreenshotFormatPng).
+				Do(ctx)
+			return err
+		}),
 	); err != nil {
 		return nil, err
 	}
