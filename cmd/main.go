@@ -5,8 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"text/tabwriter"
 	"time"
@@ -99,6 +101,9 @@ func runSweep(ctx context.Context, urls []string, cfg pipeline.Config, conn *grp
 	log.Printf("Sweep complete in %s — %d compliant, %d non-compliant",
 		time.Since(start).Round(time.Second), compliant, nonCompliant)
 
+	screenshotDir := filepath.Join("screenshots", start.Format("2006-01-02T15-04-05"))
+	paths := saveScreenshots(results, screenshotDir)
+
 	if conn != nil {
 		report := buildReport(results)
 		sendCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -108,23 +113,51 @@ func runSweep(ctx context.Context, urls []string, cfg pipeline.Config, conn *grp
 		} else {
 			log.Printf("Report sent to %s", conn.Target())
 		}
-	} else {
-		printTable(results)
 	}
+	printTable(results, paths)
 }
 
-func printTable(results []pipeline.SiteResult) {
+func printTable(results []pipeline.SiteResult, paths map[string]string) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "URL\tCOMPLIANT\tRESOLVED_IP\tSCREENSHOT\tERROR")
 	for _, r := range results {
-		hasScreenshot := "no"
-		if len(r.Screenshot) > 0 {
-			hasScreenshot = "yes"
+		screenshotCol := "no"
+		if path, ok := paths[r.URL]; ok {
+			screenshotCol = path
 		}
 		fmt.Fprintf(w, "%s\t%v\t%s\t%s\t%s\n",
-			r.URL, r.Compliant, r.ResolvedIP, hasScreenshot, r.Error)
+			r.URL, r.Compliant, r.ResolvedIP, screenshotCol, r.Error)
 	}
 	w.Flush()
+}
+
+func saveScreenshots(results []pipeline.SiteResult, dir string) map[string]string {
+	paths := make(map[string]string)
+	for _, r := range results {
+		if len(r.Screenshot) == 0 {
+			continue
+		}
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			log.Printf("creating screenshot dir: %v", err)
+			continue
+		}
+		filename := hostnameFromURL(r.URL) + ".png"
+		path := filepath.Join(dir, filename)
+		if err := os.WriteFile(path, r.Screenshot, 0644); err != nil {
+			log.Printf("saving screenshot for %s: %v", r.URL, err)
+			continue
+		}
+		paths[r.URL] = path
+	}
+	return paths
+}
+
+func hostnameFromURL(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err == nil && u.Hostname() != "" {
+		return u.Hostname()
+	}
+	return rawURL
 }
 
 func buildReport(results []pipeline.SiteResult) *pb.ComplianceReport {
