@@ -2,7 +2,9 @@ package screenshot
 
 import (
 	"context"
+	"math"
 
+	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 )
@@ -25,11 +27,23 @@ func Capture(ctx context.Context, rawURL string) ([]byte, error) {
 
 	var buf []byte
 	if err := chromedp.Run(chromeCtx,
+		// Render at a standard desktop width before navigating
+		chromedp.EmulateViewport(1920, 1080),
 		chromedp.Navigate(rawURL),
 		chromedp.ActionFunc(func(ctx context.Context) error {
-			var err error
+			// Measure the full page height after load
+			_, _, contentSize, _, _, _, err := page.GetLayoutMetrics().Do(ctx)
+			if err != nil {
+				return err
+			}
+			// Expand the viewport to the full page height so nothing is clipped
+			fullH := int64(math.Ceil(contentSize.Height))
+			if err := emulation.SetDeviceMetricsOverride(1920, fullH, 1, false).Do(ctx); err != nil {
+				return err
+			}
 			buf, err = page.CaptureScreenshot().
 				WithFormat(page.CaptureScreenshotFormatPng).
+				WithCaptureBeyondViewport(true).
 				Do(ctx)
 			return err
 		}),
