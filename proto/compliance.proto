@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package compliance;
+
+option go_package = "github.com/afif/dns-tracking/proto";
+
+message SiteResult {
+  string url         = 1;
+  int64  timestamp   = 2;
+  bool   compliant   = 3;
+  string resolved_ip = 4;
+  bytes  screenshot  = 5;
+  string error       = 6;
+}
+
+message ComplianceReport {
+  repeated SiteResult results = 1;
+}
+
+message Acknowledgement {
+  bool ok = 1;
+}
+
+service ComplianceService {
+  rpc Submit(ComplianceReport) returns (Acknowledgement);
+}
