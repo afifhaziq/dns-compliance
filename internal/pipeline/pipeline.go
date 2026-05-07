@@ -24,9 +24,11 @@ type SiteResult struct {
 type Config struct {
 	DNSWorkers        int
 	ScreenshotWorkers int
-	Timeout           time.Duration
+	DNSTimeout        time.Duration
+	ScreenshotTimeout time.Duration
 	Resolve           func(ctx context.Context, host string) (string, error)
 	Capture           func(ctx context.Context, rawURL string) ([]byte, error)
+	OnResult          func(SiteResult) // called as each result is produced; may be nil
 }
 
 type dnsResult struct {
@@ -54,7 +56,7 @@ func Run(ctx context.Context, urls []string, cfg Config) ([]SiteResult, error) {
 		go func() {
 			defer dnsWg.Done()
 			for rawURL := range urlCh {
-				siteCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
+				siteCtx, cancel := context.WithTimeout(ctx, cfg.DNSTimeout)
 				result := checkDNS(siteCtx, rawURL, cfg.Resolve)
 				cancel()
 				if result.DNSResolved {
@@ -82,7 +84,7 @@ func Run(ctx context.Context, urls []string, cfg Config) ([]SiteResult, error) {
 		go func() {
 			defer ssWg.Done()
 			for dr := range screenshotCh {
-				siteCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
+				siteCtx, cancel := context.WithTimeout(ctx, cfg.ScreenshotTimeout)
 				resultCh <- takeScreenshot(siteCtx, dr, cfg.Capture)
 				cancel()
 			}
@@ -97,6 +99,9 @@ func Run(ctx context.Context, urls []string, cfg Config) ([]SiteResult, error) {
 	results := make([]SiteResult, 0, len(urls))
 	for r := range resultCh {
 		results = append(results, r)
+		if cfg.OnResult != nil {
+			cfg.OnResult(r)
+		}
 	}
 	return results, nil
 }

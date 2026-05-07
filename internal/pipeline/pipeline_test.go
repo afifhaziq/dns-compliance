@@ -26,7 +26,8 @@ func TestCompliantSiteSkipsScreenshot(t *testing.T) {
 	cfg := pipeline.Config{
 		DNSWorkers:        2,
 		ScreenshotWorkers: 2,
-		Timeout:           5 * time.Second,
+		DNSTimeout:        5 * time.Second,
+		ScreenshotTimeout: 5 * time.Second,
 		Resolve:           mockResolve("", errors.New("NXDOMAIN")),
 		Capture: func(ctx context.Context, url string) ([]byte, error) {
 			screenshotCalled = true
@@ -58,7 +59,8 @@ func TestNonCompliantSiteTakesScreenshot(t *testing.T) {
 	cfg := pipeline.Config{
 		DNSWorkers:        2,
 		ScreenshotWorkers: 2,
-		Timeout:           5 * time.Second,
+		DNSTimeout:        5 * time.Second,
+		ScreenshotTimeout: 5 * time.Second,
 		Resolve:           mockResolve("1.2.3.4", nil),
 		Capture:           mockCapture(fakePNG, nil),
 	}
@@ -86,7 +88,8 @@ func TestScreenshotFailureIsStillNonCompliant(t *testing.T) {
 	cfg := pipeline.Config{
 		DNSWorkers:        2,
 		ScreenshotWorkers: 2,
-		Timeout:           5 * time.Second,
+		DNSTimeout:        5 * time.Second,
+		ScreenshotTimeout: 5 * time.Second,
 		Resolve:           mockResolve("1.2.3.4", nil),
 		Capture:           mockCapture(nil, errors.New("page load failed")),
 	}
@@ -112,7 +115,8 @@ func TestMultipleSitesAllProcessed(t *testing.T) {
 	cfg := pipeline.Config{
 		DNSWorkers:        5,
 		ScreenshotWorkers: 3,
-		Timeout:           5 * time.Second,
+		DNSTimeout:        5 * time.Second,
+		ScreenshotTimeout: 5 * time.Second,
 		Resolve:           mockResolve("1.1.1.1", nil),
 		Capture:           mockCapture(fakePNG, nil),
 	}

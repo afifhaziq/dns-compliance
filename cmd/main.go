@@ -15,25 +15,27 @@ import (
 	"text/tabwriter"
 	"time"
 
-	pb "github.com/afif/dns-tracking/proto"
 	"github.com/afif/dns-tracking/internal/dns"
 	"github.com/afif/dns-tracking/internal/input"
 	"github.com/afif/dns-tracking/internal/pipeline"
 	"github.com/afif/dns-tracking/internal/screenshot"
 	"github.com/afif/dns-tracking/internal/sender"
+	pb "github.com/afif/dns-tracking/proto"
 	"github.com/chromedp/chromedp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
-	sitesFile   := flag.String("sites", "", "path to file with one URL per line")
-	dnsWorkers  := flag.Int("dns-workers", 20, "number of DNS worker goroutines")
-	ssWorkers   := flag.Int("screenshot-workers", 5, "number of screenshot worker goroutines")
-	intervalM   := flag.Int("interval", 0, "sweep interval in minutes; 0 = run once and exit")
-	grpcAddr    := flag.String("grpc-addr", "", "gRPC server address (e.g. localhost:50051); empty prints to stdout")
-	timeoutSec  := flag.Int("timeout", 30, "per-site total time budget in seconds (DNS + screenshot)")
-	waitIdleSec := flag.Int("wait-idle", 5, "max seconds to wait for network idle after page load before screenshotting anyway")
+	sitesFile := flag.String("sites", "", "path to file with one URL per line")
+	dnsWorkers := flag.Int("dns-workers", 20, "number of DNS worker goroutines")
+	ssWorkers := flag.Int("screenshot-workers", 5, "number of screenshot worker goroutines")
+	intervalM := flag.Int("interval", 0, "sweep interval in minutes; 0 = run once and exit")
+	grpcAddr := flag.String("grpc-addr", "", "gRPC server address (e.g. localhost:50051); empty prints to stdout")
+	dnsTimeoutSec := flag.Int("dns-timeout", 5, "time budget in seconds for DNS resolution per site")
+	ssTimeoutSec  := flag.Int("screenshot-timeout", 30, "time budget in seconds for screenshot per site (navigation + idle wait + capture)")
+	waitIdleSec     := flag.Int("wait-idle", 5, "max seconds to wait for network idle after page load before screenshotting anyway")
+	postIdleSleepMs := flag.Int("post-idle-sleep", 2000, "milliseconds to sleep after network idle before taking the screenshot (allows lazy-loaded content to render)")
 	flag.Parse()
 
 	urls, err := input.Load(*sitesFile, flag.Args())
@@ -62,10 +64,14 @@ func main() {
 	cfg := pipeline.Config{
 		DNSWorkers:        *dnsWorkers,
 		ScreenshotWorkers: *ssWorkers,
-		Timeout:           time.Duration(*timeoutSec) * time.Second,
+		DNSTimeout:        time.Duration(*dnsTimeoutSec) * time.Second,
+		ScreenshotTimeout: time.Duration(*ssTimeoutSec) * time.Second,
 		Resolve:           dns.Resolve,
 		Capture: func(captureCtx context.Context, rawURL string) ([]byte, error) {
-			return screenshot.CaptureWithAllocator(captureCtx, allocCtx, rawURL, time.Duration(*waitIdleSec)*time.Second)
+			return screenshot.CaptureWithAllocator(captureCtx, allocCtx, rawURL,
+				time.Duration(*waitIdleSec)*time.Second,
+				time.Duration(*postIdleSleepMs)*time.Millisecond,
+			)
 		},
 	}
 
@@ -91,7 +97,28 @@ func main() {
 
 func runSweep(ctx context.Context, urls []string, cfg pipeline.Config, conn *grpc.ClientConn) {
 	start := time.Now()
-	log.Printf("Starting sweep — %d sites", len(urls))
+	total := len(urls)
+	log.Printf("Starting sweep — %d sites", total)
+
+	completed := 0
+	cfg.OnResult = func(r pipeline.SiteResult) {
+		completed++
+		status := "compliant"
+		if !r.Compliant {
+			status = "non-compliant"
+		}
+		detail := ""
+		if r.ResolvedIP != "" {
+			detail += " ip=" + r.ResolvedIP
+		}
+		if len(r.Screenshot) > 0 {
+			detail += " screenshot=ok"
+		}
+		if r.Error != "" {
+			detail += " err=" + r.Error
+		}
+		log.Printf("[%d/%d] %s — %s%s", completed, total, r.URL, status, detail)
+	}
 
 	results, err := pipeline.Run(ctx, urls, cfg)
 	if err != nil {
