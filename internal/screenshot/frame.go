@@ -6,7 +6,6 @@ import (
 	"html"
 	"math"
 	"net/url"
-	"os"
 	"strings"
 
 	"github.com/chromedp/cdproto/emulation"
@@ -139,20 +138,11 @@ func addBrowserFrame(chromeCtx context.Context, pageBytes []byte, rawURL string)
 		"{{BASE64}}", base64.StdEncoding.EncodeToString(pageBytes),
 	).Replace(browserHTML)
 
-	tmp, err := os.CreateTemp("", "dns-compliance-frame-*.html")
-	if err != nil {
-		return nil, err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.WriteString(htmlContent); err != nil {
-		tmp.Close()
-		return nil, err
-	}
-	tmp.Close()
+	dataURL := "data:text/html;base64," + base64.StdEncoding.EncodeToString([]byte(htmlContent))
 
 	var buf []byte
 	if err := chromedp.Run(chromeCtx,
-		chromedp.Navigate("file://"+tmp.Name()),
+		chromedp.Navigate(dataURL),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			_, _, contentSize, _, _, _, err := page.GetLayoutMetrics().Do(ctx)
 			if err != nil {

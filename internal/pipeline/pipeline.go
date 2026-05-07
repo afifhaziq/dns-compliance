@@ -44,8 +44,8 @@ func Run(ctx context.Context, urls []string, cfg Config) ([]SiteResult, error) {
 	}
 	close(urlCh)
 
-	screenshotCh := make(chan dnsResult, len(urls))
-	resultCh := make(chan SiteResult, len(urls))
+	screenshotCh := make(chan dnsResult, cfg.DNSWorkers*2)
+	resultCh := make(chan SiteResult, (cfg.DNSWorkers+cfg.ScreenshotWorkers)*2)
 
 	// DNS worker pool
 	var dnsWg sync.WaitGroup

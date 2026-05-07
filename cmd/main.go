@@ -4,11 +4,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"hash/fnv"
 	"log"
 	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"text/tabwriter"
 	"time"
@@ -19,17 +21,19 @@ import (
 	"github.com/afif/dns-tracking/internal/pipeline"
 	"github.com/afif/dns-tracking/internal/screenshot"
 	"github.com/afif/dns-tracking/internal/sender"
+	"github.com/chromedp/chromedp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
-	sitesFile  := flag.String("sites", "", "path to file with one URL per line")
-	dnsWorkers := flag.Int("dns-workers", 20, "number of DNS worker goroutines")
-	ssWorkers  := flag.Int("screenshot-workers", 5, "number of screenshot worker goroutines")
-	intervalM  := flag.Int("interval", 0, "sweep interval in minutes; 0 = run once and exit")
-	grpcAddr   := flag.String("grpc-addr", "", "gRPC server address (e.g. localhost:50051); empty prints to stdout")
-	timeoutSec := flag.Int("timeout", 30, "per-site total time budget in seconds (DNS + screenshot)")
+	sitesFile   := flag.String("sites", "", "path to file with one URL per line")
+	dnsWorkers  := flag.Int("dns-workers", 20, "number of DNS worker goroutines")
+	ssWorkers   := flag.Int("screenshot-workers", 5, "number of screenshot worker goroutines")
+	intervalM   := flag.Int("interval", 0, "sweep interval in minutes; 0 = run once and exit")
+	grpcAddr    := flag.String("grpc-addr", "", "gRPC server address (e.g. localhost:50051); empty prints to stdout")
+	timeoutSec  := flag.Int("timeout", 30, "per-site total time budget in seconds (DNS + screenshot)")
+	waitIdleSec := flag.Int("wait-idle", 5, "max seconds to wait for network idle after page load before screenshotting anyway")
 	flag.Parse()
 
 	urls, err := input.Load(*sitesFile, flag.Args())
@@ -40,6 +44,9 @@ func main() {
 		log.Fatal("no URLs provided — use --sites or pass URLs as arguments")
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	var conn *grpc.ClientConn
 	if *grpcAddr != "" {
 		conn, err = grpc.NewClient(*grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -49,16 +56,18 @@ func main() {
 		defer conn.Close()
 	}
 
+	allocCtx, allocCancel := chromedp.NewExecAllocator(ctx, screenshot.AllocatorOptions...)
+	defer allocCancel()
+
 	cfg := pipeline.Config{
 		DNSWorkers:        *dnsWorkers,
 		ScreenshotWorkers: *ssWorkers,
 		Timeout:           time.Duration(*timeoutSec) * time.Second,
 		Resolve:           dns.Resolve,
-		Capture:           screenshot.Capture,
+		Capture: func(captureCtx context.Context, rawURL string) ([]byte, error) {
+			return screenshot.CaptureWithAllocator(captureCtx, allocCtx, rawURL, time.Duration(*waitIdleSec)*time.Second)
+		},
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	if *intervalM == 0 {
 		runSweep(ctx, urls, cfg, conn)
@@ -131,25 +140,47 @@ func printTable(results []pipeline.SiteResult, paths map[string]string) {
 }
 
 func saveScreenshots(results []pipeline.SiteResult, sweepTime time.Time) map[string]string {
-	paths := make(map[string]string)
+	const maxParallel = 16
 	timestamp := sweepTime.Format("2006-01-02T15-04-05")
+	paths := make(map[string]string)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, maxParallel)
+
 	for _, r := range results {
 		if len(r.Screenshot) == 0 {
 			continue
 		}
-		siteDir := filepath.Join("screenshots", hostnameFromURL(r.URL))
-		if err := os.MkdirAll(siteDir, 0755); err != nil {
-			log.Printf("creating screenshot dir: %v", err)
-			continue
-		}
-		path := filepath.Join(siteDir, timestamp+".png")
-		if err := os.WriteFile(path, r.Screenshot, 0644); err != nil {
-			log.Printf("saving screenshot for %s: %v", r.URL, err)
-			continue
-		}
-		paths[r.URL] = path
+		r := r
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			siteDir := filepath.Join("screenshots", hostnameFromURL(r.URL))
+			if err := os.MkdirAll(siteDir, 0755); err != nil {
+				log.Printf("creating screenshot dir: %v", err)
+				return
+			}
+			path := filepath.Join(siteDir, timestamp+"-"+urlHash(r.URL)+".png")
+			if err := os.WriteFile(path, r.Screenshot, 0644); err != nil {
+				log.Printf("saving screenshot for %s: %v", r.URL, err)
+				return
+			}
+			mu.Lock()
+			paths[r.URL] = path
+			mu.Unlock()
+		}()
 	}
+	wg.Wait()
 	return paths
+}
+
+func urlHash(rawURL string) string {
+	h := fnv.New32a()
+	h.Write([]byte(rawURL))
+	return fmt.Sprintf("%08x", h.Sum32())
 }
 
 func hostnameFromURL(rawURL string) string {
