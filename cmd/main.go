@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"text/tabwriter"
@@ -56,9 +57,18 @@ func main() {
 			log.Fatalf("loading DNS servers: %v", err)
 		}
 		for _, s := range cfg.Servers {
+			var resolveFn func(context.Context, string) (string, error)
+			switch s.Protocol {
+			case "dot":
+				resolveFn = dns.NewDoTResolver(s.Address)
+			case "doh":
+				resolveFn = dns.NewDoHResolver(s.Address)
+			default:
+				resolveFn = dns.NewResolver(s.Address)
+			}
 			servers = append(servers, serverEntry{
 				name:    s.Name,
-				resolve: dns.NewResolver(s.Address),
+				resolve: resolveFn,
 			})
 		}
 	} else {
@@ -77,36 +87,28 @@ func main() {
 		defer conn.Close()
 	}
 
-	allocCtx, allocCancel := chromedp.NewExecAllocator(ctx, screenshot.AllocatorOptions...)
-	defer allocCancel()
-
-	captureFn := func(captureCtx context.Context, rawURL string) ([]byte, error) {
-		return screenshot.CaptureWithAllocator(captureCtx, allocCtx, rawURL,
-			time.Duration(*waitIdleSec)*time.Second,
-			time.Duration(*postIdleSleepMs)*time.Millisecond,
-		)
-	}
-
 	baseCfg := pipeline.Config{
 		DNSWorkers:        *dnsWorkers,
 		ScreenshotWorkers: *ssWorkers,
 		DNSTimeout:        time.Duration(*dnsTimeoutSec) * time.Second,
 		ScreenshotTimeout: time.Duration(*ssTimeoutSec) * time.Second,
 	}
+	waitIdle := time.Duration(*waitIdleSec) * time.Second
+	postIdleSleep := time.Duration(*postIdleSleepMs) * time.Millisecond
 
 	if *intervalM == 0 {
-		runSweep(ctx, urls, servers, baseCfg, captureFn, conn)
+		runSweep(ctx, urls, servers, baseCfg, waitIdle, postIdleSleep, conn)
 		return
 	}
 
 	ticker := time.NewTicker(time.Duration(*intervalM) * time.Minute)
 	defer ticker.Stop()
 
-	runSweep(ctx, urls, servers, baseCfg, captureFn, conn)
+	runSweep(ctx, urls, servers, baseCfg, waitIdle, postIdleSleep, conn)
 	for {
 		select {
 		case <-ticker.C:
-			runSweep(ctx, urls, servers, baseCfg, captureFn, conn)
+			runSweep(ctx, urls, servers, baseCfg, waitIdle, postIdleSleep, conn)
 		case <-ctx.Done():
 			log.Println("shutting down")
 			return
@@ -124,7 +126,8 @@ func runSweep(
 	urls []string,
 	servers []serverEntry,
 	baseCfg pipeline.Config,
-	captureFn func(context.Context, string) ([]byte, error),
+	waitIdle time.Duration,
+	postIdleSleep time.Duration,
 	conn *grpc.ClientConn,
 ) {
 	start := time.Now()
@@ -171,8 +174,8 @@ func runSweep(
 		allResults = append(allResults, results...)
 	}
 
-	// Phase 2: Screenshot each URL that resolved on at least one server (once).
-	screenshots := captureResolved(ctx, allResults, baseCfg, captureFn)
+	// Phase 2: Screenshot each unique (URL, IP) pair using its resolved IP.
+	screenshots := captureResolved(ctx, allResults, baseCfg.ScreenshotWorkers, baseCfg.ScreenshotTimeout, waitIdle, postIdleSleep)
 
 	// Attach screenshots to the first matching result per URL; mark others shared.
 	assignScreenshots(allResults, screenshots)
@@ -203,72 +206,141 @@ func runSweep(
 	printTable(allResults, paths)
 }
 
-// captureResolved screenshots each URL that resolved on at least one server.
-// Returns a map of URL → PNG bytes.
+// shotKey returns the map key for a (url, resolvedIP) screenshot pair.
+func shotKey(url, ip string) string { return url + "|" + ip }
+
+// screenshotJob is a (url, resolvedIP) pair that needs a screenshot.
+type screenshotJob struct {
+	url string
+	ip  string
+}
+
+// groupJobs partitions jobs into batches where no two jobs in the same batch
+// share a hostname but map to different IPs (which would conflict inside a
+// single --host-resolver-rules string). In the common case — all DNS servers
+// agree on the same IP — everything lands in one group.
+func groupJobs(jobs []screenshotJob) [][]screenshotJob {
+	type groupState struct {
+		mappings map[string]string // hostname → ip
+		jobs     []screenshotJob
+	}
+	var groups []groupState
+	for _, job := range jobs {
+		hostname := hostnameFromURL(job.url)
+		placed := false
+		for i := range groups {
+			if existing, ok := groups[i].mappings[hostname]; !ok || existing == job.ip {
+				groups[i].mappings[hostname] = job.ip
+				groups[i].jobs = append(groups[i].jobs, job)
+				placed = true
+				break
+			}
+		}
+		if !placed {
+			groups = append(groups, groupState{
+				mappings: map[string]string{hostname: job.ip},
+				jobs:     []screenshotJob{job},
+			})
+		}
+	}
+	result := make([][]screenshotJob, len(groups))
+	for i, g := range groups {
+		result[i] = g.jobs
+	}
+	return result
+}
+
+// captureResolved screenshots each unique (URL, resolvedIP) pair, forcing
+// Chrome to connect to the pre-resolved IP via --host-resolver-rules so the
+// screenshot reflects what that DNS server's users actually see.
+// Returns a map keyed by shotKey(url, ip).
 func captureResolved(
 	ctx context.Context,
 	results []pipeline.SiteResult,
-	cfg pipeline.Config,
-	captureFn func(context.Context, string) ([]byte, error),
+	ssWorkers int,
+	ssTimeout time.Duration,
+	waitIdle time.Duration,
+	postIdleSleep time.Duration,
 ) map[string][]byte {
-	// Collect unique resolved URLs preserving order.
+	// Collect unique (url, ip) jobs preserving order.
 	seen := make(map[string]struct{})
-	var resolvedURLs []string
+	var jobs []screenshotJob
 	for _, r := range results {
-		if r.DNSResolved {
-			if _, ok := seen[r.URL]; !ok {
-				seen[r.URL] = struct{}{}
-				resolvedURLs = append(resolvedURLs, r.URL)
-			}
+		if !r.DNSResolved {
+			continue
+		}
+		key := shotKey(r.URL, r.ResolvedIP)
+		if _, ok := seen[key]; !ok {
+			seen[key] = struct{}{}
+			jobs = append(jobs, screenshotJob{url: r.URL, ip: r.ResolvedIP})
 		}
 	}
-	if len(resolvedURLs) == 0 {
+	if len(jobs) == 0 {
 		return nil
 	}
 
-	shots := make(map[string][]byte, len(resolvedURLs))
+	shots := make(map[string][]byte, len(jobs))
 	var mu sync.Mutex
-	sem := make(chan struct{}, cfg.ScreenshotWorkers)
-	var wg sync.WaitGroup
 
-	for _, rawURL := range resolvedURLs {
-		rawURL := rawURL
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			siteCtx, cancel := context.WithTimeout(ctx, cfg.ScreenshotTimeout)
-			defer cancel()
-
-			buf, err := captureFn(siteCtx, rawURL)
-			if err != nil {
-				log.Printf("screenshot failed for %s: %v", rawURL, err)
-				return
+	for _, group := range groupJobs(jobs) {
+		// Build --host-resolver-rules for this group.
+		hostSeen := make(map[string]struct{})
+		var parts []string
+		for _, j := range group {
+			h := hostnameFromURL(j.url)
+			if _, ok := hostSeen[h]; !ok {
+				hostSeen[h] = struct{}{}
+				parts = append(parts, "MAP "+h+" "+j.ip)
 			}
-			mu.Lock()
-			shots[rawURL] = buf
-			mu.Unlock()
-		}()
+		}
+		rules := strings.Join(parts, ", ")
+
+		opts := screenshot.AllocatorOptionsWithHostRules(rules)
+		groupAllocCtx, groupAllocCancel := chromedp.NewExecAllocator(ctx, opts...)
+
+		var wg sync.WaitGroup
+		sem := make(chan struct{}, ssWorkers)
+		for _, j := range group {
+			j := j
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+
+				siteCtx, cancel := context.WithTimeout(ctx, ssTimeout)
+				defer cancel()
+
+				buf, err := screenshot.CaptureWithAllocator(siteCtx, groupAllocCtx, j.url, waitIdle, postIdleSleep)
+				if err != nil {
+					log.Printf("screenshot failed for %s: %v", j.url, err)
+					return
+				}
+				mu.Lock()
+				shots[shotKey(j.url, j.ip)] = buf
+				mu.Unlock()
+			}()
+		}
+		wg.Wait()
+		groupAllocCancel()
 	}
-	wg.Wait()
 	return shots
 }
 
 // assignScreenshots copies screenshot bytes into the first SiteResult for each
-// URL that has a screenshot; subsequent results for the same URL keep nil bytes
-// (they share the saved file shown in the table).
+// (URL, IP) pair; subsequent results for the same pair keep nil bytes and
+// display "(shared)" in the table.
 func assignScreenshots(results []pipeline.SiteResult, shots map[string][]byte) {
 	assigned := make(map[string]bool)
 	for i, r := range results {
-		buf, ok := shots[r.URL]
+		key := shotKey(r.URL, r.ResolvedIP)
+		buf, ok := shots[key]
 		if !ok {
 			continue
 		}
-		if !assigned[r.URL] {
+		if !assigned[key] {
 			results[i].Screenshot = buf
-			assigned[r.URL] = true
+			assigned[key] = true
 		}
 	}
 }
@@ -283,10 +355,11 @@ func printTable(results []pipeline.SiteResult, paths map[string]string) {
 			serverCol = "system"
 		}
 		screenshotCol := "no"
-		if path, ok := paths[r.URL]; ok {
-			if !sharedPrinted[r.URL] {
+		key := shotKey(r.URL, r.ResolvedIP)
+		if path, ok := paths[key]; ok {
+			if !sharedPrinted[key] {
 				screenshotCol = path
-				sharedPrinted[r.URL] = true
+				sharedPrinted[key] = true
 			} else {
 				screenshotCol = "(shared)"
 			}
@@ -316,23 +389,33 @@ func saveScreenshots(results []pipeline.SiteResult, sweepTime time.Time) map[str
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			siteDir := filepath.Join("screenshots", hostnameFromURL(r.URL))
+			siteDir := filepath.Join(dnsLabel(r.DNSServer), hostnameFromURL(r.URL))
 			if err := os.MkdirAll(siteDir, 0755); err != nil {
 				log.Printf("creating screenshot dir: %v", err)
 				return
 			}
-			path := filepath.Join(siteDir, timestamp+"-"+urlHash(r.URL)+".png")
+			// Include IP in hash so the same URL at different IPs gets different filenames.
+			path := filepath.Join(siteDir, timestamp+"-"+urlHash(r.URL+"|"+r.ResolvedIP)+".png")
 			if err := os.WriteFile(path, r.Screenshot, 0644); err != nil {
 				log.Printf("saving screenshot for %s: %v", r.URL, err)
 				return
 			}
 			mu.Lock()
-			paths[r.URL] = path
+			paths[shotKey(r.URL, r.ResolvedIP)] = path
 			mu.Unlock()
 		}()
 	}
 	wg.Wait()
 	return paths
+}
+
+// dnsLabel returns a filesystem-safe folder name for the DNS server.
+// Spaces are replaced with underscores; empty means system resolver.
+func dnsLabel(name string) string {
+	if name == "" {
+		return "system"
+	}
+	return strings.ReplaceAll(name, " ", "_")
 }
 
 func urlHash(rawURL string) string {

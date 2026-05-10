@@ -1,5 +1,13 @@
 servers:
     - name: Google
       address: 8.8.8.8:53
+      protocol: udp
     - name: Cloudflare
       address: 1.1.1.1:53
+      protocol: udp
+    - name: Google DoH
+      address: https://8.8.8.8/dns-query
+      protocol: doh
+    - name: Cloudflare DoH
+      address: https://1.1.1.1/dns-query
+      protocol: doh

@@ -27,6 +27,17 @@ var AllocatorOptions = append(
 	chromedp.Flag("disable-blink-features", "AutomationControlled"),
 )
 
+// AllocatorOptionsWithHostRules returns AllocatorOptions with an added
+// --host-resolver-rules flag so Chrome bypasses system DNS and connects
+// directly to the pre-resolved IPs. rules is a comma-separated list of MAP
+// directives, e.g. "MAP example.com 93.184.216.34, MAP foo.com 1.2.3.4".
+func AllocatorOptionsWithHostRules(rules string) []chromedp.ExecAllocatorOption {
+	opts := make([]chromedp.ExecAllocatorOption, len(AllocatorOptions)+1)
+	copy(opts, AllocatorOptions)
+	opts[len(AllocatorOptions)] = chromedp.Flag("host-resolver-rules", rules)
+	return opts
+}
+
 // Capture launches a headless Chrome instance, navigates to rawURL, and returns
 // a full-page PNG screenshot. The context controls the total time budget;
 // cancelling it will abort the browser process.

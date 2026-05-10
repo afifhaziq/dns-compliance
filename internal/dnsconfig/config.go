@@ -9,8 +9,9 @@ import (
 
 // Server is one DNS resolver entry from the config file.
 type Server struct {
-	Name    string `yaml:"name"`
-	Address string `yaml:"address"`
+	Name     string `yaml:"name"`
+	Address  string `yaml:"address"`
+	Protocol string `yaml:"protocol"` // udp (default), dot, doh
 }
 
 // Config is the parsed representation of a dns-servers YAML file.
@@ -35,6 +36,14 @@ func Load(path string) (*Config, error) {
 		}
 		if cfg.Servers[i].Name == "" {
 			cfg.Servers[i].Name = s.Address
+		}
+		switch s.Protocol {
+		case "", "udp":
+			cfg.Servers[i].Protocol = "udp"
+		case "dot", "doh":
+			// valid
+		default:
+			return nil, fmt.Errorf("server %q: unknown protocol %q (must be udp, dot, or doh)", s.Name, s.Protocol)
 		}
 	}
 	if len(cfg.Servers) == 0 {
