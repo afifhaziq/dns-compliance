@@ -9,7 +9,26 @@ import (
 // Resolve performs an A-record lookup for host and returns the first resolved IP.
 // Returns an error if the domain does not resolve or the context is cancelled.
 func Resolve(ctx context.Context, host string) (string, error) {
-	addrs, err := net.DefaultResolver.LookupHost(ctx, host)
+	return resolve(ctx, net.DefaultResolver, host)
+}
+
+// NewResolver returns a Resolve-compatible function that sends queries to server
+// (e.g. "8.8.8.8:53") instead of the system resolver.
+func NewResolver(server string) func(context.Context, string) (string, error) {
+	r := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			d := net.Dialer{}
+			return d.DialContext(ctx, "udp", server)
+		},
+	}
+	return func(ctx context.Context, host string) (string, error) {
+		return resolve(ctx, r, host)
+	}
+}
+
+func resolve(ctx context.Context, r *net.Resolver, host string) (string, error) {
+	addrs, err := r.LookupHost(ctx, host)
 	if err != nil {
 		return "", err
 	}

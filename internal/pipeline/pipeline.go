@@ -12,6 +12,7 @@ import (
 type SiteResult struct {
 	URL         string
 	Timestamp   time.Time
+	DNSServer   string // name of the DNS server used; empty means system resolver
 	DNSResolved bool
 	ResolvedIP  string
 	Compliant   bool   // true = unreachable (good), false = accessible (violation)

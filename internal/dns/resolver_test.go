@@ -40,3 +40,28 @@ func TestResolveRespectsCancellation(t *testing.T) {
 		t.Fatal("expected error from cancelled context, got nil")
 	}
 }
+
+func TestNewResolverKnownDomain(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	resolve := dns.NewResolver("8.8.8.8:53")
+	ip, err := resolve(ctx, "google.com")
+	if err != nil {
+		t.Fatalf("expected google.com to resolve via 8.8.8.8, got error: %v", err)
+	}
+	if ip == "" {
+		t.Fatal("expected non-empty IP")
+	}
+}
+
+func TestNewResolverNXDomain(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	resolve := dns.NewResolver("8.8.8.8:53")
+	_, err := resolve(ctx, "this-domain-does-not-exist-xyz123abc.com")
+	if err == nil {
+		t.Fatal("expected error for non-existent domain, got nil")
+	}
+}

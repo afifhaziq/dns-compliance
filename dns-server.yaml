@@ -1,0 +1,5 @@
+servers:
+    - name: Google
+      address: 8.8.8.8:53
+    - name: Cloudflare
+      address: 1.1.1.1:53
