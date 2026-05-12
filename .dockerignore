@@ -1,0 +1,10 @@
+Cloudflare/
+Cloudflare_DoH/
+Google/
+Google_DoH/
+screenshots/
+web/node_modules/
+*.png
+.git/
+main
+dns-compliance
