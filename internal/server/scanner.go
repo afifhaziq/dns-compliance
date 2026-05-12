@@ -1,0 +1,200 @@
+package server
+
+import (
+	"context"
+	"errors"
+	"log"
+	"os"
+	"os/exec"
+	"sync"
+	"time"
+
+	"github.com/afif/dns-tracking/internal/db"
+	"gopkg.in/yaml.v3"
+)
+
+type Scanner struct {
+	crawlerPath string
+	grpcAddr    string
+	store       db.Store
+	mu          sync.Mutex
+	running     bool
+}
+
+func NewScanner(crawlerPath, grpcAddr string, store db.Store) *Scanner {
+	return &Scanner{crawlerPath: crawlerPath, grpcAddr: grpcAddr, store: store}
+}
+
+func (sc *Scanner) IsRunning() bool {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	return sc.running
+}
+
+// Trigger starts a DNS-only scan in a background goroutine.
+// Returns an error if a scan is already in progress.
+func (sc *Scanner) Trigger(ctx context.Context, triggeredBy string) error {
+	sc.mu.Lock()
+	if sc.running {
+		sc.mu.Unlock()
+		return errors.New("scan already in progress")
+	}
+	sc.running = true
+	sc.mu.Unlock()
+
+	go sc.run(ctx, triggeredBy)
+	return nil
+}
+
+// TriggerScreenshot spawns a single-URL scan with screenshots enabled.
+func (sc *Scanner) TriggerScreenshot(ctx context.Context, rawURL string, dnsServerID uint) error {
+	sc.mu.Lock()
+	if sc.running {
+		sc.mu.Unlock()
+		return errors.New("scan already in progress")
+	}
+	sc.running = true
+	sc.mu.Unlock()
+
+	go sc.runScreenshot(ctx, rawURL, dnsServerID)
+	return nil
+}
+
+func (sc *Scanner) run(ctx context.Context, triggeredBy string) {
+	defer sc.setRunning(false)
+
+	urls, err := sc.store.ListURLs(ctx)
+	if err != nil || len(urls) == 0 {
+		log.Printf("scanner: no URLs to scan (err=%v)", err)
+		return
+	}
+	servers, err := sc.store.ListDNSServers(ctx)
+	if err != nil {
+		log.Printf("scanner: load DNS servers: %v", err)
+		return
+	}
+
+	urlFile, err := writeTempLines(urls)
+	if err != nil {
+		log.Printf("scanner: write url file: %v", err)
+		return
+	}
+	defer os.Remove(urlFile)
+
+	dnsFile, err := sc.writeDNSYAML(servers)
+	if err != nil {
+		log.Printf("scanner: write dns yaml: %v", err)
+		return
+	}
+	defer os.Remove(dnsFile)
+
+	run, err := sc.store.CreateScanRun(ctx, triggeredBy)
+	if err != nil {
+		log.Printf("scanner: create scan run: %v", err)
+		return
+	}
+
+	args := []string{
+		"--sites", urlFile,
+		"--dns-servers", dnsFile,
+		"--grpc-addr", sc.grpcAddr,
+	}
+	sc.execCrawler(ctx, args, run.ID)
+}
+
+func (sc *Scanner) runScreenshot(ctx context.Context, rawURL string, dnsServerID uint) {
+	defer sc.setRunning(false)
+
+	servers, err := sc.store.ListDNSServers(ctx)
+	if err != nil {
+		log.Printf("scanner: load DNS servers: %v", err)
+		return
+	}
+
+	var target []db.DNSServer
+	for _, s := range servers {
+		if s.ID == dnsServerID {
+			target = []db.DNSServer{s}
+			break
+		}
+	}
+	if len(target) == 0 {
+		log.Printf("scanner: DNS server ID %d not found", dnsServerID)
+		return
+	}
+
+	dnsFile, err := sc.writeDNSYAML(target)
+	if err != nil {
+		log.Printf("scanner: write dns yaml: %v", err)
+		return
+	}
+	defer os.Remove(dnsFile)
+
+	run, err := sc.store.CreateScanRun(ctx, "screenshot")
+	if err != nil {
+		log.Printf("scanner: create scan run: %v", err)
+		return
+	}
+
+	args := []string{rawURL, "--dns-servers", dnsFile, "--grpc-addr", sc.grpcAddr, "--screenshots"}
+	sc.execCrawler(ctx, args, run.ID)
+}
+
+func (sc *Scanner) execCrawler(ctx context.Context, args []string, runID uint) {
+	cmd := exec.CommandContext(ctx, sc.crawlerPath, args...)
+	cmd.Stdout = os.Stderr
+	cmd.Stderr = os.Stderr
+
+	status := "completed"
+	if err := cmd.Run(); err != nil {
+		log.Printf("scanner: crawler exited with error: %v", err)
+		status = "failed"
+	}
+	now := time.Now()
+	_ = sc.store.CompleteScanRun(ctx, runID, status, now)
+}
+
+func (sc *Scanner) setRunning(v bool) {
+	sc.mu.Lock()
+	sc.running = v
+	sc.mu.Unlock()
+}
+
+type dnsYAMLEntry struct {
+	Name     string `yaml:"name"`
+	Address  string `yaml:"address"`
+	Protocol string `yaml:"protocol"`
+}
+
+type dnsYAMLConfig struct {
+	Servers []dnsYAMLEntry `yaml:"servers"`
+}
+
+func (sc *Scanner) writeDNSYAML(servers []db.DNSServer) (string, error) {
+	f, err := os.CreateTemp("", "dns-*.yaml")
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	entries := make([]dnsYAMLEntry, len(servers))
+	for i, s := range servers {
+		entries[i] = dnsYAMLEntry{Name: s.Name, Address: s.Address, Protocol: s.Protocol}
+	}
+	if err := yaml.NewEncoder(f).Encode(dnsYAMLConfig{Servers: entries}); err != nil {
+		os.Remove(f.Name())
+		return "", err
+	}
+	return f.Name(), nil
+}
+
+func writeTempLines(urls []db.URL) (string, error) {
+	f, err := os.CreateTemp("", "urls-*.txt")
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	for _, u := range urls {
+		f.WriteString(u.URL + "\n")
+	}
+	return f.Name(), nil
+}

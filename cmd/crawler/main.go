@@ -39,6 +39,7 @@ func main() {
 	ssTimeoutSec   := flag.Int("screenshot-timeout", 30, "time budget in seconds for screenshot per site (navigation + idle wait + capture)")
 	waitIdleSec    := flag.Int("wait-idle", 5, "max seconds to wait for network idle after page load before screenshotting anyway")
 	postIdleSleepMs := flag.Int("post-idle-sleep", 2000, "milliseconds to sleep after network idle before taking the screenshot")
+	takeScreenshots  := flag.Bool("screenshots", false, "capture screenshots for resolved sites (default: DNS-only)")
 	flag.Parse()
 
 	urls, err := input.Load(*sitesFile, flag.Args())
@@ -97,18 +98,18 @@ func main() {
 	postIdleSleep := time.Duration(*postIdleSleepMs) * time.Millisecond
 
 	if *intervalM == 0 {
-		runSweep(ctx, urls, servers, baseCfg, waitIdle, postIdleSleep, conn)
+		runSweep(ctx, urls, servers, baseCfg, waitIdle, postIdleSleep, conn, *takeScreenshots)
 		return
 	}
 
 	ticker := time.NewTicker(time.Duration(*intervalM) * time.Minute)
 	defer ticker.Stop()
 
-	runSweep(ctx, urls, servers, baseCfg, waitIdle, postIdleSleep, conn)
+	runSweep(ctx, urls, servers, baseCfg, waitIdle, postIdleSleep, conn, *takeScreenshots)
 	for {
 		select {
 		case <-ticker.C:
-			runSweep(ctx, urls, servers, baseCfg, waitIdle, postIdleSleep, conn)
+			runSweep(ctx, urls, servers, baseCfg, waitIdle, postIdleSleep, conn, *takeScreenshots)
 		case <-ctx.Done():
 			log.Println("shutting down")
 			return
@@ -129,6 +130,7 @@ func runSweep(
 	waitIdle time.Duration,
 	postIdleSleep time.Duration,
 	conn *grpc.ClientConn,
+	takeScreenshots bool,
 ) {
 	start := time.Now()
 	total := len(urls) * len(servers)
@@ -174,8 +176,11 @@ func runSweep(
 		allResults = append(allResults, results...)
 	}
 
-	// Phase 2: Screenshot each unique (URL, IP) pair using its resolved IP.
-	screenshots := captureResolved(ctx, allResults, baseCfg.ScreenshotWorkers, baseCfg.ScreenshotTimeout, waitIdle, postIdleSleep)
+	// Phase 2: Screenshot each unique (URL, IP) pair (only when --screenshots is set).
+	var screenshots map[string][]byte
+	if takeScreenshots {
+		screenshots = captureResolved(ctx, allResults, baseCfg.ScreenshotWorkers, baseCfg.ScreenshotTimeout, waitIdle, postIdleSleep)
+	}
 
 	// Attach screenshots to the first matching result per URL; mark others shared.
 	assignScreenshots(allResults, screenshots)
