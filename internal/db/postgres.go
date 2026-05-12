@@ -1,0 +1,94 @@
+package db
+
+import (
+	"context"
+	"time"
+
+	"gorm.io/gorm"
+)
+
+type postgresStore struct{ db *gorm.DB }
+
+func NewStore(db *gorm.DB) Store { return &postgresStore{db: db} }
+
+func (s *postgresStore) ListURLs(ctx context.Context) ([]URL, error) {
+	var urls []URL
+	return urls, s.db.WithContext(ctx).Order("created_at asc").Find(&urls).Error
+}
+
+func (s *postgresStore) CreateURL(ctx context.Context, rawURL string) (URL, error) {
+	u := URL{URL: rawURL}
+	return u, s.db.WithContext(ctx).Create(&u).Error
+}
+
+func (s *postgresStore) DeleteURL(ctx context.Context, id uint) error {
+	return s.db.WithContext(ctx).Delete(&URL{}, id).Error
+}
+
+func (s *postgresStore) ListDNSServers(ctx context.Context) ([]DNSServer, error) {
+	var servers []DNSServer
+	return servers, s.db.WithContext(ctx).Order("created_at asc").Find(&servers).Error
+}
+
+func (s *postgresStore) CreateDNSServer(ctx context.Context, srv DNSServer) (DNSServer, error) {
+	return srv, s.db.WithContext(ctx).Create(&srv).Error
+}
+
+func (s *postgresStore) DeleteDNSServer(ctx context.Context, id uint) error {
+	return s.db.WithContext(ctx).Delete(&DNSServer{}, id).Error
+}
+
+func (s *postgresStore) CreateScanRun(ctx context.Context, triggeredBy string) (ScanRun, error) {
+	run := ScanRun{TriggeredBy: triggeredBy, Status: "running", StartedAt: time.Now()}
+	return run, s.db.WithContext(ctx).Create(&run).Error
+}
+
+func (s *postgresStore) CompleteScanRun(ctx context.Context, id uint, status string, completedAt time.Time) error {
+	return s.db.WithContext(ctx).Model(&ScanRun{}).Where("id = ?", id).
+		Updates(map[string]any{"status": status, "completed_at": completedAt}).Error
+}
+
+func (s *postgresStore) ActiveScanRun(ctx context.Context) (*ScanRun, error) {
+	var run ScanRun
+	err := s.db.WithContext(ctx).Where("status = ?", "running").First(&run).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &run, nil
+}
+
+func (s *postgresStore) LatestResults(ctx context.Context) ([]ScanResult, error) {
+	var results []ScanResult
+	// Subquery: latest scanned_at per (url_value, dns_server_id)
+	sub := s.db.Model(&ScanResult{}).
+		Select("url_value, dns_server_id, MAX(scanned_at) as max_scanned_at").
+		Group("url_value, dns_server_id")
+	err := s.db.WithContext(ctx).
+		Joins("JOIN (?) as latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at = latest.max_scanned_at", sub).
+		Preload("DNSServer").
+		Order("scan_results.url_value, scan_results.dns_server_id").
+		Find(&results).Error
+	return results, err
+}
+
+func (s *postgresStore) ResultsByURL(ctx context.Context, urlValue string) ([]ScanResult, error) {
+	var results []ScanResult
+	err := s.db.WithContext(ctx).
+		Where("url_value = ?", urlValue).
+		Preload("DNSServer").
+		Order("scanned_at desc").
+		Find(&results).Error
+	return results, err
+}
+
+func (s *postgresStore) InsertResult(ctx context.Context, r ScanResult) error {
+	return s.db.WithContext(ctx).Create(&r).Error
+}
+
+func (s *postgresStore) UpdateScreenshot(ctx context.Context, resultID uint, screenshotURL string) error {
+	return s.db.WithContext(ctx).Model(&ScanResult{}).Where("id = ?", resultID).
+		Update("screenshot_url", screenshotURL).Error
+}
