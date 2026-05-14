@@ -60,7 +60,8 @@ func TestNewResolverNXDomain(t *testing.T) {
 	defer cancel()
 
 	resolve := dns.NewResolver("8.8.8.8:53")
-	_, err := resolve(ctx, "this-domain-does-not-exist-xyz123abc.com")
+	output, err := resolve(ctx, "https://www.tiktok.com/@mbah.sugeng.sujiwo/photo/7367929772485152005")
+	print(output)
 	if err == nil {
 		t.Fatal("expected error for non-existent domain, got nil")
 	}

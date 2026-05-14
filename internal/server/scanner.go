@@ -42,7 +42,7 @@ func (sc *Scanner) Trigger(ctx context.Context, triggeredBy string) error {
 	sc.running = true
 	sc.mu.Unlock()
 
-	go sc.run(ctx, triggeredBy)
+	go sc.run(context.WithoutCancel(ctx), triggeredBy)
 	return nil
 }
 
@@ -56,7 +56,7 @@ func (sc *Scanner) TriggerScreenshot(ctx context.Context, rawURL string, dnsServ
 	sc.running = true
 	sc.mu.Unlock()
 
-	go sc.runScreenshot(ctx, rawURL, dnsServerID)
+	go sc.runScreenshot(context.WithoutCancel(ctx), rawURL, dnsServerID)
 	return nil
 }
 
@@ -130,13 +130,25 @@ func (sc *Scanner) runScreenshot(ctx context.Context, rawURL string, dnsServerID
 	}
 	defer os.Remove(dnsFile)
 
+	urlFile, err := writeTempLines([]db.URL{{URL: rawURL}})
+	if err != nil {
+		log.Printf("scanner: write url file: %v", err)
+		return
+	}
+	defer os.Remove(urlFile)
+
 	run, err := sc.store.CreateScanRun(ctx, "screenshot")
 	if err != nil {
 		log.Printf("scanner: create scan run: %v", err)
 		return
 	}
 
-	args := []string{rawURL, "--dns-servers", dnsFile, "--grpc-addr", sc.grpcAddr, "--screenshots"}
+	args := []string{
+		"--sites", urlFile,
+		"--dns-servers", dnsFile,
+		"--grpc-addr", sc.grpcAddr,
+		"--screenshots",
+	}
 	sc.execCrawler(ctx, args, run.ID)
 }
 

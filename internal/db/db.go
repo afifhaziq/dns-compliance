@@ -2,13 +2,25 @@ package db
 
 import (
 	"fmt"
+	"log"
+	"os"
+	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // Connect opens a database connection using the given dialector and runs AutoMigrate.
 func Connect(dialector gorm.Dialector) (*gorm.DB, error) {
-	database, err := gorm.Open(dialector, &gorm.Config{})
+	gormLogger := logger.New(
+		log.New(os.Stdout, "\r\n", log.LstdFlags),
+		logger.Config{
+			SlowThreshold:             200 * time.Millisecond,
+			LogLevel:                  logger.Warn,
+			IgnoreRecordNotFoundError: true,
+		},
+	)
+	database, err := gorm.Open(dialector, &gorm.Config{Logger: gormLogger})
 	if err != nil {
 		return nil, fmt.Errorf("opening db: %w", err)
 	}

@@ -5,32 +5,16 @@ services:
       - "8080:8080"
       - "50051:50051"
     environment:
-      DB_URL: "host=postgres user=postgres password=postgres dbname=dns_compliance port=5432 sslmode=disable"
+      DB_URL: "${DB_URL}"
       MINIO_ENDPOINT: "minio:9000"
       MINIO_ACCESS_KEY: "minioadmin"
       MINIO_SECRET_KEY: "minioadmin"
       MINIO_BUCKET: "screenshots"
       CRAWLER_PATH: "/app/crawler"
     depends_on:
-      postgres:
-        condition: service_healthy
       minio:
         condition: service_started
     restart: unless-stopped
-
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: dns_compliance
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
   minio:
     image: minio/minio:latest
@@ -57,5 +41,4 @@ services:
       "
 
 volumes:
-  pgdata:
   miniodata:
