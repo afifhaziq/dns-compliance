@@ -161,3 +161,12 @@ When `--screenshots` is off (default), `Capture` is a no-op. When multiple DNS s
 - `input.Load(filePath, args)` merges file + CLI args into a deduplicated slice. Bare hostnames are normalized to `https://` by `pipeline.normalizeURL`.
 
 **Module name**: `github.com/afif/dns-tracking` (in `go.mod`, despite the repo directory being `dns-compliance`)
+
+## Security
+
+See [SECURITY.md](./SECURITY.md) for the full security audit report (score: 32/100).
+
+Key issues to address before any non-private deployment:
+- SEC-001: No authentication on any endpoint — add API key middleware in `internal/server/router.go`
+- SEC-003: SSRF via `POST /api/screenshot` and `POST /api/urls` — validate URLs against private IP ranges
+- SEC-005: Raw DB errors leaked in responses — map errors to safe messages in handlers
