@@ -170,6 +170,7 @@ function DNSServersPage() {
   const [deleteTarget, setDeleteTarget] = useState<DNSServer | null>(null)
 
   const load = useCallback(async () => {
+    setLoading(true)
     try {
       setError(null)
       setServers(await fetchDnsServers())

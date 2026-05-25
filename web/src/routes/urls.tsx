@@ -135,6 +135,7 @@ function URLsPage() {
   const [deleteTarget, setDeleteTarget] = useState<URLEntry | null>(null)
 
   const load = useCallback(async () => {
+    setLoading(true)
     try {
       setError(null)
       setUrls(await fetchUrls())

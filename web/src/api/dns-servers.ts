@@ -13,7 +13,7 @@ export async function fetchDnsServerCount(): Promise<number> {
 export async function createDnsServer(data: {
   name: string
   address: string
-  protocol: string
+  protocol: DNSServer['protocol']
 }): Promise<DNSServer> {
   return api.post<DNSServer>('/dns-servers', data)
 }
