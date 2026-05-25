@@ -14,7 +14,7 @@ import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
 
 export const Route = createFileRoute('/dns-servers')({ component: DNSServersPage })
 
-type Protocol = 'udp' | 'dot' | 'doh'
+type Protocol = DNSServer['protocol']
 
 /* ─── Add DNS Server Dialog ──────────────────────────────────────────────── */
 

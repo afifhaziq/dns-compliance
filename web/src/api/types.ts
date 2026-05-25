@@ -2,7 +2,7 @@ export type DNSServer = {
   id: number
   name: string
   address: string
-  protocol: string
+  protocol: 'udp' | 'dot' | 'doh'
   created_at: string
 }
 
