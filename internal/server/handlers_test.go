@@ -20,6 +20,8 @@ type fullMockStore struct {
 	dnsServers []db.DNSServer
 	results    []db.ScanResult
 	activeRun  *db.ScanRun
+	lastRun    *db.ScanRun
+	progress   []db.ProgressEntry
 }
 
 func (m *fullMockStore) ListURLs(_ context.Context) ([]db.URL, error) { return m.urls, nil }
@@ -62,6 +64,12 @@ func (m *fullMockStore) CompleteScanRun(_ context.Context, _ uint, _ string, _ t
 }
 func (m *fullMockStore) ActiveScanRun(_ context.Context) (*db.ScanRun, error) {
 	return m.activeRun, nil
+}
+func (m *fullMockStore) LastScanRun(_ context.Context) (*db.ScanRun, error) {
+	return m.lastRun, nil
+}
+func (m *fullMockStore) ScanProgress(_ context.Context, _ uint) ([]db.ProgressEntry, error) {
+	return m.progress, nil
 }
 func (m *fullMockStore) LatestResults(_ context.Context) ([]db.ScanResult, error) {
 	return m.results, nil
@@ -180,6 +188,55 @@ func TestGetLatestResults(t *testing.T) {
 	json.NewDecoder(w.Body).Decode(&results)
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+}
+
+func TestScanProgressNotFound(t *testing.T) {
+	r := setupRouter(&fullMockStore{}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/scan/progress", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestScanProgressWithRun(t *testing.T) {
+	now := time.Now()
+	store := &fullMockStore{
+		urls: []db.URL{
+			{ID: 1, URL: "https://a.com"},
+			{ID: 2, URL: "https://b.com"},
+		},
+		lastRun: &db.ScanRun{ID: 3, Status: "completed", StartedAt: now},
+		progress: []db.ProgressEntry{
+			{DNSServerID: 1, Name: "CF", Completed: 2},
+			{DNSServerID: 2, Name: "Google", Completed: 1},
+		},
+	}
+	r := setupRouter(store, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/scan/progress", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		ScanRun   map[string]any   `json:"scan_run"`
+		TotalURLs int              `json:"total_urls"`
+		PerDNS    []map[string]any `json:"per_dns"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.TotalURLs != 2 {
+		t.Fatalf("expected total_urls=2, got %d", resp.TotalURLs)
+	}
+	if len(resp.PerDNS) != 2 {
+		t.Fatalf("expected 2 per_dns entries, got %d", len(resp.PerDNS))
 	}
 }
 

@@ -169,6 +169,41 @@ func (h *Handlers) ResultsByURL(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, results)
 }
 
+// Scan progress
+
+type scanProgressResponse struct {
+	ScanRun   *db.ScanRun        `json:"scan_run"`
+	TotalURLs int                `json:"total_urls"`
+	PerDNS    []db.ProgressEntry `json:"per_dns"`
+}
+
+func (h *Handlers) ScanProgress(w http.ResponseWriter, r *http.Request) {
+	run, err := h.store.LastScanRun(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if run == nil {
+		writeError(w, http.StatusNotFound, "no scan run found")
+		return
+	}
+	progress, err := h.store.ScanProgress(r.Context(), run.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	urls, err := h.store.ListURLs(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, scanProgressResponse{
+		ScanRun:   run,
+		TotalURLs: len(urls),
+		PerDNS:    progress,
+	})
+}
+
 // Screenshot
 
 func (h *Handlers) TriggerScreenshot(w http.ResponseWriter, r *http.Request) {
