@@ -36,3 +36,9 @@ type ScanResult struct {
 	Error         string    `json:"error"`
 	ScannedAt     time.Time `json:"scanned_at"`
 }
+
+type ProgressEntry struct {
+	DNSServerID uint   `json:"dns_server_id"`
+	Name        string `json:"name"`
+	Completed   int    `json:"completed"`
+}

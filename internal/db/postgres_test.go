@@ -131,6 +131,90 @@ func TestInsertResultAndLatest(t *testing.T) {
 	}
 }
 
+func TestLastScanRun_None(t *testing.T) {
+	s := newTestStore(t)
+	run, err := s.LastScanRun(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if run != nil {
+		t.Fatalf("expected nil, got %+v", run)
+	}
+}
+
+func TestLastScanRun_ReturnsLatest(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	first, _ := s.CreateScanRun(ctx, "scheduled")
+	_ = s.CompleteScanRun(ctx, first.ID, "completed", time.Now())
+	time.Sleep(2 * time.Millisecond)
+	second, _ := s.CreateScanRun(ctx, "manual")
+
+	got, err := s.LastScanRun(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil || got.ID != second.ID {
+		t.Fatalf("expected run id=%d, got %+v", second.ID, got)
+	}
+}
+
+func TestScanProgress_Empty(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	_, _ = s.CreateDNSServer(ctx, db.DNSServer{Name: "CF", Address: "1.1.1.1:53", Protocol: "udp"})
+	run, _ := s.CreateScanRun(ctx, "manual")
+
+	entries, err := s.ScanProgress(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Completed != 0 {
+		t.Fatalf("expected 0 completed, got %d", entries[0].Completed)
+	}
+}
+
+func TestScanProgress_WithResults(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srv1, _ := s.CreateDNSServer(ctx, db.DNSServer{Name: "CF", Address: "1.1.1.1:53", Protocol: "udp"})
+	srv2, _ := s.CreateDNSServer(ctx, db.DNSServer{Name: "Google", Address: "8.8.8.8:53", Protocol: "udp"})
+	run, _ := s.CreateScanRun(ctx, "manual")
+
+	for _, url := range []string{"https://a.com", "https://b.com"} {
+		_ = s.InsertResult(ctx, db.ScanResult{
+			ScanRunID: run.ID, URLValue: url, DNSServerID: srv1.ID,
+			Compliant: false, ScannedAt: time.Now(),
+		})
+	}
+	_ = s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run.ID, URLValue: "https://a.com", DNSServerID: srv2.ID,
+		Compliant: false, ScannedAt: time.Now(),
+	})
+
+	entries, err := s.ScanProgress(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	byName := make(map[string]int)
+	for _, e := range entries {
+		byName[e.Name] = e.Completed
+	}
+	if byName["CF"] != 2 {
+		t.Fatalf("expected CF=2, got %d", byName["CF"])
+	}
+	if byName["Google"] != 1 {
+		t.Fatalf("expected Google=1, got %d", byName["Google"])
+	}
+}
+
 func TestUpdateScreenshot(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

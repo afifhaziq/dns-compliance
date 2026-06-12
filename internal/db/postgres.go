@@ -22,7 +22,16 @@ func (s *postgresStore) CreateURL(ctx context.Context, rawURL string) (URL, erro
 }
 
 func (s *postgresStore) DeleteURL(ctx context.Context, id uint) error {
-	return s.db.WithContext(ctx).Delete(&URL{}, id).Error
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var u URL
+		if err := tx.First(&u, id).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("url_value = ?", u.URL).Delete(&ScanResult{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&u).Error
+	})
 }
 
 func (s *postgresStore) ListDNSServers(ctx context.Context) ([]DNSServer, error) {
@@ -91,4 +100,41 @@ func (s *postgresStore) InsertResult(ctx context.Context, r ScanResult) error {
 func (s *postgresStore) UpdateScreenshot(ctx context.Context, resultID uint, screenshotURL string) error {
 	return s.db.WithContext(ctx).Model(&ScanResult{}).Where("id = ?", resultID).
 		Update("screenshot_url", screenshotURL).Error
+}
+
+func (s *postgresStore) LastScanRun(ctx context.Context) (*ScanRun, error) {
+	var run ScanRun
+	err := s.db.WithContext(ctx).Order("started_at DESC").First(&run).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &run, nil
+}
+
+type progressRow struct {
+	DNSServerID uint
+	Name        string
+	Completed   int
+}
+
+func (s *postgresStore) ScanProgress(ctx context.Context, runID uint) ([]ProgressEntry, error) {
+	var rows []progressRow
+	err := s.db.WithContext(ctx).
+		Model(&DNSServer{}).
+		Select("dns_servers.id as dns_server_id, dns_servers.name, COUNT(scan_results.id) as completed").
+		Joins("LEFT JOIN scan_results ON scan_results.dns_server_id = dns_servers.id AND scan_results.scan_run_id = ?", runID).
+		Group("dns_servers.id, dns_servers.name").
+		Order("dns_servers.name").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]ProgressEntry, len(rows))
+	for i, r := range rows {
+		entries[i] = ProgressEntry{DNSServerID: r.DNSServerID, Name: r.Name, Completed: r.Completed}
+	}
+	return entries, nil
 }

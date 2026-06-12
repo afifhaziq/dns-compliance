@@ -20,6 +20,8 @@ type Store interface {
 	CreateScanRun(ctx context.Context, triggeredBy string) (ScanRun, error)
 	CompleteScanRun(ctx context.Context, id uint, status string, completedAt time.Time) error
 	ActiveScanRun(ctx context.Context) (*ScanRun, error)
+	LastScanRun(ctx context.Context) (*ScanRun, error)
+	ScanProgress(ctx context.Context, runID uint) ([]ProgressEntry, error)
 
 	// Scan Results
 	LatestResults(ctx context.Context) ([]ScanResult, error)
