@@ -557,6 +557,13 @@ button {
   width: 130px;
 }
 
+.col-last-scanned {
+  width: 130px;
+  white-space: nowrap;
+  color: var(--muted-foreground, #888);
+  font-size: 0.8rem;
+}
+
 /* URL group rows */
 .url-row {
   cursor: pointer;
