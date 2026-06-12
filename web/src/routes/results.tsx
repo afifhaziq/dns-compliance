@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { fetchResults, groupResults, lastScanTime } from '../api/results'
+import { fetchScanProgress } from '../api/scan'
+import type { ProgressEntry, ScanProgressResponse } from '../api/scan'
 import type { GroupedResult, ScanResult } from '../api/types'
 import { useScan } from './__root'
+import { LiveLineChart } from '@/components/charts/live-line-chart'
+import { LiveLine } from '@/components/charts/live-line'
+import { LiveXAxis } from '@/components/charts/live-x-axis'
+import { LiveYAxis } from '@/components/charts/live-y-axis'
 
 export const Route = createFileRoute('/results')({ component: ResultsPage })
 
@@ -218,6 +224,133 @@ function SkeletonRows() {
 
 /* ─── Results Page ───────────────────────────────────────────────────────── */
 
+/* ─── Scan Progress ──────────────────────────────────────────────────────── */
+
+type ChartPoint = { time: number; value: number }
+
+function useScanProgress() {
+  const { scanning } = useScan()
+  const [progress, setProgress] = useState<ScanProgressResponse | null>(null)
+  const [chartData, setChartData] = useState<ChartPoint[]>([])
+  const [latestValue, setLatestValue] = useState(0)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const prevScanningRef = useRef(scanning)
+
+  const appendPoint = useCallback((total: number) => {
+    setChartData(prev => [...prev.slice(-500), { time: Date.now() / 1000, value: total }])
+    setLatestValue(total)
+  }, [])
+
+  const fetchAndUpdate = useCallback(async () => {
+    try {
+      const data = await fetchScanProgress()
+      setProgress(data)
+      const total = data.per_dns.reduce((sum, d) => sum + d.completed, 0)
+      appendPoint(total)
+    } catch (err) {
+      if (err instanceof Error && err.message === 'no_run') return
+    }
+  }, [appendPoint])
+
+  useEffect(() => { fetchAndUpdate() }, [fetchAndUpdate])
+
+  useEffect(() => {
+    const wasScanning = prevScanningRef.current
+    prevScanningRef.current = scanning
+
+    if (scanning) {
+      pollRef.current = setInterval(fetchAndUpdate, 2000)
+      return () => {
+        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+      }
+    } else if (wasScanning) {
+      fetchAndUpdate()
+    }
+  }, [scanning, fetchAndUpdate])
+
+  return { progress, chartData, latestValue }
+}
+
+function DNSProgressTable({ perDns, totalUrls }: { perDns: ProgressEntry[]; totalUrls: number }) {
+  const sorted = [...perDns].sort((a, b) => {
+    const aDone = totalUrls > 0 && a.completed === totalUrls
+    const bDone = totalUrls > 0 && b.completed === totalUrls
+    if (aDone && !bDone) return -1
+    if (!aDone && bDone) return 1
+    return a.name.localeCompare(b.name)
+  })
+
+  return (
+    <div className="progress-dns-wrap">
+      <table className="progress-dns-table" aria-label="Per-DNS scan progress">
+        <thead>
+          <tr>
+            <th scope="col">DNS Server</th>
+            <th scope="col">Completed</th>
+            <th scope="col">Progress</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map(d => {
+            const pct = totalUrls > 0 ? Math.round((d.completed / totalUrls) * 100) : 0
+            const done = totalUrls > 0 && d.completed === totalUrls
+            return (
+              <tr key={d.dns_server_id} className={done ? 'progress-row-done' : ''}>
+                <td>{d.name}</td>
+                <td className="progress-count">{d.completed} / {totalUrls}</td>
+                <td className="progress-bar-cell">
+                  <div className="progress-bar-wrap" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+                    <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
+                  </div>
+                  {done && <span className="progress-check" aria-label="Complete">✓</span>}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ScanProgressSection() {
+  const { scanning } = useScan()
+  const { progress, chartData, latestValue } = useScanProgress()
+
+  if (!progress || progress.total_urls === 0) return null
+
+  const { scan_run, total_urls, per_dns } = progress
+  const isRunning = scan_run.status === 'running'
+
+  return (
+    <section className="progress-section" aria-label="Scan progress">
+      <div className="progress-section-header">
+        <h2 className="progress-section-title">Scan Progress</h2>
+        {isRunning ? (
+          <span className="progress-status-badge running" role="status">
+            <span className="scan-banner-dot" aria-hidden="true" />
+            Running…
+          </span>
+        ) : (
+          <span className="progress-status-badge completed">Completed ✓</span>
+        )}
+      </div>
+
+      <div className="progress-chart-wrap">
+        <LiveLineChart data={chartData} value={latestValue} window={60} paused={!scanning}>
+          <LiveLine dataKey="value" pulse={scanning} formatValue={(v: number) => `${Math.round(v)} URLs`} />
+          <LiveXAxis />
+          <LiveYAxis position="left" formatValue={(v: number) => String(Math.round(v))} />
+        </LiveLineChart>
+      </div>
+
+      <DNSProgressTable perDns={per_dns} totalUrls={total_urls} />
+    </section>
+  )
+}
+
+/* ─── Results Page ───────────────────────────────────────────────────────── */
+
 function ResultsPage() {
   const { scanning, refreshSignal } = useScan()
 
@@ -298,6 +431,8 @@ function ResultsPage() {
           <p className="page-subtitle">Last scan: {lastScan}</p>
         )}
       </div>
+
+      <ScanProgressSection />
 
       {/* Filter bar */}
       <div className="filter-bar">
