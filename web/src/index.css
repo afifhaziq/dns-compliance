@@ -1446,6 +1446,7 @@ html.dark .shimmer-btn-text {
 .progress-chart-wrap {
   height: 180px;
   padding: 0.5rem 1rem;
+  overflow: hidden;
 }
 
 .progress-dns-wrap {

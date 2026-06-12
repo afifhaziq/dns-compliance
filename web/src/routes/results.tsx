@@ -337,7 +337,7 @@ function ScanProgressSection() {
       </div>
 
       <div className="progress-chart-wrap">
-        <LiveLineChart data={chartData} value={latestValue} window={60} paused={!scanning}>
+        <LiveLineChart data={chartData} value={latestValue} window={60} paused={!scanning} style={{ height: 180 }}>
           <LiveLine dataKey="value" pulse={scanning} formatValue={(v: number) => `${Math.round(v)} URLs`} />
           <LiveXAxis />
           <LiveYAxis position="left" formatValue={(v: number) => String(Math.round(v))} />
