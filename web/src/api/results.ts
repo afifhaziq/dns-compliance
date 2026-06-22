@@ -6,6 +6,13 @@ export async function fetchResults(): Promise<ScanResult[]> {
   return res.json()
 }
 
+export async function fetchResultsByUrl(url: string, sinceDays = 7): Promise<ScanResult[]> {
+  const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString()
+  const res = await fetch(`/api/results/${encodeURIComponent(url)}?since=${encodeURIComponent(since)}`)
+  if (!res.ok) throw new Error(`Failed to load results: ${res.status}`)
+  return res.json()
+}
+
 export function groupResults(results: ScanResult[]): GroupedResult[] {
   const map = new Map<string, ScanResult[]>()
   for (const r of results) {
