@@ -553,6 +553,7 @@ const LiveLineChartCore = memo(function LiveLineChartCore({
       animationDuration: 0,
       xAccessor,
       dateLabels,
+      referenceAreas: [],
     }),
     [
       contextData,

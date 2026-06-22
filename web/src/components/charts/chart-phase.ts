@@ -1,5 +1,9 @@
 export type ChartStatus = "loading" | "ready";
 
+/** Loading animation style: the default traveling pulse, or a diagonal
+ * shimmer that sweeps across the skeleton. */
+export type LoadingStyle = "pulse" | "sweep";
+
 /**
  * Internal visual lifecycle phase. Forward and reverse transitions add
  * intermediate phases in later stack branches.
