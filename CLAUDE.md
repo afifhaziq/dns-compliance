@@ -105,7 +105,7 @@ For full-stack dev, run the Go server (`go run ./cmd/server/ ...`) alongside `np
 # Full stack with MinIO (supply DB_URL separately or use dev overlay):
 docker compose up
 
-# Dev overlay adds a local PostgreSQL container:
+# Dev overlay adds a local PostgreSQL container (port 5432 published for local psql/GUI access):
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 # The Dockerfile is multi-stage: builder (golang:1.26) produces both binaries;
@@ -143,10 +143,11 @@ The tool checks ISP takedown compliance. A site that **resolves DNS** is a **vio
 ### Database (`internal/db/`)
 
 - GORM with PostgreSQL driver (`gorm.io/driver/postgres`). SQLite driver (`glebarez/sqlite`) is also linked but PostgreSQL is the production path.
-- Models: `DNSServer`, `URL`, `ScanRun`, `ScanResult`. `ScanResult` foreign-keys to both `ScanRun` and `DNSServer`.
+- Models: `DNSServer`, `URL`, `ScanRun`, `ScanResult`. `ScanResult` foreign-keys to `ScanRun`, `DNSServer`, and `URL` (via `URLID`); `URLValue` is kept denormalized alongside `URLID` for display/matching without a join.
 - `db.Store` interface decouples handlers and the gRPC server from the concrete implementation — tests can swap in a fake. Handler tests use `fullMockStore` (defined in `internal/server/handlers_test.go`) which implements all Store methods; copy this struct when adding new server tests.
 - `db.Seed` populates `dns_servers` on first run from the YAML file passed via `--seed-dns` (skips if table is non-empty).
-- `DeleteURL` manually cascades: it deletes all `ScanResult` rows matching the URL value before deleting the URL, within a single transaction. There is no FK-level cascade — if you add another dependent table, update `postgres.go` accordingly.
+- `DeleteURL` is a plain `Delete(&URL{}, id)` — dependent `ScanResult` rows are removed via the `OnDelete:CASCADE` FK constraint on `ScanResult.URLRef`, not application code. If you add another table that references `URL`, give it the same FK-level cascade rather than reintroducing manual cleanup.
+- `grpcServer.Submit` resolves `URLID` by matching `ScanResult.URLValue` against `store.ListURLs()` in memory (`urlIDByValue` map) — there's no DB-level join here, so a URL must exist in the `urls` table before results referencing it can be inserted.
 
 ### Storage (`internal/storage/`)
 
@@ -204,6 +205,10 @@ When `--screenshots` is off (default), `Capture` is a no-op. When multiple DNS s
 - **Overview page (`web/src/routes/index.tsx`)**: The page already renders a `ServerStatusTable` (CSS progress-bar rows, one per DNS server) and a `ViolationsList` (top-8 violating domains). What's still missing:
   - An **overall compliance summary** — single progress bar / stat showing % of domains compliant across all servers combined
   - Animated chart variant for the server table — replace or augment the CSS bars with the `LiveLineChart` pattern from `results.tsx` if a richer visualization is wanted
+
+## Product & Design
+
+[PRODUCT.md](./PRODUCT.md) defines the target users (regulatory auditors, not developers) and brand personality (neutral, evidence-first, no editorializing on violations). [DESIGN.md](./DESIGN.md) defines the visual system ("The Registry" — achromatic gray scale plus a single ledger-indigo accent reserved for actions/identity, never for compliance status). Read both before making UI changes — the anti-references (generic SaaS dashboards, security-product dark/neon aesthetics) are deliberate constraints, not omissions.
 
 ## Security
 
