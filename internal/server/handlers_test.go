@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -250,5 +251,68 @@ func TestCreateURLMissingField(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for empty url, got %d", w.Code)
+	}
+}
+
+func TestResultsByURL_DefaultWindow(t *testing.T) {
+	store := &fullMockStore{results: []db.ScanResult{
+		{ID: 1, URLValue: "https://example.com", ScannedAt: time.Now().AddDate(0, 0, -10)},
+		{ID: 2, URLValue: "https://example.com", ScannedAt: time.Now()},
+	}}
+	r := setupRouter(store, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/results/https://example.com", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var results []db.ScanResult
+	json.NewDecoder(w.Body).Decode(&results)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result within default 7-day window, got %d", len(results))
+	}
+	if results[0].ID != 2 {
+		t.Fatalf("expected the recent result (id=2), got id=%d", results[0].ID)
+	}
+}
+
+func TestResultsByURL_ExplicitSince(t *testing.T) {
+	store := &fullMockStore{results: []db.ScanResult{
+		{ID: 1, URLValue: "https://example.com", ScannedAt: time.Now().AddDate(0, 0, -10)},
+		{ID: 2, URLValue: "https://example.com", ScannedAt: time.Now()},
+	}}
+	r := setupRouter(store, nil)
+	since := url.QueryEscape(time.Now().AddDate(0, 0, -30).Format(time.RFC3339))
+	req := httptest.NewRequest(http.MethodGet, "/api/results/https://example.com?since="+since, nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var results []db.ScanResult
+	json.NewDecoder(w.Body).Decode(&results)
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results within 30-day window, got %d", len(results))
+	}
+}
+
+func TestResultsByURL_PercentEncodedSlashes(t *testing.T) {
+	store := &fullMockStore{results: []db.ScanResult{
+		{ID: 1, URLValue: "https://example.com/", ScannedAt: time.Now()},
+	}}
+	r := setupRouter(store, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/results/https%3A%2F%2Fexample.com%2F", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var results []db.ScanResult
+	json.NewDecoder(w.Body).Decode(&results)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
 	}
 }

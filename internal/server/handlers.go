@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -184,9 +185,20 @@ func (h *Handlers) LatestResults(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) ResultsByURL(w http.ResponseWriter, r *http.Request) {
-	urlValue := chi.URLParam(r, "*")
-	// time.Time{} = no lower bound; Task 2 adds real ?since= parsing here.
-	results, err := h.store.ResultsByURL(r.Context(), urlValue, time.Time{})
+	urlValue, err := url.PathUnescape(chi.URLParam(r, "*"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid url")
+		return
+	}
+
+	since := time.Now().AddDate(0, 0, -7)
+	if raw := r.URL.Query().Get("since"); raw != "" {
+		if parsed, parseErr := time.Parse(time.RFC3339, raw); parseErr == nil {
+			since = parsed
+		}
+	}
+
+	results, err := h.store.ResultsByURL(r.Context(), urlValue, since)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
