@@ -93,7 +93,7 @@ var _ db.Store = (*fullMockStore)(nil)
 
 func setupRouter(store db.Store, sc *server.Scanner) http.Handler {
 	r := chi.NewRouter()
-	server.RegisterRoutes(r, store, sc)
+	server.RegisterRoutes(r, store, sc, nil)
 	return r
 }
 

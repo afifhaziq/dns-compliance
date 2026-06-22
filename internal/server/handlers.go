@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -10,12 +12,33 @@ import (
 )
 
 type Handlers struct {
-	store   db.Store
-	scanner *Scanner
+	store       db.Store
+	scanner     *Scanner
+	broadcaster *Broadcaster
 }
 
-func NewHandlers(store db.Store, scanner *Scanner) *Handlers {
-	return &Handlers{store: store, scanner: scanner}
+func NewHandlers(store db.Store, scanner *Scanner, broadcaster *Broadcaster) *Handlers {
+	return &Handlers{store: store, scanner: scanner, broadcaster: broadcaster}
+}
+
+func buildProgressPayload(ctx context.Context, store db.Store) ([]byte, error) {
+	run, err := store.LastScanRun(ctx)
+	if err != nil || run == nil {
+		return nil, err
+	}
+	progress, err := store.ScanProgress(ctx, run.ID)
+	if err != nil {
+		return nil, err
+	}
+	urls, err := store.ListURLs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(scanProgressResponse{
+		ScanRun:   run,
+		TotalURLs: len(urls),
+		PerDNS:    progress,
+	})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -202,6 +225,45 @@ func (h *Handlers) ScanProgress(w http.ResponseWriter, r *http.Request) {
 		TotalURLs: len(urls),
 		PerDNS:    progress,
 	})
+}
+
+func (h *Handlers) ScanProgressStream(w http.ResponseWriter, r *http.Request) {
+	if h.broadcaster == nil {
+		http.Error(w, "streaming not configured", http.StatusServiceUnavailable)
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	// Send current state immediately so the client doesn't wait for the first event.
+	if data, err := buildProgressPayload(r.Context(), h.store); err == nil && data != nil {
+		fmt.Fprintf(w, "data: %s\n\n", data) //nolint:errcheck
+		flusher.Flush()
+	}
+
+	ch := h.broadcaster.Subscribe()
+	defer h.broadcaster.Unsubscribe(ch)
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case data, ok := <-ch:
+			if !ok {
+				return
+			}
+			fmt.Fprintf(w, "data: %s\n\n", data) //nolint:errcheck
+			flusher.Flush()
+		}
+	}
 }
 
 // Screenshot

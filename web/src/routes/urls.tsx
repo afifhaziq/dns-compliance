@@ -11,10 +11,17 @@ import {
   DialogFooter,
 } from '@/components/animate-ui/components/radix/dialog'
 import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
+import { Button } from '@/components/ui/button'
+import {
+  PreviewLinkCard,
+  PreviewLinkCardTrigger,
+  PreviewLinkCardPanel,
+  PreviewLinkCardImage,
+} from '@/components/animate-ui/components/base/preview-link-card'
 
 export const Route = createFileRoute('/urls')({ component: URLsPage })
 
-/* ─── Add URL Dialog ─────────────────────────────────────────────────────── */
+/* ─── Add Domain Dialog ──────────────────────────────────────────────────── */
 
 function AddUrlDialog({
   open,
@@ -25,24 +32,25 @@ function AddUrlDialog({
   onClose: () => void
   onAdded: () => void
 }) {
-  const [url, setUrl] = useState('')
+  const [value, setValue] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const reset = () => { setUrl(''); setError(null) }
+  const reset = () => { setValue(''); setError(null) }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!url.trim()) { setError('URL is required'); return }
+    const domains = value.split('\n').map(s => s.trim()).filter(Boolean)
+    if (domains.length === 0) { setError('At least one domain is required'); return }
     setLoading(true)
     setError(null)
     try {
-      await createUrl(url.trim())
+      await Promise.all(domains.map(d => createUrl(d)))
       reset()
       onAdded()
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add URL')
+      setError(err instanceof Error ? err.message : 'Failed to add domain')
     } finally {
       setLoading(false)
     }
@@ -54,23 +62,24 @@ function AddUrlDialog({
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
       <DialogContent showCloseButton={false} style={{ maxWidth: 420 }}>
         <DialogHeader>
-          <DialogTitle>Add URL</DialogTitle>
+          <DialogTitle>Add Domain</DialogTitle>
           <DialogDescription>
-            Add a URL to monitor for DNS compliance.
+            Enter one or more domains or full URLs to monitor for DNS compliance. Full URLs will have their domain automatically extracted. You can add multiple entries at once, just put each one on a new line.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="form-field">
-            <label className="form-label" htmlFor="add-url-input">URL</label>
-            <input
+            <label className="form-label" htmlFor="add-url-input">Domain</label>
+            <textarea
               id="add-url-input"
               className="form-input"
-              type="url"
-              placeholder="https://example.com"
-              value={url}
-              onChange={e => setUrl(e.target.value)}
+              placeholder={'https://example.com\nhttps://example2.com'}
+              value={value}
+              onChange={e => setValue(e.target.value)}
               autoFocus
               disabled={loading}
+              rows={4}
+              style={{ resize: 'vertical', fontFamily: 'inherit' }}
             />
           </div>
           {error && <p className="form-error">{error}</p>}
@@ -79,7 +88,7 @@ function AddUrlDialog({
               Cancel
             </button>
             <button type="submit" className="btn-primary" disabled={loading}>
-              {loading ? 'Adding…' : 'Add URL'}
+              {loading ? 'Adding…' : 'Add Domain'}
             </button>
           </DialogFooter>
         </form>
@@ -140,7 +149,7 @@ function URLsPage() {
       setError(null)
       setUrls(await fetchUrls())
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load URLs')
+      setError(err instanceof Error ? err.message : 'Failed to load domains')
     } finally {
       setLoading(false)
     }
@@ -158,15 +167,14 @@ function URLsPage() {
   return (
     <>
       <div className="page-header">
-        <h1 className="page-title">URLs</h1>
+        <h1 className="page-title">Domains</h1>
         <p className="page-subtitle">{!loading && `${urls.length} monitored`}</p>
-        <button
-          className="btn-primary"
+        <Button
           style={{ marginLeft: 'auto' }}
           onClick={() => setAddOpen(true)}
         >
-          + Add URL
-        </button>
+          + Add Domain
+        </Button>
       </div>
 
       <div className="results-wrap">
@@ -178,15 +186,15 @@ function URLsPage() {
         ) : !loading && urls.length === 0 ? (
           <div className="empty-state">
             <EmptyIcon />
-            <p className="empty-heading">No URLs yet</p>
-            <p className="empty-body">Add a URL to start monitoring DNS compliance.</p>
-            <button className="btn-primary" onClick={() => setAddOpen(true)}>Add URL</button>
+            <p className="empty-heading">No domains yet</p>
+            <p className="empty-body">Add a domain to start monitoring DNS compliance.</p>
+            <button className="btn-primary" onClick={() => setAddOpen(true)}>Add Domain</button>
           </div>
         ) : (
-          <table className="results-table" aria-label="Monitored URLs">
+          <table className="results-table" aria-label="Monitored domains">
             <thead>
               <tr>
-                <th className="col-domain" scope="col">URL</th>
+                <th className="col-domain" scope="col">Domain</th>
                 <th className="col-status" scope="col">Added</th>
                 <th className="col-evidence" scope="col" />
               </tr>
@@ -198,7 +206,14 @@ function URLsPage() {
                 urls.map(u => (
                   <tr key={u.id} className="url-row">
                     <td className="col-domain">
-                      <span className="hostname">{u.url}</span>
+                      <PreviewLinkCard href={u.url}>
+                        <PreviewLinkCardTrigger>
+                          <span className="hostname">{u.url}</span>
+                        </PreviewLinkCardTrigger>
+                        <PreviewLinkCardPanel>
+                          <PreviewLinkCardImage />
+                        </PreviewLinkCardPanel>
+                      </PreviewLinkCard>
                     </td>
                     <td className="col-status">
                       <span className="dns-name">

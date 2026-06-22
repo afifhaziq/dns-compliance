@@ -6,8 +6,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner) {
-	h := NewHandlers(store, scanner)
+func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster *Broadcaster) {
+	h := NewHandlers(store, scanner, broadcaster)
 
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -24,6 +24,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner) {
 		r.Post("/scan", h.TriggerScan)
 		r.Get("/scan/status", h.ScanStatus)
 		r.Get("/scan/progress", h.ScanProgress)
+		r.Get("/scan/progress/stream", h.ScanProgressStream)
 
 		r.Get("/results", h.LatestResults)
 		r.Get("/results/*", h.ResultsByURL)

@@ -22,16 +22,7 @@ func (s *postgresStore) CreateURL(ctx context.Context, rawURL string) (URL, erro
 }
 
 func (s *postgresStore) DeleteURL(ctx context.Context, id uint) error {
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var u URL
-		if err := tx.First(&u, id).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("url_value = ?", u.URL).Delete(&ScanResult{}).Error; err != nil {
-			return err
-		}
-		return tx.Delete(&u).Error
-	})
+	return s.db.WithContext(ctx).Delete(&URL{}, id).Error
 }
 
 func (s *postgresStore) ListDNSServers(ctx context.Context) ([]DNSServer, error) {

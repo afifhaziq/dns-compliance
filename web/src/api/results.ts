@@ -1,0 +1,52 @@
+import type { GroupedResult, ScanResult } from './types'
+
+export async function fetchResults(): Promise<ScanResult[]> {
+  const res = await fetch('/api/results')
+  if (!res.ok) throw new Error(`Failed to load results: ${res.status}`)
+  return res.json()
+}
+
+export function groupResults(results: ScanResult[]): GroupedResult[] {
+  const map = new Map<string, ScanResult[]>()
+  for (const r of results) {
+    const existing = map.get(r.url) ?? []
+    map.set(r.url, [...existing, r])
+  }
+
+  return Array.from(map.entries())
+    .map(([url, items]) => {
+      let hostname = url
+      try { hostname = new URL(url).hostname } catch { /* bare hostname */ }
+
+      const latestScannedAt = items.reduce(
+        (max, r) => (r.scanned_at > max ? r.scanned_at : max),
+        items[0]?.scanned_at ?? '',
+      )
+
+      return {
+        url,
+        hostname,
+        results: items,
+        violationCount: items.filter(r => !r.compliant).length,
+        totalCount: items.length,
+        latestScannedAt,
+      }
+    })
+    .sort((a, b) => b.violationCount - a.violationCount) // violations first
+}
+
+export function lastScanTime(groups: GroupedResult[]): string | null {
+  if (groups.length === 0) return null
+  const ts = groups.reduce(
+    (max, g) => (g.latestScannedAt > max ? g.latestScannedAt : max),
+    groups[0].latestScannedAt,
+  )
+  if (!ts) return null
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(ts))
+}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { fetchDnsServers, createDnsServer, deleteDnsServer } from '../api/dns-servers'
 import type { DNSServer } from '../api/types'
@@ -120,6 +120,27 @@ function AddDnsServerDialog({
   )
 }
 
+/* ─── Grouping ───────────────────────────────────────────────────────────── */
+
+type DNSGroup = { name: string; servers: DNSServer[] }
+
+function groupByISP(servers: DNSServer[]): DNSGroup[] {
+  const named = new Map<string, DNSServer[]>()
+  const unnamed: DNSGroup[] = []
+  for (const s of servers) {
+    if (!s.name) {
+      unnamed.push({ name: '', servers: [s] })
+    } else {
+      if (!named.has(s.name)) named.set(s.name, [])
+      named.get(s.name)!.push(s)
+    }
+  }
+  return [
+    ...Array.from(named.entries()).map(([name, svrs]) => ({ name, servers: svrs })),
+    ...unnamed,
+  ]
+}
+
 /* ─── Skeleton ───────────────────────────────────────────────────────────── */
 
 function SkeletonRows() {
@@ -127,16 +148,15 @@ function SkeletonRows() {
     <>
       {[120, 160, 100].map((w, i) => (
         <tr key={i} className="skeleton-row">
-          <td className="col-domain">
-            <span className="skeleton" style={{ width: w, height: 14 }} />
-          </td>
           <td className="col-ip">
             <span className="skeleton" style={{ width: 130, height: 14 }} />
           </td>
           <td className="col-status">
             <span className="skeleton" style={{ width: 40, height: 20, borderRadius: 99 }} />
           </td>
-          <td className="col-evidence" />
+          <td className="col-evidence">
+            <span className="skeleton" style={{ width: w, height: 14 }} />
+          </td>
         </tr>
       ))}
     </>
@@ -221,7 +241,6 @@ function DNSServersPage() {
           <table className="results-table" aria-label="DNS servers">
             <thead>
               <tr>
-                <th className="col-domain" scope="col">Name</th>
                 <th className="col-ip" scope="col">Address</th>
                 <th className="col-status" scope="col">Protocol</th>
                 <th className="col-evidence" scope="col" />
@@ -231,27 +250,34 @@ function DNSServersPage() {
               {loading ? (
                 <SkeletonRows />
               ) : (
-                servers.map(s => (
-                  <tr key={s.id} className="url-row">
-                    <td className="col-domain">
-                      <span className="hostname">{s.name || <span className="dns-name">(unnamed)</span>}</span>
-                    </td>
-                    <td className="col-ip">
-                      <span className="ip-value">{s.address}</span>
-                    </td>
-                    <td className="col-status">
-                      <span className="protocol-badge">{s.protocol}</span>
-                    </td>
-                    <td className="col-evidence" style={{ textAlign: 'right' }}>
-                      <button
-                        className="btn-row-delete"
-                        onClick={() => setDeleteTarget(s)}
-                        aria-label={`Delete ${serverLabel(s)}`}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
+                groupByISP(servers).map(group => (
+                  <React.Fragment key={group.name || `unnamed-${group.servers[0].id}`}>
+                    <tr className="dns-group-row">
+                      <td colSpan={3} className="dns-group-name">
+                        {group.name || <span className="dns-name">(unnamed)</span>}
+                        <span className="dns-group-count">{group.servers.length}</span>
+                      </td>
+                    </tr>
+                    {group.servers.map(s => (
+                      <tr key={s.id} className="dns-entry-row">
+                        <td className="col-ip">
+                          <span className="ip-value">{s.address}</span>
+                        </td>
+                        <td className="col-status">
+                          <span className="protocol-badge">{s.protocol}</span>
+                        </td>
+                        <td className="col-evidence" style={{ textAlign: 'right' }}>
+                          <button
+                            className="btn-row-delete"
+                            onClick={() => setDeleteTarget(s)}
+                            aria-label={`Delete ${serverLabel(s)}`}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
                 ))
               )}
             </tbody>

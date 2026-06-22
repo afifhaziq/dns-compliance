@@ -12,12 +12,13 @@ import (
 
 type grpcServer struct {
 	pb.UnimplementedComplianceServiceServer
-	store   db.Store
-	storage storage.Storage
+	store       db.Store
+	storage     storage.Storage
+	broadcaster *Broadcaster
 }
 
-func NewGRPCServer(store db.Store, stor storage.Storage) pb.ComplianceServiceServer {
-	return &grpcServer{store: store, storage: stor}
+func NewGRPCServer(store db.Store, stor storage.Storage, broadcaster *Broadcaster) pb.ComplianceServiceServer {
+	return &grpcServer{store: store, storage: stor, broadcaster: broadcaster}
 }
 
 func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*pb.Acknowledgement, error) {
@@ -36,9 +37,16 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 		serverByName[srv.Name] = srv.ID
 	}
 
+	urls, _ := s.store.ListURLs(ctx)
+	urlIDByValue := make(map[string]uint, len(urls))
+	for _, u := range urls {
+		urlIDByValue[u.URL] = u.ID
+	}
+
 	for _, r := range report.Results {
 		result := db.ScanResult{
 			ScanRunID:   runID,
+			URLID:       urlIDByValue[r.Url],
 			URLValue:    r.Url,
 			DNSServerID: serverByName[r.DnsServer],
 			Compliant:   r.Compliant,
@@ -65,5 +73,12 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 			}
 		}
 	}
+
+	if s.broadcaster != nil {
+		if data, err := buildProgressPayload(ctx, s.store); err == nil && data != nil {
+			s.broadcaster.Publish(data)
+		}
+	}
+
 	return &pb.Acknowledgement{Ok: true}, nil
 }

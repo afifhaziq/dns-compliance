@@ -1,0 +1,17 @@
+server,site,tool,status,ip,time_ms,verdict
+Google,google.com,dig,resolved,172.217.27.14,53,VIOLATION
+Google,google.com,nslookup,resolved,172.217.27.46,115,VIOLATION
+Google,notexist.fakesite12345.invalid,dig,nxdomain,,105,COMPLIANT
+Google,notexist.fakesite12345.invalid,nslookup,nxdomain,,100,COMPLIANT
+Cloudflare,google.com,dig,resolved,172.217.25.78,54,VIOLATION
+Cloudflare,google.com,nslookup,resolved,172.217.25.78,60,VIOLATION
+Cloudflare,notexist.fakesite12345.invalid,dig,nxdomain,,47,COMPLIANT
+Cloudflare,notexist.fakesite12345.invalid,nslookup,nxdomain,,56,COMPLIANT
+Google DoH,google.com,dig+https,resolved,172.217.25.142,102,VIOLATION
+Google DoH,google.com,curl(DoH),resolved,172.217.25.78,166,VIOLATION
+Google DoH,notexist.fakesite12345.invalid,dig+https,nxdomain,,149,COMPLIANT
+Google DoH,notexist.fakesite12345.invalid,curl(DoH),nxdomain,,166,COMPLIANT
+Cloudflare DoH,google.com,dig+https,resolved,172.217.25.78,61,VIOLATION
+Cloudflare DoH,google.com,curl(DoH),resolved,172.217.25.78,106,VIOLATION
+Cloudflare DoH,notexist.fakesite12345.invalid,dig+https,nxdomain,,77,COMPLIANT
+Cloudflare DoH,notexist.fakesite12345.invalid,curl(DoH),nxdomain,,107,COMPLIANT

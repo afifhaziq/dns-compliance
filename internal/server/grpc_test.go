@@ -54,7 +54,7 @@ func newTestGRPCClient(t *testing.T, store db.Store, stor storage.Storage) pb.Co
 	t.Helper()
 	lis := bufconn.Listen(bufSize)
 	grpcSrv := grpc.NewServer()
-	pb.RegisterComplianceServiceServer(grpcSrv, server.NewGRPCServer(store, stor))
+	pb.RegisterComplianceServiceServer(grpcSrv, server.NewGRPCServer(store, stor, nil))
 	go grpcSrv.Serve(lis) //nolint:errcheck
 	t.Cleanup(grpcSrv.Stop)
 

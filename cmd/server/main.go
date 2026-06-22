@@ -68,13 +68,15 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	broadcaster := server.NewBroadcaster()
+
 	// gRPC server — receives scan results from the crawler.
 	grpcLis, err := net.Listen("tcp", *grpcAddr)
 	if err != nil {
 		log.Fatalf("grpc listen: %v", err)
 	}
 	grpcSrv := grpc.NewServer()
-	pb.RegisterComplianceServiceServer(grpcSrv, server.NewGRPCServer(store, stor))
+	pb.RegisterComplianceServiceServer(grpcSrv, server.NewGRPCServer(store, stor, broadcaster))
 	go func() {
 		log.Printf("gRPC listening on %s", *grpcAddr)
 		if err := grpcSrv.Serve(grpcLis); err != nil {
@@ -87,7 +89,7 @@ func main() {
 
 	// HTTP server — REST API for the frontend.
 	r := chi.NewRouter()
-	server.RegisterRoutes(r, store, sc)
+	server.RegisterRoutes(r, store, sc, broadcaster)
 
 	httpSrv := &http.Server{Addr: *httpAddr, Handler: r}
 	go func() {

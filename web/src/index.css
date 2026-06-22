@@ -7,12 +7,19 @@
 /* ─── Design Tokens ────────────────────────────────────────────────────────── */
 
 :root {
-  /* Near-black — authority/action. Not warning, not decoration. */
-  --orange: oklch(0.205 0 0);
-  --orange-hover: oklch(0.25 0 0);
-  --orange-active: oklch(0.30 0 0);
-  --orange-subtle: oklch(0.95 0 0);
-  --orange-text: oklch(0.985 0 0);
+  /* Exploration palette — raw swatches */
+  --pal-black: #000000;
+  --pal-midnight-violet: #3d2645;
+  --pal-royal-plum: #832161;
+  --pal-magenta-bloom: #da4167;
+  --pal-ghost-white: #f0eff4;
+
+  /* Accent — action/identity. Not status, not decoration. */
+  --ink: var(--pal-royal-plum);
+  --ink-hover: var(--pal-midnight-violet);
+  --ink-active: color-mix(in srgb, var(--pal-midnight-violet) 85%, var(--pal-black) 15%);
+  --ink-subtle: color-mix(in srgb, var(--pal-royal-plum) 10%, var(--pal-ghost-white) 90%);
+  --ink-text: var(--pal-ghost-white);
 
   /* Destructive red — violation status only (sole non-gray in the system) */
   --violation: oklch(0.577 0.245 27.325);
@@ -25,13 +32,13 @@
   --compliant-subtle: oklch(0.95 0 0);
   --compliant-text: oklch(0.40 0 0);
 
-  /* Pure gray ramp — zero chroma throughout */
-  --stone-bg: oklch(1 0 0);
-  --stone-nav: oklch(0.985 0 0);
-  --stone-panel: oklch(0.95 0 0);
-  --stone-border: oklch(0.905 0 0);
-  --stone-muted: oklch(0.55 0 0);
-  --stone-text: oklch(0.145 0 0);
+  /* Neutral ramp — tinted toward the palette's violet instead of pure gray */
+  --stone-bg: var(--pal-ghost-white);
+  --stone-nav: var(--pal-ghost-white);
+  --stone-panel: color-mix(in srgb, var(--pal-ghost-white) 88%, var(--pal-midnight-violet) 12%);
+  --stone-border: color-mix(in srgb, var(--pal-ghost-white) 78%, var(--pal-midnight-violet) 22%);
+  --stone-muted: color-mix(in srgb, var(--pal-midnight-violet) 72%, var(--pal-ghost-white) 28%);
+  --stone-text: var(--pal-black);
 
   /* Typography */
   --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
@@ -65,8 +72,8 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
+  --primary: var(--ink);
+  --primary-foreground: var(--ink-text);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
@@ -76,7 +83,7 @@
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --ring: var(--ink);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -85,12 +92,12 @@
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary: var(--ink);
+  --sidebar-primary-foreground: var(--ink-text);
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: var(--ink);
   --chart-background: oklch(1 0 0);
   --chart-foreground: oklch(0.145 0.004 285);
   --chart-foreground-muted: oklch(0.55 0.014 260);
@@ -112,11 +119,11 @@
 /* ─── Dark Mode ──────────────────────────────────────────────────────────── */
 
 html.dark {
-  --orange: oklch(0.922 0 0);
-  --orange-hover: oklch(0.85 0 0);
-  --orange-active: oklch(0.80 0 0);
-  --orange-subtle: oklch(0.269 0 0);
-  --orange-text: oklch(0.205 0 0);
+  --ink: var(--pal-magenta-bloom);
+  --ink-hover: color-mix(in srgb, var(--pal-magenta-bloom) 75%, var(--pal-ghost-white) 25%);
+  --ink-active: color-mix(in srgb, var(--pal-magenta-bloom) 92%, var(--pal-black) 8%);
+  --ink-subtle: color-mix(in srgb, var(--pal-magenta-bloom) 20%, var(--pal-black) 80%);
+  --ink-text: var(--pal-black);
 
   --violation: oklch(0.704 0.191 22.216);
   --violation-subtle: oklch(0.25 0.02 27);
@@ -127,12 +134,12 @@ html.dark {
   --compliant-subtle: oklch(0.269 0 0);
   --compliant-text: oklch(0.70 0 0);
 
-  --stone-bg: oklch(0.205 0 0);
-  --stone-nav: oklch(0.185 0 0);
-  --stone-panel: oklch(0.269 0 0);
-  --stone-border: oklch(0.269 0 0);
-  --stone-muted: oklch(0.60 0 0);
-  --stone-text: oklch(0.985 0 0);
+  --stone-bg: color-mix(in srgb, var(--pal-black) 90%, var(--pal-midnight-violet) 10%);
+  --stone-nav: color-mix(in srgb, var(--pal-black) 80%, var(--pal-midnight-violet) 20%);
+  --stone-panel: color-mix(in srgb, var(--pal-midnight-violet) 65%, var(--pal-black) 35%);
+  --stone-border: color-mix(in srgb, var(--pal-midnight-violet) 45%, var(--pal-black) 55%);
+  --stone-muted: color-mix(in srgb, var(--pal-ghost-white) 45%, var(--pal-midnight-violet) 55%);
+  --stone-text: var(--pal-ghost-white);
 }
 
 /* View Transition: circular reveal from click origin */
@@ -267,6 +274,10 @@ button {
   background-color: var(--stone-panel) !important;
 }
 
+html.dark .nav-hl-pill {
+  background-color: rgba(255, 255, 255, 0.16) !important;
+}
+
 @media (max-width: 640px) {
   .nav {
     flex-wrap: nowrap;
@@ -295,12 +306,31 @@ button {
 }
 
 .nav-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px var(--sp-3);
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--stone-text);
   text-decoration: none;
   letter-spacing: -0.01em;
   flex-shrink: 0;
+}
+
+.brand-mark {
+  color: var(--ink);
+  flex-shrink: 0;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.nav-brand:hover .brand-mark {
+  transform: scale(1.08);
+}
+
+.brand-mark-leaf {
+  animation: pulse 1.6s ease-in-out infinite;
+  transform-origin: center;
 }
 
 .nav-link {
@@ -322,7 +352,8 @@ button {
 }
 
 .nav-link[data-active='true'] {
-  color: var(--stone-text);
+  color: var(--ink);
+  font-weight: 600;
 }
 
 .nav-actions {
@@ -341,8 +372,8 @@ button {
   padding: 6px 14px;
   font-size: 0.8125rem;
   font-weight: 500;
-  color: var(--orange-text);
-  background: var(--orange);
+  color: var(--ink-text);
+  background: var(--ink);
   border: none;
   border-radius: var(--radius-md);
   transition: background var(--duration-fast) var(--ease-out),
@@ -351,11 +382,11 @@ button {
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--orange-hover);
+  background: var(--ink-hover);
 }
 
 .btn-primary:active:not(:disabled) {
-  background: var(--orange-active);
+  background: var(--ink-active);
 }
 
 .btn-primary:disabled {
@@ -364,7 +395,7 @@ button {
 }
 
 .btn-primary:focus-visible {
-  outline: 2px solid var(--orange);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
@@ -438,12 +469,12 @@ button {
 }
 
 .segmented-btn[aria-pressed='true'] {
-  color: var(--orange-text);
-  background: var(--orange);
+  color: var(--ink-text);
+  background: var(--ink);
 }
 
 .segmented-btn:focus-visible {
-  outline: 2px solid var(--orange);
+  outline: 2px solid var(--ink);
   outline-offset: -2px;
 }
 
@@ -465,7 +496,7 @@ button {
 }
 
 .filter-select:focus-visible {
-  outline: 2px solid var(--orange);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
@@ -474,12 +505,12 @@ button {
 .scan-banner {
   margin: 0 var(--sp-6);
   padding: var(--sp-2) var(--sp-4);
-  background: var(--orange-subtle);
+  background: var(--ink-subtle);
   border: 1px solid oklch(0.905 0 0);
   border-radius: var(--radius-md);
   font-size: 0.8125rem;
   font-weight: 500;
-  color: var(--orange-hover);
+  color: var(--ink-hover);
   display: flex;
   align-items: center;
   gap: var(--sp-2);
@@ -489,7 +520,7 @@ button {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--orange);
+  background: var(--ink);
   animation: pulse 1.4s ease-in-out infinite;
   flex-shrink: 0;
 }
@@ -511,6 +542,7 @@ button {
 .results-wrap {
   padding: var(--sp-4) var(--sp-6) var(--sp-12);
   flex: 1;
+  overflow-x: auto;
 }
 
 .results-table {
@@ -579,6 +611,14 @@ button {
   background: var(--stone-panel);
 }
 
+.url-row[aria-expanded='true'] {
+  background: var(--ink-subtle);
+}
+
+.url-row[aria-expanded='true']:hover {
+  background: var(--ink-subtle);
+}
+
 .url-row td {
   padding: 9px var(--sp-4);
 }
@@ -616,7 +656,7 @@ button {
 }
 
 .expand-btn:focus-visible {
-  outline: 2px solid var(--orange);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
@@ -629,11 +669,17 @@ button {
   transform: rotate(90deg);
 }
 
-/* Hostname in URL row */
+/* Hostname in URL row — outbound link via PreviewLinkCardTrigger */
 .hostname {
   font-weight: 500;
-  color: var(--stone-text);
+  color: var(--ink);
   font-size: 0.875rem;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.hostname:hover {
+  color: var(--ink-hover);
+  text-decoration: underline;
 }
 
 /* Sub-rows */
@@ -670,18 +716,18 @@ button {
 .screenshot-link {
   font-size: 0.8125rem;
   font-weight: 500;
-  color: var(--orange);
+  color: var(--ink);
   text-decoration: none;
   transition: color var(--duration-fast) var(--ease-out);
 }
 
 .screenshot-link:hover {
-  color: var(--orange-hover);
+  color: var(--ink-hover);
   text-decoration: underline;
 }
 
 .screenshot-link:focus-visible {
-  outline: 2px solid var(--orange);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
   border-radius: 2px;
 }
@@ -860,7 +906,7 @@ button {
 }
 
 .shimmer-btn:focus-visible {
-  outline: 2px solid var(--orange);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
@@ -878,8 +924,8 @@ button {
 }
 
 html.dark .shimmer-btn {
-  background: var(--stone-nav);
-  border-color: oklch(0.35 0 0);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
 }
 
 html.dark .shimmer-btn-text {
@@ -929,7 +975,7 @@ html.dark .shimmer-btn-text {
 }
 
 .theme-switch-btn:focus-visible {
-  outline: 2px solid var(--orange);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
@@ -1032,7 +1078,7 @@ html.dark .shimmer-btn-text {
 
 .server-bar-fill {
   height: 100%;
-  background: var(--compliant);
+  background: var(--ink);
   border-radius: var(--radius-full);
   transition: width var(--duration-base) var(--ease-out);
 }
@@ -1078,11 +1124,17 @@ html.dark .shimmer-btn-text {
 .violation-domain {
   font-family: var(--font-mono);
   font-size: 0.8125rem;
-  color: var(--stone-text);
+  color: var(--ink);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.violation-domain:hover {
+  color: var(--ink-hover);
+  text-decoration: underline;
 }
 
 .violation-meta {
@@ -1213,7 +1265,7 @@ html.dark .shimmer-btn-text {
 }
 
 .btn-ghost:focus-visible {
-  outline: 2px solid var(--orange);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
@@ -1224,7 +1276,7 @@ html.dark .shimmer-btn-text {
   font-size: 0.8125rem;
   font-weight: 500;
   color: #fff;
-  background: var(--violation);
+  background: var(--stone-text);
   border: none;
   border-radius: var(--radius-md);
   transition: opacity var(--duration-fast) var(--ease-out);
@@ -1241,14 +1293,14 @@ html.dark .shimmer-btn-text {
 }
 
 .btn-danger:focus-visible {
-  outline: 2px solid var(--violation);
+  outline: 2px solid var(--stone-text);
   outline-offset: 2px;
 }
 
 .btn-row-delete {
   font-size: 0.8125rem;
   font-weight: 500;
-  color: var(--violation-text);
+  color: var(--stone-muted);
   background: transparent;
   border: none;
   padding: 2px var(--sp-2);
@@ -1258,12 +1310,63 @@ html.dark .shimmer-btn-text {
 }
 
 .btn-row-delete:hover {
-  color: var(--violation);
+  color: var(--stone-text);
 }
 
 .btn-row-delete:focus-visible {
-  outline: 2px solid var(--violation);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
+}
+
+/* ─── DNS Server Grouped List ────────────────────────────────────────────── */
+
+.dns-group-row {
+  background: var(--stone-panel);
+  border-top: 1px solid var(--stone-border);
+}
+
+.dns-group-row:first-child {
+  border-top: none;
+}
+
+.dns-group-name {
+  padding: 6px var(--sp-4);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--stone-muted);
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.dns-group-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  background: var(--stone-border);
+  color: var(--stone-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dns-entry-row {
+  border-top: 1px solid var(--stone-border);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.dns-entry-row:hover {
+  background: var(--stone-panel);
+}
+
+.dns-entry-row td {
+  padding: 9px var(--sp-4);
 }
 
 /* ─── Protocol Badge ─────────────────────────────────────────────────────── */
@@ -1348,8 +1451,8 @@ html.dark .shimmer-btn-text {
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
+  --primary: var(--ink);
+  --primary-foreground: var(--ink-text);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -1359,7 +1462,7 @@ html.dark .shimmer-btn-text {
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --ring: var(--ink);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -1367,12 +1470,12 @@ html.dark .shimmer-btn-text {
   --chart-5: oklch(0.269 0 0);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary: var(--ink);
+  --sidebar-primary-foreground: var(--ink-text);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-ring: var(--ink);
   --chart-background: oklch(0.145 0 0);
   --chart-foreground: oklch(0.45 0 0);
   --chart-foreground-muted: oklch(0.65 0.01 260);
@@ -1413,7 +1516,7 @@ html.dark .shimmer-btn-text {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1rem;
+  padding: 0.75rem 1.5rem;
   border-bottom: 1px solid var(--border);
 }
 
@@ -1445,7 +1548,7 @@ html.dark .shimmer-btn-text {
 
 .progress-chart-wrap {
   height: 180px;
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 1.5rem;
   overflow: hidden;
 }
 
@@ -1462,7 +1565,7 @@ html.dark .shimmer-btn-text {
 }
 
 .progress-dns-table th {
-  padding: 0.4rem 1rem;
+  padding: 0.4rem 1.5rem;
   text-align: left;
   font-weight: 500;
   color: var(--muted-foreground, #888);
@@ -1473,7 +1576,7 @@ html.dark .shimmer-btn-text {
 }
 
 .progress-dns-table td {
-  padding: 0.4rem 1rem;
+  padding: 0.4rem 1.5rem;
   border-top: 1px solid var(--border);
   vertical-align: middle;
 }

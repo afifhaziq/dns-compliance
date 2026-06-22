@@ -27,6 +27,8 @@ type ScanRun struct {
 type ScanResult struct {
 	ID            uint      `gorm:"primaryKey" json:"id"`
 	ScanRunID     uint      `gorm:"not null;index" json:"scan_run_id"`
+	URLID         uint      `gorm:"not null;index" json:"url_id"`
+	URLRef        URL       `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
 	URLValue      string    `gorm:"not null" json:"url"`
 	DNSServerID   uint      `gorm:"not null" json:"dns_server_id"`
 	DNSServer     DNSServer `gorm:"foreignKey:DNSServerID" json:"dns_server"`

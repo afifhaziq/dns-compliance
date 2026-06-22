@@ -69,7 +69,7 @@ type DialogOverlayProps = Omit<
   HTMLMotionProps<'div'>;
 
 function DialogOverlay({
-  transition = { duration: 0.2, ease: 'easeInOut' },
+  transition = { duration: 0.12, ease: 'easeOut' },
   ...props
 }: DialogOverlayProps) {
   return (
@@ -103,7 +103,7 @@ function DialogContent({
   onEscapeKeyDown,
   onPointerDownOutside,
   onInteractOutside,
-  transition = { type: 'spring', stiffness: 150, damping: 25 },
+  transition = { type: 'spring', stiffness: 320, damping: 28 },
   ...props
 }: DialogContentProps) {
   const initialRotation =

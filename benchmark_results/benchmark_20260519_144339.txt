@@ -1,0 +1,80 @@
+DNS Compliance Benchmark — Baseline (dig / nslookup / curl)
+============================================================
+Generated : Tue May 19 14:43:39 +08 2026
+Site list : /tmp/test-sites.txt  (2 sites)
+DNS config: dns-server.yaml  (4 servers)
+
+Semantics: resolved -> VIOLATION (ISP takedown failed)
+           nxdomain -> COMPLIANT (ISP takedown working)
+
+DNS Compliance Benchmark — Baseline
+=====================================
+Site list  : /tmp/test-sites.txt  (2 sites)
+DNS config : dns-server.yaml  (4 servers)
+dig version: DiG 9.18.39
+
+DNS Servers:
+  [0] Google  —  8.8.8.8:53  (udp)
+  [1] Cloudflare  —  1.1.1.1:53  (udp)
+  [2] Google DoH  —  https://8.8.8.8/dns-query  (doh)
+  [3] Cloudflare DoH  —  https://1.1.1.1/dns-query  (doh)
+
+Tools: UDP → dig + nslookup  |  DoH → dig +https + curl (JSON API)
+Mode : sequential (one query at a time — compare vs concurrent crawler)
+
+
+=== Google  |  8.8.8.8:53  |  UDP ===
+SITE                                     TOOL           STATUS     IP                 TIME(ms)   VERDICT
+------------------------------------------------------------------------------------------------------------
+google.com                               dig            resolved   172.217.27.14      53ms       VIOLATION
+google.com                               nslookup       resolved   172.217.27.46      115ms      VIOLATION
+notexist.fakesite12345.invalid           dig            nxdomain   -                  105ms      COMPLIANT
+notexist.fakesite12345.invalid           nslookup       nxdomain   -                  100ms      COMPLIANT
+------------------------------------------------------------------------------------------------------------
+  Google subtotal:  2 violations  |  2 compliant  |  4 queries in 438ms
+
+=== Cloudflare  |  1.1.1.1:53  |  UDP ===
+SITE                                     TOOL           STATUS     IP                 TIME(ms)   VERDICT
+------------------------------------------------------------------------------------------------------------
+google.com                               dig            resolved   172.217.25.78      54ms       VIOLATION
+google.com                               nslookup       resolved   172.217.25.78      60ms       VIOLATION
+notexist.fakesite12345.invalid           dig            nxdomain   -                  47ms       COMPLIANT
+notexist.fakesite12345.invalid           nslookup       nxdomain   -                  56ms       COMPLIANT
+------------------------------------------------------------------------------------------------------------
+  Cloudflare subtotal:  2 violations  |  2 compliant  |  4 queries in 268ms
+
+=== Google DoH  |  https://8.8.8.8/dns-query  |  DOH ===
+SITE                                     TOOL           STATUS     IP                 TIME(ms)   VERDICT
+------------------------------------------------------------------------------------------------------------
+google.com                               dig+https      resolved   172.217.25.142     102ms      VIOLATION
+google.com                               curl(DoH)      resolved   172.217.25.78      166ms      VIOLATION
+notexist.fakesite12345.invalid           dig+https      nxdomain   -                  149ms      COMPLIANT
+notexist.fakesite12345.invalid           curl(DoH)      nxdomain   -                  166ms      COMPLIANT
+------------------------------------------------------------------------------------------------------------
+  Google DoH subtotal:  2 violations  |  2 compliant  |  4 queries in 648ms
+
+=== Cloudflare DoH  |  https://1.1.1.1/dns-query  |  DOH ===
+SITE                                     TOOL           STATUS     IP                 TIME(ms)   VERDICT
+------------------------------------------------------------------------------------------------------------
+google.com                               dig+https      resolved   172.217.25.78      61ms       VIOLATION
+google.com                               curl(DoH)      resolved   172.217.25.78      106ms      VIOLATION
+notexist.fakesite12345.invalid           dig+https      nxdomain   -                  77ms       COMPLIANT
+notexist.fakesite12345.invalid           curl(DoH)      nxdomain   -                  107ms      COMPLIANT
+------------------------------------------------------------------------------------------------------------
+  Cloudflare DoH subtotal:  2 violations  |  2 compliant  |  4 queries in 414ms
+
+========================================================
+BENCHMARK COMPLETE
+========================================================
+Queries run   : 16  (sequential)
+Violations    : 8  (sites resolving — ISP non-compliant)
+Compliant     : 8  (sites blocked — ISP compliant)
+--------------------------------------------------------
+Total time    : 1.832s  (1832ms)
+Avg per query : 114.5ms
+--------------------------------------------------------
+Report (text) : benchmark_results/benchmark_20260519_144339.txt
+Report (CSV)  : benchmark_results/benchmark_20260519_144339.csv
+
+Tip: run 'go run ./cmd/crawler/ --sites site-list.txt --dns-servers dns-server.yaml'
+     and compare total times to quantify the concurrency speedup.
