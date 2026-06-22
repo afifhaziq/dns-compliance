@@ -3,8 +3,9 @@ import { createFileRoute } from '@tanstack/react-router'
 import { fetchResults, groupResults, lastScanTime } from '../api/results'
 import { fetchUrlCount } from '../api/urls'
 import { fetchDnsServerCount } from '../api/dns-servers'
-import type { ScanResult } from '../api/types'
+import type { GroupedResult, ScanResult } from '../api/types'
 import { useScan } from './__root'
+import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
 import {
   PreviewLinkCard,
   PreviewLinkCardTrigger,
@@ -17,7 +18,7 @@ export const Route = createFileRoute('/')({ component: DashboardPage })
 /* ─── Derived types ──────────────────────────────────────────────────────── */
 
 type ServerStat    = { name: string; compliant: number; total: number }
-type ViolationEntry = { url: string; hostname: string; servers: string[] }
+type StatusFilter  = 'all' | 'violations' | 'compliant'
 
 /* ─── Computation ────────────────────────────────────────────────────────── */
 
@@ -32,24 +33,205 @@ function computeServerStats(results: ScanResult[]): ServerStat[] {
   return Array.from(map.values()).sort((a, b) => a.compliant / a.total - b.compliant / b.total)
 }
 
-function computeViolations(results: ScanResult[]): ViolationEntry[] {
-  const map = new Map<string, ViolationEntry>()
-  for (const r of results) {
-    if (!r.compliant) {
-      const hostname = (() => { try { return new URL(r.url).hostname } catch { return r.url } })()
-      const entry = map.get(r.url) ?? { url: r.url, hostname, servers: [] }
-      entry.servers.push(r.dns_server.name)
-      map.set(r.url, entry)
-    }
-  }
-  return Array.from(map.values())
-    .sort((a, b) => b.servers.length - a.servers.length)
-    .slice(0, 8)
+/* ─── Helpers ────────────────────────────────────────────────────────────── */
+
+function relativeTime(isoString: string): string {
+  const diff = (Date.now() - new Date(isoString).getTime()) / 1000
+  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
+  if (diff < 60) return rtf.format(-Math.round(diff), 'second')
+  if (diff < 3600) return rtf.format(-Math.round(diff / 60), 'minute')
+  if (diff < 86400) return rtf.format(-Math.round(diff / 3600), 'hour')
+  return rtf.format(-Math.round(diff / 86400), 'day')
 }
 
-/* ─── Skeleton ───────────────────────────────────────────────────────────── */
+/* ─── Chevron Icon ───────────────────────────────────────────────────────── */
 
-function SkeletonRows({ count }: { count: number }) {
+function ChevronRight({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path d="M4.5 2.5L7.5 6L4.5 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/* ─── Empty document icon ────────────────────────────────────────────────── */
+
+function EmptyIcon() {
+  return (
+    <svg className="empty-icon" width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <rect x="8" y="4" width="24" height="32" rx="2" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M32 4L40 12V36C40 37.1 39.1 38 38 38H32" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M40 12H32V4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 18H26M14 24H22" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+/* ─── Status Dot ─────────────────────────────────────────────────────────── */
+
+function StatusDot({ compliant }: { compliant: boolean }) {
+  return (
+    <span className="status-dot-label">
+      <span className={`status-dot ${compliant ? 'dot-compliant' : 'dot-violation'}`} aria-hidden="true" />
+      <span className={compliant ? 'label-compliant' : 'label-violation'}>
+        {compliant ? 'Compliant' : 'Violation'}
+      </span>
+    </span>
+  )
+}
+
+/* ─── Sub-rows (expanded DNS results) ───────────────────────────────────── */
+
+function SubRows({
+  results,
+  visible,
+}: {
+  results: ScanResult[]
+  visible: boolean
+}) {
+  if (!visible) return null
+
+  return (
+    <>
+      {results.map(r => (
+        <tr
+          key={r.id}
+          className={`sub-row${!r.compliant ? ' violation-row' : ''}`}
+        >
+          <td className="col-expand" />
+          <td className="col-domain">
+            <span className="dns-name">{r.dns_server.name}</span>
+            {r.error && (
+              <span
+                style={{
+                  marginLeft: 8,
+                  fontSize: '0.75rem',
+                  color: 'var(--violation-text)',
+                }}
+                title={r.error}
+              >
+                (error)
+              </span>
+            )}
+          </td>
+          <td className="col-status">
+            <StatusDot compliant={r.compliant} />
+          </td>
+          <td className="col-ip">
+            {r.resolved_ip ? (
+              <span className="ip-value">{r.resolved_ip}</span>
+            ) : (
+              <span className="empty-cell" aria-label="Not resolved">—</span>
+            )}
+          </td>
+          <td className="col-evidence">
+            {r.screenshot_url ? (
+              <a
+                href={r.screenshot_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="screenshot-link"
+                aria-label={`View screenshot for ${r.dns_server.name}`}
+              >
+                View screenshot
+              </a>
+            ) : (
+              <span className="empty-cell" aria-label="No screenshot">—</span>
+            )}
+          </td>
+          <td className="col-last-scanned">
+            {r.scanned_at ? (
+              <span title={new Date(r.scanned_at).toLocaleString()}>{relativeTime(r.scanned_at)}</span>
+            ) : (
+              <span className="empty-cell">—</span>
+            )}
+          </td>
+        </tr>
+      ))}
+    </>
+  )
+}
+
+/* ─── URL Group Row ──────────────────────────────────────────────────────── */
+
+function URLGroupRow({
+  group,
+  expanded,
+  onToggle,
+}: {
+  group: GroupedResult
+  expanded: boolean
+  onToggle: () => void
+}) {
+  const { violationCount, totalCount, hostname, url } = group
+  const allCompliant = violationCount === 0
+
+  const summaryLabel = allCompliant
+    ? `All ${totalCount} compliant`
+    : `${violationCount} of ${totalCount} non-compliant`
+
+  return (
+    <>
+      <tr
+        className="url-row"
+        onClick={onToggle}
+        aria-expanded={expanded}
+      >
+        <td className="col-expand">
+          <button
+            className="expand-btn"
+            onClick={e => { e.stopPropagation(); onToggle() }}
+            aria-expanded={expanded}
+            aria-label={`${expanded ? 'Collapse' : 'Expand'} results for ${hostname}`}
+            tabIndex={0}
+          >
+            <ChevronRight className={`expand-icon${expanded ? ' expanded' : ''}`} />
+          </button>
+        </td>
+        <td className="col-domain">
+          <PreviewLinkCard href={url}>
+            <PreviewLinkCardTrigger>
+              <span className="hostname" title={url}>{hostname}</span>
+            </PreviewLinkCardTrigger>
+            <PreviewLinkCardPanel>
+              <PreviewLinkCardImage />
+            </PreviewLinkCardPanel>
+          </PreviewLinkCard>
+        </td>
+        <td className="col-status">
+          <span
+            className={`summary-chip ${allCompliant ? 'all-compliant' : 'has-violations'}`}
+          >
+            {summaryLabel}
+          </span>
+        </td>
+        <td className="col-ip" />
+        <td className="col-evidence" />
+        <td className="col-last-scanned">
+          {group.latestScannedAt ? (
+            <span title={new Date(group.latestScannedAt).toLocaleString()}>
+              {relativeTime(group.latestScannedAt)}
+            </span>
+          ) : (
+            <span className="empty-cell">—</span>
+          )}
+        </td>
+      </tr>
+      <SubRows results={group.results} visible={expanded} />
+    </>
+  )
+}
+
+/* ─── Skeletons ──────────────────────────────────────────────────────────── */
+
+function ServerStatusSkeleton({ count }: { count: number }) {
   return (
     <div className="dash-table-wrap">
       {Array.from({ length: count }, (_, i) => (
@@ -60,6 +242,29 @@ function SkeletonRows({ count }: { count: number }) {
         </div>
       ))}
     </div>
+  )
+}
+
+function ResultsTableSkeleton() {
+  return (
+    <>
+      {[180, 140, 220, 160, 200].map((w, i) => (
+        <tr key={i} className="skeleton-row">
+          <td className="col-expand">
+            <span className="skeleton" style={{ width: 16, height: 16, borderRadius: 3 }} />
+          </td>
+          <td className="col-domain">
+            <span className="skeleton" style={{ width: w, height: 14 }} />
+          </td>
+          <td className="col-status">
+            <span className="skeleton" style={{ width: 100, height: 20, borderRadius: 4 }} />
+          </td>
+          <td className="col-ip" />
+          <td className="col-evidence" />
+          <td className="col-last-scanned" />
+        </tr>
+      ))}
+    </>
   )
 }
 
@@ -110,31 +315,6 @@ function ServerStatusTable({ stats }: { stats: ServerStat[] }) {
   )
 }
 
-/* ─── Violations List ────────────────────────────────────────────────────── */
-
-function ViolationsList({ violations }: { violations: ViolationEntry[] }) {
-  return (
-    <ul className="violations-list" aria-label="Active violations">
-      {violations.map(v => (
-        <li key={v.url} className="violation-item">
-          <span className="status-dot dot-violation" aria-hidden="true" />
-          <PreviewLinkCard href={v.url}>
-              <PreviewLinkCardTrigger>
-                <span className="violation-domain" title={v.url}>{v.hostname}</span>
-              </PreviewLinkCardTrigger>
-              <PreviewLinkCardPanel>
-                <PreviewLinkCardImage />
-              </PreviewLinkCardPanel>
-            </PreviewLinkCard>
-          <span className="violation-meta">
-            {v.servers.length === 1 ? v.servers[0] : `${v.servers.length} servers`}
-          </span>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
 /* ─── Dashboard Page ─────────────────────────────────────────────────────── */
 
 function DashboardPage() {
@@ -145,6 +325,10 @@ function DashboardPage() {
   const [serverCount, setServerCount] = useState<number | null>(null)
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState<string | null>(null)
+
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [dnsFilter, setDnsFilter] = useState<string>('all')
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     try {
@@ -166,10 +350,54 @@ function DashboardPage() {
 
   useEffect(() => { load() }, [load, refreshSignal])
 
+  const toggleExpanded = useCallback((url: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(url)) next.delete(url)
+      else next.add(url)
+      return next
+    })
+  }, [])
+
   const serverStats = useMemo(() => computeServerStats(results), [results])
-  const violations  = useMemo(() => computeViolations(results), [results])
-  const lastScan    = useMemo(() => lastScanTime(groupResults(results)), [results])
-  const hasResults  = results.length > 0
+  const groups       = useMemo(() => groupResults(results), [results])
+  const lastScan      = useMemo(() => lastScanTime(groups), [groups])
+  const hasResults    = results.length > 0
+
+  // All unique DNS server names in the results
+  const dnsServers = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const g of groups) {
+      for (const r of g.results) {
+        seen.set(r.dns_server.name, r.dns_server.name)
+      }
+    }
+    return Array.from(seen.values()).sort()
+  }, [groups])
+
+  // Client-side filtering
+  const filtered = useMemo(() => {
+    return groups
+      .map(g => {
+        let results = g.results
+
+        if (dnsFilter !== 'all') {
+          results = results.filter(r => r.dns_server.name === dnsFilter)
+        }
+
+        if (statusFilter === 'violations') {
+          results = results.filter(r => !r.compliant)
+        } else if (statusFilter === 'compliant') {
+          results = results.filter(r => r.compliant)
+        }
+
+        if (results.length === 0) return null
+
+        const violationCount = results.filter(r => !r.compliant).length
+        return { ...g, results, violationCount, totalCount: results.length }
+      })
+      .filter(Boolean) as GroupedResult[]
+  }, [groups, statusFilter, dnsFilter])
 
   const subtitleParts: string[] = []
   if (!loading) {
@@ -215,7 +443,7 @@ function DashboardPage() {
           <div className="dash-section">
             <p className="dash-label">DNS Server Status</p>
             {loading ? (
-              <SkeletonRows count={3} />
+              <ServerStatusSkeleton count={3} />
             ) : !hasResults ? (
               <div className="dash-table-wrap dash-empty">
                 <p className="dash-empty-heading">No scan data yet</p>
@@ -226,24 +454,89 @@ function DashboardPage() {
             )}
           </div>
 
-          {/* Active Violations */}
-          {(loading || hasResults) && (
-            <div className="dash-section">
-              <p className="dash-label">Active Violations</p>
-              {loading ? (
-                <SkeletonRows count={4} />
-              ) : violations.length === 0 ? (
-                <div className="dash-table-wrap dash-empty">
-                  <p className="dash-empty-heading">No violations detected</p>
-                  <p className="dash-empty-body">
-                    All monitored domains are failing DNS resolution as expected.
+          {/* Compliance Results */}
+          <div className="dash-section">
+            <p className="dash-label">Compliance Results</p>
+
+            <div className="filter-bar">
+              <span className="filter-label" id="status-label">Status</span>
+              <ToggleGroup
+                type="single"
+                value={statusFilter}
+                onValueChange={v => { if (v) setStatusFilter(v as StatusFilter) }}
+                variant="outline"
+                aria-labelledby="status-label"
+              >
+                <ToggleGroupItem value="all">All</ToggleGroupItem>
+                <ToggleGroupItem value="violations">Violations</ToggleGroupItem>
+                <ToggleGroupItem value="compliant">Compliant</ToggleGroupItem>
+              </ToggleGroup>
+
+              {dnsServers.length > 1 && (
+                <>
+                  <span className="filter-label" id="dns-label">DNS Server</span>
+                  <select
+                    className="filter-select"
+                    value={dnsFilter}
+                    onChange={e => setDnsFilter(e.target.value)}
+                    aria-labelledby="dns-label"
+                  >
+                    <option value="all">All servers</option>
+                    {dnsServers.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </>
+              )}
+            </div>
+
+            <div className="results-wrap">
+              {!loading && groups.length === 0 ? (
+                <div className="empty-state">
+                  <EmptyIcon />
+                  <p className="empty-heading">No results yet</p>
+                  <p className="empty-body">
+                    No scan has been run. Use Run Scan to begin compliance monitoring.
                   </p>
                 </div>
               ) : (
-                <ViolationsList violations={violations} />
+                <table className="results-table" aria-label="DNS compliance results">
+                  <thead>
+                    <tr>
+                      <th className="col-expand" scope="col" />
+                      <th className="col-domain" scope="col">Domain</th>
+                      <th className="col-status" scope="col">Status</th>
+                      <th className="col-ip" scope="col">Resolved IP</th>
+                      <th className="col-evidence" scope="col">Evidence</th>
+                      <th className="col-last-scanned" scope="col">Last scanned</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <ResultsTableSkeleton />
+                    ) : filtered.length === 0 ? (
+                      <tr>
+                        <td colSpan={5}>
+                          <div className="empty-state" style={{ padding: '3rem 0' }}>
+                            <p className="empty-heading">No results match the current filters</p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      filtered.map(group => (
+                        <URLGroupRow
+                          key={group.url}
+                          group={group}
+                          expanded={expanded.has(group.url)}
+                          onToggle={() => toggleExpanded(group.url)}
+                        />
+                      ))
+                    )}
+                  </tbody>
+                </table>
               )}
             </div>
-          )}
+          </div>
 
         </div>
       )}
