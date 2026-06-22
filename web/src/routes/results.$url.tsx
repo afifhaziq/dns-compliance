@@ -4,6 +4,13 @@ import { ArrowLeftIcon } from 'lucide-react'
 import { fetchResultsByUrl } from '../api/results'
 import type { ScanResult } from '../api/types'
 import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
+import { curveStepAfter } from '@visx/curve'
+import { LineChart } from '@/components/charts/line-chart'
+import { Line } from '@/components/charts/line'
+import { Grid } from '@/components/charts/grid'
+import { XAxis } from '@/components/charts/x-axis'
+import { ChartTooltip } from '@/components/charts/tooltip'
+import { decimateTimeSeries } from '@/components/charts/decimate-time-series'
 
 export const Route = createFileRoute('/results/$url')({ component: URLHistoryPage })
 
@@ -55,6 +62,28 @@ function HistorySkeletonRows() {
   )
 }
 
+// Caps rendered chart points regardless of scan frequency — decimateTimeSeries
+// (LTTB) below picks the most visually significant points rather than every
+// Nth one, so brief compliance flips are more likely to survive than with
+// naive uniform sampling or a frequency-coupled bucket size (e.g. "daily").
+const MAX_CHART_POINTS = 240
+
+type ChartPoint = { date: Date; [dnsServerName: string]: number | Date }
+
+function pivotByRun(results: ScanResult[]): ChartPoint[] {
+  const runs = new Map<number, { date: Date; values: Record<string, number> }>()
+  for (const r of results) {
+    const existing = runs.get(r.scan_run_id)
+    const values = existing?.values ?? {}
+    values[r.dns_server.name] = r.compliant ? 1 : 0
+    const date = existing?.date ?? new Date(r.scanned_at)
+    runs.set(r.scan_run_id, { date, values })
+  }
+  return Array.from(runs.values())
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+    .map(({ date, values }) => ({ date, ...values }))
+}
+
 function URLHistoryPage() {
   const { url } = Route.useParams()
   const hostname = useMemo(() => { try { return new URL(url).hostname } catch { return url } }, [url])
@@ -95,6 +124,11 @@ function URLHistoryPage() {
     })
   }, [results, statusFilter, dnsFilter])
 
+  const chartData = useMemo(
+    () => decimateTimeSeries(pivotByRun(filtered), MAX_CHART_POINTS, dnsServers),
+    [filtered, dnsServers],
+  )
+
   return (
     <>
       <Link to="/" className="back-link">
@@ -106,6 +140,24 @@ function URLHistoryPage() {
         <h1 className="page-title">{hostname}</h1>
         <p className="page-subtitle">{url} · Last 7 days</p>
       </div>
+
+      {!loading && !error && results.length > 0 && (
+        <div className="dash-section">
+          <LineChart data={chartData} xDataKey="date" aspectRatio="16 / 6">
+            <Grid horizontal />
+            <XAxis />
+            {dnsServers.map((name, i) => (
+              <Line
+                key={name}
+                dataKey={name}
+                curve={curveStepAfter}
+                stroke={`var(--chart-${5 - (i % 5)})`}
+              />
+            ))}
+            <ChartTooltip />
+          </LineChart>
+        </div>
+      )}
 
       <div className="filter-bar">
         <span className="filter-label" id="status-label">Status</span>
