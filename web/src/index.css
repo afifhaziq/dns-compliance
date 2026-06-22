@@ -1318,6 +1318,27 @@ html.dark .shimmer-btn-text {
   outline-offset: 2px;
 }
 
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--stone-muted);
+  text-decoration: none;
+  margin-bottom: var(--sp-3);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.back-link:hover {
+  color: var(--stone-text);
+}
+
+.back-link-icon {
+  width: 14px;
+  height: 14px;
+}
+
 /* ─── DNS Server Grouped List ────────────────────────────────────────────── */
 
 .dns-group-row {
