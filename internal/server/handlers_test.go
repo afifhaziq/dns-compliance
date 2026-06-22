@@ -74,10 +74,10 @@ func (m *fullMockStore) ScanProgress(_ context.Context, _ uint) ([]db.ProgressEn
 func (m *fullMockStore) LatestResults(_ context.Context) ([]db.ScanResult, error) {
 	return m.results, nil
 }
-func (m *fullMockStore) ResultsByURL(_ context.Context, u string) ([]db.ScanResult, error) {
+func (m *fullMockStore) ResultsByURL(_ context.Context, u string, since time.Time) ([]db.ScanResult, error) {
 	var out []db.ScanResult
 	for _, r := range m.results {
-		if r.URLValue == u {
+		if r.URLValue == u && !r.ScannedAt.Before(since) {
 			out = append(out, r)
 		}
 	}

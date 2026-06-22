@@ -240,3 +240,62 @@ func TestUpdateScreenshot(t *testing.T) {
 		t.Fatalf("expected screenshot URL, got %q", results[0].ScreenshotURL)
 	}
 }
+
+func TestResultsByURL_FiltersSince(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{Name: "G", Address: "8.8.8.8:53", Protocol: "udp"})
+	run, _ := s.CreateScanRun(ctx, "manual")
+
+	old := db.ScanResult{
+		ScanRunID: run.ID, URLValue: "https://example.com", DNSServerID: srv.ID,
+		Compliant: false, ScannedAt: time.Now().AddDate(0, 0, -10),
+	}
+	recent := db.ScanResult{
+		ScanRunID: run.ID, URLValue: "https://example.com", DNSServerID: srv.ID,
+		Compliant: true, ScannedAt: time.Now(),
+	}
+	if err := s.InsertResult(ctx, old); err != nil {
+		t.Fatalf("InsertResult old: %v", err)
+	}
+	if err := s.InsertResult(ctx, recent); err != nil {
+		t.Fatalf("InsertResult recent: %v", err)
+	}
+
+	since := time.Now().AddDate(0, 0, -7)
+	results, err := s.ResultsByURL(ctx, "https://example.com", since)
+	if err != nil {
+		t.Fatalf("ResultsByURL: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result after since filter, got %d", len(results))
+	}
+	if !results[0].Compliant {
+		t.Fatalf("expected the recent compliant result, got %+v", results[0])
+	}
+}
+
+func TestResultsByURL_ZeroTimeReturnsAll(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{Name: "G", Address: "8.8.8.8:53", Protocol: "udp"})
+	run, _ := s.CreateScanRun(ctx, "manual")
+
+	old := db.ScanResult{
+		ScanRunID: run.ID, URLValue: "https://example.com", DNSServerID: srv.ID,
+		Compliant: false, ScannedAt: time.Now().AddDate(-1, 0, 0),
+	}
+	if err := s.InsertResult(ctx, old); err != nil {
+		t.Fatalf("InsertResult: %v", err)
+	}
+
+	results, err := s.ResultsByURL(ctx, "https://example.com", time.Time{})
+	if err != nil {
+		t.Fatalf("ResultsByURL: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result with zero-time (unbounded), got %d", len(results))
+	}
+}

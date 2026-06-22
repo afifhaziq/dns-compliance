@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/afif/dns-tracking/internal/db"
 	"github.com/go-chi/chi/v5"
@@ -184,7 +185,8 @@ func (h *Handlers) LatestResults(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) ResultsByURL(w http.ResponseWriter, r *http.Request) {
 	urlValue := chi.URLParam(r, "*")
-	results, err := h.store.ResultsByURL(r.Context(), urlValue)
+	// time.Time{} = no lower bound; Task 2 adds real ?since= parsing here.
+	results, err := h.store.ResultsByURL(r.Context(), urlValue, time.Time{})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
