@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
+import { HistoryIcon } from 'lucide-react'
 import { fetchResults, groupResults, lastScanTime } from '../api/results'
 import { fetchUrlCount } from '../api/urls'
 import { fetchDnsServerCount } from '../api/dns-servers'
@@ -213,7 +214,17 @@ function URLGroupRow({
           </span>
         </td>
         <td className="col-ip" />
-        <td className="col-evidence" />
+        <td className="col-evidence">
+          <Link
+            to="/results/$url"
+            params={{ url }}
+            className="btn-row-history"
+            aria-label={`View history for ${hostname}`}
+            onClick={e => e.stopPropagation()}
+          >
+            <HistoryIcon className="btn-row-history-icon" />
+          </Link>
+        </td>
         <td className="col-last-scanned">
           {group.latestScannedAt ? (
             <span title={new Date(group.latestScannedAt).toLocaleString()}>

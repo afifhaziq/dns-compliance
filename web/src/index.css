@@ -1339,6 +1339,33 @@ html.dark .shimmer-btn-text {
   height: 14px;
 }
 
+.btn-row-history {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--stone-muted);
+  background: transparent;
+  border: none;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.btn-row-history:hover {
+  color: var(--stone-text);
+}
+
+.btn-row-history:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.btn-row-history-icon {
+  width: 16px;
+  height: 16px;
+}
+
 /* ─── DNS Server Grouped List ────────────────────────────────────────────── */
 
 .dns-group-row {
