@@ -193,7 +193,7 @@ function URLHistoryPage() {
                 </div>
 
                 {yearLoading ? (
-                  <HeatmapChartLoading data={columns} gap={3} cornerRadius={999} />
+                  <HeatmapChartLoading data={columns} gap={3} cornerRadius={999} label="Loading compliance history" />
                 ) : (
                   <>
                     <HeatmapChart data={columns} gap={3} layout="fluid" levelColors={HEATMAP_LEVEL_COLORS}>
