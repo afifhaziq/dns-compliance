@@ -1,16 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { ArrowLeftIcon } from 'lucide-react'
-import { fetchResultsByUrl } from '../api/results'
-import type { ScanResult } from '../api/types'
+import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { fetchHeatmapByUrlAndYear, fetchResultsByUrl } from '../api/results'
+import type { DailyComplianceStat, ScanResult } from '../api/types'
 import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
-import { curveStepAfter } from '@visx/curve'
-import { LineChart } from '@/components/charts/line-chart'
-import { Line } from '@/components/charts/line'
-import { Grid } from '@/components/charts/grid'
-import { XAxis } from '@/components/charts/x-axis'
-import { ChartTooltip } from '@/components/charts/tooltip'
-import { decimateTimeSeries } from '@/components/charts/decimate-time-series'
+import { HeatmapChart } from '@/components/charts/heatmap'
+import { HeatmapChartLoading } from '@/components/charts/heatmap/heatmap-chart-loading'
+import { HeatmapCells } from '@/components/charts/heatmap/heatmap-cells'
+import { HeatmapXAxis } from '@/components/charts/heatmap/heatmap-x-axis'
+import { HeatmapYAxis } from '@/components/charts/heatmap/heatmap-y-axis'
+import { HeatmapTooltip } from '@/components/charts/heatmap/heatmap-tooltip'
+import { HeatmapLegend } from '@/components/charts/heatmap/heatmap-legend'
+import {
+  buildYearHeatmapColumns,
+  compliancePercentFromStats,
+  dateKey,
+  HEATMAP_LEVEL_COLORS,
+  heatmapYearColorScale,
+} from '@/lib/heatmap-year'
 
 export const Route = createFileRoute('/results/$url')({ component: URLHistoryPage })
 
@@ -62,27 +69,13 @@ function HistorySkeletonRows() {
   )
 }
 
-// Caps rendered chart points regardless of scan frequency — decimateTimeSeries
-// (LTTB) below picks the most visually significant points rather than every
-// Nth one, so brief compliance flips are more likely to survive than with
-// naive uniform sampling or a frequency-coupled bucket size (e.g. "daily").
-const MAX_CHART_POINTS = 240
+const currentYear = new Date().getFullYear()
 
-type ChartPoint = { date: Date; [dnsServerName: string]: number | Date }
-
-function pivotByRun(results: ScanResult[]): ChartPoint[] {
-  const runs = new Map<number, { date: Date; values: Record<string, number> }>()
-  for (const r of results) {
-    const existing = runs.get(r.scan_run_id)
-    const values = existing?.values ?? {}
-    values[r.dns_server.name] = r.compliant ? 1 : 0
-    const date = existing?.date ?? new Date(r.scanned_at)
-    runs.set(r.scan_run_id, { date, values })
-  }
-  return Array.from(runs.values())
-    .sort((a, b) => a.date.getTime() - b.date.getTime())
-    .map(({ date, values }) => ({ date, ...values }))
-}
+const heatmapTooltipDateFmt = new Intl.DateTimeFormat('en-US', {
+  month: 'long',
+  day: 'numeric',
+  year: 'numeric',
+})
 
 function URLHistoryPage() {
   const { url } = Route.useParams()
@@ -115,6 +108,31 @@ function URLHistoryPage() {
     return Array.from(seen.values()).sort()
   }, [results])
 
+  const [selectedYear, setSelectedYear] = useState(currentYear)
+  const [heatmapStats, setHeatmapStats] = useState<DailyComplianceStat[]>([])
+  const [yearLoading, setYearLoading] = useState(true)
+
+  const loadYear = useCallback(async (year: number) => {
+    try {
+      setYearLoading(true)
+      const raw = await fetchHeatmapByUrlAndYear(url, year)
+      setHeatmapStats(raw)
+    } catch {
+      setHeatmapStats([])
+    } finally {
+      setYearLoading(false)
+    }
+  }, [url])
+
+  useEffect(() => { loadYear(selectedYear) }, [loadYear, selectedYear])
+
+  const heatmapDnsServers = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const s of heatmapStats) seen.set(s.dns_server_name, s.dns_server_name)
+    for (const r of results) seen.set(r.dns_server.name, r.dns_server.name)
+    return Array.from(seen.values()).sort()
+  }, [heatmapStats, results])
+
   const filtered = useMemo(() => {
     return results.filter(r => {
       if (dnsFilter !== 'all' && r.dns_server.name !== dnsFilter) return false
@@ -123,11 +141,6 @@ function URLHistoryPage() {
       return true
     })
   }, [results, statusFilter, dnsFilter])
-
-  const chartData = useMemo(
-    () => decimateTimeSeries(pivotByRun(filtered), MAX_CHART_POINTS, dnsServers),
-    [filtered, dnsServers],
-  )
 
   return (
     <>
@@ -141,21 +154,77 @@ function URLHistoryPage() {
         <p className="page-subtitle">{url} · Last 7 days</p>
       </div>
 
-      {!loading && !error && results.length > 0 && (
+      {heatmapDnsServers.length > 0 && (
         <div className="dash-section">
-          <LineChart data={chartData} xDataKey="date" aspectRatio="16 / 6">
-            <Grid horizontal />
-            <XAxis />
-            {dnsServers.map((name, i) => (
-              <Line
-                key={name}
-                dataKey={name}
-                curve={curveStepAfter}
-                stroke={`var(--chart-${5 - (i % 5)})`}
-              />
-            ))}
-            <ChartTooltip />
-          </LineChart>
+          <div className="heatmap-year-nav">
+            <button
+              type="button"
+              className="heatmap-year-nav-btn"
+              onClick={() => setSelectedYear(y => y - 1)}
+              aria-label="Previous year"
+            >
+              <ChevronLeftIcon className="w-4 h-4" />
+            </button>
+            <span className="heatmap-year-label">{selectedYear}</span>
+            <button
+              type="button"
+              className="heatmap-year-nav-btn"
+              onClick={() => setSelectedYear(y => y + 1)}
+              disabled={selectedYear >= currentYear}
+              aria-label="Next year"
+            >
+              <ChevronRightIcon className="w-4 h-4" />
+            </button>
+          </div>
+
+          {heatmapDnsServers.map(name => {
+            const serverStats = heatmapStats.filter(s => s.dns_server_name === name)
+            const statsByDay = new Map(serverStats.map(s => [s.day, s]))
+            const columns = buildYearHeatmapColumns(selectedYear, statsByDay)
+            const pct = compliancePercentFromStats(serverStats)
+
+            return (
+              <div key={name} className="heatmap-server-block">
+                <div className="heatmap-server-header">
+                  <p className="dash-label">{name}</p>
+                  {pct !== null && !yearLoading && (
+                    <span className="heatmap-compliance-badge">{pct}% compliant</span>
+                  )}
+                </div>
+
+                {yearLoading ? (
+                  <HeatmapChartLoading data={columns} gap={3} cornerRadius={999} />
+                ) : (
+                  <>
+                    <HeatmapChart data={columns} gap={3} layout="fluid" levelColors={HEATMAP_LEVEL_COLORS}>
+                      <HeatmapCells cornerRadius={999} />
+                      <HeatmapXAxis />
+                      <HeatmapYAxis />
+                      <HeatmapTooltip
+                        formatLabel={(_count, date) => {
+                          const stat = statsByDay.get(dateKey(date))
+                          if (!stat) return `No scans · ${heatmapTooltipDateFmt.format(date)}`
+                          return `${stat.compliant} of ${stat.total} compliant · ${heatmapTooltipDateFmt.format(date)}`
+                        }}
+                      />
+                    </HeatmapChart>
+                    {/* Rendered as a sibling, not a HeatmapChart child: HeatmapLegend
+                        renders a plain <div>, and the chart places its children inside
+                        an <svg><g> — nesting it there puts the div in the SVG namespace,
+                        where browsers don't lay it out (it silently doesn't render). */}
+                    <HeatmapLegend
+                      align="center"
+                      cornerRadius={999}
+                      gap={3}
+                      lessLabel="Compliant"
+                      moreLabel="More violations"
+                      colorScale={heatmapYearColorScale}
+                    />
+                  </>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 

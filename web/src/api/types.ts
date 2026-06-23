@@ -39,3 +39,12 @@ export type GroupedResult = {
 }
 
 export type URLEntry = { id: number; url: string; created_at: string }
+
+export type DailyComplianceStat = {
+  dns_server_id: number
+  dns_server_name: string
+  day: string // YYYY-MM-DD
+  total: number
+  compliant: number
+  level: number
+}

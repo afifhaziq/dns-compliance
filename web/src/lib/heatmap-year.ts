@@ -1,11 +1,11 @@
 import type { HeatmapBin, HeatmapColumn } from '@/components/charts/heatmap/heatmap-context'
 import type { HeatmapLevelColors } from '@/components/charts/heatmap/heatmap-colors'
-import type { ScanResult } from '@/api/types'
-
-export type DayStats = { compliant: number; total: number }
+import type { DailyComplianceStat } from '@/api/types'
 
 // Reuses the app's existing compliant/violation design tokens — no new hues.
 // Index 0 = no scans that day, 1 = fully compliant, 2-4 = increasing violation severity.
+// Mirrors db.DailyComplianceLevel (internal/db/models.go) — the level itself
+// is computed server-side; this is only the color mapping for that level.
 export const HEATMAP_LEVEL_COLORS: HeatmapLevelColors = [
   'var(--stone-panel)',
   'var(--compliant)',
@@ -23,33 +23,9 @@ export function dateKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export function buildDayStats(results: ScanResult[]): Map<string, DayStats> {
-  const map = new Map<string, DayStats>()
-  for (const r of results) {
-    const key = dateKey(new Date(r.scanned_at))
-    const existing = map.get(key) ?? { compliant: 0, total: 0 }
-    existing.total += 1
-    if (r.compliant) existing.compliant += 1
-    map.set(key, existing)
-  }
-  return map
-}
-
-// Any violation that day forces the red scale, graded by how much of that
-// day's scans failed; zero violations is the solid compliant color.
-export function dayLevel(stats: DayStats | undefined): number {
-  if (!stats || stats.total === 0) return 0
-  const violations = stats.total - stats.compliant
-  if (violations === 0) return 1
-  const rate = violations / stats.total
-  if (rate <= 1 / 3) return 2
-  if (rate <= 2 / 3) return 3
-  return 4
-}
-
 // Builds a full Jan 1-Dec 31 grid (Sunday-first weeks, padded at both ends
 // to whole weeks) regardless of how much scan history actually exists.
-export function buildYearHeatmapColumns(year: number, dayStats: Map<string, DayStats>): HeatmapColumn[] {
+export function buildYearHeatmapColumns(year: number, statsByDay: Map<string, DailyComplianceStat>): HeatmapColumn[] {
   const jan1 = new Date(year, 0, 1)
   const dec31 = new Date(year, 11, 31)
   const gridStart = new Date(jan1)
@@ -70,8 +46,8 @@ export function buildYearHeatmapColumns(year: number, dayStats: Map<string, DayS
       cellDate.setDate(weekStart.getDate() + d)
       const inYear = cellDate.getFullYear() === year
       const displayDate = inYear ? cellDate : (cellDate.getTime() < jan1.getTime() ? jan1 : dec31)
-      const stats = inYear ? dayStats.get(dateKey(cellDate)) : undefined
-      bins.push({ bin: d, date: displayDate, count: dayLevel(stats) })
+      const stat = inYear ? statsByDay.get(dateKey(cellDate)) : undefined
+      bins.push({ bin: d, date: displayDate, count: stat?.level ?? 0 })
     }
     columns.push({ bin: columnIndex, bins })
     columnIndex++
@@ -79,8 +55,13 @@ export function buildYearHeatmapColumns(year: number, dayStats: Map<string, DayS
   return columns
 }
 
-export function compliancePercent(results: ScanResult[]): number | null {
-  if (results.length === 0) return null
-  const compliant = results.filter(r => r.compliant).length
-  return Math.round((compliant / results.length) * 100)
+export function compliancePercentFromStats(stats: DailyComplianceStat[]): number | null {
+  let total = 0
+  let compliant = 0
+  for (const s of stats) {
+    total += s.total
+    compliant += s.compliant
+  }
+  if (total === 0) return null
+  return Math.round((compliant / total) * 100)
 }

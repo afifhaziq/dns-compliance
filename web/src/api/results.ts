@@ -1,4 +1,4 @@
-import type { GroupedResult, ScanResult } from './types'
+import type { DailyComplianceStat, GroupedResult, ScanResult } from './types'
 
 export async function fetchResults(): Promise<ScanResult[]> {
   const res = await fetch('/api/results')
@@ -13,11 +13,11 @@ export async function fetchResultsByUrl(url: string, sinceDays = 7): Promise<Sca
   return res.json()
 }
 
-export async function fetchResultsByUrlAndYear(url: string, year: number): Promise<ScanResult[]> {
+export async function fetchHeatmapByUrlAndYear(url: string, year: number): Promise<DailyComplianceStat[]> {
   const since = new Date(year, 0, 1).toISOString()
   const until = new Date(year, 11, 31, 23, 59, 59, 999).toISOString()
-  const res = await fetch(`/api/results/${encodeURIComponent(url)}?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`)
-  if (!res.ok) throw new Error(`Failed to load results: ${res.status}`)
+  const res = await fetch(`/api/heatmap/${encodeURIComponent(url)}?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`)
+  if (!res.ok) throw new Error(`Failed to load heatmap: ${res.status}`)
   return res.json()
 }
 
