@@ -84,6 +84,72 @@ func (s *postgresStore) ResultsByURL(ctx context.Context, urlValue string, since
 	return results, err
 }
 
+// dailyComplianceRow is the lean projection fetched for aggregation — avoids
+// pulling every ScanResult column (and the full nested DNSServer object) over
+// the wire just to collapse rows down to one bucket per (server, day).
+type dailyComplianceRow struct {
+	DNSServerID   uint
+	DNSServerName string
+	ScannedAt     time.Time
+	Compliant     bool
+}
+
+func (s *postgresStore) DailyComplianceByURL(ctx context.Context, urlValue string, since, until time.Time) ([]DailyComplianceStat, error) {
+	var rows []dailyComplianceRow
+	q := s.db.WithContext(ctx).
+		Table("scan_results").
+		Select("scan_results.dns_server_id, dns_servers.name as dns_server_name, scan_results.scanned_at, scan_results.compliant").
+		Joins("JOIN dns_servers ON dns_servers.id = scan_results.dns_server_id").
+		Where("scan_results.url_value = ? AND scan_results.scanned_at >= ?", urlValue, since)
+	if !until.IsZero() {
+		q = q.Where("scan_results.scanned_at <= ?", until)
+	}
+	if err := q.Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	// Grouped in Go rather than via a SQL date-truncation function: Postgres
+	// and the SQLite test backend don't share a single portable function that
+	// both (a) accepts the same syntax and (b) reliably scans back as a string.
+	type bucketKey struct {
+		dnsServerID uint
+		day         string
+	}
+	type bucket struct {
+		dnsServerName        string
+		total, compliantSum int
+	}
+	buckets := make(map[bucketKey]*bucket)
+	order := make([]bucketKey, 0)
+	for _, r := range rows {
+		k := bucketKey{dnsServerID: r.DNSServerID, day: r.ScannedAt.Format("2006-01-02")}
+		b, ok := buckets[k]
+		if !ok {
+			b = &bucket{dnsServerName: r.DNSServerName}
+			buckets[k] = b
+			order = append(order, k)
+		}
+		b.total++
+		if r.Compliant {
+			b.compliantSum++
+		}
+	}
+
+	stats := make([]DailyComplianceStat, 0, len(order))
+	for _, k := range order {
+		b := buckets[k]
+		stats = append(stats, DailyComplianceStat{
+			DNSServerID:   k.dnsServerID,
+			DNSServerName: b.dnsServerName,
+			Day:           k.day,
+			Total:         b.total,
+			Compliant:     b.compliantSum,
+			Level:         DailyComplianceLevel(b.total, b.compliantSum),
+		})
+	}
+	return stats, nil
+}
+
 func (s *postgresStore) InsertResult(ctx context.Context, r ScanResult) error {
 	return s.db.WithContext(ctx).Create(&r).Error
 }

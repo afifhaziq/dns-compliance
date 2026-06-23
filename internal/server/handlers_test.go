@@ -88,6 +88,51 @@ func (m *fullMockStore) ResultsByURL(_ context.Context, u string, since, until t
 	}
 	return out, nil
 }
+func (m *fullMockStore) DailyComplianceByURL(_ context.Context, u string, since, until time.Time) ([]db.DailyComplianceStat, error) {
+	type bucketKey struct {
+		dnsServerID uint
+		day         string
+	}
+	type bucket struct {
+		dnsServerName        string
+		total, compliantSum int
+	}
+	buckets := make(map[bucketKey]*bucket)
+	order := make([]bucketKey, 0)
+	for _, r := range m.results {
+		if r.URLValue != u || r.ScannedAt.Before(since) {
+			continue
+		}
+		if !until.IsZero() && r.ScannedAt.After(until) {
+			continue
+		}
+		k := bucketKey{dnsServerID: r.DNSServerID, day: r.ScannedAt.Format("2006-01-02")}
+		b, ok := buckets[k]
+		if !ok {
+			b = &bucket{dnsServerName: r.DNSServer.Name}
+			buckets[k] = b
+			order = append(order, k)
+		}
+		b.total++
+		if r.Compliant {
+			b.compliantSum++
+		}
+	}
+	out := make([]db.DailyComplianceStat, 0, len(order))
+	for _, k := range order {
+		b := buckets[k]
+		out = append(out, db.DailyComplianceStat{
+			DNSServerID:   k.dnsServerID,
+			DNSServerName: b.dnsServerName,
+			Day:           k.day,
+			Total:         b.total,
+			Compliant:     b.compliantSum,
+			Level:         db.DailyComplianceLevel(b.total, b.compliantSum),
+		})
+	}
+	return out, nil
+}
+
 func (m *fullMockStore) InsertResult(_ context.Context, r db.ScanResult) error {
 	m.results = append(m.results, r)
 	return nil
@@ -324,6 +369,34 @@ func TestResultsByURL_ExplicitUntil(t *testing.T) {
 	}
 	if results[0].ID != 1 {
 		t.Fatalf("expected the older result (id=1), got id=%d", results[0].ID)
+	}
+}
+
+func TestHeatmapByURL_GroupsByDay(t *testing.T) {
+	day := time.Date(2026, 6, 22, 0, 0, 0, 0, time.UTC)
+	store := &fullMockStore{results: []db.ScanResult{
+		{ID: 1, URLValue: "https://example.com", DNSServerID: 1, DNSServer: db.DNSServer{ID: 1, Name: "Google"}, Compliant: true, ScannedAt: day.Add(1 * time.Hour)},
+		{ID: 2, URLValue: "https://example.com", DNSServerID: 1, DNSServer: db.DNSServer{ID: 1, Name: "Google"}, Compliant: false, ScannedAt: day.Add(2 * time.Hour)},
+	}}
+	r := setupRouter(store, nil)
+	since := url.QueryEscape(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339))
+	req := httptest.NewRequest(http.MethodGet, "/api/heatmap/https://example.com?since="+since, nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var stats []db.DailyComplianceStat
+	json.NewDecoder(w.Body).Decode(&stats)
+	if len(stats) != 1 {
+		t.Fatalf("expected 1 day bucket, got %d", len(stats))
+	}
+	if stats[0].Total != 2 || stats[0].Compliant != 1 {
+		t.Fatalf("expected total=2 compliant=1, got %+v", stats[0])
+	}
+	if stats[0].Level != 3 {
+		t.Fatalf("expected level 3 (1 of 2 violations, rate 0.5 is >1/3 and <=2/3), got %d", stats[0].Level)
 	}
 }
 

@@ -213,6 +213,35 @@ func (h *Handlers) ResultsByURL(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, results)
 }
 
+func (h *Handlers) HeatmapByURL(w http.ResponseWriter, r *http.Request) {
+	urlValue, err := url.PathUnescape(chi.URLParam(r, "*"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid url")
+		return
+	}
+
+	since := time.Now().AddDate(0, 0, -7)
+	if raw := r.URL.Query().Get("since"); raw != "" {
+		if parsed, parseErr := time.Parse(time.RFC3339, raw); parseErr == nil {
+			since = parsed
+		}
+	}
+
+	var until time.Time
+	if raw := r.URL.Query().Get("until"); raw != "" {
+		if parsed, parseErr := time.Parse(time.RFC3339, raw); parseErr == nil {
+			until = parsed
+		}
+	}
+
+	stats, err := h.store.DailyComplianceByURL(r.Context(), urlValue, since, until)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
+}
+
 // Scan progress
 
 type scanProgressResponse struct {

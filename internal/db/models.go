@@ -44,3 +44,36 @@ type ProgressEntry struct {
 	Name        string `json:"name"`
 	Completed   int    `json:"completed"`
 }
+
+// DailyComplianceStat is one (DNS server, calendar day) bucket of compliance
+// results, pre-aggregated server-side so clients (e.g. the compliance
+// heatmap) don't need to fetch and group every raw ScanResult themselves.
+type DailyComplianceStat struct {
+	DNSServerID   uint   `json:"dns_server_id"`
+	DNSServerName string `json:"dns_server_name"`
+	Day           string `json:"day"` // YYYY-MM-DD
+	Total         int    `json:"total"`
+	Compliant     int    `json:"compliant"`
+	Level         int    `json:"level"`
+}
+
+// DailyComplianceLevel buckets a day's results onto the heatmap's 5-level
+// scale: 0 = no scans, 1 = fully compliant, 2-4 = increasing violation
+// severity (share of that day's scans that failed).
+func DailyComplianceLevel(total, compliant int) int {
+	if total == 0 {
+		return 0
+	}
+	violations := total - compliant
+	if violations == 0 {
+		return 1
+	}
+	rate := float64(violations) / float64(total)
+	if rate <= 1.0/3.0 {
+		return 2
+	}
+	if rate <= 2.0/3.0 {
+		return 3
+	}
+	return 4
+}

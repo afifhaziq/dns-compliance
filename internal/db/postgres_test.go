@@ -335,3 +335,51 @@ func TestResultsByURL_FiltersUntil(t *testing.T) {
 		t.Fatalf("expected the in-window 2025 result, got %+v", results[0])
 	}
 }
+
+func TestDailyComplianceByURL_GroupsAndComputesLevel(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{Name: "Google", Address: "8.8.8.8:53", Protocol: "udp"})
+	run, _ := s.CreateScanRun(ctx, "manual")
+
+	day := time.Date(2026, 6, 22, 0, 0, 0, 0, time.UTC)
+	results := []db.ScanResult{
+		{ScanRunID: run.ID, URLValue: "https://example.com", DNSServerID: srv.ID, Compliant: true, ScannedAt: day.Add(1 * time.Hour)},
+		{ScanRunID: run.ID, URLValue: "https://example.com", DNSServerID: srv.ID, Compliant: false, ScannedAt: day.Add(2 * time.Hour)},
+		{ScanRunID: run.ID, URLValue: "https://example.com", DNSServerID: srv.ID, Compliant: false, ScannedAt: day.Add(3 * time.Hour)},
+		// outside the requested window entirely
+		{ScanRunID: run.ID, URLValue: "https://example.com", DNSServerID: srv.ID, Compliant: true, ScannedAt: day.AddDate(0, 0, -30)},
+	}
+	for _, r := range results {
+		if err := s.InsertResult(ctx, r); err != nil {
+			t.Fatalf("InsertResult: %v", err)
+		}
+	}
+
+	since := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	until := time.Date(2026, 6, 30, 23, 59, 59, 0, time.UTC)
+	stats, err := s.DailyComplianceByURL(ctx, "https://example.com", since, until)
+	if err != nil {
+		t.Fatalf("DailyComplianceByURL: %v", err)
+	}
+	if len(stats) != 1 {
+		t.Fatalf("expected 1 day bucket within the window, got %d: %+v", len(stats), stats)
+	}
+
+	stat := stats[0]
+	if stat.DNSServerID != srv.ID {
+		t.Fatalf("expected dns_server_id %d, got %d", srv.ID, stat.DNSServerID)
+	}
+	if stat.DNSServerName != "Google" {
+		t.Fatalf("expected dns_server_name %q, got %q", "Google", stat.DNSServerName)
+	}
+	if stat.Total != 3 || stat.Compliant != 1 {
+		t.Fatalf("expected total=3 compliant=1, got total=%d compliant=%d", stat.Total, stat.Compliant)
+	}
+	// 2 of 3 violations -> rate 0.667, falls in the ">2/3" bucket only if >2/3;
+	// 2/3 exactly is <= 2/3 -> level 3 (medium), per db.DailyComplianceLevel.
+	if stat.Level != 3 {
+		t.Fatalf("expected level 3, got %d", stat.Level)
+	}
+}
