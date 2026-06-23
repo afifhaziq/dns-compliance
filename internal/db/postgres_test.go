@@ -264,7 +264,7 @@ func TestResultsByURL_FiltersSince(t *testing.T) {
 	}
 
 	since := time.Now().AddDate(0, 0, -7)
-	results, err := s.ResultsByURL(ctx, "https://example.com", since)
+	results, err := s.ResultsByURL(ctx, "https://example.com", since, time.Time{})
 	if err != nil {
 		t.Fatalf("ResultsByURL: %v", err)
 	}
@@ -291,11 +291,47 @@ func TestResultsByURL_ZeroTimeReturnsAll(t *testing.T) {
 		t.Fatalf("InsertResult: %v", err)
 	}
 
-	results, err := s.ResultsByURL(ctx, "https://example.com", time.Time{})
+	results, err := s.ResultsByURL(ctx, "https://example.com", time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("ResultsByURL: %v", err)
 	}
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result with zero-time (unbounded), got %d", len(results))
+	}
+}
+
+func TestResultsByURL_FiltersUntil(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{Name: "G", Address: "8.8.8.8:53", Protocol: "udp"})
+	run, _ := s.CreateScanRun(ctx, "manual")
+
+	inWindow := db.ScanResult{
+		ScanRunID: run.ID, URLValue: "https://example.com", DNSServerID: srv.ID,
+		Compliant: true, ScannedAt: time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC),
+	}
+	afterWindow := db.ScanResult{
+		ScanRunID: run.ID, URLValue: "https://example.com", DNSServerID: srv.ID,
+		Compliant: false, ScannedAt: time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC),
+	}
+	if err := s.InsertResult(ctx, inWindow); err != nil {
+		t.Fatalf("InsertResult inWindow: %v", err)
+	}
+	if err := s.InsertResult(ctx, afterWindow); err != nil {
+		t.Fatalf("InsertResult afterWindow: %v", err)
+	}
+
+	since := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	until := time.Date(2025, 12, 31, 23, 59, 59, 0, time.UTC)
+	results, err := s.ResultsByURL(ctx, "https://example.com", since, until)
+	if err != nil {
+		t.Fatalf("ResultsByURL: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result within 2025 window, got %d", len(results))
+	}
+	if !results[0].Compliant {
+		t.Fatalf("expected the in-window 2025 result, got %+v", results[0])
 	}
 }

@@ -74,13 +74,13 @@ func (s *postgresStore) LatestResults(ctx context.Context) ([]ScanResult, error)
 	return results, err
 }
 
-func (s *postgresStore) ResultsByURL(ctx context.Context, urlValue string, since time.Time) ([]ScanResult, error) {
+func (s *postgresStore) ResultsByURL(ctx context.Context, urlValue string, since, until time.Time) ([]ScanResult, error) {
 	var results []ScanResult
-	err := s.db.WithContext(ctx).
-		Where("url_value = ? AND scanned_at >= ?", urlValue, since).
-		Preload("DNSServer").
-		Order("scanned_at desc").
-		Find(&results).Error
+	q := s.db.WithContext(ctx).Where("url_value = ? AND scanned_at >= ?", urlValue, since)
+	if !until.IsZero() {
+		q = q.Where("scanned_at <= ?", until)
+	}
+	err := q.Preload("DNSServer").Order("scanned_at desc").Find(&results).Error
 	return results, err
 }
 

@@ -198,7 +198,14 @@ func (h *Handlers) ResultsByURL(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	results, err := h.store.ResultsByURL(r.Context(), urlValue, since)
+	var until time.Time
+	if raw := r.URL.Query().Get("until"); raw != "" {
+		if parsed, parseErr := time.Parse(time.RFC3339, raw); parseErr == nil {
+			until = parsed
+		}
+	}
+
+	results, err := h.store.ResultsByURL(r.Context(), urlValue, since, until)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

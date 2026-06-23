@@ -25,7 +25,7 @@ type Store interface {
 
 	// Scan Results
 	LatestResults(ctx context.Context) ([]ScanResult, error)
-	ResultsByURL(ctx context.Context, urlValue string, since time.Time) ([]ScanResult, error)
+	ResultsByURL(ctx context.Context, urlValue string, since, until time.Time) ([]ScanResult, error)
 	InsertResult(ctx context.Context, r ScanResult) error
 	UpdateScreenshot(ctx context.Context, resultID uint, screenshotURL string) error
 }

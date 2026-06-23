@@ -38,7 +38,7 @@ func (m *mockStore) ListDNSServers(_ context.Context) ([]db.DNSServer, error) {
 func (m *mockStore) ListURLs(_ context.Context) ([]db.URL, error) {
 	return nil, nil
 }
-func (m *mockStore) ResultsByURL(_ context.Context, _ string, _ time.Time) ([]db.ScanResult, error) {
+func (m *mockStore) ResultsByURL(_ context.Context, _ string, _, _ time.Time) ([]db.ScanResult, error) {
 	return m.insertedResults, nil
 }
 func (m *mockStore) UpdateScreenshot(_ context.Context, _ uint, _ string) error { return nil }

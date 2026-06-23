@@ -75,12 +75,16 @@ func (m *fullMockStore) ScanProgress(_ context.Context, _ uint) ([]db.ProgressEn
 func (m *fullMockStore) LatestResults(_ context.Context) ([]db.ScanResult, error) {
 	return m.results, nil
 }
-func (m *fullMockStore) ResultsByURL(_ context.Context, u string, since time.Time) ([]db.ScanResult, error) {
+func (m *fullMockStore) ResultsByURL(_ context.Context, u string, since, until time.Time) ([]db.ScanResult, error) {
 	var out []db.ScanResult
 	for _, r := range m.results {
-		if r.URLValue == u && !r.ScannedAt.Before(since) {
-			out = append(out, r)
+		if r.URLValue != u || r.ScannedAt.Before(since) {
+			continue
 		}
+		if !until.IsZero() && r.ScannedAt.After(until) {
+			continue
+		}
+		out = append(out, r)
 	}
 	return out, nil
 }
@@ -295,6 +299,31 @@ func TestResultsByURL_ExplicitSince(t *testing.T) {
 	json.NewDecoder(w.Body).Decode(&results)
 	if len(results) != 2 {
 		t.Fatalf("expected 2 results within 30-day window, got %d", len(results))
+	}
+}
+
+func TestResultsByURL_ExplicitUntil(t *testing.T) {
+	store := &fullMockStore{results: []db.ScanResult{
+		{ID: 1, URLValue: "https://example.com", ScannedAt: time.Now().AddDate(-1, 0, 0)},
+		{ID: 2, URLValue: "https://example.com", ScannedAt: time.Now()},
+	}}
+	r := setupRouter(store, nil)
+	since := url.QueryEscape(time.Now().AddDate(-2, 0, 0).Format(time.RFC3339))
+	until := url.QueryEscape(time.Now().AddDate(0, 0, -30).Format(time.RFC3339))
+	req := httptest.NewRequest(http.MethodGet, "/api/results/https://example.com?since="+since+"&until="+until, nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var results []db.ScanResult
+	json.NewDecoder(w.Body).Decode(&results)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result within since/until window, got %d", len(results))
+	}
+	if results[0].ID != 1 {
+		t.Fatalf("expected the older result (id=1), got id=%d", results[0].ID)
 	}
 }
 
