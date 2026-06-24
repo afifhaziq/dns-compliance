@@ -4,7 +4,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/afif/dns-tracking/internal/urlnorm"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type postgresStore struct{ db *gorm.DB }
@@ -16,9 +18,20 @@ func (s *postgresStore) ListURLs(ctx context.Context) ([]URL, error) {
 	return urls, s.db.WithContext(ctx).Order("created_at asc").Find(&urls).Error
 }
 
+// CreateURL normalizes rawURL and gets-or-creates the row by normalized
+// value, so the same domain added in different formats always resolves to
+// one shared row instead of violating URL's unique index.
 func (s *postgresStore) CreateURL(ctx context.Context, rawURL string) (URL, error) {
-	u := URL{URL: rawURL}
-	return u, s.db.WithContext(ctx).Create(&u).Error
+	normalized, err := urlnorm.Normalize(rawURL)
+	if err != nil {
+		return URL{}, err
+	}
+	var u URL
+	err = s.db.WithContext(ctx).
+		Where("url = ?", normalized).
+		Attrs(URL{URL: normalized}).
+		FirstOrCreate(&u).Error
+	return u, err
 }
 
 func (s *postgresStore) DeleteURL(ctx context.Context, id uint) error {
@@ -68,6 +81,22 @@ func (s *postgresStore) LatestResults(ctx context.Context) ([]ScanResult, error)
 		Group("url_value, dns_server_id")
 	err := s.db.WithContext(ctx).
 		Joins("JOIN (?) as latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at = latest.max_scanned_at", sub).
+		Preload("DNSServer").
+		Order("scan_results.url_value, scan_results.dns_server_id").
+		Find(&results).Error
+	return results, err
+}
+
+// LatestResultsForDepartment is the same query as LatestResults, scoped to
+// URLs on the given department's watchlist.
+func (s *postgresStore) LatestResultsForDepartment(ctx context.Context, departmentID uint) ([]ScanResult, error) {
+	var results []ScanResult
+	sub := s.db.Model(&ScanResult{}).
+		Select("url_value, dns_server_id, MAX(scanned_at) as max_scanned_at").
+		Group("url_value, dns_server_id")
+	err := s.db.WithContext(ctx).
+		Joins("JOIN (?) as latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at = latest.max_scanned_at", sub).
+		Joins("JOIN department_urls du ON du.url_id = scan_results.url_id AND du.department_id = ?", departmentID).
 		Preload("DNSServer").
 		Order("scan_results.url_value, scan_results.dns_server_id").
 		Find(&results).Error
@@ -194,4 +223,139 @@ func (s *postgresStore) ScanProgress(ctx context.Context, runID uint) ([]Progres
 		entries[i] = ProgressEntry{DNSServerID: r.DNSServerID, Name: r.Name, Completed: r.Completed}
 	}
 	return entries, nil
+}
+
+// Departments
+
+func (s *postgresStore) ListDepartments(ctx context.Context) ([]Department, error) {
+	var departments []Department
+	return departments, s.db.WithContext(ctx).Order("name asc").Find(&departments).Error
+}
+
+func (s *postgresStore) CreateDepartment(ctx context.Context, name string) (Department, error) {
+	d := Department{Name: name}
+	return d, s.db.WithContext(ctx).Create(&d).Error
+}
+
+// Users
+
+func (s *postgresStore) ListUsers(ctx context.Context) ([]User, error) {
+	var users []User
+	return users, s.db.WithContext(ctx).Preload("Department").Order("username asc").Find(&users).Error
+}
+
+func (s *postgresStore) CreateUser(ctx context.Context, u User) (User, error) {
+	return u, s.db.WithContext(ctx).Create(&u).Error
+}
+
+func (s *postgresStore) GetUserByUsername(ctx context.Context, username string) (*User, error) {
+	var u User
+	err := s.db.WithContext(ctx).Preload("Department").Where("username = ?", username).First(&u).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+func (s *postgresStore) DeleteUser(ctx context.Context, id uint) error {
+	return s.db.WithContext(ctx).Delete(&User{}, id).Error
+}
+
+// Sessions
+
+func (s *postgresStore) CreateSession(ctx context.Context, sess Session) error {
+	return s.db.WithContext(ctx).Create(&sess).Error
+}
+
+func (s *postgresStore) GetSession(ctx context.Context, token string) (*Session, error) {
+	var sess Session
+	err := s.db.WithContext(ctx).Where("token = ? AND expires_at > ?", token, time.Now()).First(&sess).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &sess, nil
+}
+
+func (s *postgresStore) DeleteSession(ctx context.Context, token string) error {
+	return s.db.WithContext(ctx).Where("token = ?", token).Delete(&Session{}).Error
+}
+
+// Department watchlists
+
+func (s *postgresStore) ListDepartmentURLs(ctx context.Context, departmentID uint) ([]URL, error) {
+	var urls []URL
+	err := s.db.WithContext(ctx).
+		Joins("JOIN department_urls du ON du.url_id = urls.id AND du.department_id = ?", departmentID).
+		Order("urls.created_at asc").
+		Find(&urls).Error
+	return urls, err
+}
+
+// AddURLToWatchlist gets-or-creates the URL by normalized value, then links
+// it to the department's watchlist. Re-adding an already-watched domain is a
+// silent no-op (OnConflict DoNothing on the composite primary key).
+func (s *postgresStore) AddURLToWatchlist(ctx context.Context, departmentID uint, rawURL string) (URL, error) {
+	u, err := s.CreateURL(ctx, rawURL)
+	if err != nil {
+		return URL{}, err
+	}
+	link := DepartmentURL{DepartmentID: departmentID, URLID: u.ID}
+	err = s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&link).Error
+	return u, err
+}
+
+// RemoveURLFromWatchlist deletes the DepartmentURL link only — it never
+// touches URL or ScanResult, so scan history is preserved even once no
+// department watches the domain anymore. Returns false if the URL wasn't
+// actually on that department's watchlist (no row deleted).
+func (s *postgresStore) RemoveURLFromWatchlist(ctx context.Context, departmentID, urlID uint) (bool, error) {
+	res := s.db.WithContext(ctx).
+		Where("department_id = ? AND url_id = ?", departmentID, urlID).
+		Delete(&DepartmentURL{})
+	return res.RowsAffected > 0, res.Error
+}
+
+// ListWatchedURLs returns every URL on at least one department's watchlist
+// — the set the scheduled/manual scan sweep should actually scan.
+func (s *postgresStore) ListWatchedURLs(ctx context.Context) ([]URL, error) {
+	var urls []URL
+	err := s.db.WithContext(ctx).
+		Distinct().
+		Joins("JOIN department_urls du ON du.url_id = urls.id").
+		Order("urls.created_at asc").
+		Find(&urls).Error
+	return urls, err
+}
+
+// ListUnassignedURLs returns URLs with no department watching them —
+// pre-migration legacy rows, or domains every department has since removed.
+// Admin-only view.
+func (s *postgresStore) ListUnassignedURLs(ctx context.Context) ([]URL, error) {
+	var urls []URL
+	err := s.db.WithContext(ctx).
+		Joins("LEFT JOIN department_urls du ON du.url_id = urls.id").
+		Where("du.url_id IS NULL").
+		Order("urls.created_at asc").
+		Find(&urls).Error
+	return urls, err
+}
+
+func (s *postgresStore) URLOwnedByDepartment(ctx context.Context, departmentID uint, urlValue string) (bool, error) {
+	normalized, err := urlnorm.Normalize(urlValue)
+	if err != nil {
+		return false, err
+	}
+	var count int64
+	err = s.db.WithContext(ctx).
+		Model(&DepartmentURL{}).
+		Joins("JOIN urls ON urls.id = department_urls.url_id").
+		Where("department_urls.department_id = ? AND urls.url = ?", departmentID, normalized).
+		Count(&count).Error
+	return count > 0, err
 }
