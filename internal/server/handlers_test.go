@@ -553,6 +553,26 @@ func TestCreateDNSServer(t *testing.T) {
 	}
 }
 
+func TestListDNSServers_AllowedForNonAdmin(t *testing.T) {
+	store := &fullMockStore{dnsServers: []db.DNSServer{{ID: 1, Name: "Google", Address: "8.8.8.8:53", Protocol: "udp"}}}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/dns-servers", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for a non-admin reading the DNS server list, got %d: %s", w.Code, w.Body.String())
+	}
+	var servers []db.DNSServer
+	json.NewDecoder(w.Body).Decode(&servers)
+	if len(servers) != 1 {
+		t.Fatalf("expected 1 server, got %d", len(servers))
+	}
+}
+
 func TestCreateDNSServer_ForbiddenForNonAdmin(t *testing.T) {
 	store := &fullMockStore{}
 	cookie := deptCookie(store, 1)

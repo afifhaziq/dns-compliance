@@ -40,6 +40,17 @@ export type GroupedResult = {
 
 export type URLEntry = { id: number; url: string; created_at: string }
 
+export type Department = { id: number; name: string; created_at: string }
+
+export type User = {
+  id: number
+  username: string
+  is_admin: boolean
+  department_id?: number
+  department?: Department
+  created_at: string
+}
+
 export type DailyComplianceStat = {
   dns_server_id: number
   dns_server_name: string

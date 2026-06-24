@@ -11,9 +11,12 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UrlsRouteImport } from './routes/urls'
 import { Route as ResultsRouteImport } from './routes/results'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as DnsServersRouteImport } from './routes/dns-servers'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResultsIndexRouteImport } from './routes/results.index'
+import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as ResultsUrlRouteImport } from './routes/results.$url'
 
 const UrlsRoute = UrlsRouteImport.update({
@@ -26,9 +29,19 @@ const ResultsRoute = ResultsRouteImport.update({
   path: '/results',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DnsServersRoute = DnsServersRouteImport.update({
   id: '/dns-servers',
   path: '/dns-servers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -41,6 +54,11 @@ const ResultsIndexRoute = ResultsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ResultsRoute,
 } as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminRoute,
+} as any)
 const ResultsUrlRoute = ResultsUrlRouteImport.update({
   id: '/$url',
   path: '/$url',
@@ -49,52 +67,75 @@ const ResultsUrlRoute = ResultsUrlRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteWithChildren
   '/dns-servers': typeof DnsServersRoute
+  '/login': typeof LoginRoute
   '/results': typeof ResultsRouteWithChildren
   '/urls': typeof UrlsRoute
   '/results/$url': typeof ResultsUrlRoute
+  '/admin/': typeof AdminIndexRoute
   '/results/': typeof ResultsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dns-servers': typeof DnsServersRoute
+  '/login': typeof LoginRoute
   '/urls': typeof UrlsRoute
   '/results/$url': typeof ResultsUrlRoute
+  '/admin': typeof AdminIndexRoute
   '/results': typeof ResultsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteWithChildren
   '/dns-servers': typeof DnsServersRoute
+  '/login': typeof LoginRoute
   '/results': typeof ResultsRouteWithChildren
   '/urls': typeof UrlsRoute
   '/results/$url': typeof ResultsUrlRoute
+  '/admin/': typeof AdminIndexRoute
   '/results/': typeof ResultsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin'
     | '/dns-servers'
+    | '/login'
     | '/results'
     | '/urls'
     | '/results/$url'
+    | '/admin/'
     | '/results/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dns-servers' | '/urls' | '/results/$url' | '/results'
+  to:
+    | '/'
+    | '/dns-servers'
+    | '/login'
+    | '/urls'
+    | '/results/$url'
+    | '/admin'
+    | '/results'
   id:
     | '__root__'
     | '/'
+    | '/admin'
     | '/dns-servers'
+    | '/login'
     | '/results'
     | '/urls'
     | '/results/$url'
+    | '/admin/'
     | '/results/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRoute: typeof AdminRouteWithChildren
   DnsServersRoute: typeof DnsServersRoute
+  LoginRoute: typeof LoginRoute
   ResultsRoute: typeof ResultsRouteWithChildren
   UrlsRoute: typeof UrlsRoute
 }
@@ -115,11 +156,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResultsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dns-servers': {
       id: '/dns-servers'
       path: '/dns-servers'
       fullPath: '/dns-servers'
       preLoaderRoute: typeof DnsServersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -136,6 +191,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResultsIndexRouteImport
       parentRoute: typeof ResultsRoute
     }
+    '/admin/': {
+      id: '/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/results/$url': {
       id: '/results/$url'
       path: '/$url'
@@ -145,6 +207,16 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface AdminRouteChildren {
+  AdminIndexRoute: typeof AdminIndexRoute
+}
+
+const AdminRouteChildren: AdminRouteChildren = {
+  AdminIndexRoute: AdminIndexRoute,
+}
+
+const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 interface ResultsRouteChildren {
   ResultsUrlRoute: typeof ResultsUrlRoute
@@ -161,7 +233,9 @@ const ResultsRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRoute: AdminRouteWithChildren,
   DnsServersRoute: DnsServersRoute,
+  LoginRoute: LoginRoute,
   ResultsRoute: ResultsRouteWithChildren,
   UrlsRoute: UrlsRoute,
 }

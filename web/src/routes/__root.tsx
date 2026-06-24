@@ -13,13 +13,35 @@ import {
 } from 'react'
 import {
   createRootRoute,
+  Navigate,
   Outlet,
+  useLocation,
 } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/router-devtools'
 import { fetchScanStatus, isScanning, triggerScan } from '../api/scan'
+import { fetchMe, logout as apiLogout } from '../api/auth'
+import type { User } from '../api/types'
 import { ThemeSwitch } from '../components/theme-switch'
 import { ShimmerButton } from '../components/shimmer-button'
-import { GlassNavbar } from '../components/aicanvas/glass-navbar'
+import { GlassNavbar, LogoutButton } from '../components/aicanvas/glass-navbar'
+
+/* ─── Auth Context ─────────────────────────────────────────────────────────── */
+
+type AuthContextValue = {
+  me: User | null
+  loading: boolean
+  logout: () => Promise<void>
+  refresh: () => Promise<void>
+}
+
+const AuthContext = createContext<AuthContextValue>({
+  me: null,
+  loading: true,
+  logout: async () => {},
+  refresh: async () => {},
+})
+
+export const useAuth = () => useContext(AuthContext)
 
 /* ─── Scan Context ─────────────────────────────────────────────────────────── */
 
@@ -40,9 +62,26 @@ export const useScan = () => useContext(ScanContext)
 /* ─── Root Component ───────────────────────────────────────────────────────── */
 
 function RootLayout() {
+  const location = useLocation()
+  const [me, setMe] = useState<User | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+
   const [scanning, setScanning] = useState(false)
   const [refreshSignal, setRefreshSignal] = useState(0)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const refreshAuth = useCallback(async () => {
+    const u = await fetchMe()
+    setMe(u)
+    setAuthLoading(false)
+  }, [])
+
+  useEffect(() => { refreshAuth() }, [refreshAuth])
+
+  const logout = useCallback(async () => {
+    await apiLogout()
+    setMe(null)
+  }, [])
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -67,8 +106,9 @@ function RootLayout() {
     }, 3000)
   }, [stopPolling])
 
-  // on mount: check if a scan is already running
+  // on mount (once authenticated): check if a scan is already running
   useEffect(() => {
+    if (!me) return
     fetchScanStatus()
       .then(status => {
         if (isScanning(status)) {
@@ -79,7 +119,7 @@ function RootLayout() {
       .catch(() => {})
 
     return stopPolling
-  }, [startPolling, stopPolling])
+  }, [me, startPolling, stopPolling])
 
   const handleScanClick = useCallback(async () => {
     if (scanning) return
@@ -92,31 +132,63 @@ function RootLayout() {
     }
   }, [scanning, startPolling])
 
-  return (
-    <ScanContext value={{ scanning, refreshSignal, handleScanClick }}>
-      <a href="#main" className="skip-link">Skip to main content</a>
+  const authValue: AuthContextValue = { me, loading: authLoading, logout, refresh: refreshAuth }
+  const isLoginRoute = location.pathname === '/login'
 
-      <GlassNavbar
-        actions={
-          <>
-            <ShimmerButton
-              text="Run Scan"
-              scanning={scanning}
-              disabled={scanning}
-              onClick={handleScanClick}
-              ariaLabel={scanning ? 'Scan in progress' : 'Run compliance scan'}
-            />
-            <ThemeSwitch />
-          </>
-        }
-      />
+  if (authLoading) return null
 
-      <main id="main" className="max-w-10xl mx-auto">
+  if (!me && !isLoginRoute) {
+    return (
+      <AuthContext value={authValue}>
+        <Navigate to="/login" />
+      </AuthContext>
+    )
+  }
+
+  if (me && isLoginRoute) {
+    return (
+      <AuthContext value={authValue}>
+        <Navigate to="/" />
+      </AuthContext>
+    )
+  }
+
+  if (isLoginRoute) {
+    return (
+      <AuthContext value={authValue}>
         <Outlet />
-      </main>
+      </AuthContext>
+    )
+  }
 
-      {import.meta.env.DEV && <TanStackRouterDevtools />}
-    </ScanContext>
+  return (
+    <AuthContext value={authValue}>
+      <ScanContext value={{ scanning, refreshSignal, handleScanClick }}>
+        <a href="#main" className="skip-link">Skip to main content</a>
+
+        <GlassNavbar
+          actions={
+            <>
+              <ShimmerButton
+                text="Run Scan"
+                scanning={scanning}
+                disabled={scanning}
+                onClick={handleScanClick}
+                ariaLabel={scanning ? 'Scan in progress' : 'Run compliance scan'}
+              />
+              <ThemeSwitch />
+              <LogoutButton />
+            </>
+          }
+        />
+
+        <main id="main" className="max-w-10xl mx-auto">
+          <Outlet />
+        </main>
+
+        {import.meta.env.DEV && <TanStackRouterDevtools />}
+      </ScanContext>
+    </AuthContext>
   )
 }
 

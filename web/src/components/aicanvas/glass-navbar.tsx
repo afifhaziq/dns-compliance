@@ -2,16 +2,28 @@ import { motion } from 'framer-motion'
 import { Link, useLocation } from '@tanstack/react-router'
 import { Highlight, HighlightItem } from '@/components/unlumen-ui/primitives/effects/highlight'
 import type { ReactNode } from 'react'
+import { useAuth } from '@/routes/__root'
 
-const NAV_ITEMS = [
+const BASE_NAV_ITEMS = [
   { to: '/' as const, label: 'Overview' },
   { to: '/results' as const, label: 'Results' },
   { to: '/urls' as const, label: 'Domains' },
   { to: '/dns-servers' as const, label: 'DNS Servers' },
 ]
 
+const ADMIN_NAV_ITEM = { to: '/admin' as const, label: 'Admin' }
+
 interface GlassNavbarProps {
   actions?: ReactNode
+}
+
+export function LogoutButton() {
+  const { logout } = useAuth()
+  return (
+    <button className="btn-ghost" onClick={() => { logout() }}>
+      Sign Out
+    </button>
+  )
 }
 
 function BrandMark() {
@@ -28,7 +40,9 @@ function BrandMark() {
 
 export function GlassNavbar({ actions }: GlassNavbarProps) {
   const location = useLocation()
+  const { me } = useAuth()
   const isActive = (path: string) => location.pathname === path
+  const navItems = me?.is_admin ? [...BASE_NAV_ITEMS, ADMIN_NAV_ITEM] : BASE_NAV_ITEMS
 
   return (
     <div className="sticky top-0 z-50 px-4 pt-3 pb-1" style={{ background: 'var(--stone-nav)' }}>
@@ -60,7 +74,7 @@ export function GlassNavbar({ actions }: GlassNavbarProps) {
           containerClassName="flex flex-1 items-center gap-0.5"
           transition={{ type: 'spring', stiffness: 500, damping: 50 }}
         >
-          {NAV_ITEMS.map(({ to, label }) => (
+          {navItems.map(({ to, label }) => (
             <HighlightItem key={to} value={to} asChild>
               <Link
                 to={to}

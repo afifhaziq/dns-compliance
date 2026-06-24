@@ -26,6 +26,11 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Post("/urls", h.AddToWatchlist)
 			r.Delete("/urls/{id}", h.RemoveFromWatchlist)
 
+			// DNS servers are global/shared — every authenticated role can
+			// view them (results reference them by name); only mutating the
+			// set is admin-only, gated below.
+			r.Get("/dns-servers", h.ListDNSServers)
+
 			r.Post("/scan", h.TriggerScan)
 			r.Get("/scan/status", h.ScanStatus)
 			r.Get("/scan/progress", h.ScanProgress)
@@ -41,7 +46,6 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Group(func(r chi.Router) {
 				r.Use(requireAdmin)
 
-				r.Get("/dns-servers", h.ListDNSServers)
 				r.Post("/dns-servers", h.CreateDNSServer)
 				r.Delete("/dns-servers/{id}", h.DeleteDNSServer)
 
