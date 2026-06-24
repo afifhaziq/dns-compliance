@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/afif/dns-tracking/internal/db"
@@ -240,6 +243,116 @@ func (h *Handlers) HeatmapByURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, stats)
+}
+
+// DNS Records (live lookup, independent of the compliance-scan pipeline)
+
+type dnsRecordSet struct {
+	AAAA  []string `json:"aaaa"`
+	CNAME []string `json:"cname"`
+	MX    []string `json:"mx"`
+	TXT   []string `json:"txt"`
+	NS    []string `json:"ns"`
+}
+
+type dnsRecordsResponse struct {
+	Hostname string        `json:"hostname"`
+	Resolved bool          `json:"resolved"`
+	Records  *dnsRecordSet `json:"records,omitempty"`
+}
+
+func (h *Handlers) DNSRecordsByURL(w http.ResponseWriter, r *http.Request) {
+	urlValue, err := url.PathUnescape(chi.URLParam(r, "*"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid url")
+		return
+	}
+
+	hostname := urlValue
+	if parsed, parseErr := url.Parse(urlValue); parseErr == nil && parsed.Hostname() != "" {
+		hostname = parsed.Hostname()
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	addrs, err := net.DefaultResolver.LookupHost(ctx, hostname)
+	if err != nil {
+		writeJSON(w, http.StatusOK, dnsRecordsResponse{Hostname: hostname, Resolved: false})
+		return
+	}
+
+	records := lookupDNSRecordSet(ctx, hostname, addrs)
+	writeJSON(w, http.StatusOK, dnsRecordsResponse{Hostname: hostname, Resolved: true, Records: &records})
+}
+
+func lookupDNSRecordSet(ctx context.Context, hostname string, addrs []string) dnsRecordSet {
+	set := dnsRecordSet{AAAA: aaaaFromAddrs(addrs)}
+
+	var wg sync.WaitGroup
+	wg.Add(4)
+
+	go func() { defer wg.Done(); set.CNAME = lookupCNAME(ctx, hostname) }()
+	go func() { defer wg.Done(); set.MX = lookupMX(ctx, hostname) }()
+	go func() { defer wg.Done(); set.TXT = lookupTXT(ctx, hostname) }()
+	go func() { defer wg.Done(); set.NS = lookupNS(ctx, hostname) }()
+
+	wg.Wait()
+	return set
+}
+
+func aaaaFromAddrs(addrs []string) []string {
+	out := make([]string, 0)
+	for _, a := range addrs {
+		if ip := net.ParseIP(a); ip != nil && ip.To4() == nil {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+func lookupCNAME(ctx context.Context, hostname string) []string {
+	cname, err := net.DefaultResolver.LookupCNAME(ctx, hostname)
+	if err != nil {
+		return []string{}
+	}
+	trimmed := strings.TrimSuffix(cname, ".")
+	if trimmed == "" || strings.EqualFold(trimmed, strings.TrimSuffix(hostname, ".")) {
+		return []string{}
+	}
+	return []string{trimmed}
+}
+
+func lookupMX(ctx context.Context, hostname string) []string {
+	records, err := net.DefaultResolver.LookupMX(ctx, hostname)
+	out := make([]string, 0, len(records))
+	if err != nil {
+		return out
+	}
+	for _, mx := range records {
+		out = append(out, fmt.Sprintf("%d %s", mx.Pref, strings.TrimSuffix(mx.Host, ".")))
+	}
+	return out
+}
+
+func lookupTXT(ctx context.Context, hostname string) []string {
+	records, err := net.DefaultResolver.LookupTXT(ctx, hostname)
+	if err != nil {
+		return []string{}
+	}
+	return records
+}
+
+func lookupNS(ctx context.Context, hostname string) []string {
+	records, err := net.DefaultResolver.LookupNS(ctx, hostname)
+	out := make([]string, 0, len(records))
+	if err != nil {
+		return out
+	}
+	for _, ns := range records {
+		out = append(out, strings.TrimSuffix(ns.Host, "."))
+	}
+	return out
 }
 
 // Scan progress

@@ -29,6 +29,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 		r.Get("/results", h.LatestResults)
 		r.Get("/results/*", h.ResultsByURL)
 		r.Get("/heatmap/*", h.HeatmapByURL)
+		r.Get("/dns-records/*", h.DNSRecordsByURL)
 
 		r.Post("/screenshot", h.TriggerScreenshot)
 	})

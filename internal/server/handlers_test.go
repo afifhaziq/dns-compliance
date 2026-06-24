@@ -400,6 +400,61 @@ func TestHeatmapByURL_GroupsByDay(t *testing.T) {
 	}
 }
 
+func TestDNSRecordsByURL_ResolvesKnownHost(t *testing.T) {
+	r := setupRouter(&fullMockStore{}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/dns-records/google.com", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Hostname string `json:"hostname"`
+		Resolved bool   `json:"resolved"`
+		Records  *struct {
+			AAAA  []string `json:"aaaa"`
+			CNAME []string `json:"cname"`
+			MX    []string `json:"mx"`
+			TXT   []string `json:"txt"`
+			NS    []string `json:"ns"`
+		} `json:"records"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Hostname != "google.com" {
+		t.Fatalf("expected hostname google.com, got %q", resp.Hostname)
+	}
+	if !resp.Resolved {
+		t.Fatalf("expected resolved=true for google.com")
+	}
+	if resp.Records == nil || len(resp.Records.NS) == 0 {
+		t.Fatalf("expected at least one NS record for google.com, got %+v", resp.Records)
+	}
+}
+
+func TestDNSRecordsByURL_NXDOMAIN(t *testing.T) {
+	r := setupRouter(&fullMockStore{}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/dns-records/this-host-should-not-exist-zzqxv12345.invalid", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Hostname string `json:"hostname"`
+		Resolved bool   `json:"resolved"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Resolved {
+		t.Fatalf("expected resolved=false for a non-existent host")
+	}
+}
+
 func TestResultsByURL_PercentEncodedSlashes(t *testing.T) {
 	store := &fullMockStore{results: []db.ScanResult{
 		{ID: 1, URLValue: "https://example.com/", ScannedAt: time.Now()},
