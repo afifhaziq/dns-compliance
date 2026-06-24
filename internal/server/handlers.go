@@ -257,9 +257,39 @@ type dnsRecordSet struct {
 }
 
 type dnsRecordsResponse struct {
-	Hostname string        `json:"hostname"`
-	Resolved bool          `json:"resolved"`
-	Records  *dnsRecordSet `json:"records,omitempty"`
+	Hostname   string        `json:"hostname"`
+	Resolved   bool          `json:"resolved"`
+	ResolverIP string        `json:"resolver_ip,omitempty"`
+	Records    *dnsRecordSet `json:"records,omitempty"`
+}
+
+// resolverAddrCapture wraps net.Resolver's Dial hook to record which
+// nameserver address actually answered a lookup — Go's net.Resolver itself
+// doesn't expose this, so the only way to learn it is to intercept the dial.
+type resolverAddrCapture struct {
+	mu   sync.Mutex
+	addr string
+}
+
+func (c *resolverAddrCapture) dial(ctx context.Context, network, address string) (net.Conn, error) {
+	c.mu.Lock()
+	c.addr = address
+	c.mu.Unlock()
+	return (&net.Dialer{}).DialContext(ctx, network, address)
+}
+
+// host returns the captured address with its port stripped, e.g.
+// "127.0.0.11:53" -> "127.0.0.11". Empty if no dial was observed.
+func (c *resolverAddrCapture) host() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.addr == "" {
+		return ""
+	}
+	if host, _, err := net.SplitHostPort(c.addr); err == nil {
+		return host
+	}
+	return c.addr
 }
 
 func (h *Handlers) DNSRecordsByURL(w http.ResponseWriter, r *http.Request) {
@@ -277,26 +307,34 @@ func (h *Handlers) DNSRecordsByURL(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	addrs, err := net.DefaultResolver.LookupHost(ctx, hostname)
+	capture := &resolverAddrCapture{}
+	resolver := &net.Resolver{PreferGo: true, Dial: capture.dial}
+
+	addrs, err := resolver.LookupHost(ctx, hostname)
 	if err != nil {
-		writeJSON(w, http.StatusOK, dnsRecordsResponse{Hostname: hostname, Resolved: false})
+		writeJSON(w, http.StatusOK, dnsRecordsResponse{Hostname: hostname, Resolved: false, ResolverIP: capture.host()})
 		return
 	}
 
-	records := lookupDNSRecordSet(ctx, hostname, addrs)
-	writeJSON(w, http.StatusOK, dnsRecordsResponse{Hostname: hostname, Resolved: true, Records: &records})
+	records := lookupDNSRecordSet(ctx, resolver, hostname, addrs)
+	writeJSON(w, http.StatusOK, dnsRecordsResponse{
+		Hostname:   hostname,
+		Resolved:   true,
+		ResolverIP: capture.host(),
+		Records:    &records,
+	})
 }
 
-func lookupDNSRecordSet(ctx context.Context, hostname string, addrs []string) dnsRecordSet {
+func lookupDNSRecordSet(ctx context.Context, resolver *net.Resolver, hostname string, addrs []string) dnsRecordSet {
 	set := dnsRecordSet{A: aFromAddrs(addrs), AAAA: aaaaFromAddrs(addrs)}
 
 	var wg sync.WaitGroup
 	wg.Add(4)
 
-	go func() { defer wg.Done(); set.CNAME = lookupCNAME(ctx, hostname) }()
-	go func() { defer wg.Done(); set.MX = lookupMX(ctx, hostname) }()
-	go func() { defer wg.Done(); set.TXT = lookupTXT(ctx, hostname) }()
-	go func() { defer wg.Done(); set.NS = lookupNS(ctx, hostname) }()
+	go func() { defer wg.Done(); set.CNAME = lookupCNAME(ctx, resolver, hostname) }()
+	go func() { defer wg.Done(); set.MX = lookupMX(ctx, resolver, hostname) }()
+	go func() { defer wg.Done(); set.TXT = lookupTXT(ctx, resolver, hostname) }()
+	go func() { defer wg.Done(); set.NS = lookupNS(ctx, resolver, hostname) }()
 
 	wg.Wait()
 	return set
@@ -322,8 +360,8 @@ func aaaaFromAddrs(addrs []string) []string {
 	return out
 }
 
-func lookupCNAME(ctx context.Context, hostname string) []string {
-	cname, err := net.DefaultResolver.LookupCNAME(ctx, hostname)
+func lookupCNAME(ctx context.Context, resolver *net.Resolver, hostname string) []string {
+	cname, err := resolver.LookupCNAME(ctx, hostname)
 	if err != nil {
 		return []string{}
 	}
@@ -334,8 +372,8 @@ func lookupCNAME(ctx context.Context, hostname string) []string {
 	return []string{trimmed}
 }
 
-func lookupMX(ctx context.Context, hostname string) []string {
-	records, err := net.DefaultResolver.LookupMX(ctx, hostname)
+func lookupMX(ctx context.Context, resolver *net.Resolver, hostname string) []string {
+	records, err := resolver.LookupMX(ctx, hostname)
 	out := make([]string, 0, len(records))
 	if err != nil {
 		return out
@@ -346,16 +384,16 @@ func lookupMX(ctx context.Context, hostname string) []string {
 	return out
 }
 
-func lookupTXT(ctx context.Context, hostname string) []string {
-	records, err := net.DefaultResolver.LookupTXT(ctx, hostname)
+func lookupTXT(ctx context.Context, resolver *net.Resolver, hostname string) []string {
+	records, err := resolver.LookupTXT(ctx, hostname)
 	if err != nil {
 		return []string{}
 	}
 	return records
 }
 
-func lookupNS(ctx context.Context, hostname string) []string {
-	records, err := net.DefaultResolver.LookupNS(ctx, hostname)
+func lookupNS(ctx context.Context, resolver *net.Resolver, hostname string) []string {
+	records, err := resolver.LookupNS(ctx, hostname)
 	out := make([]string, 0, len(records))
 	if err != nil {
 		return out

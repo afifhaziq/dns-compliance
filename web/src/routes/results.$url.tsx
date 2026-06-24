@@ -77,6 +77,9 @@ function DnsRecordsPanel({ data, loading }: { data: DnsRecordsResponse | null; l
       <div className="dash-section dns-records-panel">
         <p className="dash-label">DNS Records</p>
         <p className="dns-records-error">Unable to resolve DNS records for this host.</p>
+        {data?.resolver_ip && (
+          <p className="dns-records-resolver">Looked up via host DNS resolver {data.resolver_ip}</p>
+        )}
       </div>
     )
   }
@@ -86,6 +89,9 @@ function DnsRecordsPanel({ data, loading }: { data: DnsRecordsResponse | null; l
   return (
     <div className="dash-section dns-records-panel">
       <p className="dash-label">DNS Records</p>
+      {data.resolver_ip && (
+        <p className="dns-records-resolver">Looked up via host DNS resolver {data.resolver_ip}</p>
+      )}
       <div className="dns-records-grid">
         {DNS_RECORD_LABELS.map(([key, label]) => {
           const values = records[key] ?? []

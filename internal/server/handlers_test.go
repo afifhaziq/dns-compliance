@@ -410,9 +410,10 @@ func TestDNSRecordsByURL_ResolvesKnownHost(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 	var resp struct {
-		Hostname string `json:"hostname"`
-		Resolved bool   `json:"resolved"`
-		Records  *struct {
+		Hostname   string `json:"hostname"`
+		Resolved   bool   `json:"resolved"`
+		ResolverIP string `json:"resolver_ip"`
+		Records    *struct {
 			A     []string `json:"a"`
 			AAAA  []string `json:"aaaa"`
 			CNAME []string `json:"cname"`
@@ -429,6 +430,9 @@ func TestDNSRecordsByURL_ResolvesKnownHost(t *testing.T) {
 	}
 	if !resp.Resolved {
 		t.Fatalf("expected resolved=true for google.com")
+	}
+	if resp.ResolverIP == "" {
+		t.Fatalf("expected a non-empty resolver_ip")
 	}
 	if resp.Records == nil || len(resp.Records.A) == 0 {
 		t.Fatalf("expected at least one A record for google.com, got %+v", resp.Records)

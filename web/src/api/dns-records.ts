@@ -10,6 +10,7 @@ export interface DnsRecordSet {
 export interface DnsRecordsResponse {
   hostname: string
   resolved: boolean
+  resolver_ip?: string
   records?: DnsRecordSet
 }
 
