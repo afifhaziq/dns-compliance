@@ -12,22 +12,39 @@ import (
 
 	"github.com/afif/dns-tracking/internal/db"
 	"github.com/afif/dns-tracking/internal/server"
+	"github.com/afif/dns-tracking/internal/urlnorm"
 	"github.com/go-chi/chi/v5"
 )
 
 // fullMockStore implements db.Store completely for handler tests.
 type fullMockStore struct {
-	urls       []db.URL
-	dnsServers []db.DNSServer
-	results    []db.ScanResult
-	activeRun  *db.ScanRun
-	lastRun    *db.ScanRun
-	progress   []db.ProgressEntry
+	urls           []db.URL
+	dnsServers     []db.DNSServer
+	results        []db.ScanResult
+	activeRun      *db.ScanRun
+	lastRun        *db.ScanRun
+	progress       []db.ProgressEntry
+	departments    []db.Department
+	users          []db.User
+	sessions       []db.Session
+	departmentURLs []db.DepartmentURL
 }
 
 func (m *fullMockStore) ListURLs(_ context.Context) ([]db.URL, error) { return m.urls, nil }
+
+// CreateURL mirrors postgresStore's get-or-create-by-normalized-value
+// behavior so mock-store-backed tests exercise the same dedup semantics.
 func (m *fullMockStore) CreateURL(_ context.Context, rawURL string) (db.URL, error) {
-	u := db.URL{ID: uint(len(m.urls) + 1), URL: rawURL, CreatedAt: time.Now()}
+	normalized, err := urlnorm.Normalize(rawURL)
+	if err != nil {
+		return db.URL{}, err
+	}
+	for _, u := range m.urls {
+		if u.URL == normalized {
+			return u, nil
+		}
+	}
+	u := db.URL{ID: uint(len(m.urls) + 1), URL: normalized, CreatedAt: time.Now()}
 	m.urls = append(m.urls, u)
 	return u, nil
 }
@@ -139,6 +156,170 @@ func (m *fullMockStore) InsertResult(_ context.Context, r db.ScanResult) error {
 }
 func (m *fullMockStore) UpdateScreenshot(_ context.Context, _ uint, _ string) error { return nil }
 
+func (m *fullMockStore) LatestResultsForDepartment(ctx context.Context, departmentID uint) ([]db.ScanResult, error) {
+	watchedIDs := make(map[uint]bool)
+	for _, du := range m.departmentURLs {
+		if du.DepartmentID == departmentID {
+			watchedIDs[du.URLID] = true
+		}
+	}
+	var out []db.ScanResult
+	for _, r := range m.results {
+		if watchedIDs[r.URLID] {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func (m *fullMockStore) ListDepartments(_ context.Context) ([]db.Department, error) {
+	return m.departments, nil
+}
+func (m *fullMockStore) CreateDepartment(_ context.Context, name string) (db.Department, error) {
+	d := db.Department{ID: uint(len(m.departments) + 1), Name: name, CreatedAt: time.Now()}
+	m.departments = append(m.departments, d)
+	return d, nil
+}
+
+func (m *fullMockStore) ListUsers(_ context.Context) ([]db.User, error) { return m.users, nil }
+func (m *fullMockStore) CreateUser(_ context.Context, u db.User) (db.User, error) {
+	u.ID = uint(len(m.users) + 1)
+	u.CreatedAt = time.Now()
+	m.users = append(m.users, u)
+	return u, nil
+}
+func (m *fullMockStore) GetUserByUsername(_ context.Context, username string) (*db.User, error) {
+	for _, u := range m.users {
+		if u.Username == username {
+			return &u, nil
+		}
+	}
+	return nil, nil
+}
+func (m *fullMockStore) DeleteUser(_ context.Context, id uint) error {
+	for i, u := range m.users {
+		if u.ID == id {
+			m.users = append(m.users[:i], m.users[i+1:]...)
+			return nil
+		}
+	}
+	return nil
+}
+
+func (m *fullMockStore) CreateSession(_ context.Context, s db.Session) error {
+	m.sessions = append(m.sessions, s)
+	return nil
+}
+func (m *fullMockStore) GetSession(_ context.Context, token string) (*db.Session, error) {
+	for _, s := range m.sessions {
+		if s.Token == token && s.ExpiresAt.After(time.Now()) {
+			return &s, nil
+		}
+	}
+	return nil, nil
+}
+func (m *fullMockStore) DeleteSession(_ context.Context, token string) error {
+	for i, s := range m.sessions {
+		if s.Token == token {
+			m.sessions = append(m.sessions[:i], m.sessions[i+1:]...)
+			return nil
+		}
+	}
+	return nil
+}
+
+func (m *fullMockStore) ListDepartmentURLs(_ context.Context, departmentID uint) ([]db.URL, error) {
+	var out []db.URL
+	for _, du := range m.departmentURLs {
+		if du.DepartmentID != departmentID {
+			continue
+		}
+		for _, u := range m.urls {
+			if u.ID == du.URLID {
+				out = append(out, u)
+			}
+		}
+	}
+	return out, nil
+}
+
+func (m *fullMockStore) AddURLToWatchlist(ctx context.Context, departmentID uint, rawURL string) (db.URL, error) {
+	u, err := m.CreateURL(ctx, rawURL)
+	if err != nil {
+		return db.URL{}, err
+	}
+	for _, du := range m.departmentURLs {
+		if du.DepartmentID == departmentID && du.URLID == u.ID {
+			return u, nil // already linked — no-op
+		}
+	}
+	m.departmentURLs = append(m.departmentURLs, db.DepartmentURL{DepartmentID: departmentID, URLID: u.ID, CreatedAt: time.Now()})
+	return u, nil
+}
+
+func (m *fullMockStore) RemoveURLFromWatchlist(_ context.Context, departmentID, urlID uint) (bool, error) {
+	for i, du := range m.departmentURLs {
+		if du.DepartmentID == departmentID && du.URLID == urlID {
+			m.departmentURLs = append(m.departmentURLs[:i], m.departmentURLs[i+1:]...)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (m *fullMockStore) ListWatchedURLs(_ context.Context) ([]db.URL, error) {
+	watchedIDs := make(map[uint]bool)
+	for _, du := range m.departmentURLs {
+		watchedIDs[du.URLID] = true
+	}
+	var out []db.URL
+	for _, u := range m.urls {
+		if watchedIDs[u.ID] {
+			out = append(out, u)
+		}
+	}
+	return out, nil
+}
+
+func (m *fullMockStore) ListUnassignedURLs(_ context.Context) ([]db.URL, error) {
+	watchedIDs := make(map[uint]bool)
+	for _, du := range m.departmentURLs {
+		watchedIDs[du.URLID] = true
+	}
+	var out []db.URL
+	for _, u := range m.urls {
+		if !watchedIDs[u.ID] {
+			out = append(out, u)
+		}
+	}
+	return out, nil
+}
+
+func (m *fullMockStore) URLOwnedByDepartment(_ context.Context, departmentID uint, urlValue string) (bool, error) {
+	normalized, err := urlnorm.Normalize(urlValue)
+	if err != nil {
+		return false, err
+	}
+	var urlID uint
+	found := false
+	for _, u := range m.urls {
+		if u.URL == normalized {
+			urlID = u.ID
+			found = true
+			break
+		}
+	}
+	if !found {
+		return false, nil
+	}
+	for _, du := range m.departmentURLs {
+		if du.DepartmentID == departmentID && du.URLID == urlID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 var _ db.Store = (*fullMockStore)(nil)
 
 func setupRouter(store db.Store, sc *server.Scanner) http.Handler {
@@ -176,7 +357,7 @@ func TestCreateURL(t *testing.T) {
 	}
 	var u db.URL
 	json.NewDecoder(w.Body).Decode(&u)
-	if u.URL != "https://example.com" {
+	if u.URL != "example.com" {
 		t.Fatalf("unexpected URL: %s", u.URL)
 	}
 }
