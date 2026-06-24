@@ -248,6 +248,7 @@ func (h *Handlers) HeatmapByURL(w http.ResponseWriter, r *http.Request) {
 // DNS Records (live lookup, independent of the compliance-scan pipeline)
 
 type dnsRecordSet struct {
+	A     []string `json:"a"`
 	AAAA  []string `json:"aaaa"`
 	CNAME []string `json:"cname"`
 	MX    []string `json:"mx"`
@@ -287,7 +288,7 @@ func (h *Handlers) DNSRecordsByURL(w http.ResponseWriter, r *http.Request) {
 }
 
 func lookupDNSRecordSet(ctx context.Context, hostname string, addrs []string) dnsRecordSet {
-	set := dnsRecordSet{AAAA: aaaaFromAddrs(addrs)}
+	set := dnsRecordSet{A: aFromAddrs(addrs), AAAA: aaaaFromAddrs(addrs)}
 
 	var wg sync.WaitGroup
 	wg.Add(4)
@@ -299,6 +300,16 @@ func lookupDNSRecordSet(ctx context.Context, hostname string, addrs []string) dn
 
 	wg.Wait()
 	return set
+}
+
+func aFromAddrs(addrs []string) []string {
+	out := make([]string, 0)
+	for _, a := range addrs {
+		if ip := net.ParseIP(a); ip != nil && ip.To4() != nil {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 func aaaaFromAddrs(addrs []string) []string {

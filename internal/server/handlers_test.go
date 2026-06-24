@@ -413,6 +413,7 @@ func TestDNSRecordsByURL_ResolvesKnownHost(t *testing.T) {
 		Hostname string `json:"hostname"`
 		Resolved bool   `json:"resolved"`
 		Records  *struct {
+			A     []string `json:"a"`
 			AAAA  []string `json:"aaaa"`
 			CNAME []string `json:"cname"`
 			MX    []string `json:"mx"`
@@ -428,6 +429,9 @@ func TestDNSRecordsByURL_ResolvesKnownHost(t *testing.T) {
 	}
 	if !resp.Resolved {
 		t.Fatalf("expected resolved=true for google.com")
+	}
+	if resp.Records == nil || len(resp.Records.A) == 0 {
+		t.Fatalf("expected at least one A record for google.com, got %+v", resp.Records)
 	}
 	if resp.Records == nil || len(resp.Records.NS) == 0 {
 		t.Fatalf("expected at least one NS record for google.com, got %+v", resp.Records)

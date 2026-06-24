@@ -773,11 +773,11 @@ html.dark {
 }
 
 .dns-records-grid {
-  @apply flex flex-wrap gap-x-8 gap-y-4 mt-1;
+  @apply flex flex-col gap-3 mt-1;
 }
 
 .dns-record-block {
-  @apply flex flex-col gap-1 min-w-[140px];
+  @apply flex flex-col gap-1 pb-3 border-b border-stone-border last:border-b-0 last:pb-0;
 }
 
 .dns-record-type {

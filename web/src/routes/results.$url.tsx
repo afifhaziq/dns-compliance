@@ -47,6 +47,7 @@ function EmptyIcon() {
 }
 
 const DNS_RECORD_LABELS: ReadonlyArray<readonly [keyof DnsRecordSet, string]> = [
+  ['a', 'A'],
   ['aaaa', 'AAAA'],
   ['cname', 'CNAME'],
   ['mx', 'MX'],
@@ -87,7 +88,7 @@ function DnsRecordsPanel({ data, loading }: { data: DnsRecordsResponse | null; l
       <p className="dash-label">DNS Records</p>
       <div className="dns-records-grid">
         {DNS_RECORD_LABELS.map(([key, label]) => {
-          const values = records[key]
+          const values = records[key] ?? []
           return (
             <div key={key} className="dns-record-block">
               <span className="dns-record-type">{label}</span>

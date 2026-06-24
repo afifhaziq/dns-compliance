@@ -1,4 +1,5 @@
 export interface DnsRecordSet {
+  a: string[]
   aaaa: string[]
   cname: string[]
   mx: string[]
