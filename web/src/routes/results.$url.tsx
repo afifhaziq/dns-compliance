@@ -2,8 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { fetchDnsServers } from '../api/dns-servers'
+import { fetchDnsRecords } from '../api/dns-records'
+import type { DnsRecordSet, DnsRecordsResponse } from '../api/dns-records'
 import { fetchHeatmapByUrlAndYear, fetchResultsByUrl } from '../api/results'
 import type { DailyComplianceStat, DNSServer, ScanResult } from '../api/types'
+import { getCachedDnsRecords, setCachedDnsRecords } from '@/lib/dns-records-cache'
 import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
 import { HeatmapChart } from '@/components/charts/heatmap'
 import { HeatmapChartLoading } from '@/components/charts/heatmap/heatmap-chart-loading'
@@ -40,6 +43,66 @@ function EmptyIcon() {
       <path d="M40 12H32V4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M14 18H26M14 24H22" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
+  )
+}
+
+const DNS_RECORD_LABELS: ReadonlyArray<readonly [keyof DnsRecordSet, string]> = [
+  ['aaaa', 'AAAA'],
+  ['cname', 'CNAME'],
+  ['mx', 'MX'],
+  ['txt', 'TXT'],
+  ['ns', 'NS'],
+]
+
+function DnsRecordsPanel({ data, loading }: { data: DnsRecordsResponse | null; loading: boolean }) {
+  if (loading) {
+    return (
+      <div className="dash-section dns-records-panel">
+        <p className="dash-label">DNS Records</p>
+        <div className="dns-records-grid">
+          {DNS_RECORD_LABELS.map(([key]) => (
+            <div key={key} className="dns-record-block">
+              <span className="skeleton" style={{ width: 60, height: 11 }} />
+              <span className="skeleton" style={{ width: 120, height: 14, marginTop: 6 }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (!data || !data.resolved || !data.records) {
+    return (
+      <div className="dash-section dns-records-panel">
+        <p className="dash-label">DNS Records</p>
+        <p className="dns-records-error">Unable to resolve DNS records for this host.</p>
+      </div>
+    )
+  }
+
+  const records = data.records
+
+  return (
+    <div className="dash-section dns-records-panel">
+      <p className="dash-label">DNS Records</p>
+      <div className="dns-records-grid">
+        {DNS_RECORD_LABELS.map(([key, label]) => {
+          const values = records[key]
+          return (
+            <div key={key} className="dns-record-block">
+              <span className="dns-record-type">{label}</span>
+              {values.length === 0 ? (
+                <span className="empty-cell">—</span>
+              ) : (
+                <span className="dns-record-values">
+                  {values.map((v, i) => <span key={i} className="ip-value">{v}</span>)}
+                </span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -115,6 +178,9 @@ function URLHistoryPage() {
   const [dnsServerList, setDnsServerList] = useState<DNSServer[]>([])
   const [dnsServerListLoading, setDnsServerListLoading] = useState(true)
 
+  const [dnsRecords, setDnsRecords] = useState<DnsRecordsResponse | null>(null)
+  const [dnsRecordsLoading, setDnsRecordsLoading] = useState(true)
+
   const loadYear = useCallback(async (year: number) => {
     try {
       setYearLoading(true)
@@ -146,6 +212,27 @@ function URLHistoryPage() {
     [dnsServerList],
   )
 
+  // Fetches once per page visit; a sessionStorage cache (keyed by hostname,
+  // not full URL) means revisiting this page later in the same tab skips
+  // the network call entirely — these records don't change fast enough to
+  // need re-fetching on every visit.
+  useEffect(() => {
+    const cached = getCachedDnsRecords(hostname)
+    if (cached) {
+      setDnsRecords(cached)
+      setDnsRecordsLoading(false)
+      return
+    }
+    setDnsRecordsLoading(true)
+    fetchDnsRecords(url)
+      .then(data => {
+        setDnsRecords(data)
+        setCachedDnsRecords(hostname, data)
+      })
+      .catch(() => setDnsRecords({ hostname, resolved: false }))
+      .finally(() => setDnsRecordsLoading(false))
+  }, [url, hostname])
+
   const filtered = useMemo(() => {
     return results.filter(r => {
       if (dnsFilter !== 'all' && r.dns_server.name !== dnsFilter) return false
@@ -166,6 +253,8 @@ function URLHistoryPage() {
         <h1 className="page-title">{hostname}</h1>
         <p className="page-subtitle">{url} · Last 7 days</p>
       </div>
+
+      <DnsRecordsPanel data={dnsRecords} loading={dnsRecordsLoading} />
 
       {(dnsServerListLoading || heatmapDnsServers.length > 0) && (
         <div className="dash-section">

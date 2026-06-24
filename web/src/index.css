@@ -766,6 +766,32 @@ html.dark {
   @apply border border-stone-border rounded-lg overflow-hidden;
 }
 
+/* ─── DNS Records Panel ──────────────────────────────────────────────────── */
+
+.dns-records-panel {
+  @apply pb-2;
+}
+
+.dns-records-grid {
+  @apply flex flex-wrap gap-x-8 gap-y-4 mt-1;
+}
+
+.dns-record-block {
+  @apply flex flex-col gap-1 min-w-[140px];
+}
+
+.dns-record-type {
+  @apply text-[11px] font-semibold tracking-[0.06em] uppercase text-stone-muted;
+}
+
+.dns-record-values {
+  @apply flex flex-col gap-0.5;
+}
+
+.dns-records-error {
+  @apply text-sm text-stone-muted mt-1;
+}
+
 /* ─── Server Status Table ────────────────────────────────────────────────── */
 
 .server-table {
