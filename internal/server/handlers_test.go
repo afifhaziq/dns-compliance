@@ -978,3 +978,122 @@ func TestLogout_ClearsSession(t *testing.T) {
 		t.Fatalf("expected 401 after logout, got %d", w2.Code)
 	}
 }
+
+// Admin: departments and users
+
+func TestCreateDepartment_AdminOnly(t *testing.T) {
+	store := &fullMockStore{}
+	nonAdmin := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]string{"name": "Legal"})
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/departments", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(nonAdmin)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-admin, got %d", w.Code)
+	}
+
+	admin := adminCookie(store)
+	req2 := httptest.NewRequest(http.MethodPost, "/api/admin/departments", bytes.NewReader(body))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.AddCookie(admin)
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for admin, got %d: %s", w2.Code, w2.Body.String())
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/admin/departments", nil)
+	listReq.AddCookie(admin)
+	listW := httptest.NewRecorder()
+	r.ServeHTTP(listW, listReq)
+	var departments []db.Department
+	json.NewDecoder(listW.Body).Decode(&departments)
+	if len(departments) != 1 || departments[0].Name != "Legal" {
+		t.Fatalf("expected the new department to be listed, got %v", departments)
+	}
+}
+
+func TestCreateUser_RequiresDepartmentForNonAdmin(t *testing.T) {
+	store := &fullMockStore{}
+	admin := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]any{"username": "bob", "password": "pw12345", "is_admin": false})
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/users", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(admin)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when department_id is omitted for a non-admin user, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateUser_Success(t *testing.T) {
+	store := &fullMockStore{departments: []db.Department{{ID: 1, Name: "CMOD"}}}
+	admin := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]any{
+		"username": "bob", "password": "pw12345", "is_admin": false, "department_id": 1,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/users", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(admin)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var u db.User
+	json.NewDecoder(w.Body).Decode(&u)
+	if u.Username != "bob" || u.DepartmentID == nil || *u.DepartmentID != 1 {
+		t.Fatalf("unexpected created user: %+v", u)
+	}
+	if u.PasswordHash != "" {
+		t.Fatalf("expected PasswordHash to never be serialized in the API response, got %q", u.PasswordHash)
+	}
+	stored := store.users[len(store.users)-1]
+	if stored.PasswordHash == "" || stored.PasswordHash == "pw12345" {
+		t.Fatalf("expected the stored password to be hashed, not stored in plaintext")
+	}
+
+	// The new user can actually log in with the password they were given.
+	loginBody, _ := json.Marshal(map[string]string{"username": "bob", "password": "pw12345"})
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginW := httptest.NewRecorder()
+	r.ServeHTTP(loginW, loginReq)
+	if loginW.Code != http.StatusOK {
+		t.Fatalf("expected the newly created user to be able to log in, got %d: %s", loginW.Code, loginW.Body.String())
+	}
+}
+
+func TestDeleteUser_AdminOnly(t *testing.T) {
+	store := &fullMockStore{users: []db.User{{ID: 5, Username: "bob"}}}
+	nonAdmin := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/admin/users/5", nil)
+	req.AddCookie(nonAdmin)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-admin, got %d", w.Code)
+	}
+
+	admin := adminCookie(store)
+	req2 := httptest.NewRequest(http.MethodDelete, "/api/admin/users/5", nil)
+	req2.AddCookie(admin)
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for admin, got %d: %s", w2.Code, w2.Body.String())
+	}
+}
