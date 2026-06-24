@@ -7,6 +7,7 @@ import (
 
 	"github.com/afif/dns-tracking/internal/db"
 	"github.com/afif/dns-tracking/internal/storage"
+	"github.com/afif/dns-tracking/internal/urlnorm"
 	pb "github.com/afif/dns-tracking/proto"
 )
 
@@ -44,9 +45,20 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 	}
 
 	for _, r := range report.Results {
+		// urls.url is stored normalized; r.Url comes from the crawler as
+		// whatever raw string was fed into it, so normalize defensively
+		// before the lookup. URLValue itself stays raw — it's just for
+		// display.
+		urlID := urlIDByValue[r.Url]
+		if urlID == 0 {
+			if norm, err := urlnorm.Normalize(r.Url); err == nil {
+				urlID = urlIDByValue[norm]
+			}
+		}
+
 		result := db.ScanResult{
 			ScanRunID:   runID,
-			URLID:       urlIDByValue[r.Url],
+			URLID:       urlID,
 			URLValue:    r.Url,
 			DNSServerID: serverByName[r.DnsServer],
 			Compliant:   r.Compliant,
