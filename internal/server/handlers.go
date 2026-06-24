@@ -35,7 +35,7 @@ func buildProgressPayload(ctx context.Context, store db.Store) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	urls, err := store.ListURLs(ctx)
+	urls, err := store.ListWatchedURLs(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -56,10 +56,24 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-// URLs
+// URLs (department watchlist scope — admin sees the global pool, everyone
+// else sees only their own department's watchlist)
 
 func (h *Handlers) ListURLs(w http.ResponseWriter, r *http.Request) {
-	urls, err := h.store.ListURLs(r.Context())
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	var urls []db.URL
+	var err error
+	switch {
+	case user.IsAdmin:
+		urls, err = h.store.ListURLs(r.Context())
+	case user.DepartmentID != nil:
+		urls, err = h.store.ListDepartmentURLs(r.Context(), *user.DepartmentID)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -67,15 +81,41 @@ func (h *Handlers) ListURLs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, urls)
 }
 
-func (h *Handlers) CreateURL(w http.ResponseWriter, r *http.Request) {
+// AddToWatchlist gets-or-creates the URL by normalized value and links it to
+// a department's watchlist. Non-admins are scoped to their own department;
+// admins have no department of their own, so they must specify one.
+func (h *Handlers) AddToWatchlist(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
 	var body struct {
-		URL string `json:"url"`
+		URL          string `json:"url"`
+		DepartmentID *uint  `json:"department_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" {
 		writeError(w, http.StatusBadRequest, "url is required")
 		return
 	}
-	u, err := h.store.CreateURL(r.Context(), body.URL)
+
+	var departmentID uint
+	if user.IsAdmin {
+		if body.DepartmentID == nil {
+			writeError(w, http.StatusBadRequest, "department_id is required")
+			return
+		}
+		departmentID = *body.DepartmentID
+	} else {
+		if user.DepartmentID == nil {
+			writeError(w, http.StatusForbidden, "user has no department")
+			return
+		}
+		departmentID = *user.DepartmentID
+	}
+
+	u, err := h.store.AddURLToWatchlist(r.Context(), departmentID, body.URL)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -83,14 +123,47 @@ func (h *Handlers) CreateURL(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, u)
 }
 
-func (h *Handlers) DeleteURL(w http.ResponseWriter, r *http.Request) {
+// RemoveFromWatchlist unlinks a URL from a department's watchlist only —
+// the URL row and its scan history are untouched, so other departments
+// watching the same domain (or anyone re-adding it later) keep full
+// history. 404s if the URL wasn't actually on that department's watchlist.
+func (h *Handlers) RemoveFromWatchlist(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
 	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	if err := h.store.DeleteURL(r.Context(), uint(id)); err != nil {
+
+	var departmentID uint
+	if user.IsAdmin {
+		raw := r.URL.Query().Get("department_id")
+		parsed, parseErr := strconv.ParseUint(raw, 10, 64)
+		if parseErr != nil {
+			writeError(w, http.StatusBadRequest, "department_id query param is required")
+			return
+		}
+		departmentID = uint(parsed)
+	} else {
+		if user.DepartmentID == nil {
+			writeError(w, http.StatusForbidden, "user has no department")
+			return
+		}
+		departmentID = *user.DepartmentID
+	}
+
+	removed, err := h.store.RemoveURLFromWatchlist(r.Context(), departmentID, uint(id))
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !removed {
+		writeError(w, http.StatusNotFound, "url not on this department's watchlist")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -179,7 +252,20 @@ func (h *Handlers) ScanStatus(w http.ResponseWriter, r *http.Request) {
 // Results
 
 func (h *Handlers) LatestResults(w http.ResponseWriter, r *http.Request) {
-	results, err := h.store.LatestResults(r.Context())
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	var results []db.ScanResult
+	var err error
+	switch {
+	case user.IsAdmin:
+		results, err = h.store.LatestResults(r.Context())
+	case user.DepartmentID != nil:
+		results, err = h.store.LatestResultsForDepartment(r.Context(), *user.DepartmentID)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -187,10 +273,42 @@ func (h *Handlers) LatestResults(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, results)
 }
 
+// requireDomainOwnership 404s non-admins who request a domain not on their
+// own department's watchlist — a 404 rather than 403 so the response
+// doesn't confirm the domain even exists to a department that shouldn't
+// know about it.
+func requireDomainOwnership(h *Handlers, w http.ResponseWriter, r *http.Request, urlValue string) (ok bool) {
+	user, authed := userFromContext(r.Context())
+	if !authed {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return false
+	}
+	if user.IsAdmin {
+		return true
+	}
+	if user.DepartmentID == nil {
+		writeError(w, http.StatusNotFound, "not found")
+		return false
+	}
+	owned, err := h.store.URLOwnedByDepartment(r.Context(), *user.DepartmentID, urlValue)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return false
+	}
+	if !owned {
+		writeError(w, http.StatusNotFound, "not found")
+		return false
+	}
+	return true
+}
+
 func (h *Handlers) ResultsByURL(w http.ResponseWriter, r *http.Request) {
 	urlValue, err := url.PathUnescape(chi.URLParam(r, "*"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid url")
+		return
+	}
+	if !requireDomainOwnership(h, w, r, urlValue) {
 		return
 	}
 
@@ -220,6 +338,9 @@ func (h *Handlers) HeatmapByURL(w http.ResponseWriter, r *http.Request) {
 	urlValue, err := url.PathUnescape(chi.URLParam(r, "*"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid url")
+		return
+	}
+	if !requireDomainOwnership(h, w, r, urlValue) {
 		return
 	}
 
@@ -427,7 +548,7 @@ func (h *Handlers) ScanProgress(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	urls, err := h.store.ListURLs(r.Context())
+	urls, err := h.store.ListWatchedURLs(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

@@ -32,6 +32,9 @@ func main() {
 	crawlerPath  := flag.String("crawler-path", envOr("CRAWLER_PATH", "./crawler"), "path to crawler binary")
 	seedFile     := flag.String("seed-dns", "dns-server.yaml", "YAML file to seed DNS servers on first run; empty to skip")
 	intervalMin  := flag.Int("interval", 60, "scan interval in minutes")
+	cookieSecure := flag.Bool("cookie-secure", envOr("COOKIE_SECURE", "true") == "true", "mark the session cookie Secure (disable for local plain-HTTP dev)")
+	bootstrapAdminUser := flag.String("bootstrap-admin-username", envOr("BOOTSTRAP_ADMIN_USERNAME", ""), "username for the bootstrap admin, created only if the users table is empty")
+	bootstrapAdminPass := flag.String("bootstrap-admin-password", envOr("BOOTSTRAP_ADMIN_PASSWORD", ""), "password for the bootstrap admin, created only if the users table is empty")
 	flag.Parse()
 
 	// Connect to PostgreSQL and run AutoMigrate.
@@ -39,7 +42,25 @@ func main() {
 	if err != nil {
 		log.Fatalf("db connect: %v", err)
 	}
+
+	// One-time idempotent backfill: canonicalize any pre-existing urls.url
+	// rows and merge post-normalization duplicates, before anything else
+	// reads from the urls table.
+	if err := db.NormalizeAndDedupeURLs(context.Background(), gormDB); err != nil {
+		log.Fatalf("normalize urls: %v", err)
+	}
+
+	if err := db.SeedDepartments(gormDB); err != nil {
+		log.Printf("seed departments: %v", err)
+	}
+
 	store := db.NewStore(gormDB)
+
+	// Bootstrap admin — without this, a fresh deployment has no way to log
+	// in at all. No-op once the users table is non-empty.
+	if err := db.SeedAdmin(gormDB, *bootstrapAdminUser, *bootstrapAdminPass); err != nil {
+		log.Printf("seed bootstrap admin: %v", err)
+	}
 
 	// Seed DNS servers from YAML if the table is empty.
 	if *seedFile != "" {
@@ -89,7 +110,7 @@ func main() {
 
 	// HTTP server — REST API for the frontend.
 	r := chi.NewRouter()
-	server.RegisterRoutes(r, store, sc, broadcaster)
+	server.RegisterRoutes(r, store, sc, broadcaster, *cookieSecure)
 
 	httpSrv := &http.Server{Addr: *httpAddr, Handler: r}
 	go func() {

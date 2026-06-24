@@ -39,6 +39,7 @@ type Store interface {
 	ListUsers(ctx context.Context) ([]User, error)
 	CreateUser(ctx context.Context, u User) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (*User, error)
+	GetUserByID(ctx context.Context, id uint) (*User, error)
 	DeleteUser(ctx context.Context, id uint) error
 
 	// Sessions

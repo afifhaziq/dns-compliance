@@ -42,7 +42,7 @@ func (c *completionCapture) CompleteScanRun(_ context.Context, id uint, _ string
 	return nil
 }
 func (c *completionCapture) ActiveScanRun(_ context.Context) (*db.ScanRun, error) { return nil, nil }
-func (c *completionCapture) ListURLs(_ context.Context) ([]db.URL, error) {
+func (c *completionCapture) ListWatchedURLs(_ context.Context) ([]db.URL, error) {
 	return []db.URL{{ID: 1, URL: "https://example.com"}}, nil
 }
 func (c *completionCapture) ListDNSServers(_ context.Context) ([]db.DNSServer, error) {

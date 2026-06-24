@@ -260,6 +260,18 @@ func (s *postgresStore) GetUserByUsername(ctx context.Context, username string) 
 	return &u, nil
 }
 
+func (s *postgresStore) GetUserByID(ctx context.Context, id uint) (*User, error) {
+	var u User
+	err := s.db.WithContext(ctx).Preload("Department").First(&u, id).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
 func (s *postgresStore) DeleteUser(ctx context.Context, id uint) error {
 	return s.db.WithContext(ctx).Delete(&User{}, id).Error
 }

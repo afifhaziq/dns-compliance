@@ -578,3 +578,45 @@ func TestURLOwnedByDepartment(t *testing.T) {
 		t.Fatal("expected CRD to NOT own example.com")
 	}
 }
+
+func TestCreateUserAndGetByUsernameAndID(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	dept, _ := s.CreateDepartment(ctx, "CMOD")
+	deptID := dept.ID
+	created, err := s.CreateUser(ctx, db.User{Username: "alice", PasswordHash: "hash", DepartmentID: &deptID})
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if created.ID == 0 {
+		t.Fatal("expected non-zero ID")
+	}
+
+	byUsername, err := s.GetUserByUsername(ctx, "alice")
+	if err != nil {
+		t.Fatalf("GetUserByUsername: %v", err)
+	}
+	if byUsername == nil || byUsername.ID != created.ID {
+		t.Fatalf("expected to find the created user by username, got %v", byUsername)
+	}
+	if byUsername.Department == nil || byUsername.Department.Name != "CMOD" {
+		t.Fatalf("expected Department to be preloaded, got %v", byUsername.Department)
+	}
+
+	byID, err := s.GetUserByID(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetUserByID: %v", err)
+	}
+	if byID == nil || byID.Username != "alice" {
+		t.Fatalf("expected to find the created user by id, got %v", byID)
+	}
+
+	missing, err := s.GetUserByID(ctx, 99999)
+	if err != nil {
+		t.Fatalf("GetUserByID for missing id should not error: %v", err)
+	}
+	if missing != nil {
+		t.Fatalf("expected nil for a non-existent user id, got %v", missing)
+	}
+}

@@ -38,7 +38,7 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 		serverByName[srv.Name] = srv.ID
 	}
 
-	urls, _ := s.store.ListURLs(ctx)
+	urls, _ := s.store.ListWatchedURLs(ctx)
 	urlIDByValue := make(map[string]uint, len(urls))
 	for _, u := range urls {
 		urlIDByValue[u.URL] = u.ID
