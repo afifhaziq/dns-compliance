@@ -31,7 +31,7 @@ export function GlassNavbar({ actions }: GlassNavbarProps) {
   const isActive = (path: string) => location.pathname === path
 
   return (
-    <div className="sticky top-0 z-50 px-4 pt-3 pb-1" style={{ background: 'var(--stone-nav)' }}>
+    <div className="sticky top-0 z-50 px-4 pt-3 pb-1" >
       <motion.nav
         initial={{ y: -48, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}

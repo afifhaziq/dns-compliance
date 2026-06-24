@@ -365,7 +365,7 @@ html.dark {
 /* ─── Top Nav ────────────────────────────────────────────────────────────── */
 
 .nav {
-  @apply sticky top-0 z-[200] bg-stone-nav min-h-11 flex items-center flex-wrap px-6 pt-2 pb-0 gap-6
+  @apply sticky top-0 z-[200] bg-background min-h-11 flex items-center flex-wrap px-6 pt-2 pb-0 gap-6
     max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:gap-4 max-sm:px-4 max-sm:[scrollbar-width:none];
 }
 

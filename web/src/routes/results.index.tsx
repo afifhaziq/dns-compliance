@@ -28,7 +28,7 @@ function ResultsPage() {
   const subtitle = useMemo(() => (lastScan ? `Last scan: ${lastScan}` : null), [lastScan])
 
   return (
-    <>
+    <div className="mx-20">
       {/* Page header */}
       <div className="page-header">
         <h1 className="page-title">Compliance Results</h1>
@@ -51,6 +51,6 @@ function ResultsPage() {
           <button className="btn-primary" onClick={load}>Retry</button>
         </div>
       )}
-    </>
+    </div>
   )
 }

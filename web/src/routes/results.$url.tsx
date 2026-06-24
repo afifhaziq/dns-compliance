@@ -55,60 +55,67 @@ const DNS_RECORD_LABELS: ReadonlyArray<readonly [keyof DnsRecordSet, string]> = 
   ['ns', 'NS'],
 ]
 
-function DnsRecordsPanel({ data, loading }: { data: DnsRecordsResponse | null; loading: boolean }) {
-  if (loading) {
-    return (
-      <div className="dash-section dns-records-panel">
-        <p className="dash-label">DNS Records</p>
-        <div className="dns-records-grid">
-          {DNS_RECORD_LABELS.map(([key]) => (
-            <div key={key} className="dns-record-block">
-              <span className="skeleton" style={{ width: 60, height: 11 }} />
-              <span className="skeleton" style={{ width: 120, height: 14, marginTop: 6 }} />
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
-  if (!data || !data.resolved || !data.records) {
-    return (
-      <div className="dash-section dns-records-panel">
-        <p className="dash-label">DNS Records</p>
-        <p className="dns-records-error">Unable to resolve DNS records for this host.</p>
-        {data?.resolver_ip && (
-          <p className="dns-records-resolver">Looked up via host DNS resolver {data.resolver_ip}</p>
-        )}
-      </div>
-    )
-  }
-
-  const records = data.records
+function DnsRecordsPanel({
+  data,
+  loading,
+}: {
+  data: DnsRecordsResponse | null
+  loading: boolean
+}) {
+  const resolver = data?.resolver_ip
+  const hasRecords = data?.resolved && data.records
 
   return (
     <div className="dash-section dns-records-panel">
       <p className="dash-label">DNS Records</p>
-      {data.resolver_ip && (
-        <p className="dns-records-resolver">Looked up via host DNS resolver {data.resolver_ip}</p>
+
+      {!loading && resolver && (
+        <p className="dns-records-resolver">
+          Looked up via host DNS resolver {resolver}
+        </p>
       )}
-      <div className="dns-records-grid">
-        {DNS_RECORD_LABELS.map(([key, label]) => {
-          const values = records[key] ?? []
-          return (
+
+      {loading ? (
+        <div className="dns-records-grid">
+          {DNS_RECORD_LABELS.map(([key]) => (
             <div key={key} className="dns-record-block">
-              <span className="dns-record-type">{label}</span>
-              {values.length === 0 ? (
-                <span className="empty-cell">—</span>
-              ) : (
-                <span className="dns-record-values">
-                  {values.map((v, i) => <span key={i} className="ip-value">{v}</span>)}
-                </span>
-              )}
+              <span className="skeleton" style={{ width: 60, height: 11 }} />
+              <span
+                className="skeleton"
+                style={{ width: 120, height: 14, marginTop: 6 }}
+              />
             </div>
-          )
-        })}
-      </div>
+          ))}
+        </div>
+      ) : !hasRecords ? (
+        <p className="dns-records-error">
+          Unable to resolve DNS records for this host.
+        </p>
+      ) : (
+        <div className="dns-records-grid">
+          {DNS_RECORD_LABELS.map(([key, label]) => {
+            const values = data.records[key] ?? []
+
+            return (
+              <div key={key} className="dns-record-block">
+                <span className="dns-record-type">{label}</span>
+
+                {values.length ? (
+                  <span className="dns-record-values">
+                    {values.map((value, index) => (
+                      <span key={index} className="ip-value">
+                        {value}
+                      </span>
+                    ))}
+                  </span>
+                ) : (
+                  <span className="empty-cell">—</span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -250,13 +257,13 @@ function URLHistoryPage() {
   }, [results, statusFilter, dnsFilter])
 
   return (
-    <>
+    <div className="mx-60">
       <Link to="/" className="back-link mt-8">
         <ArrowLeftIcon className="back-link-icon"  />
         Overview
       </Link>
-
-      <div className="page-header py-6 px-0">
+      
+      <div className="page-header px-0">
         <h1 className="page-title">{hostname}</h1>
         <p className="page-subtitle">{url} · Last 7 days</p>
       </div>
@@ -440,6 +447,6 @@ function URLHistoryPage() {
           </table>
         )}
       </div>
-    </>
+    </div>
   )
 }
