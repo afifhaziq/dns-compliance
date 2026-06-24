@@ -358,9 +358,9 @@ html.dark {
 
 /* ─── App Shell ──────────────────────────────────────────────────────────── */
 
-#root {
+/* #root {
   @apply min-h-dvh flex flex-col;
-}
+} */
 
 /* ─── Top Nav ────────────────────────────────────────────────────────────── */
 
@@ -415,6 +415,7 @@ html.dark {
     focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink focus-visible:outline-offset-2;
 }
 
+
 .btn-ghost {
   @apply inline-flex items-center py-1.5 px-3.5 text-[13px] font-medium text-foreground bg-transparent border border-stone-border rounded-lg whitespace-nowrap
     transition-[background-color,border-color] duration-150 ease-snappy
@@ -438,6 +439,7 @@ html.dark {
 
 .page-header {
   @apply px-6 pt-8 flex items-baseline gap-3;
+  padding-inline: 0;
 }
 
 .page-title {
@@ -514,7 +516,7 @@ html.dark {
 /* ─── Results Table ──────────────────────────────────────────────────────── */
 
 .results-wrap {
-  @apply px-6 py-4 pb-12 flex-1 overflow-x-auto;
+  @apply  flex-1 overflow-x-auto;
 }
 
 .results-table {
@@ -526,7 +528,7 @@ html.dark {
 }
 
 .results-table th {
-  @apply py-2 px-4 text-[11px] font-semibold tracking-[0.06em] uppercase text-stone-muted text-left border-b border-stone-border;
+  @apply py-2 px-4 text-[11px] font-semibold tracking-[0.06em] uppercase text-stone-muted text-center border-b border-stone-border;
 }
 
 .col-expand {
@@ -546,7 +548,7 @@ html.dark {
 }
 
 .col-evidence {
-  @apply w-[130px];
+  @apply w-[130px] text-center;
 }
 
 .col-last-scanned {
@@ -754,7 +756,7 @@ html.dark {
 }
 
 .dash-section {
-  @apply px-6 pt-6;
+  
 }
 
 .dash-label {

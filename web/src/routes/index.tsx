@@ -420,7 +420,7 @@ function DashboardPage() {
   }
 
   return (
-    <>
+    <div className="mx-20">
       <div className="page-header">
         <h1 className="page-title">Overview</h1>
         {subtitleParts.length > 0 && (
@@ -451,7 +451,7 @@ function DashboardPage() {
         <div className="dash-body">
 
           {/* DNS Server Status */}
-          <div className="dash-section">
+          <div className="dash-section mt-4">
             <p className="dash-label">DNS Server Status</p>
             {loading ? (
               <ServerStatusSkeleton count={3} />
@@ -466,8 +466,8 @@ function DashboardPage() {
           </div>
 
           {/* Compliance Results */}
-          <div className="dash-section flex flex-col items-stretch w-full gap-4">
-            <p className="dash-label">Compliance Results</p>
+          <div className="dash-section flex flex-col items-stretch w-full gap-4 mt-8">
+            <h1 className='page-title'>Compliance Results</h1>
 
             {/* FIX 1: Applied Flexbox to group the filter row tightly to the left */}
             <div className="filter-bar flex flex-row items-center justify-start gap-4 w-full">
@@ -475,6 +475,7 @@ function DashboardPage() {
               <ToggleGroup
                 type="single"
                 value={statusFilter}
+                size='sm'
                 onValueChange={v => { if (v) setStatusFilter(v as StatusFilter) }}
                 variant="outline"
                 aria-labelledby="status-label"
@@ -553,6 +554,6 @@ function DashboardPage() {
 
         </div>
       )}
-    </>
+    </div>
   )
 }

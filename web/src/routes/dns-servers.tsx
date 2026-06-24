@@ -211,7 +211,7 @@ function DNSServersPage() {
   }
 
   return (
-    <>
+    <div className="mx-20">
       <div className="page-header">
         <h1 className="page-title">DNS Servers</h1>
         <p className="page-subtitle">{!loading && `${servers.length} configured`}</p>
@@ -297,6 +297,6 @@ function DNSServersPage() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
-    </>
+    </div>
   )
 }

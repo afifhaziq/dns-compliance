@@ -251,12 +251,12 @@ function URLHistoryPage() {
 
   return (
     <>
-      <Link to="/" className="back-link">
-        <ArrowLeftIcon className="back-link-icon" />
+      <Link to="/" className="back-link mt-8">
+        <ArrowLeftIcon className="back-link-icon"  />
         Overview
       </Link>
 
-      <div className="page-header">
+      <div className="page-header py-6 px-0">
         <h1 className="page-title">{hostname}</h1>
         <p className="page-subtitle">{url} · Last 7 days</p>
       </div>

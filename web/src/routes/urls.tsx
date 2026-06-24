@@ -165,7 +165,7 @@ function URLsPage() {
   }
 
   return (
-    <>
+    <div className="mx-20">
       <div className="page-header">
         <h1 className="page-title">Domains</h1>
         <p className="page-subtitle">{!loading && `${urls.length} monitored`}</p>
@@ -249,6 +249,6 @@ function URLsPage() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
-    </>
+    </div>
   )
 }
