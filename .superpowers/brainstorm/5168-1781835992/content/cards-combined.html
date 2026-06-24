@@ -1,0 +1,153 @@
+<h2>Expanded Cards — Combined Layout</h2>
+<p class="subtitle">Three card rows: summary → blocking status → changes & scan health. Does this arrangement work?</p>
+
+<div class="mockup">
+  <div class="mockup-header">Overview page — cards section only</div>
+  <div class="mockup-body" style="padding:0;background:#0d1117;color:#e6edf3;font-family:system-ui,sans-serif;border-radius:6px;overflow:hidden">
+
+    <!-- NAV -->
+    <div style="background:#161b22;border-bottom:1px solid #30363d;padding:10px 20px;display:flex;align-items:center;gap:24px;font-size:12px">
+      <span style="font-weight:700;font-size:13px;color:#e6edf3">DNS Compliance</span>
+      <div style="display:flex;gap:4px">
+        <span style="background:#21262d;border-radius:5px;padding:4px 10px;color:#e6edf3;font-size:11px">Overview</span>
+        <span style="padding:4px 10px;color:#8b949e;font-size:11px">Results</span>
+        <span style="padding:4px 10px;color:#8b949e;font-size:11px">Domains</span>
+        <span style="padding:4px 10px;color:#8b949e;font-size:11px">DNS Servers</span>
+      </div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+        <span style="font-size:10px;color:#3fb950;display:flex;align-items:center;gap:5px"><span style="width:6px;height:6px;background:#3fb950;border-radius:50%;display:inline-block;box-shadow:0 0 6px #3fb950"></span>Last scan: 12 min ago</span>
+        <span style="border:1px solid #30363d;color:#e6edf3;padding:4px 12px;border-radius:6px;font-size:11px">▶ Run Scan</span>
+      </div>
+    </div>
+
+    <div style="padding:20px;display:flex;flex-direction:column;gap:12px">
+
+      <div>
+        <div style="font-size:16px;font-weight:700;color:#e6edf3;letter-spacing:-.02em">Overview</div>
+        <div style="font-size:11px;color:#8b949e;margin-top:2px">142 domains · 5 DNS servers</div>
+      </div>
+
+      <!-- ROW 1: Summary (4 cards) -->
+      <div>
+        <div style="font-size:9px;font-weight:600;letter-spacing:.1em;color:#8b949e;text-transform:uppercase;margin-bottom:8px">Summary</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+
+          <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px">
+            <div style="font-size:9px;color:#8b949e;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">Domains</div>
+            <div style="font-size:28px;font-weight:700;color:#e6edf3;font-family:monospace;line-height:1">142</div>
+            <div style="font-size:9px;color:#8b949e;margin-top:5px">monitored</div>
+          </div>
+
+          <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px">
+            <div style="font-size:9px;color:#8b949e;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">DNS Servers</div>
+            <div style="font-size:28px;font-weight:700;color:#e6edf3;font-family:monospace;line-height:1">5</div>
+            <div style="font-size:9px;color:#8b949e;margin-top:5px">active</div>
+          </div>
+
+          <div style="background:#161b22;border:1px solid #1a3a28;border-top:2px solid #3fb950;border-radius:8px;padding:14px">
+            <div style="font-size:9px;color:#3fb950;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">Compliant</div>
+            <div style="font-size:28px;font-weight:700;color:#3fb950;font-family:monospace;line-height:1">119</div>
+            <div style="font-size:9px;color:#3fb950;margin-top:5px;opacity:.8">83.8% of domains</div>
+          </div>
+
+          <div style="background:#1c1010;border:1px solid #3a1a1a;border-top:2px solid #f85149;border-radius:8px;padding:14px">
+            <div style="font-size:9px;color:#f85149;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">Violations</div>
+            <div style="display:flex;align-items:flex-end;gap:8px">
+              <div style="font-size:28px;font-weight:700;color:#f85149;font-family:monospace;line-height:1">23</div>
+              <div style="font-size:11px;color:#f85149;padding:2px 6px;background:#3a1a1a;border-radius:4px;margin-bottom:3px;font-family:monospace">↑+2</div>
+            </div>
+            <div style="font-size:9px;color:#f85149;margin-top:5px;opacity:.8">16.2% of domains</div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ROW 2: Blocking Status (A) -->
+      <div>
+        <div style="font-size:9px;font-weight:600;letter-spacing:.1em;color:#8b949e;text-transform:uppercase;margin-bottom:8px">Blocking Status</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+
+          <div style="background:#161b22;border:1px solid #1a3a28;border-left:3px solid #3fb950;border-radius:8px;padding:14px">
+            <div style="font-size:9px;color:#3fb950;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">Fully Blocked</div>
+            <div style="font-size:26px;font-weight:700;color:#3fb950;font-family:monospace;line-height:1">89</div>
+            <div style="font-size:9px;color:#3fb950;opacity:.7;margin-top:5px">All servers fail DNS</div>
+            <div style="margin-top:10px">
+              <div style="display:flex;justify-content:space-between;font-size:9px;color:#8b949e;margin-bottom:3px"><span>of total</span><span>62.7%</span></div>
+              <div style="height:3px;background:#21262d;border-radius:2px"><div style="width:63%;height:100%;background:#3fb950;border-radius:2px"></div></div>
+            </div>
+          </div>
+
+          <div style="background:#161b22;border:1px solid #2a2a1a;border-left:3px solid #d29922;border-radius:8px;padding:14px">
+            <div style="font-size:9px;color:#d29922;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">Partially Blocked</div>
+            <div style="font-size:26px;font-weight:700;color:#d29922;font-family:monospace;line-height:1">30</div>
+            <div style="font-size:9px;color:#d29922;opacity:.7;margin-top:5px">Some servers resolve</div>
+            <div style="margin-top:10px">
+              <div style="display:flex;justify-content:space-between;font-size:9px;color:#8b949e;margin-bottom:3px"><span>of total</span><span>21.1%</span></div>
+              <div style="height:3px;background:#21262d;border-radius:2px"><div style="width:21%;height:100%;background:#d29922;border-radius:2px"></div></div>
+            </div>
+          </div>
+
+          <div style="background:#1c1010;border:1px solid #3a1a1a;border-left:3px solid #f85149;border-radius:8px;padding:14px">
+            <div style="font-size:9px;color:#f85149;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">Fully Unblocked</div>
+            <div style="font-size:26px;font-weight:700;color:#f85149;font-family:monospace;line-height:1">23</div>
+            <div style="font-size:9px;color:#f85149;opacity:.7;margin-top:5px">All servers resolve</div>
+            <div style="margin-top:10px">
+              <div style="display:flex;justify-content:space-between;font-size:9px;color:#8b949e;margin-bottom:3px"><span>of total</span><span>16.2%</span></div>
+              <div style="height:3px;background:#21262d;border-radius:2px"><div style="width:16%;height:100%;background:#f85149;border-radius:2px"></div></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ROW 3: Changes (B) + Scan Health (D) — 5 compact cards -->
+      <div>
+        <div style="font-size:9px;font-weight:600;letter-spacing:.1em;color:#8b949e;text-transform:uppercase;margin-bottom:8px">Changes &amp; Scan Health</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px">
+
+          <!-- B: Delta -->
+          <div style="background:#161b22;border:1px solid #3a1a1a;border-radius:8px;padding:12px">
+            <div style="font-size:9px;color:#f85149;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">New Violations</div>
+            <div style="font-size:22px;font-weight:700;color:#f85149;font-family:monospace;line-height:1">+2</div>
+            <div style="font-size:9px;color:#8b949e;margin-top:4px">since last scan</div>
+          </div>
+
+          <div style="background:#161b22;border:1px solid #1a3a28;border-radius:8px;padding:12px">
+            <div style="font-size:9px;color:#3fb950;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">Resolved</div>
+            <div style="font-size:22px;font-weight:700;color:#3fb950;font-family:monospace;line-height:1">0</div>
+            <div style="font-size:9px;color:#8b949e;margin-top:4px">since last scan</div>
+          </div>
+
+          <!-- D: Scan Health -->
+          <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px">
+            <div style="font-size:9px;color:#8b949e;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">Next Scan</div>
+            <div style="font-size:22px;font-weight:700;color:#e6edf3;font-family:monospace;line-height:1">48m</div>
+            <div style="font-size:9px;color:#8b949e;margin-top:4px">auto-scheduled</div>
+          </div>
+
+          <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px">
+            <div style="font-size:9px;color:#8b949e;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">Total Checks</div>
+            <div style="font-size:22px;font-weight:700;color:#e6edf3;font-family:monospace;line-height:1">710</div>
+            <div style="font-size:9px;color:#8b949e;margin-top:4px">142 × 5 servers</div>
+          </div>
+
+          <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px">
+            <div style="font-size:9px;color:#8b949e;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">Error Rate</div>
+            <div style="font-size:22px;font-weight:700;color:#e6edf3;font-family:monospace;line-height:1">0.4%</div>
+            <div style="font-size:9px;color:#8b949e;margin-top:4px">3 timeouts</div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Divider hinting at what follows -->
+      <div style="border-top:1px solid #21262d;padding-top:12px">
+        <div style="font-size:9px;color:#8b949e;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">DNS Server Status</div>
+        <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px;opacity:.5;font-size:11px;color:#8b949e;text-align:center">
+          ↓ Server bars + compliance ring + violations list + recent scans continue below…
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>

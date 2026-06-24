@@ -6,7 +6,7 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [
-    TanStackRouterVite({ routesDirectory: './src/routes', generatedRouteTree: './src/routeTree.gen.ts' }),
+    TanStackRouterVite({ routesDirectory: './src/routes', generatedRouteTree: './src/routeTree.gen.ts', autoCodeSplitting: true }),
     tailwindcss(),
     react(),
   ],

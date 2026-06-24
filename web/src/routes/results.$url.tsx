@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { fetchDnsServers } from '../api/dns-servers'
 import { fetchHeatmapByUrlAndYear, fetchResultsByUrl } from '../api/results'
-import type { DailyComplianceStat, ScanResult } from '../api/types'
+import type { DailyComplianceStat, DNSServer, ScanResult } from '../api/types'
 import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
 import { HeatmapChart } from '@/components/charts/heatmap'
 import { HeatmapChartLoading } from '@/components/charts/heatmap/heatmap-chart-loading'
@@ -111,6 +112,8 @@ function URLHistoryPage() {
   const [selectedYear, setSelectedYear] = useState(currentYear)
   const [heatmapStats, setHeatmapStats] = useState<DailyComplianceStat[]>([])
   const [yearLoading, setYearLoading] = useState(true)
+  const [dnsServerList, setDnsServerList] = useState<DNSServer[]>([])
+  const [dnsServerListLoading, setDnsServerListLoading] = useState(true)
 
   const loadYear = useCallback(async (year: number) => {
     try {
@@ -126,12 +129,22 @@ function URLHistoryPage() {
 
   useEffect(() => { loadYear(selectedYear) }, [loadYear, selectedYear])
 
-  const heatmapDnsServers = useMemo(() => {
-    const seen = new Map<string, string>()
-    for (const s of heatmapStats) seen.set(s.dns_server_name, s.dns_server_name)
-    for (const r of results) seen.set(r.dns_server.name, r.dns_server.name)
-    return Array.from(seen.values()).sort()
-  }, [heatmapStats, results])
+  // Drives which heatmap sections render — the configured DNS server list
+  // (not the scan results) so the count is known before any scan data for
+  // this URL/year has loaded. dnsServerListLoading keeps the section (and
+  // its skeleton) visible while this fetch is still in flight, instead of
+  // hiding everything until it resolves.
+  useEffect(() => {
+    fetchDnsServers()
+      .then(setDnsServerList)
+      .catch(() => setDnsServerList([]))
+      .finally(() => setDnsServerListLoading(false))
+  }, [])
+
+  const heatmapDnsServers = useMemo(
+    () => dnsServerList.map(s => s.name).sort(),
+    [dnsServerList],
+  )
 
   const filtered = useMemo(() => {
     return results.filter(r => {
@@ -154,7 +167,7 @@ function URLHistoryPage() {
         <p className="page-subtitle">{url} · Last 7 days</p>
       </div>
 
-      {heatmapDnsServers.length > 0 && (
+      {(dnsServerListLoading || heatmapDnsServers.length > 0) && (
         <div className="dash-section">
           <div className="heatmap-year-nav">
             <button
@@ -177,7 +190,19 @@ function URLHistoryPage() {
             </button>
           </div>
 
-          {heatmapDnsServers.map(name => {
+          {dnsServerListLoading ? (
+            <div className="heatmap-server-block">
+              <div className="heatmap-server-header">
+                <p className="dash-label">&nbsp;</p>
+              </div>
+              <HeatmapChartLoading
+                data={buildYearHeatmapColumns(selectedYear, new Map())}
+                gap={3}
+                cornerRadius={999}
+                label="Loading compliance history"
+              />
+            </div>
+          ) : heatmapDnsServers.map(name => {
             const serverStats = heatmapStats.filter(s => s.dns_server_name === name)
             const statsByDay = new Map(serverStats.map(s => [s.day, s]))
             const columns = buildYearHeatmapColumns(selectedYear, statsByDay)

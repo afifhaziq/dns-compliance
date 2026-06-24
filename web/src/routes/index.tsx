@@ -466,10 +466,11 @@ function DashboardPage() {
           </div>
 
           {/* Compliance Results */}
-          <div className="dash-section">
+          <div className="dash-section flex flex-col items-stretch w-full gap-4">
             <p className="dash-label">Compliance Results</p>
 
-            <div className="filter-bar">
+            {/* FIX 1: Applied Flexbox to group the filter row tightly to the left */}
+            <div className="filter-bar flex flex-row items-center justify-start gap-4 w-full">
               <span className="filter-label" id="status-label">Status</span>
               <ToggleGroup
                 type="single"
@@ -501,7 +502,8 @@ function DashboardPage() {
               )}
             </div>
 
-            <div className="results-wrap">
+            {/* FIX 2: Explicitly ensure the wrapper matches full width bounds */}
+            <div className="results-wrap w-full">
               {!loading && groups.length === 0 ? (
                 <div className="empty-state">
                   <EmptyIcon />

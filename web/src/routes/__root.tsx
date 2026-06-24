@@ -111,7 +111,7 @@ function RootLayout() {
         }
       />
 
-      <main id="main" className="page">
+      <main id="main" className="max-w-10xl mx-auto">
         <Outlet />
       </main>
 

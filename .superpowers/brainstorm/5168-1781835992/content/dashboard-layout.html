@@ -1,0 +1,192 @@
+<h2>Dashboard — Full Layout Proposal</h2>
+<p class="subtitle">Detailed breakdown of the revamped Overview page. All 5 sections shown.</p>
+
+<div class="mockup">
+  <div class="mockup-header">Overview page — full scroll</div>
+  <div class="mockup-body" style="padding:0;background:#0d1117;color:#e6edf3;font-family:system-ui,sans-serif;border-radius:6px;overflow:hidden">
+
+    <!-- NAV -->
+    <div style="background:#161b22;border-bottom:1px solid #30363d;padding:10px 20px;display:flex;align-items:center;gap:24px;font-size:12px;position:sticky;top:0">
+      <span style="font-weight:700;font-size:13px;color:#e6edf3;letter-spacing:-.01em">DNS Compliance</span>
+      <div style="display:flex;gap:4px">
+        <span style="background:#21262d;border-radius:5px;padding:4px 10px;color:#e6edf3;font-size:11px">Overview</span>
+        <span style="padding:4px 10px;color:#8b949e;font-size:11px">Results</span>
+        <span style="padding:4px 10px;color:#8b949e;font-size:11px">Domains</span>
+        <span style="padding:4px 10px;color:#8b949e;font-size:11px">DNS Servers</span>
+      </div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+        <span style="font-size:10px;color:#3fb950;display:flex;align-items:center;gap:5px">
+          <span style="width:6px;height:6px;background:#3fb950;border-radius:50%;display:inline-block;box-shadow:0 0 6px #3fb950"></span>
+          Last scan: 12 min ago
+        </span>
+        <span style="border:1px solid #30363d;color:#e6edf3;padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer">▶ Run Scan</span>
+        <span style="width:28px;height:28px;border-radius:50%;background:#21262d;border:1px solid #30363d;display:flex;align-items:center;justify-content:center;font-size:13px">☀</span>
+      </div>
+    </div>
+
+    <div style="padding:20px;display:flex;flex-direction:column;gap:16px">
+
+      <!-- SECTION 1: PAGE HEADER -->
+      <div>
+        <div style="font-size:16px;font-weight:700;color:#e6edf3;letter-spacing:-.02em">Overview</div>
+        <div style="font-size:11px;color:#8b949e;margin-top:2px">142 domains · 5 DNS servers · Last scan 12 min ago</div>
+      </div>
+
+      <!-- SECTION 2: STAT CARDS -->
+      <div>
+        <div style="font-size:10px;font-weight:600;letter-spacing:.08em;color:#8b949e;text-transform:uppercase;margin-bottom:8px">Summary</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+          <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px">
+            <div style="font-size:10px;color:#8b949e;margin-bottom:6px">DOMAINS MONITORED</div>
+            <div style="font-size:26px;font-weight:700;color:#e6edf3;font-family:monospace;line-height:1">142</div>
+          </div>
+          <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px">
+            <div style="font-size:10px;color:#8b949e;margin-bottom:6px">DNS SERVERS</div>
+            <div style="font-size:26px;font-weight:700;color:#e6edf3;font-family:monospace;line-height:1">5</div>
+          </div>
+          <div style="background:#161b22;border:1px solid #1a3a28;border-top:2px solid #3fb950;border-radius:8px;padding:14px">
+            <div style="font-size:10px;color:#3fb950;margin-bottom:6px">COMPLIANT</div>
+            <div style="font-size:26px;font-weight:700;color:#3fb950;font-family:monospace;line-height:1">119</div>
+            <div style="font-size:10px;color:#3fb950;margin-top:4px;opacity:.7">83.8%</div>
+          </div>
+          <div style="background:#1c1010;border:1px solid #3a1a1a;border-top:2px solid #f85149;border-radius:8px;padding:14px">
+            <div style="font-size:10px;color:#f85149;margin-bottom:6px">VIOLATIONS</div>
+            <div style="font-size:26px;font-weight:700;color:#f85149;font-family:monospace;line-height:1">23</div>
+            <div style="font-size:10px;color:#f85149;margin-top:4px;opacity:.7">↑ 2 since last scan</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION 3: DNS STATUS + COMPLIANCE RING (side by side) -->
+      <div style="display:grid;grid-template-columns:1fr 280px;gap:8px">
+
+        <!-- DNS Server Status -->
+        <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px">
+          <div style="font-size:10px;font-weight:600;letter-spacing:.08em;color:#8b949e;text-transform:uppercase;margin-bottom:12px">DNS Server Status</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#3fb950;box-shadow:0 0 6px #3fb950;flex-shrink:0"></span>
+              <span style="font-size:12px;color:#e6edf3;width:100px">Cloudflare DoH</span>
+              <div style="flex:1;height:4px;background:#21262d;border-radius:2px;overflow:hidden"><div style="width:95%;height:100%;background:#3fb950;border-radius:2px"></div></div>
+              <span style="font-size:11px;color:#3fb950;font-family:monospace;width:36px;text-align:right">95%</span>
+              <span style="font-size:10px;color:#8b949e;width:50px;text-align:right">135/142</span>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#3fb950;box-shadow:0 0 6px #3fb950;flex-shrink:0"></span>
+              <span style="font-size:12px;color:#e6edf3;width:100px">Google DNS</span>
+              <div style="flex:1;height:4px;background:#21262d;border-radius:2px;overflow:hidden"><div style="width:82%;height:100%;background:#3fb950;border-radius:2px"></div></div>
+              <span style="font-size:11px;color:#3fb950;font-family:monospace;width:36px;text-align:right">82%</span>
+              <span style="font-size:10px;color:#8b949e;width:50px;text-align:right">116/142</span>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#d29922;box-shadow:0 0 6px #d29922;flex-shrink:0"></span>
+              <span style="font-size:12px;color:#e6edf3;width:100px">Cloudflare UDP</span>
+              <div style="flex:1;height:4px;background:#21262d;border-radius:2px;overflow:hidden"><div style="width:74%;height:100%;background:#d29922;border-radius:2px"></div></div>
+              <span style="font-size:11px;color:#d29922;font-family:monospace;width:36px;text-align:right">74%</span>
+              <span style="font-size:10px;color:#8b949e;width:50px;text-align:right">105/142</span>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#d29922;box-shadow:0 0 6px #d29922;flex-shrink:0"></span>
+              <span style="font-size:12px;color:#e6edf3;width:100px">Quad9 DoT</span>
+              <div style="flex:1;height:4px;background:#21262d;border-radius:2px;overflow:hidden"><div style="width:68%;height:100%;background:#d29922;border-radius:2px"></div></div>
+              <span style="font-size:11px;color:#d29922;font-family:monospace;width:36px;text-align:right">68%</span>
+              <span style="font-size:10px;color:#8b949e;width:50px;text-align:right">97/142</span>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#f85149;box-shadow:0 0 6px #f85149;flex-shrink:0"></span>
+              <span style="font-size:12px;color:#e6edf3;width:100px">TM Unifi</span>
+              <div style="flex:1;height:4px;background:#21262d;border-radius:2px;overflow:hidden"><div style="width:61%;height:100%;background:#f85149;border-radius:2px"></div></div>
+              <span style="font-size:11px;color:#f85149;font-family:monospace;width:36px;text-align:right">61%</span>
+              <span style="font-size:10px;color:#8b949e;width:50px;text-align:right">87/142</span>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Overall Compliance Ring -->
+        <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px">
+          <div style="font-size:10px;font-weight:600;letter-spacing:.08em;color:#8b949e;text-transform:uppercase;align-self:flex-start">Overall Compliance</div>
+          <svg width="110" height="110" viewBox="0 0 110 110">
+            <circle cx="55" cy="55" r="45" fill="none" stroke="#21262d" stroke-width="10"/>
+            <circle cx="55" cy="55" r="45" fill="none" stroke="#f85149" stroke-width="10" stroke-dasharray="283" stroke-dashoffset="0" stroke-linecap="round" opacity=".3"/>
+            <circle cx="55" cy="55" r="45" fill="none" stroke="#3fb950" stroke-width="10" stroke-dasharray="237 283" stroke-dashoffset="71" stroke-linecap="round"/>
+            <text x="55" y="50" text-anchor="middle" font-size="22" font-weight="700" fill="#3fb950" font-family="monospace">84%</text>
+            <text x="55" y="66" text-anchor="middle" font-size="10" fill="#8b949e">compliant</text>
+          </svg>
+          <div style="font-size:11px;color:#8b949e;text-align:center;line-height:1.5">
+            <span style="color:#3fb950;font-weight:600">119</span> compliant<br>
+            <span style="color:#f85149;font-weight:600">23</span> violations
+          </div>
+        </div>
+
+      </div>
+
+      <!-- SECTION 4: TOP VIOLATIONS -->
+      <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px">
+        <div style="font-size:10px;font-weight:600;letter-spacing:.08em;color:#8b949e;text-transform:uppercase;margin-bottom:12px">Top Violations</div>
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:5px;background:#1c1010">
+            <span style="width:7px;height:7px;background:#f85149;border-radius:50%;box-shadow:0 0 6px #f85149;flex-shrink:0"></span>
+            <span style="font-family:monospace;font-size:12px;color:#e6edf3;flex:1">thepiratebay.org</span>
+            <span style="font-size:10px;color:#8b949e;background:#21262d;padding:2px 8px;border-radius:3px">5 servers</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:5px">
+            <span style="width:7px;height:7px;background:#f85149;border-radius:50%;box-shadow:0 0 6px #f85149;flex-shrink:0"></span>
+            <span style="font-family:monospace;font-size:12px;color:#e6edf3;flex:1">1337x.to</span>
+            <span style="font-size:10px;color:#8b949e;background:#21262d;padding:2px 8px;border-radius:3px">4 servers</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:5px">
+            <span style="width:7px;height:7px;background:#f85149;border-radius:50%;box-shadow:0 0 6px #f85149;flex-shrink:0"></span>
+            <span style="font-family:monospace;font-size:12px;color:#e6edf3;flex:1">rarbg.to</span>
+            <span style="font-size:10px;color:#8b949e;background:#21262d;padding:2px 8px;border-radius:3px">3 servers</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:5px">
+            <span style="width:7px;height:7px;background:#d29922;border-radius:50%;box-shadow:0 0 6px #d29922;flex-shrink:0"></span>
+            <span style="font-family:monospace;font-size:12px;color:#e6edf3;flex:1">fmovies.to</span>
+            <span style="font-size:10px;color:#8b949e;background:#21262d;padding:2px 8px;border-radius:3px">2 servers</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:5px">
+            <span style="width:7px;height:7px;background:#d29922;border-radius:50%;box-shadow:0 0 6px #d29922;flex-shrink:0"></span>
+            <span style="font-family:monospace;font-size:12px;color:#e6edf3;flex:1">kissanime.ru</span>
+            <span style="font-size:10px;color:#8b949e;background:#21262d;padding:2px 8px;border-radius:3px">2 servers</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION 5: RECENT SCAN ACTIVITY (mini timeline) -->
+      <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px">
+        <div style="font-size:10px;font-weight:600;letter-spacing:.08em;color:#8b949e;text-transform:uppercase;margin-bottom:12px">Recent Scans</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:10px;font-size:11px">
+            <span style="font-family:monospace;color:#8b949e;width:90px">12 min ago</span>
+            <span style="color:#3fb950">Scheduled</span>
+            <span style="margin-left:auto;color:#8b949e">23 violations · 142 domains</span>
+            <span style="background:#1a3a28;color:#3fb950;padding:2px 8px;border-radius:3px;font-size:10px">completed</span>
+          </div>
+          <div style="height:1px;background:#21262d"></div>
+          <div style="display:flex;align-items:center;gap:10px;font-size:11px">
+            <span style="font-family:monospace;color:#8b949e;width:90px">1 hr ago</span>
+            <span style="color:#e6edf3">Manual</span>
+            <span style="margin-left:auto;color:#8b949e">21 violations · 142 domains</span>
+            <span style="background:#1a3a28;color:#3fb950;padding:2px 8px;border-radius:3px;font-size:10px">completed</span>
+          </div>
+          <div style="height:1px;background:#21262d"></div>
+          <div style="display:flex;align-items:center;gap:10px;font-size:11px">
+            <span style="font-family:monospace;color:#8b949e;width:90px">2 hrs ago</span>
+            <span style="color:#e6edf3">Scheduled</span>
+            <span style="margin-left:auto;color:#8b949e">21 violations · 142 domains</span>
+            <span style="background:#1a3a28;color:#3fb950;padding:2px 8px;border-radius:3px;font-size:10px">completed</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:16px">Five sections: stat cards → DNS server bars → compliance ring → top violations → recent scans. Does this layout work for you?</p>
