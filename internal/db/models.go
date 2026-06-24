@@ -10,10 +10,51 @@ type DNSServer struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// URL.URL is expected to already be normalized (bare lowercase hostname,
+// see internal/urlnorm) by the time it reaches the database — normalization
+// happens in the handler/store layer, not via a DB trigger.
 type URL struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	URL       string    `gorm:"uniqueIndex;not null" json:"url"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type Department struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Name      string    `gorm:"uniqueIndex;not null" json:"name"` // "CMOD", "CRD", ...
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// User.DepartmentID is nil for admins (Admin is a cross-cutting flag, not a
+// department of its own) and required for everyone else — enforced in
+// application code rather than a DB constraint.
+type User struct {
+	ID           uint        `gorm:"primaryKey" json:"id"`
+	Username     string      `gorm:"uniqueIndex;not null" json:"username"`
+	PasswordHash string      `gorm:"not null" json:"-"`
+	IsAdmin      bool        `gorm:"not null;default:false" json:"is_admin"`
+	DepartmentID *uint       `gorm:"index" json:"department_id,omitempty"`
+	Department   *Department `gorm:"foreignKey:DepartmentID" json:"department,omitempty"`
+	CreatedAt    time.Time   `json:"created_at"`
+}
+
+type Session struct {
+	Token     string    `gorm:"primaryKey" json:"-"`
+	UserID    uint      `gorm:"not null;index" json:"user_id"`
+	ExpiresAt time.Time `gorm:"not null;index" json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// DepartmentURL links a department's watchlist to a shared URL row. Removing
+// a domain from a watchlist only deletes this row — it never touches URL or
+// ScanResult, so scan history is preserved even once no department watches
+// a domain anymore. Its OnDelete:CASCADE only fires on the admin-only
+// "purge a domain" path that deletes the URL row itself.
+type DepartmentURL struct {
+	DepartmentID uint      `gorm:"primaryKey;autoIncrement:false" json:"department_id"`
+	URLID        uint      `gorm:"primaryKey;autoIncrement:false" json:"url_id"`
+	URL          URL       `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type ScanRun struct {

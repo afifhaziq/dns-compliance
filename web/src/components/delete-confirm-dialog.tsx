@@ -11,11 +11,12 @@ import {
 type Props = {
   open: boolean
   itemLabel: string
+  description?: string
   onConfirm: () => Promise<void>
   onCancel: () => void
 }
 
-export function DeleteConfirmDialog({ open, itemLabel, onConfirm, onCancel }: Props) {
+export function DeleteConfirmDialog({ open, itemLabel, description, onConfirm, onCancel }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -43,7 +44,7 @@ export function DeleteConfirmDialog({ open, itemLabel, onConfirm, onCancel }: Pr
         <DialogHeader>
           <DialogTitle>Delete "{itemLabel}"?</DialogTitle>
           <DialogDescription>
-            This will remove it from all future scans.
+            {description ?? 'This will remove it from all future scans.'}
           </DialogDescription>
         </DialogHeader>
         {error && <p className="form-error">{error}</p>}

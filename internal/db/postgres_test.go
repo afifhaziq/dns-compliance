@@ -34,8 +34,29 @@ func TestCreateAndListURLs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListURLs: %v", err)
 	}
-	if len(urls) != 1 || urls[0].URL != "https://example.com" {
-		t.Fatalf("expected 1 url, got %v", urls)
+	if len(urls) != 1 || urls[0].URL != "example.com" {
+		t.Fatalf("expected 1 normalized url, got %v", urls)
+	}
+}
+
+func TestCreateURL_NormalizesAndDedupes(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	a, err := s.CreateURL(ctx, "https://Example.com/")
+	if err != nil {
+		t.Fatalf("CreateURL: %v", err)
+	}
+	b, err := s.CreateURL(ctx, "example.com")
+	if err != nil {
+		t.Fatalf("CreateURL: %v", err)
+	}
+	if a.ID != b.ID {
+		t.Fatalf("expected both inputs to resolve to the same URL row, got ids %d and %d", a.ID, b.ID)
+	}
+	urls, _ := s.ListURLs(ctx)
+	if len(urls) != 1 {
+		t.Fatalf("expected exactly 1 url row, got %d", len(urls))
 	}
 }
 
@@ -381,5 +402,221 @@ func TestDailyComplianceByURL_GroupsAndComputesLevel(t *testing.T) {
 	// 2/3 exactly is <= 2/3 -> level 3 (medium), per db.DailyComplianceLevel.
 	if stat.Level != 3 {
 		t.Fatalf("expected level 3, got %d", stat.Level)
+	}
+}
+
+func TestAddURLToWatchlist_LinksExistingURL(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	cmod, _ := s.CreateDepartment(ctx, "CMOD")
+	crd, _ := s.CreateDepartment(ctx, "CRD")
+
+	a, err := s.AddURLToWatchlist(ctx, cmod.ID, "https://Example.com/")
+	if err != nil {
+		t.Fatalf("AddURLToWatchlist (cmod): %v", err)
+	}
+	b, err := s.AddURLToWatchlist(ctx, crd.ID, "example.com")
+	if err != nil {
+		t.Fatalf("AddURLToWatchlist (crd): %v", err)
+	}
+	if a.ID != b.ID {
+		t.Fatalf("expected both departments to link the same URL row, got ids %d and %d", a.ID, b.ID)
+	}
+
+	urls, _ := s.ListURLs(ctx)
+	if len(urls) != 1 {
+		t.Fatalf("expected exactly 1 url row, got %d", len(urls))
+	}
+
+	cmodURLs, _ := s.ListDepartmentURLs(ctx, cmod.ID)
+	if len(cmodURLs) != 1 {
+		t.Fatalf("expected CMOD to see 1 watched url, got %d", len(cmodURLs))
+	}
+	crdURLs, _ := s.ListDepartmentURLs(ctx, crd.ID)
+	if len(crdURLs) != 1 {
+		t.Fatalf("expected CRD to see 1 watched url, got %d", len(crdURLs))
+	}
+}
+
+func TestAddURLToWatchlist_ReAddIsNoOp(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	cmod, _ := s.CreateDepartment(ctx, "CMOD")
+	if _, err := s.AddURLToWatchlist(ctx, cmod.ID, "example.com"); err != nil {
+		t.Fatalf("AddURLToWatchlist: %v", err)
+	}
+	if _, err := s.AddURLToWatchlist(ctx, cmod.ID, "example.com"); err != nil {
+		t.Fatalf("AddURLToWatchlist (re-add): %v", err)
+	}
+	urls, _ := s.ListDepartmentURLs(ctx, cmod.ID)
+	if len(urls) != 1 {
+		t.Fatalf("expected re-adding the same domain to be a no-op, got %d watched urls", len(urls))
+	}
+}
+
+func TestRemoveURLFromWatchlist_KeepsURLAndHistory(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	cmod, _ := s.CreateDepartment(ctx, "CMOD")
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{Name: "Google", Address: "8.8.8.8:53", Protocol: "udp"})
+	run, _ := s.CreateScanRun(ctx, "manual")
+
+	u, err := s.AddURLToWatchlist(ctx, cmod.ID, "example.com")
+	if err != nil {
+		t.Fatalf("AddURLToWatchlist: %v", err)
+	}
+	if err := s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
+		Compliant: true, ScannedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("InsertResult: %v", err)
+	}
+
+	removed, err := s.RemoveURLFromWatchlist(ctx, cmod.ID, u.ID)
+	if err != nil {
+		t.Fatalf("RemoveURLFromWatchlist: %v", err)
+	}
+	if !removed {
+		t.Fatal("expected RemoveURLFromWatchlist to report a row was removed")
+	}
+
+	// URL row and its scan history must survive removal from the watchlist.
+	urls, _ := s.ListURLs(ctx)
+	if len(urls) != 1 {
+		t.Fatalf("expected the URL row to survive watchlist removal, got %d urls", len(urls))
+	}
+	results, _ := s.ResultsByURL(ctx, "example.com", time.Time{}, time.Time{})
+	if len(results) != 1 {
+		t.Fatalf("expected scan history to survive watchlist removal, got %d results", len(results))
+	}
+
+	// But it should no longer be on anyone's watchlist or in the active scan set.
+	deptURLs, _ := s.ListDepartmentURLs(ctx, cmod.ID)
+	if len(deptURLs) != 0 {
+		t.Fatalf("expected 0 watched urls for cmod after removal, got %d", len(deptURLs))
+	}
+	watched, _ := s.ListWatchedURLs(ctx)
+	if len(watched) != 0 {
+		t.Fatalf("expected ListWatchedURLs to exclude the removed domain, got %d", len(watched))
+	}
+	unassigned, _ := s.ListUnassignedURLs(ctx)
+	if len(unassigned) != 1 {
+		t.Fatalf("expected the orphaned domain to show up in ListUnassignedURLs, got %d", len(unassigned))
+	}
+}
+
+func TestRemoveURLFromWatchlist_NotOwnedReturnsFalse(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	cmod, _ := s.CreateDepartment(ctx, "CMOD")
+	crd, _ := s.CreateDepartment(ctx, "CRD")
+	u, _ := s.AddURLToWatchlist(ctx, cmod.ID, "example.com")
+
+	removed, err := s.RemoveURLFromWatchlist(ctx, crd.ID, u.ID)
+	if err != nil {
+		t.Fatalf("RemoveURLFromWatchlist: %v", err)
+	}
+	if removed {
+		t.Fatal("expected false — CRD never watched this domain")
+	}
+	// CMOD's link must be untouched.
+	cmodURLs, _ := s.ListDepartmentURLs(ctx, cmod.ID)
+	if len(cmodURLs) != 1 {
+		t.Fatalf("expected CMOD's watchlist link to be untouched, got %d", len(cmodURLs))
+	}
+}
+
+func TestListWatchedURLs_ExcludesOrphaned(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	// A pre-existing URL with no department watching it (e.g. a pre-migration row).
+	if _, err := s.CreateURL(ctx, "orphan.com"); err != nil {
+		t.Fatalf("CreateURL: %v", err)
+	}
+	cmod, _ := s.CreateDepartment(ctx, "CMOD")
+	if _, err := s.AddURLToWatchlist(ctx, cmod.ID, "watched.com"); err != nil {
+		t.Fatalf("AddURLToWatchlist: %v", err)
+	}
+
+	watched, err := s.ListWatchedURLs(ctx)
+	if err != nil {
+		t.Fatalf("ListWatchedURLs: %v", err)
+	}
+	if len(watched) != 1 || watched[0].URL != "watched.com" {
+		t.Fatalf("expected only watched.com, got %v", watched)
+	}
+}
+
+func TestURLOwnedByDepartment(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	cmod, _ := s.CreateDepartment(ctx, "CMOD")
+	crd, _ := s.CreateDepartment(ctx, "CRD")
+	if _, err := s.AddURLToWatchlist(ctx, cmod.ID, "example.com"); err != nil {
+		t.Fatalf("AddURLToWatchlist: %v", err)
+	}
+
+	owned, err := s.URLOwnedByDepartment(ctx, cmod.ID, "https://example.com/")
+	if err != nil {
+		t.Fatalf("URLOwnedByDepartment: %v", err)
+	}
+	if !owned {
+		t.Fatal("expected CMOD to own example.com")
+	}
+
+	owned, err = s.URLOwnedByDepartment(ctx, crd.ID, "example.com")
+	if err != nil {
+		t.Fatalf("URLOwnedByDepartment: %v", err)
+	}
+	if owned {
+		t.Fatal("expected CRD to NOT own example.com")
+	}
+}
+
+func TestCreateUserAndGetByUsernameAndID(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	dept, _ := s.CreateDepartment(ctx, "CMOD")
+	deptID := dept.ID
+	created, err := s.CreateUser(ctx, db.User{Username: "alice", PasswordHash: "hash", DepartmentID: &deptID})
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if created.ID == 0 {
+		t.Fatal("expected non-zero ID")
+	}
+
+	byUsername, err := s.GetUserByUsername(ctx, "alice")
+	if err != nil {
+		t.Fatalf("GetUserByUsername: %v", err)
+	}
+	if byUsername == nil || byUsername.ID != created.ID {
+		t.Fatalf("expected to find the created user by username, got %v", byUsername)
+	}
+	if byUsername.Department == nil || byUsername.Department.Name != "CMOD" {
+		t.Fatalf("expected Department to be preloaded, got %v", byUsername.Department)
+	}
+
+	byID, err := s.GetUserByID(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetUserByID: %v", err)
+	}
+	if byID == nil || byID.Username != "alice" {
+		t.Fatalf("expected to find the created user by id, got %v", byID)
+	}
+
+	missing, err := s.GetUserByID(ctx, 99999)
+	if err != nil {
+		t.Fatalf("GetUserByID for missing id should not error: %v", err)
+	}
+	if missing != nil {
+		t.Fatalf("expected nil for a non-existent user id, got %v", missing)
 	}
 }

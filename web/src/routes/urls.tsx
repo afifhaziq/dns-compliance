@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { fetchUrls, createUrl, deleteUrl } from '../api/urls'
-import type { URLEntry } from '../api/types'
+import { fetchDepartments, purgeUrl } from '../api/admin'
+import type { Department, URLEntry } from '../api/types'
 import {
   Dialog,
   DialogContent,
@@ -18,6 +19,7 @@ import {
   PreviewLinkCardPanel,
   PreviewLinkCardImage,
 } from '@/components/animate-ui/components/base/preview-link-card'
+import { useAuth } from './__root'
 
 export const Route = createFileRoute('/urls')({ component: URLsPage })
 
@@ -27,25 +29,37 @@ function AddUrlDialog({
   open,
   onClose,
   onAdded,
+  isAdmin,
 }: {
   open: boolean
   onClose: () => void
   onAdded: () => void
+  isAdmin: boolean
 }) {
   const [value, setValue] = useState('')
+  const [departments, setDepartments] = useState<Department[]>([])
+  const [departmentId, setDepartmentId] = useState<number | ''>('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const reset = () => { setValue(''); setError(null) }
+  useEffect(() => {
+    if (open && isAdmin) {
+      fetchDepartments().then(setDepartments).catch(() => {})
+    }
+  }, [open, isAdmin])
+
+  const reset = () => { setValue(''); setDepartmentId(''); setError(null) }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const domains = value.split('\n').map(s => s.trim()).filter(Boolean)
     if (domains.length === 0) { setError('At least one domain is required'); return }
+    if (isAdmin && departmentId === '') { setError('Department is required'); return }
     setLoading(true)
     setError(null)
     try {
-      await Promise.all(domains.map(d => createUrl(d)))
+      const deptId = isAdmin ? Number(departmentId) : undefined
+      await Promise.all(domains.map(d => createUrl(d, deptId)))
       reset()
       onAdded()
       onClose()
@@ -82,6 +96,23 @@ function AddUrlDialog({
               style={{ resize: 'vertical', fontFamily: 'inherit' }}
             />
           </div>
+          {isAdmin && (
+            <div className="form-field">
+              <label className="form-label" htmlFor="add-url-department-select">Department</label>
+              <select
+                id="add-url-department-select"
+                className="form-select"
+                value={departmentId}
+                onChange={e => setDepartmentId(e.target.value === '' ? '' : Number(e.target.value))}
+                disabled={loading}
+              >
+                <option value="">Select a department…</option>
+                {departments.map(d => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           {error && <p className="form-error">{error}</p>}
           <DialogFooter>
             <button type="button" className="btn-ghost" onClick={handleClose} disabled={loading}>
@@ -137,6 +168,8 @@ const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
 })
 
 function URLsPage() {
+  const { me } = useAuth()
+  const isAdmin = me?.is_admin ?? false
   const [urls, setUrls] = useState<URLEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -159,7 +192,11 @@ function URLsPage() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return
-    await deleteUrl(deleteTarget.id)
+    if (isAdmin) {
+      await purgeUrl(deleteTarget.id)
+    } else {
+      await deleteUrl(deleteTarget.id)
+    }
     setDeleteTarget(null)
     load()
   }
@@ -241,11 +278,17 @@ function URLsPage() {
         open={addOpen}
         onClose={() => setAddOpen(false)}
         onAdded={load}
+        isAdmin={isAdmin}
       />
 
       <DeleteConfirmDialog
         open={deleteTarget !== null}
         itemLabel={deleteTarget?.url ?? ''}
+        description={
+          isAdmin
+            ? 'This will permanently delete this domain and all its scan history.'
+            : "This will remove it from your department's watchlist. The domain and its scan history are kept if any other department still watches it."
+        }
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />

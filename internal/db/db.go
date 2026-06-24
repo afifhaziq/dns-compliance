@@ -24,7 +24,9 @@ func Connect(dialector gorm.Dialector) (*gorm.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening db: %w", err)
 	}
-	if err := database.AutoMigrate(&DNSServer{}, &URL{}, &ScanRun{}, &ScanResult{}); err != nil {
+	if err := database.AutoMigrate(
+		&Department{}, &User{}, &Session{}, &DNSServer{}, &URL{}, &DepartmentURL{}, &ScanRun{}, &ScanResult{},
+	); err != nil {
 		return nil, fmt.Errorf("migrating schema: %w", err)
 	}
 	return database, nil
@@ -38,4 +40,17 @@ func Seed(database *gorm.DB, entries []DNSServer) error {
 		return nil
 	}
 	return database.Create(&entries).Error
+}
+
+// SeedDepartments inserts the fixed CMOD/CRD departments if the departments
+// table is empty. Admin is not a department row — see User.IsAdmin. More
+// departments can be added later just by inserting rows; this seed only
+// covers the initial bootstrap.
+func SeedDepartments(database *gorm.DB) error {
+	var count int64
+	database.Model(&Department{}).Count(&count)
+	if count > 0 {
+		return nil
+	}
+	return database.Create(&[]Department{{Name: "CMOD"}, {Name: "CRD"}}).Error
 }

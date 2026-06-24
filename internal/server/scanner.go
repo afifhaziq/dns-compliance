@@ -63,7 +63,7 @@ func (sc *Scanner) TriggerScreenshot(ctx context.Context, rawURL string, dnsServ
 func (sc *Scanner) run(ctx context.Context, triggeredBy string) {
 	defer sc.setRunning(false)
 
-	urls, err := sc.store.ListURLs(ctx)
+	urls, err := sc.store.ListWatchedURLs(ctx)
 	if err != nil || len(urls) == 0 {
 		log.Printf("scanner: no URLs to scan (err=%v)", err)
 		return
