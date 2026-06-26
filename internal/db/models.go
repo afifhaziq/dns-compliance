@@ -4,6 +4,7 @@ import "time"
 
 type DNSServer struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
+	ISP       string    `gorm:"not null;default:'Unknown'" json:"isp"`
 	Name      string    `gorm:"not null" json:"name"`
 	Address   string    `gorm:"not null" json:"address"`
 	Protocol  string    `gorm:"not null" json:"protocol"` // udp, dot, doh
@@ -25,9 +26,9 @@ type Department struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// User.DepartmentID is nil for admins (Admin is a cross-cutting flag, not a
-// department of its own) and required for everyone else — enforced in
-// application code rather than a DB constraint.
+// User.DepartmentID is required for all users including admins. Admins are
+// assigned to the "Admin" department. is_admin is the authoritative admin
+// flag — DepartmentID being non-nil no longer implies non-admin.
 type User struct {
 	ID           uint        `gorm:"primaryKey" json:"id"`
 	Username     string      `gorm:"uniqueIndex;not null" json:"username"`
@@ -54,7 +55,17 @@ type DepartmentURL struct {
 	DepartmentID uint      `gorm:"primaryKey;autoIncrement:false" json:"department_id"`
 	URLID        uint      `gorm:"primaryKey;autoIncrement:false" json:"url_id"`
 	URL          URL       `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
+	Enabled      bool      `gorm:"not null;default:true" json:"enabled"`
 	CreatedAt    time.Time `json:"created_at"`
+}
+
+// URLEntry is the department-scoped view of a URL, carrying the watchlist
+// enabled flag that the shared URL model does not have.
+type URLEntry struct {
+	ID        uint      `json:"id"`
+	URL       string    `json:"url"`
+	Enabled   bool      `json:"enabled"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type ScanRun struct {

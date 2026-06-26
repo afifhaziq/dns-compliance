@@ -54,6 +54,10 @@ func main() {
 		log.Printf("seed departments: %v", err)
 	}
 
+	if err := db.MigrateAdminDepartments(gormDB); err != nil {
+		log.Fatalf("migrate admin departments: %v", err)
+	}
+
 	store := db.NewStore(gormDB)
 
 	// Bootstrap admin — without this, a fresh deployment has no way to log
@@ -67,7 +71,7 @@ func main() {
 		if cfg, err := dnsconfig.Load(*seedFile); err == nil {
 			entries := make([]db.DNSServer, len(cfg.Servers))
 			for i, s := range cfg.Servers {
-				entries[i] = db.DNSServer{Name: s.Name, Address: s.Address, Protocol: s.Protocol}
+				entries[i] = db.DNSServer{ISP: s.ISP, Name: s.Name, Address: s.Address, Protocol: s.Protocol}
 			}
 			if err := db.Seed(gormDB, entries); err != nil {
 				log.Printf("seed DNS servers: %v", err)

@@ -23,7 +23,8 @@ func CheckPassword(hash, plain string) bool {
 // SeedAdmin creates the bootstrap admin user only if the users table is
 // empty — every subsequent startup is a no-op regardless of the username
 // and password passed in. Without this, a fresh deployment would have no
-// way to log in at all.
+// way to log in at all. The bootstrap admin is assigned to the "Admin"
+// department (MigrateAdminDepartments must run before this).
 func SeedAdmin(database *gorm.DB, username, password string) error {
 	var count int64
 	if err := database.Model(&User{}).Count(&count).Error; err != nil {
@@ -35,9 +36,18 @@ func SeedAdmin(database *gorm.DB, username, password string) error {
 	if username == "" || password == "" {
 		return fmt.Errorf("db: bootstrap admin username and password are required when the users table is empty")
 	}
+	var adminDept Department
+	if err := database.Where("name = ?", "Admin").First(&adminDept).Error; err != nil {
+		return fmt.Errorf("db: admin department not found (run MigrateAdminDepartments first): %w", err)
+	}
 	hash, err := HashPassword(password)
 	if err != nil {
 		return err
 	}
-	return database.Create(&User{Username: username, PasswordHash: hash, IsAdmin: true}).Error
+	return database.Create(&User{
+		Username:     username,
+		PasswordHash: hash,
+		IsAdmin:      true,
+		DepartmentID: &adminDept.ID,
+	}).Error
 }

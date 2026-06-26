@@ -42,15 +42,29 @@ func Seed(database *gorm.DB, entries []DNSServer) error {
 	return database.Create(&entries).Error
 }
 
-// SeedDepartments inserts the fixed CMOD/CRD departments if the departments
-// table is empty. Admin is not a department row — see User.IsAdmin. More
-// departments can be added later just by inserting rows; this seed only
-// covers the initial bootstrap.
+// SeedDepartments inserts the fixed CMOD/CRD/Admin departments if the
+// departments table is empty. More departments can be added later just by
+// inserting rows; this seed only covers the initial bootstrap.
 func SeedDepartments(database *gorm.DB) error {
 	var count int64
 	database.Model(&Department{}).Count(&count)
 	if count > 0 {
 		return nil
 	}
-	return database.Create(&[]Department{{Name: "CMOD"}, {Name: "CRD"}}).Error
+	return database.Create(&[]Department{{Name: "CMOD"}, {Name: "CRD"}, {Name: "Admin"}}).Error
+}
+
+// MigrateAdminDepartments ensures an "Admin" department exists and updates
+// any admin users whose DepartmentID is nil to point to it. Idempotent —
+// safe to call on every startup.
+func MigrateAdminDepartments(database *gorm.DB) error {
+	var adminDept Department
+	if err := database.
+		Where("name = ?", "Admin").
+		FirstOrCreate(&adminDept, Department{Name: "Admin"}).Error; err != nil {
+		return fmt.Errorf("ensure admin department: %w", err)
+	}
+	return database.Model(&User{}).
+		Where("is_admin = ? AND department_id IS NULL", true).
+		Update("department_id", adminDept.ID).Error
 }
