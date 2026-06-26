@@ -1,7 +1,13 @@
 import type { ScanRun, ScanStatus } from './types'
 
-export async function triggerScan(): Promise<void> {
-  const res = await fetch('/api/scan', { method: 'POST' })
+export async function triggerScan(urls?: string[]): Promise<void> {
+  const body = urls && urls.length > 0 ? JSON.stringify({ urls }) : undefined
+  const res = await fetch('/api/scan', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body,
+  })
   if (!res.ok && res.status !== 409) throw new Error(`Failed to start scan: ${res.status}`)
 }
 
