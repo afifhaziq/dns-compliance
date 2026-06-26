@@ -1,5 +1,6 @@
 export type DNSServer = {
   id: number
+  isp: string
   name: string
   address: string
   protocol: 'udp' | 'dot' | 'doh'
@@ -38,7 +39,7 @@ export type GroupedResult = {
   latestScannedAt: string
 }
 
-export type URLEntry = { id: number; url: string; created_at: string }
+export type URLEntry = { id: number; url: string; enabled: boolean; created_at: string }
 
 export type Department = { id: number; name: string; created_at: string }
 

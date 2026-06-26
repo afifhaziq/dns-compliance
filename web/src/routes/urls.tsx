@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { fetchUrls, createUrl, deleteUrl } from '../api/urls'
-import { fetchDepartments, purgeUrl } from '../api/admin'
-import type { Department, URLEntry } from '../api/types'
+import { fetchUrls, createUrl, deleteUrl, setUrlEnabled } from '../api/urls'
+import type { URLEntry } from '../api/types'
 import {
   Dialog,
   DialogContent,
@@ -13,13 +12,14 @@ import {
 } from '@/components/animate-ui/components/radix/dialog'
 import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/r-switch'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import {
   PreviewLinkCard,
   PreviewLinkCardTrigger,
   PreviewLinkCardPanel,
   PreviewLinkCardImage,
 } from '@/components/animate-ui/components/base/preview-link-card'
-import { useAuth } from './__root'
 
 export const Route = createFileRoute('/urls')({ component: URLsPage })
 
@@ -29,37 +29,25 @@ function AddUrlDialog({
   open,
   onClose,
   onAdded,
-  isAdmin,
 }: {
   open: boolean
   onClose: () => void
   onAdded: () => void
-  isAdmin: boolean
 }) {
   const [value, setValue] = useState('')
-  const [departments, setDepartments] = useState<Department[]>([])
-  const [departmentId, setDepartmentId] = useState<number | ''>('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
-    if (open && isAdmin) {
-      fetchDepartments().then(setDepartments).catch(() => {})
-    }
-  }, [open, isAdmin])
-
-  const reset = () => { setValue(''); setDepartmentId(''); setError(null) }
+  const reset = () => { setValue(''); setError(null) }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const domains = value.split('\n').map(s => s.trim()).filter(Boolean)
     if (domains.length === 0) { setError('At least one domain is required'); return }
-    if (isAdmin && departmentId === '') { setError('Department is required'); return }
     setLoading(true)
     setError(null)
     try {
-      const deptId = isAdmin ? Number(departmentId) : undefined
-      await Promise.all(domains.map(d => createUrl(d, deptId)))
+      await Promise.all(domains.map(d => createUrl(d)))
       reset()
       onAdded()
       onClose()
@@ -96,23 +84,6 @@ function AddUrlDialog({
               style={{ resize: 'vertical', fontFamily: 'inherit' }}
             />
           </div>
-          {isAdmin && (
-            <div className="form-field">
-              <label className="form-label" htmlFor="add-url-department-select">Department</label>
-              <select
-                id="add-url-department-select"
-                className="form-select"
-                value={departmentId}
-                onChange={e => setDepartmentId(e.target.value === '' ? '' : Number(e.target.value))}
-                disabled={loading}
-              >
-                <option value="">Select a department…</option>
-                {departments.map(d => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
           {error && <p className="form-error">{error}</p>}
           <DialogFooter>
             <button type="button" className="btn-ghost" onClick={handleClose} disabled={loading}>
@@ -134,15 +105,16 @@ function SkeletonRows() {
   return (
     <>
       {[200, 160, 240].map((w, i) => (
-        <tr key={i} className="skeleton-row">
-          <td className="col-domain">
+        <TableRow key={i} className="skeleton-row">
+          <TableCell className="col-domain">
             <span className="skeleton" style={{ width: w, height: 14 }} />
-          </td>
-          <td className="col-status">
+          </TableCell>
+          <TableCell className="col-status">
             <span className="skeleton" style={{ width: 90, height: 14 }} />
-          </td>
-          <td className="col-evidence" />
-        </tr>
+          </TableCell>
+          <TableCell style={{ width: 52 }} />
+          <TableCell className="col-evidence" />
+        </TableRow>
       ))}
     </>
   )
@@ -168,8 +140,6 @@ const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
 })
 
 function URLsPage() {
-  const { me } = useAuth()
-  const isAdmin = me?.is_admin ?? false
   const [urls, setUrls] = useState<URLEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -190,13 +160,18 @@ function URLsPage() {
 
   useEffect(() => { load() }, [load])
 
+  const handleToggle = useCallback(async (id: number, enabled: boolean) => {
+    setUrls(prev => prev.map(u => u.id === id ? { ...u, enabled } : u))
+    try {
+      await setUrlEnabled(id, enabled)
+    } catch {
+      setUrls(prev => prev.map(u => u.id === id ? { ...u, enabled: !enabled } : u))
+    }
+  }, [])
+
   const handleDelete = async () => {
     if (!deleteTarget) return
-    if (isAdmin) {
-      await purgeUrl(deleteTarget.id)
-    } else {
-      await deleteUrl(deleteTarget.id)
-    }
+    await deleteUrl(deleteTarget.id)
     setDeleteTarget(null)
     load()
   }
@@ -204,7 +179,7 @@ function URLsPage() {
   return (
     <div className="mx-20">
       <div className="page-header">
-        <h1 className="page-title">Domains</h1>
+        <h1 className="page-title mb-4">Domains</h1>
         <p className="page-subtitle">{!loading && `${urls.length} monitored`}</p>
         <Button
           style={{ marginLeft: 'auto' }}
@@ -228,21 +203,22 @@ function URLsPage() {
             <button className="btn-primary" onClick={() => setAddOpen(true)}>Add Domain</button>
           </div>
         ) : (
-          <table className="results-table" aria-label="Monitored domains">
-            <thead>
-              <tr>
-                <th className="col-domain" scope="col">Domain</th>
-                <th className="col-status" scope="col">Added</th>
-                <th className="col-evidence" scope="col" />
-              </tr>
-            </thead>
-            <tbody>
+          <Table className="results-table" aria-label="Monitored domains">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="col-domain th-left" scope="col">Domain</TableHead>
+                <TableHead className="col-status" scope="col">Added</TableHead>
+                <TableHead scope="col" style={{ width: 52, textAlign: 'center' }}>Scan</TableHead>
+                <TableHead className="col-evidence" scope="col" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {loading ? (
                 <SkeletonRows />
               ) : (
                 urls.map(u => (
-                  <tr key={u.id} className="url-row">
-                    <td className="col-domain">
+                  <TableRow key={u.id} className="url-row">
+                    <TableCell className="col-domain">
                       <PreviewLinkCard href={u.url}>
                         <PreviewLinkCardTrigger>
                           <span className="hostname">{u.url}</span>
@@ -251,13 +227,20 @@ function URLsPage() {
                           <PreviewLinkCardImage />
                         </PreviewLinkCardPanel>
                       </PreviewLinkCard>
-                    </td>
-                    <td className="col-status">
+                    </TableCell>
+                    <TableCell className="col-status">
                       <span className="dns-name">
                         {DATE_FMT.format(new Date(u.created_at))}
                       </span>
-                    </td>
-                    <td className="col-evidence" style={{ textAlign: 'right' }}>
+                    </TableCell>
+                    <TableCell style={{ textAlign: 'center' }}>
+                      <Switch
+                        checked={u.enabled}
+                        onCheckedChange={checked => handleToggle(u.id, checked)}
+                        aria-label={`${u.enabled ? 'Disable' : 'Enable'} ${u.url} in scan`}
+                      />
+                    </TableCell>
+                    <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
                       <button
                         className="btn-row-delete"
                         onClick={() => setDeleteTarget(u)}
@@ -265,12 +248,12 @@ function URLsPage() {
                       >
                         Delete
                       </button>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))
               )}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
       </div>
 
@@ -278,17 +261,12 @@ function URLsPage() {
         open={addOpen}
         onClose={() => setAddOpen(false)}
         onAdded={load}
-        isAdmin={isAdmin}
       />
 
       <DeleteConfirmDialog
         open={deleteTarget !== null}
         itemLabel={deleteTarget?.url ?? ''}
-        description={
-          isAdmin
-            ? 'This will permanently delete this domain and all its scan history.'
-            : "This will remove it from your department's watchlist. The domain and its scan history are kept if any other department still watches it."
-        }
+        description="This will remove it from your department's watchlist. The domain and its scan history are kept if any other department still watches it."
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
