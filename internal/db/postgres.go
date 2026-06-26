@@ -48,7 +48,12 @@ func (s *postgresStore) CreateDNSServer(ctx context.Context, srv DNSServer) (DNS
 }
 
 func (s *postgresStore) DeleteDNSServer(ctx context.Context, id uint) error {
-	return s.db.WithContext(ctx).Delete(&DNSServer{}, id).Error
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("dns_server_id = ?", id).Delete(&ScanResult{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&DNSServer{}, id).Error
+	})
 }
 
 func (s *postgresStore) CreateScanRun(ctx context.Context, triggeredBy string) (ScanRun, error) {
@@ -300,13 +305,15 @@ func (s *postgresStore) DeleteSession(ctx context.Context, token string) error {
 
 // Department watchlists
 
-func (s *postgresStore) ListDepartmentURLs(ctx context.Context, departmentID uint) ([]URL, error) {
-	var urls []URL
+func (s *postgresStore) ListDepartmentURLs(ctx context.Context, departmentID uint) ([]URLEntry, error) {
+	var entries []URLEntry
 	err := s.db.WithContext(ctx).
+		Table("urls").
+		Select("urls.id, urls.url, urls.created_at, du.enabled").
 		Joins("JOIN department_urls du ON du.url_id = urls.id AND du.department_id = ?", departmentID).
 		Order("urls.created_at asc").
-		Find(&urls).Error
-	return urls, err
+		Scan(&entries).Error
+	return entries, err
 }
 
 // AddURLToWatchlist gets-or-creates the URL by normalized value, then links
@@ -333,13 +340,22 @@ func (s *postgresStore) RemoveURLFromWatchlist(ctx context.Context, departmentID
 	return res.RowsAffected > 0, res.Error
 }
 
-// ListWatchedURLs returns every URL on at least one department's watchlist
-// — the set the scheduled/manual scan sweep should actually scan.
+func (s *postgresStore) SetURLEnabled(ctx context.Context, departmentID, urlID uint, enabled bool) (bool, error) {
+	res := s.db.WithContext(ctx).
+		Model(&DepartmentURL{}).
+		Where("department_id = ? AND url_id = ?", departmentID, urlID).
+		Update("enabled", enabled)
+	return res.RowsAffected > 0, res.Error
+}
+
+// ListWatchedURLs returns every URL enabled by at least one department —
+// the set the scheduled/manual scan sweep should actually scan. A URL
+// disabled by all watching departments is excluded.
 func (s *postgresStore) ListWatchedURLs(ctx context.Context) ([]URL, error) {
 	var urls []URL
 	err := s.db.WithContext(ctx).
 		Distinct().
-		Joins("JOIN department_urls du ON du.url_id = urls.id").
+		Joins("JOIN department_urls du ON du.url_id = urls.id AND du.enabled = true").
 		Order("urls.created_at asc").
 		Find(&urls).Error
 	return urls, err

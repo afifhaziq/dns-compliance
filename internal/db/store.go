@@ -48,10 +48,11 @@ type Store interface {
 	DeleteSession(ctx context.Context, token string) error
 
 	// Department watchlists
-	ListDepartmentURLs(ctx context.Context, departmentID uint) ([]URL, error)
+	ListDepartmentURLs(ctx context.Context, departmentID uint) ([]URLEntry, error)
 	AddURLToWatchlist(ctx context.Context, departmentID uint, rawURL string) (URL, error)
 	RemoveURLFromWatchlist(ctx context.Context, departmentID, urlID uint) (bool, error) // false if no row was deleted (not on that watchlist)
-	ListWatchedURLs(ctx context.Context) ([]URL, error)                                 // urls with >=1 DepartmentURL row — used by the scan sweep
-	ListUnassignedURLs(ctx context.Context) ([]URL, error)                              // admin view: urls with 0 DepartmentURL rows
+	SetURLEnabled(ctx context.Context, departmentID, urlID uint, enabled bool) (bool, error) // false if the URL is not on that watchlist
+	ListWatchedURLs(ctx context.Context) ([]URL, error)                                      // urls with >=1 enabled DepartmentURL row — used by the scan sweep
+	ListUnassignedURLs(ctx context.Context) ([]URL, error)                                   // admin view: urls with 0 DepartmentURL rows
 	URLOwnedByDepartment(ctx context.Context, departmentID uint, urlValue string) (bool, error)
 }

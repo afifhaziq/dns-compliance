@@ -27,6 +27,9 @@ func TestSeedAdmin_CreatesOnlyWhenEmpty(t *testing.T) {
 	gormDB, s := rawConnect(t)
 	ctx := context.Background()
 
+	if err := db.MigrateAdminDepartments(gormDB); err != nil {
+		t.Fatalf("MigrateAdminDepartments: %v", err)
+	}
 	if err := db.SeedAdmin(gormDB, "admin", "s3cret-pass"); err != nil {
 		t.Fatalf("SeedAdmin: %v", err)
 	}

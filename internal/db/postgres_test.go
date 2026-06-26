@@ -620,3 +620,136 @@ func TestCreateUserAndGetByUsernameAndID(t *testing.T) {
 		t.Fatalf("expected nil for a non-existent user id, got %v", missing)
 	}
 }
+
+func TestSetURLEnabled(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	dept, _ := s.CreateDepartment(ctx, "TestDept")
+	u, _ := s.AddURLToWatchlist(ctx, dept.ID, "example.com")
+
+	// disable
+	found, err := s.SetURLEnabled(ctx, dept.ID, u.ID, false)
+	if err != nil || !found {
+		t.Fatalf("SetURLEnabled(false): found=%v err=%v", found, err)
+	}
+
+	// ListWatchedURLs must exclude it
+	urls, err := s.ListWatchedURLs(ctx)
+	if err != nil {
+		t.Fatalf("ListWatchedURLs: %v", err)
+	}
+	for _, wu := range urls {
+		if wu.ID == u.ID {
+			t.Fatal("disabled URL should not appear in ListWatchedURLs")
+		}
+	}
+
+	// re-enable
+	found, err = s.SetURLEnabled(ctx, dept.ID, u.ID, true)
+	if err != nil || !found {
+		t.Fatalf("SetURLEnabled(true): found=%v err=%v", found, err)
+	}
+	urls, _ = s.ListWatchedURLs(ctx)
+	var seen bool
+	for _, wu := range urls {
+		if wu.ID == u.ID {
+			seen = true
+		}
+	}
+	if !seen {
+		t.Fatal("re-enabled URL should appear in ListWatchedURLs")
+	}
+}
+
+func TestSetURLEnabledNotOnWatchlist(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	dept, _ := s.CreateDepartment(ctx, "TestDept2")
+	u, _ := s.CreateURL(ctx, "notlinked.com")
+
+	found, err := s.SetURLEnabled(ctx, dept.ID, u.ID, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if found {
+		t.Fatal("expected found=false for URL not on watchlist")
+	}
+}
+
+func TestListDepartmentURLsReturnsEnabled(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	dept, _ := s.CreateDepartment(ctx, "TestDept3")
+	_, _ = s.AddURLToWatchlist(ctx, dept.ID, "alpha.com")
+	u2, _ := s.AddURLToWatchlist(ctx, dept.ID, "beta.com")
+	_, _ = s.SetURLEnabled(ctx, dept.ID, u2.ID, false)
+
+	entries, err := s.ListDepartmentURLs(ctx, dept.ID)
+	if err != nil {
+		t.Fatalf("ListDepartmentURLs: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("want 2 entries, got %d", len(entries))
+	}
+	for _, e := range entries {
+		if e.URL == "alpha.com" && !e.Enabled {
+			t.Error("alpha.com should be enabled")
+		}
+		if e.URL == "beta.com" && e.Enabled {
+			t.Error("beta.com should be disabled")
+		}
+	}
+}
+
+func TestListWatchedURLsDeduplicatesAcrossDepartments(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	d1, _ := s.CreateDepartment(ctx, "D1")
+	d2, _ := s.CreateDepartment(ctx, "D2")
+	_, _ = s.AddURLToWatchlist(ctx, d1.ID, "shared.com")
+	_, _ = s.AddURLToWatchlist(ctx, d2.ID, "shared.com")
+
+	urls, err := s.ListWatchedURLs(ctx)
+	if err != nil {
+		t.Fatalf("ListWatchedURLs: %v", err)
+	}
+	count := 0
+	for _, u := range urls {
+		if u.URL == "shared.com" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("want shared.com once, got %d times", count)
+	}
+}
+
+func TestListWatchedURLsEnabledByAnyDept(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	d1, _ := s.CreateDepartment(ctx, "E1")
+	d2, _ := s.CreateDepartment(ctx, "E2")
+	u, _ := s.AddURLToWatchlist(ctx, d1.ID, "shared.com")
+	_, _ = s.AddURLToWatchlist(ctx, d2.ID, "shared.com")
+	// d1 disables it, d2 has it enabled — should still appear
+	_, _ = s.SetURLEnabled(ctx, d1.ID, u.ID, false)
+
+	urls, err := s.ListWatchedURLs(ctx)
+	if err != nil {
+		t.Fatalf("ListWatchedURLs: %v", err)
+	}
+	var seen bool
+	for _, wu := range urls {
+		if wu.ID == u.ID {
+			seen = true
+		}
+	}
+	if !seen {
+		t.Fatal("URL enabled by any department should still appear in ListWatchedURLs")
+	}
+}
