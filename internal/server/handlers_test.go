@@ -237,15 +237,15 @@ func (m *fullMockStore) DeleteSession(_ context.Context, token string) error {
 	return nil
 }
 
-func (m *fullMockStore) ListDepartmentURLs(_ context.Context, departmentID uint) ([]db.URL, error) {
-	var out []db.URL
+func (m *fullMockStore) ListDepartmentURLs(_ context.Context, departmentID uint) ([]db.URLEntry, error) {
+	var out []db.URLEntry
 	for _, du := range m.departmentURLs {
 		if du.DepartmentID != departmentID {
 			continue
 		}
 		for _, u := range m.urls {
 			if u.ID == du.URLID {
-				out = append(out, u)
+				out = append(out, db.URLEntry{ID: u.ID, URL: u.URL, Enabled: du.Enabled, CreatedAt: u.CreatedAt})
 			}
 		}
 	}
@@ -262,8 +262,18 @@ func (m *fullMockStore) AddURLToWatchlist(ctx context.Context, departmentID uint
 			return u, nil // already linked — no-op
 		}
 	}
-	m.departmentURLs = append(m.departmentURLs, db.DepartmentURL{DepartmentID: departmentID, URLID: u.ID, CreatedAt: time.Now()})
+	m.departmentURLs = append(m.departmentURLs, db.DepartmentURL{DepartmentID: departmentID, URLID: u.ID, Enabled: true, CreatedAt: time.Now()})
 	return u, nil
+}
+
+func (m *fullMockStore) SetURLEnabled(_ context.Context, departmentID, urlID uint, enabled bool) (bool, error) {
+	for i, du := range m.departmentURLs {
+		if du.DepartmentID == departmentID && du.URLID == urlID {
+			m.departmentURLs[i].Enabled = enabled
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (m *fullMockStore) RemoveURLFromWatchlist(_ context.Context, departmentID, urlID uint) (bool, error) {
@@ -279,7 +289,9 @@ func (m *fullMockStore) RemoveURLFromWatchlist(_ context.Context, departmentID, 
 func (m *fullMockStore) ListWatchedURLs(_ context.Context) ([]db.URL, error) {
 	watchedIDs := make(map[uint]bool)
 	for _, du := range m.departmentURLs {
-		watchedIDs[du.URLID] = true
+		if du.Enabled {
+			watchedIDs[du.URLID] = true
+		}
 	}
 	var out []db.URL
 	for _, u := range m.urls {
@@ -356,7 +368,8 @@ func loginAs(store *fullMockStore, user db.User) *http.Cookie {
 }
 
 func adminCookie(store *fullMockStore) *http.Cookie {
-	return loginAs(store, db.User{Username: "admin", PasswordHash: "x", IsAdmin: true})
+	adminDeptID := uint(999)
+	return loginAs(store, db.User{Username: "admin", PasswordHash: "x", IsAdmin: true, DepartmentID: &adminDeptID})
 }
 
 func deptCookie(store *fullMockStore, departmentID uint) *http.Cookie {
@@ -379,16 +392,17 @@ func TestListURLsEmpty(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
-	var urls []db.URL
-	json.NewDecoder(w.Body).Decode(&urls)
-	if len(urls) != 0 {
-		t.Fatalf("expected empty list, got %v", urls)
+	var entries []db.URLEntry
+	json.NewDecoder(w.Body).Decode(&entries)
+	if len(entries) != 0 {
+		t.Fatalf("expected empty list, got %v", entries)
 	}
 }
 
-func TestAddToWatchlist_AdminRequiresDepartment(t *testing.T) {
+func TestAddToWatchlist_AdminUsesOwnDepartment(t *testing.T) {
+	// Admin is now assigned to the "Admin" department — no body department_id needed.
 	store := &fullMockStore{}
-	cookie := adminCookie(store)
+	cookie := adminCookie(store) // sets DepartmentID=999
 	r := setupRouter(store, nil)
 	body, _ := json.Marshal(map[string]string{"url": "https://example.com"})
 	req := httptest.NewRequest(http.MethodPost, "/api/urls", bytes.NewReader(body))
@@ -397,29 +411,16 @@ func TestAddToWatchlist_AdminRequiresDepartment(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 when admin omits department_id, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestAddToWatchlist_AdminWithDepartment(t *testing.T) {
-	store := &fullMockStore{departments: []db.Department{{ID: 1, Name: "CMOD"}}}
-	cookie := adminCookie(store)
-	r := setupRouter(store, nil)
-	body, _ := json.Marshal(map[string]any{"url": "https://example.com", "department_id": 1})
-	req := httptest.NewRequest(http.MethodPost, "/api/urls", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(cookie)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
 	if w.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+		t.Fatalf("expected 201 for admin adding URL to own department, got %d: %s", w.Code, w.Body.String())
 	}
-	var u db.URL
-	json.NewDecoder(w.Body).Decode(&u)
-	if u.URL != "example.com" {
-		t.Fatalf("unexpected URL: %s", u.URL)
+	var entry db.URLEntry
+	json.NewDecoder(w.Body).Decode(&entry)
+	if entry.URL != "example.com" {
+		t.Fatalf("unexpected URL: %s", entry.URL)
+	}
+	if !entry.Enabled {
+		t.Fatalf("expected newly added URL to be enabled")
 	}
 }
 
@@ -442,10 +443,13 @@ func TestAddToWatchlist_NonAdminUsesOwnDepartment(t *testing.T) {
 	listReq.AddCookie(cookie)
 	listW := httptest.NewRecorder()
 	r.ServeHTTP(listW, listReq)
-	var urls []db.URL
-	json.NewDecoder(listW.Body).Decode(&urls)
-	if len(urls) != 1 || urls[0].URL != "example.com" {
-		t.Fatalf("expected the new url on the caller's own watchlist, got %v", urls)
+	var entries []db.URLEntry
+	json.NewDecoder(listW.Body).Decode(&entries)
+	if len(entries) != 1 || entries[0].URL != "example.com" {
+		t.Fatalf("expected the new url on the caller's own watchlist, got %v", entries)
+	}
+	if !entries[0].Enabled {
+		t.Fatalf("expected newly added URL to be enabled")
 	}
 }
 
@@ -469,7 +473,7 @@ func TestRemoveFromWatchlist_PreservesURLAndHistory(t *testing.T) {
 	deptID := uint(1)
 	store := &fullMockStore{
 		urls:           []db.URL{{ID: 1, URL: "example.com"}},
-		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1}},
+		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1, Enabled: true}},
 		results:        []db.ScanResult{{ID: 1, URLID: 1, URLValue: "example.com", ScannedAt: time.Now()}},
 	}
 	cookie := deptCookie(store, deptID)
@@ -541,7 +545,7 @@ func TestCreateDNSServer(t *testing.T) {
 	store := &fullMockStore{}
 	cookie := adminCookie(store)
 	r := setupRouter(store, nil)
-	body, _ := json.Marshal(map[string]string{"name": "Google", "address": "8.8.8.8:53", "protocol": "udp"})
+	body, _ := json.Marshal(map[string]string{"isp": "Google", "name": "Google UDP", "address": "8.8.8.8:53", "protocol": "udp"})
 	req := httptest.NewRequest(http.MethodPost, "/api/dns-servers", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
@@ -554,7 +558,7 @@ func TestCreateDNSServer(t *testing.T) {
 }
 
 func TestListDNSServers_AllowedForNonAdmin(t *testing.T) {
-	store := &fullMockStore{dnsServers: []db.DNSServer{{ID: 1, Name: "Google", Address: "8.8.8.8:53", Protocol: "udp"}}}
+	store := &fullMockStore{dnsServers: []db.DNSServer{{ID: 1, ISP: "Google", Name: "Google UDP", Address: "8.8.8.8:53", Protocol: "udp"}}}
 	cookie := deptCookie(store, 1)
 	r := setupRouter(store, nil)
 
@@ -651,8 +655,8 @@ func TestScanProgressWithRun(t *testing.T) {
 			{ID: 2, URL: "https://b.com"},
 		},
 		departmentURLs: []db.DepartmentURL{
-			{DepartmentID: 1, URLID: 1},
-			{DepartmentID: 1, URLID: 2},
+			{DepartmentID: 1, URLID: 1, Enabled: true},
+			{DepartmentID: 1, URLID: 2, Enabled: true},
 		},
 		lastRun: &db.ScanRun{ID: 3, Status: "completed", StartedAt: now},
 		progress: []db.ProgressEntry{
@@ -765,7 +769,7 @@ func TestResultsByURL_ExplicitUntil(t *testing.T) {
 func TestResultsByURL_404ForUnownedDomain(t *testing.T) {
 	store := &fullMockStore{
 		urls:           []db.URL{{ID: 1, URL: "example.com"}, {ID: 2, URL: "other.com"}},
-		departmentURLs: []db.DepartmentURL{{DepartmentID: 1, URLID: 1}},
+		departmentURLs: []db.DepartmentURL{{DepartmentID: 1, URLID: 1, Enabled: true}},
 		results:        []db.ScanResult{{ID: 1, URLValue: "other.com", ScannedAt: time.Now()}},
 	}
 	cookie := deptCookie(store, 1)
@@ -784,8 +788,8 @@ func TestResultsByURL_404ForUnownedDomain(t *testing.T) {
 func TestHeatmapByURL_GroupsByDay(t *testing.T) {
 	day := time.Date(2026, 6, 22, 0, 0, 0, 0, time.UTC)
 	store := &fullMockStore{results: []db.ScanResult{
-		{ID: 1, URLValue: "https://example.com", DNSServerID: 1, DNSServer: db.DNSServer{ID: 1, Name: "Google"}, Compliant: true, ScannedAt: day.Add(1 * time.Hour)},
-		{ID: 2, URLValue: "https://example.com", DNSServerID: 1, DNSServer: db.DNSServer{ID: 1, Name: "Google"}, Compliant: false, ScannedAt: day.Add(2 * time.Hour)},
+		{ID: 1, URLValue: "https://example.com", DNSServerID: 1, DNSServer: db.DNSServer{ID: 1, ISP: "Google", Name: "Google UDP"}, Compliant: true, ScannedAt: day.Add(1 * time.Hour)},
+		{ID: 2, URLValue: "https://example.com", DNSServerID: 1, DNSServer: db.DNSServer{ID: 1, ISP: "Google", Name: "Google UDP"}, Compliant: false, ScannedAt: day.Add(2 * time.Hour)},
 	}}
 	cookie := adminCookie(store)
 	r := setupRouter(store, nil)
@@ -1072,6 +1076,60 @@ func TestCreateUser_Success(t *testing.T) {
 	r.ServeHTTP(loginW, loginReq)
 	if loginW.Code != http.StatusOK {
 		t.Fatalf("expected the newly created user to be able to log in, got %d: %s", loginW.Code, loginW.Body.String())
+	}
+}
+
+func TestToggleURL_DisableAndReenable(t *testing.T) {
+	deptID := uint(1)
+	store := &fullMockStore{
+		urls:           []db.URL{{ID: 1, URL: "example.com"}},
+		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1, Enabled: true}},
+	}
+	cookie := deptCookie(store, deptID)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]bool{"enabled": false})
+	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if store.departmentURLs[0].Enabled {
+		t.Fatal("expected Enabled=false after toggle")
+	}
+
+	body2, _ := json.Marshal(map[string]bool{"enabled": true})
+	req2 := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body2))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.AddCookie(cookie)
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusNoContent {
+		t.Fatalf("want 204 on re-enable, got %d: %s", w2.Code, w2.Body.String())
+	}
+	if !store.departmentURLs[0].Enabled {
+		t.Fatal("expected Enabled=true after re-enable")
+	}
+}
+
+func TestToggleURL_NotOnWatchlistReturns404(t *testing.T) {
+	store := &fullMockStore{urls: []db.URL{{ID: 1, URL: "example.com"}}}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]bool{"enabled": false})
+	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("want 404 for URL not on watchlist, got %d", w.Code)
 	}
 }
 

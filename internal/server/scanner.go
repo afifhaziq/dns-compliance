@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/afif/dns-tracking/internal/db"
+	"github.com/afif/dns-tracking/internal/urlnorm"
 	"gopkg.in/yaml.v3"
 )
 
@@ -31,9 +32,10 @@ func (sc *Scanner) IsRunning() bool {
 	return sc.running
 }
 
-// Trigger starts a DNS-only scan in a background goroutine.
-// Returns an error if a scan is already in progress.
-func (sc *Scanner) Trigger(ctx context.Context, triggeredBy string) error {
+// Trigger starts a DNS-only scan in a background goroutine. urls is an
+// optional list of specific domains to scan; nil or empty means scan all
+// enabled watched URLs. Returns an error if a scan is already in progress.
+func (sc *Scanner) Trigger(ctx context.Context, triggeredBy string, urls []string) error {
 	sc.mu.Lock()
 	if sc.running {
 		sc.mu.Unlock()
@@ -42,7 +44,7 @@ func (sc *Scanner) Trigger(ctx context.Context, triggeredBy string) error {
 	sc.running = true
 	sc.mu.Unlock()
 
-	go sc.run(context.WithoutCancel(ctx), triggeredBy)
+	go sc.run(context.WithoutCancel(ctx), triggeredBy, urls)
 	return nil
 }
 
@@ -60,21 +62,42 @@ func (sc *Scanner) TriggerScreenshot(ctx context.Context, rawURL string, dnsServ
 	return nil
 }
 
-func (sc *Scanner) run(ctx context.Context, triggeredBy string) {
+func (sc *Scanner) run(ctx context.Context, triggeredBy string, requestedURLs []string) {
 	defer sc.setRunning(false)
 
-	urls, err := sc.store.ListWatchedURLs(ctx)
-	if err != nil || len(urls) == 0 {
-		log.Printf("scanner: no URLs to scan (err=%v)", err)
-		return
+	var urlObjs []db.URL
+	if len(requestedURLs) == 0 {
+		var err error
+		urlObjs, err = sc.store.ListWatchedURLs(ctx)
+		if err != nil || len(urlObjs) == 0 {
+			log.Printf("scanner: no URLs to scan (err=%v)", err)
+			return
+		}
+	} else {
+		seen := make(map[string]bool)
+		for _, raw := range requestedURLs {
+			norm, err := urlnorm.Normalize(raw)
+			if err != nil {
+				continue
+			}
+			if !seen[norm] {
+				seen[norm] = true
+				urlObjs = append(urlObjs, db.URL{URL: norm})
+			}
+		}
+		if len(urlObjs) == 0 {
+			log.Printf("scanner: no valid URLs in targeted scan request")
+			return
+		}
 	}
+
 	servers, err := sc.store.ListDNSServers(ctx)
 	if err != nil {
 		log.Printf("scanner: load DNS servers: %v", err)
 		return
 	}
 
-	urlFile, err := writeTempLines(urls)
+	urlFile, err := writeTempLines(urlObjs)
 	if err != nil {
 		log.Printf("scanner: write url file: %v", err)
 		return
@@ -173,6 +196,7 @@ func (sc *Scanner) setRunning(v bool) {
 }
 
 type dnsYAMLEntry struct {
+	ISP      string `yaml:"isp"`
 	Name     string `yaml:"name"`
 	Address  string `yaml:"address"`
 	Protocol string `yaml:"protocol"`
@@ -190,7 +214,7 @@ func (sc *Scanner) writeDNSYAML(servers []db.DNSServer) (string, error) {
 	defer f.Close()
 	entries := make([]dnsYAMLEntry, len(servers))
 	for i, s := range servers {
-		entries[i] = dnsYAMLEntry{Name: s.Name, Address: s.Address, Protocol: s.Protocol}
+		entries[i] = dnsYAMLEntry{ISP: s.ISP, Name: s.Name, Address: s.Address, Protocol: s.Protocol}
 	}
 	if err := yaml.NewEncoder(f).Encode(dnsYAMLConfig{Servers: entries}); err != nil {
 		os.Remove(f.Name())

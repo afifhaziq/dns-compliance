@@ -56,8 +56,8 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-// URLs (department watchlist scope — admin sees the global pool, everyone
-// else sees only their own department's watchlist)
+// URLs (department watchlist scope — every user including admin is scoped to
+// their own department's watchlist; admin's department is "Admin")
 
 func (h *Handlers) ListURLs(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
@@ -65,15 +65,11 @@ func (h *Handlers) ListURLs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "not authenticated")
 		return
 	}
-
-	var urls []db.URL
-	var err error
-	switch {
-	case user.IsAdmin:
-		urls, err = h.store.ListURLs(r.Context())
-	case user.DepartmentID != nil:
-		urls, err = h.store.ListDepartmentURLs(r.Context(), *user.DepartmentID)
+	if user.DepartmentID == nil {
+		writeError(w, http.StatusInternalServerError, "user has no department")
+		return
 	}
+	urls, err := h.store.ListDepartmentURLs(r.Context(), *user.DepartmentID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -82,55 +78,45 @@ func (h *Handlers) ListURLs(w http.ResponseWriter, r *http.Request) {
 }
 
 // AddToWatchlist gets-or-creates the URL by normalized value and links it to
-// a department's watchlist. Non-admins are scoped to their own department;
-// admins have no department of their own, so they must specify one.
+// the caller's department watchlist (admin's own "Admin" department included).
 func (h *Handlers) AddToWatchlist(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "not authenticated")
 		return
 	}
+	if user.DepartmentID == nil {
+		writeError(w, http.StatusForbidden, "user has no department")
+		return
+	}
 
 	var body struct {
-		URL          string `json:"url"`
-		DepartmentID *uint  `json:"department_id"`
+		URL string `json:"url"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" {
 		writeError(w, http.StatusBadRequest, "url is required")
 		return
 	}
 
-	var departmentID uint
-	if user.IsAdmin {
-		if body.DepartmentID == nil {
-			writeError(w, http.StatusBadRequest, "department_id is required")
-			return
-		}
-		departmentID = *body.DepartmentID
-	} else {
-		if user.DepartmentID == nil {
-			writeError(w, http.StatusForbidden, "user has no department")
-			return
-		}
-		departmentID = *user.DepartmentID
-	}
-
-	u, err := h.store.AddURLToWatchlist(r.Context(), departmentID, body.URL)
+	u, err := h.store.AddURLToWatchlist(r.Context(), *user.DepartmentID, body.URL)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, u)
+	writeJSON(w, http.StatusCreated, db.URLEntry{ID: u.ID, URL: u.URL, Enabled: true, CreatedAt: u.CreatedAt})
 }
 
-// RemoveFromWatchlist unlinks a URL from a department's watchlist only —
-// the URL row and its scan history are untouched, so other departments
-// watching the same domain (or anyone re-adding it later) keep full
-// history. 404s if the URL wasn't actually on that department's watchlist.
+// RemoveFromWatchlist unlinks a URL from the caller's department watchlist
+// only — URL row and its scan history are untouched. 404s if the URL wasn't
+// actually on that department's watchlist.
 func (h *Handlers) RemoveFromWatchlist(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	if user.DepartmentID == nil {
+		writeError(w, http.StatusForbidden, "user has no department")
 		return
 	}
 
@@ -140,29 +126,51 @@ func (h *Handlers) RemoveFromWatchlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var departmentID uint
-	if user.IsAdmin {
-		raw := r.URL.Query().Get("department_id")
-		parsed, parseErr := strconv.ParseUint(raw, 10, 64)
-		if parseErr != nil {
-			writeError(w, http.StatusBadRequest, "department_id query param is required")
-			return
-		}
-		departmentID = uint(parsed)
-	} else {
-		if user.DepartmentID == nil {
-			writeError(w, http.StatusForbidden, "user has no department")
-			return
-		}
-		departmentID = *user.DepartmentID
-	}
-
-	removed, err := h.store.RemoveURLFromWatchlist(r.Context(), departmentID, uint(id))
+	removed, err := h.store.RemoveURLFromWatchlist(r.Context(), *user.DepartmentID, uint(id))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if !removed {
+		writeError(w, http.StatusNotFound, "url not on this department's watchlist")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ToggleURL enables or disables a URL in the caller's department watchlist.
+// Does not affect other departments watching the same domain.
+func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	if user.DepartmentID == nil {
+		writeError(w, http.StatusForbidden, "user has no department")
+		return
+	}
+
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	var body struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+
+	found, err := h.store.SetURLEnabled(r.Context(), *user.DepartmentID, uint(id), body.Enabled)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
 		writeError(w, http.StatusNotFound, "url not on this department's watchlist")
 		return
 	}
@@ -182,12 +190,17 @@ func (h *Handlers) ListDNSServers(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) CreateDNSServer(w http.ResponseWriter, r *http.Request) {
 	var body struct {
+		ISP      string `json:"isp"`
 		Name     string `json:"name"`
 		Address  string `json:"address"`
 		Protocol string `json:"protocol"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if body.ISP == "" {
+		writeError(w, http.StatusBadRequest, "isp is required")
 		return
 	}
 	if body.Address == "" {
@@ -198,6 +211,7 @@ func (h *Handlers) CreateDNSServer(w http.ResponseWriter, r *http.Request) {
 		body.Protocol = "udp"
 	}
 	s, err := h.store.CreateDNSServer(r.Context(), db.DNSServer{
+		ISP:      body.ISP,
 		Name:     body.Name,
 		Address:  body.Address,
 		Protocol: body.Protocol,
@@ -229,7 +243,11 @@ func (h *Handlers) TriggerScan(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "scanner not configured")
 		return
 	}
-	if err := h.scanner.Trigger(r.Context(), "manual"); err != nil {
+	var body struct {
+		URLs []string `json:"urls"`
+	}
+	json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck — body is optional
+	if err := h.scanner.Trigger(r.Context(), "manual", body.URLs); err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}

@@ -25,6 +25,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Get("/urls", h.ListURLs)
 			r.Post("/urls", h.AddToWatchlist)
 			r.Delete("/urls/{id}", h.RemoveFromWatchlist)
+			r.Patch("/urls/{id}", h.ToggleURL)
 
 			// DNS servers are global/shared — every authenticated role can
 			// view them (results reference them by name); only mutating the

@@ -61,12 +61,28 @@ func waitUntil(t *testing.T, cond func() bool, timeout time.Duration) {
 	t.Fatal("condition not met within timeout")
 }
 
+func TestScannerTargetedURLs(t *testing.T) {
+	crawlerPath := writeFakeCrawler(t)
+	store := &completionCapture{}
+	sc := server.NewScanner(crawlerPath, "localhost:50051", store)
+
+	if err := sc.Trigger(context.Background(), "manual", []string{"example.com", "https://EXAMPLE.COM"}); err != nil {
+		t.Fatalf("Trigger: %v", err)
+	}
+
+	waitUntil(t, func() bool { return !sc.IsRunning() }, 3*time.Second)
+
+	if len(store.completed) == 0 {
+		t.Fatal("expected CompleteScanRun to be called")
+	}
+}
+
 func TestScannerTriggerRunsAndCompletes(t *testing.T) {
 	crawlerPath := writeFakeCrawler(t)
 	store := &completionCapture{}
 	sc := server.NewScanner(crawlerPath, "localhost:50051", store)
 
-	if err := sc.Trigger(context.Background(), "manual"); err != nil {
+	if err := sc.Trigger(context.Background(), "manual", nil); err != nil {
 		t.Fatalf("Trigger: %v", err)
 	}
 
@@ -88,8 +104,8 @@ func TestScannerRejectsConcurrentRun(t *testing.T) {
 	store := &completionCapture{}
 	sc := server.NewScanner(f.Name(), "localhost:50051", store)
 
-	_ = sc.Trigger(context.Background(), "manual")
-	err := sc.Trigger(context.Background(), "manual")
+	_ = sc.Trigger(context.Background(), "manual", nil)
+	err := sc.Trigger(context.Background(), "manual", nil)
 	if err == nil {
 		t.Fatal("expected error for concurrent scan")
 	}

@@ -15,7 +15,7 @@ func StartScheduler(ctx context.Context, sc *Scanner, interval time.Duration) {
 		for {
 			select {
 			case <-ticker.C:
-				if err := sc.Trigger(ctx, "scheduled"); err != nil {
+				if err := sc.Trigger(ctx, "scheduled", nil); err != nil {
 					log.Printf("scheduler: %v", err)
 				}
 			case <-ctx.Done():
