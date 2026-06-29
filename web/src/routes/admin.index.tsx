@@ -17,6 +17,7 @@ import {
   DialogFooter,
 } from '@/components/animate-ui/components/radix/dialog'
 import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { useAuth } from './__root'
 
 export const Route = createFileRoute('/admin/')({ component: AdminPage })
@@ -288,22 +289,22 @@ function AdminPage() {
             + Add Department
           </button>
         </div>
-        <table className="results-table" aria-label="Departments">
-          <thead>
-            <tr>
-              <th className="col-domain" scope="col">Name</th>
-              <th className="col-status" scope="col">Created</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table className="results-table" aria-label="Departments">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="col-domain th-left" scope="col">Name</TableHead>
+              <TableHead className="col-status" scope="col">Created</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {departments.map(d => (
-              <tr key={d.id}>
-                <td className="col-domain">{d.name}</td>
-                <td className="col-status">{DATE_FMT.format(new Date(d.created_at))}</td>
-              </tr>
+              <TableRow key={d.id} className="admin-row">
+                <TableCell className="col-domain">{d.name}</TableCell>
+                <TableCell className="col-status">{DATE_FMT.format(new Date(d.created_at))}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </section>
 
       <section className="results-wrap">
@@ -313,22 +314,22 @@ function AdminPage() {
             + Create User
           </button>
         </div>
-        <table className="results-table" aria-label="Users">
-          <thead>
-            <tr>
-              <th className="col-domain" scope="col">Username</th>
-              <th className="col-status" scope="col">Department</th>
-              <th className="col-status" scope="col">Created</th>
-              <th className="col-evidence" scope="col" />
-            </tr>
-          </thead>
-          <tbody>
+        <Table className="results-table" aria-label="Users">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="col-domain th-left" scope="col">Username</TableHead>
+              <TableHead className="col-status" scope="col">Department</TableHead>
+              <TableHead className="col-status" scope="col">Created</TableHead>
+              <TableHead className="col-evidence" scope="col" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {users.map(u => (
-              <tr key={u.id}>
-                <td className="col-domain">{u.username}</td>
-                <td className="col-status">{u.is_admin ? 'Admin' : u.department?.name ?? '—'}</td>
-                <td className="col-status">{DATE_FMT.format(new Date(u.created_at))}</td>
-                <td className="col-evidence" style={{ textAlign: 'right' }}>
+              <TableRow key={u.id} className="admin-row">
+                <TableCell className="col-domain">{u.username}</TableCell>
+                <TableCell className="col-status">{u.is_admin ? 'Admin' : u.department?.name ?? '—'}</TableCell>
+                <TableCell className="col-status">{DATE_FMT.format(new Date(u.created_at))}</TableCell>
+                <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
                   <button
                     className="btn-row-delete"
                     onClick={() => setDeleteTarget(u)}
@@ -336,11 +337,11 @@ function AdminPage() {
                   >
                     Delete
                   </button>
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </section>
 
       <AddDepartmentDialog open={addDeptOpen} onClose={() => setAddDeptOpen(false)} onAdded={load} />

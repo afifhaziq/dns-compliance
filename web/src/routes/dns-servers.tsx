@@ -11,6 +11,7 @@ import {
   DialogFooter,
 } from '@/components/animate-ui/components/radix/dialog'
 import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 
 export const Route = createFileRoute('/dns-servers')({ component: DNSServersPage })
 
@@ -27,21 +28,23 @@ function AddDnsServerDialog({
   onClose: () => void
   onAdded: () => void
 }) {
+  const [isp, setIsp] = useState('')
   const [name, setName] = useState('')
   const [address, setAddress] = useState('')
   const [protocol, setProtocol] = useState<Protocol>('udp')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const reset = () => { setName(''); setAddress(''); setProtocol('udp'); setError(null) }
+  const reset = () => { setIsp(''); setName(''); setAddress(''); setProtocol('udp'); setError(null) }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!isp.trim()) { setError('ISP is required'); return }
     if (!address.trim()) { setError('Address is required'); return }
     setLoading(true)
     setError(null)
     try {
-      await createDnsServer({ name: name.trim(), address: address.trim(), protocol })
+      await createDnsServer({ isp: isp.trim(), name: name.trim(), address: address.trim(), protocol })
       reset()
       onAdded()
       onClose()
@@ -65,6 +68,19 @@ function AddDnsServerDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="form-field">
+            <label className="form-label" htmlFor="dns-isp-input">ISP</label>
+            <input
+              id="dns-isp-input"
+              className="form-input"
+              type="text"
+              placeholder="e.g. Cloudflare"
+              value={isp}
+              onChange={e => setIsp(e.target.value)}
+              autoFocus
+              disabled={loading}
+            />
+          </div>
+          <div className="form-field">
             <label className="form-label" htmlFor="dns-name-input">
               Name <span style={{ color: 'var(--stone-muted)', fontWeight: 400 }}>(optional)</span>
             </label>
@@ -75,7 +91,6 @@ function AddDnsServerDialog({
               placeholder="e.g. Cloudflare DoT"
               value={name}
               onChange={e => setName(e.target.value)}
-              autoFocus
               disabled={loading}
             />
           </div>
@@ -125,20 +140,12 @@ function AddDnsServerDialog({
 type DNSGroup = { name: string; servers: DNSServer[] }
 
 function groupByISP(servers: DNSServer[]): DNSGroup[] {
-  const named = new Map<string, DNSServer[]>()
-  const unnamed: DNSGroup[] = []
+  const groups = new Map<string, DNSServer[]>()
   for (const s of servers) {
-    if (!s.name) {
-      unnamed.push({ name: '', servers: [s] })
-    } else {
-      if (!named.has(s.name)) named.set(s.name, [])
-      named.get(s.name)!.push(s)
-    }
+    if (!groups.has(s.isp)) groups.set(s.isp, [])
+    groups.get(s.isp)!.push(s)
   }
-  return [
-    ...Array.from(named.entries()).map(([name, svrs]) => ({ name, servers: svrs })),
-    ...unnamed,
-  ]
+  return Array.from(groups.entries()).map(([name, svrs]) => ({ name, servers: svrs }))
 }
 
 /* ─── Skeleton ───────────────────────────────────────────────────────────── */
@@ -147,17 +154,17 @@ function SkeletonRows() {
   return (
     <>
       {[120, 160, 100].map((w, i) => (
-        <tr key={i} className="skeleton-row">
-          <td className="col-ip">
+        <TableRow key={i} className="skeleton-row">
+          <TableCell className="col-ip">
             <span className="skeleton" style={{ width: 130, height: 14 }} />
-          </td>
-          <td className="col-status">
+          </TableCell>
+          <TableCell className="col-status">
             <span className="skeleton" style={{ width: 40, height: 20, borderRadius: 99 }} />
-          </td>
-          <td className="col-evidence">
+          </TableCell>
+          <TableCell className="col-evidence">
             <span className="skeleton" style={{ width: w, height: 14 }} />
-          </td>
-        </tr>
+          </TableCell>
+        </TableRow>
       ))}
     </>
   )
@@ -213,7 +220,7 @@ function DNSServersPage() {
   return (
     <div className="mx-20">
       <div className="page-header">
-        <h1 className="page-title">DNS Servers</h1>
+        <h1 className="page-title mb-4">DNS Servers</h1>
         <p className="page-subtitle">{!loading && `${servers.length} configured`}</p>
         <button
           className="btn-primary"
@@ -238,35 +245,35 @@ function DNSServersPage() {
             <button className="btn-primary" onClick={() => setAddOpen(true)}>Add Server</button>
           </div>
         ) : (
-          <table className="results-table" aria-label="DNS servers">
-            <thead>
-              <tr>
-                <th className="col-ip" scope="col">Address</th>
-                <th className="col-status" scope="col">Protocol</th>
-                <th className="col-evidence" scope="col" />
-              </tr>
-            </thead>
-            <tbody>
+          <Table className="results-table" aria-label="DNS servers">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="col-ip th-left" scope="col">Address</TableHead>
+                <TableHead className="col-status" scope="col">Protocol</TableHead>
+                <TableHead className="col-evidence" scope="col" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {loading ? (
                 <SkeletonRows />
               ) : (
                 groupByISP(servers).map(group => (
-                  <React.Fragment key={group.name || `unnamed-${group.servers[0].id}`}>
-                    <tr className="dns-group-row">
-                      <td colSpan={3} className="dns-group-name">
-                        {group.name || <span className="dns-name">(unnamed)</span>}
+                  <React.Fragment key={group.name}>
+                    <TableRow className="dns-group-row">
+                      <TableCell colSpan={3} className="dns-group-name">
+                        {group.name}
                         <span className="dns-group-count">{group.servers.length}</span>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                     {group.servers.map(s => (
-                      <tr key={s.id} className="dns-entry-row">
-                        <td className="col-ip">
+                      <TableRow key={s.id} className="dns-entry-row">
+                        <TableCell className="col-ip">
                           <span className="ip-value">{s.address}</span>
-                        </td>
-                        <td className="col-status">
+                        </TableCell>
+                        <TableCell className="col-status">
                           <span className="protocol-badge">{s.protocol}</span>
-                        </td>
-                        <td className="col-evidence" style={{ textAlign: 'right' }}>
+                        </TableCell>
+                        <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
                           <button
                             className="btn-row-delete"
                             onClick={() => setDeleteTarget(s)}
@@ -274,14 +281,14 @@ function DNSServersPage() {
                           >
                             Delete
                           </button>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
                   </React.Fragment>
                 ))
               )}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
       </div>
 

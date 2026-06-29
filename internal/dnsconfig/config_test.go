@@ -24,9 +24,11 @@ func writeTemp(t *testing.T, content string) string {
 func TestLoadValid(t *testing.T) {
 	path := writeTemp(t, `
 servers:
-  - name: Google
+  - isp: Google
+    name: Google UDP
     address: 8.8.8.8:53
-  - name: Cloudflare
+  - isp: Cloudflare
+    name: Cloudflare UDP
     address: 1.1.1.1:53
 `)
 	cfg, err := dnsconfig.Load(path)
@@ -36,7 +38,7 @@ servers:
 	if len(cfg.Servers) != 2 {
 		t.Fatalf("want 2 servers, got %d", len(cfg.Servers))
 	}
-	if cfg.Servers[0].Name != "Google" || cfg.Servers[0].Address != "8.8.8.8:53" {
+	if cfg.Servers[0].ISP != "Google" || cfg.Servers[0].Name != "Google UDP" || cfg.Servers[0].Address != "8.8.8.8:53" {
 		t.Errorf("unexpected first server: %+v", cfg.Servers[0])
 	}
 }
@@ -44,7 +46,8 @@ servers:
 func TestLoadNameDefaultsToAddress(t *testing.T) {
 	path := writeTemp(t, `
 servers:
-  - address: 9.9.9.9:53
+  - isp: Quad9
+    address: 9.9.9.9:53
 `)
 	cfg, err := dnsconfig.Load(path)
 	if err != nil {
@@ -58,11 +61,24 @@ servers:
 func TestLoadMissingAddress(t *testing.T) {
 	path := writeTemp(t, `
 servers:
-  - name: NoAddress
+  - isp: NoAddress
+    name: NoAddress
 `)
 	_, err := dnsconfig.Load(path)
 	if err == nil {
 		t.Fatal("expected error for missing address")
+	}
+}
+
+func TestLoadMissingISP(t *testing.T) {
+	path := writeTemp(t, `
+servers:
+  - name: Google
+    address: 8.8.8.8:53
+`)
+	_, err := dnsconfig.Load(path)
+	if err == nil {
+		t.Fatal("expected error for missing isp")
 	}
 }
 

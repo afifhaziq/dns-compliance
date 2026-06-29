@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { login } from '../api/auth'
 import { useAuth } from './__root'
+import { AuroraBars } from '@/components/unlumen-ui/primitives/effects/aurora-bars'
 
 export const Route = createFileRoute('/login')({ component: LoginPage })
 
@@ -27,15 +28,20 @@ function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div style={{ width: 360 }}>
-        <div className="page-header" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
-          <h1 className="page-title">DNS Compliance</h1>
-          <p className="page-subtitle">Sign in to continue</p>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden">
+      <AuroraBars className="fixed inset-0 -z-10" gap={0} />
+
+      <div
+        className="rounded-2xl border border-white/10 shadow-2xl"
+        style={{ width: 360, padding: 32, background: '#000000' }}
+      >
+        <div className="page-header mb-4" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4, padding: 0 }}>
+          <h1 className="page-title" style={{ color: '#fff' }}>DNS Compliance</h1>
+          <p className="page-subtitle" style={{ color: 'rgba(255,255,255,0.6)' }}>Sign in to continue</p>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="form-field">
-            <label className="form-label" htmlFor="login-username">Username</label>
+            <label className="form-label" htmlFor="login-username" style={{ color: 'rgba(255,255,255,0.85)' }}>Username</label>
             <input
               id="login-username"
               className="form-input"
@@ -48,7 +54,7 @@ function LoginPage() {
             />
           </div>
           <div className="form-field">
-            <label className="form-label" htmlFor="login-password">Password</label>
+            <label className="form-label" htmlFor="login-password" style={{ color: 'rgba(255,255,255,0.85)' }}>Password</label>
             <input
               id="login-password"
               className="form-input"

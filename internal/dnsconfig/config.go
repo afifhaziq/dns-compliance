@@ -9,6 +9,7 @@ import (
 
 // Server is one DNS resolver entry from the config file.
 type Server struct {
+	ISP      string `yaml:"isp"`
 	Name     string `yaml:"name"`
 	Address  string `yaml:"address"`
 	Protocol string `yaml:"protocol"` // udp (default), dot, doh
@@ -33,6 +34,9 @@ func Load(path string) (*Config, error) {
 	for i, s := range cfg.Servers {
 		if s.Address == "" {
 			return nil, fmt.Errorf("server entry %d is missing an address", i)
+		}
+		if s.ISP == "" {
+			return nil, fmt.Errorf("server entry %d (%s) is missing an isp", i, s.Address)
 		}
 		if cfg.Servers[i].Name == "" {
 			cfg.Servers[i].Name = s.Address

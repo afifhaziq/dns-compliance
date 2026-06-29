@@ -13,6 +13,7 @@ import {
   PreviewLinkCardPanel,
   PreviewLinkCardImage,
 } from '@/components/animate-ui/components/base/preview-link-card'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 
 export const Route = createFileRoute('/')({ component: DashboardPage })
 
@@ -102,12 +103,12 @@ function SubRows({
   return (
     <>
       {results.map(r => (
-        <tr
+        <TableRow
           key={r.id}
           className={`sub-row${!r.compliant ? ' violation-row' : ''}`}
         >
-          <td className="col-expand" />
-          <td className="col-domain">
+          <TableCell className="col-expand" />
+          <TableCell className="col-domain">
             <span className="dns-name">{r.dns_server.name}</span>
             {r.error && (
               <span
@@ -121,18 +122,18 @@ function SubRows({
                 (error)
               </span>
             )}
-          </td>
-          <td className="col-status">
+          </TableCell>
+          <TableCell className="col-status">
             <StatusDot compliant={r.compliant} />
-          </td>
-          <td className="col-ip">
+          </TableCell>
+          <TableCell className="col-ip">
             {r.resolved_ip ? (
               <span className="ip-value">{r.resolved_ip}</span>
             ) : (
               <span className="empty-cell" aria-label="Not resolved">—</span>
             )}
-          </td>
-          <td className="col-evidence">
+          </TableCell>
+          <TableCell className="col-evidence">
             {r.screenshot_url ? (
               <a
                 href={r.screenshot_url}
@@ -146,15 +147,15 @@ function SubRows({
             ) : (
               <span className="empty-cell" aria-label="No screenshot">—</span>
             )}
-          </td>
-          <td className="col-last-scanned">
+          </TableCell>
+          <TableCell className="col-last-scanned">
             {r.scanned_at ? (
               <span title={new Date(r.scanned_at).toLocaleString()}>{relativeTime(r.scanned_at)}</span>
             ) : (
               <span className="empty-cell">—</span>
             )}
-          </td>
-        </tr>
+          </TableCell>
+        </TableRow>
       ))}
     </>
   )
@@ -180,12 +181,12 @@ function URLGroupRow({
 
   return (
     <>
-      <tr
+      <TableRow
         className="url-row"
         onClick={onToggle}
         aria-expanded={expanded}
       >
-        <td className="col-expand">
+        <TableCell className="col-expand">
           <button
             className="expand-btn"
             onClick={e => { e.stopPropagation(); onToggle() }}
@@ -195,8 +196,8 @@ function URLGroupRow({
           >
             <ChevronRight className={`expand-icon${expanded ? ' expanded' : ''}`} />
           </button>
-        </td>
-        <td className="col-domain">
+        </TableCell>
+        <TableCell className="col-domain">
           <PreviewLinkCard href={url}>
             <PreviewLinkCardTrigger>
               <span className="hostname" title={url}>{hostname}</span>
@@ -205,16 +206,16 @@ function URLGroupRow({
               <PreviewLinkCardImage />
             </PreviewLinkCardPanel>
           </PreviewLinkCard>
-        </td>
-        <td className="col-status">
+        </TableCell>
+        <TableCell className="col-status">
           <span
             className={`summary-chip ${allCompliant ? 'all-compliant' : 'has-violations'}`}
           >
             {summaryLabel}
           </span>
-        </td>
-        <td className="col-ip" />
-        <td className="col-evidence">
+        </TableCell>
+        <TableCell className="col-ip" />
+        <TableCell className="col-evidence">
           <Link
             to="/results/$url"
             params={{ url }}
@@ -224,8 +225,8 @@ function URLGroupRow({
           >
             <HistoryIcon className="btn-row-history-icon" />
           </Link>
-        </td>
-        <td className="col-last-scanned">
+        </TableCell>
+        <TableCell className="col-last-scanned">
           {group.latestScannedAt ? (
             <span title={new Date(group.latestScannedAt).toLocaleString()}>
               {relativeTime(group.latestScannedAt)}
@@ -233,8 +234,8 @@ function URLGroupRow({
           ) : (
             <span className="empty-cell">—</span>
           )}
-        </td>
-      </tr>
+        </TableCell>
+      </TableRow>
       <SubRows results={group.results} visible={expanded} />
     </>
   )
@@ -260,20 +261,20 @@ function ResultsTableSkeleton() {
   return (
     <>
       {[180, 140, 220, 160, 200].map((w, i) => (
-        <tr key={i} className="skeleton-row">
-          <td className="col-expand">
+        <TableRow key={i} className="skeleton-row">
+          <TableCell className="col-expand">
             <span className="skeleton" style={{ width: 16, height: 16, borderRadius: 3 }} />
-          </td>
-          <td className="col-domain">
+          </TableCell>
+          <TableCell className="col-domain">
             <span className="skeleton" style={{ width: w, height: 14 }} />
-          </td>
-          <td className="col-status">
+          </TableCell>
+          <TableCell className="col-status">
             <span className="skeleton" style={{ width: 100, height: 20, borderRadius: 4 }} />
-          </td>
-          <td className="col-ip" />
-          <td className="col-evidence" />
-          <td className="col-last-scanned" />
-        </tr>
+          </TableCell>
+          <TableCell className="col-ip" />
+          <TableCell className="col-evidence" />
+          <TableCell className="col-last-scanned" />
+        </TableRow>
       ))}
     </>
   )
@@ -283,27 +284,27 @@ function ResultsTableSkeleton() {
 
 function ServerStatusTable({ stats }: { stats: ServerStat[] }) {
   return (
-    <table className="server-table" aria-label="DNS server compliance status">
-      <tbody>
+    <Table className="server-table" aria-label="DNS server compliance status">
+      <TableBody>
         {stats.map(s => {
           const pct         = s.total > 0 ? Math.round((s.compliant / s.total) * 100) : 0
           const allCompliant = s.compliant === s.total
           const violations  = s.total - s.compliant
 
           return (
-            <tr key={s.name} className="server-row">
-              <td className="server-name-cell">
+            <TableRow key={s.name} className="server-row">
+              <TableCell className="server-name-cell">
                 <span className="server-name">{s.name}</span>
-              </td>
-              <td className="server-bar-cell">
+              </TableCell>
+              <TableCell className="server-bar-cell">
                 <div className="server-bar-wrap">
                   <div className="server-bar" role="presentation">
                     <div className="server-bar-fill" style={{ width: `${pct}%` }} />
                   </div>
                   <span className="server-count">{s.compliant} / {s.total}</span>
                 </div>
-              </td>
-              <td className="server-status-cell">
+              </TableCell>
+              <TableCell className="server-status-cell">
                 {allCompliant ? (
                   <span className="status-dot-label">
                     <span className="status-dot dot-compliant" aria-hidden="true" />
@@ -317,12 +318,12 @@ function ServerStatusTable({ stats }: { stats: ServerStat[] }) {
                     </span>
                   </span>
                 )}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           )
         })}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   )
 }
 
@@ -514,28 +515,28 @@ function DashboardPage() {
                   </p>
                 </div>
               ) : (
-                <table className="results-table" aria-label="DNS compliance results">
-                  <thead>
-                    <tr>
-                      <th className="col-expand" scope="col" />
-                      <th className="col-domain" scope="col">Domain</th>
-                      <th className="col-status" scope="col">Status</th>
-                      <th className="col-ip" scope="col">Resolved IP</th>
-                      <th className="col-evidence" scope="col">Evidence</th>
-                      <th className="col-last-scanned" scope="col">Last scanned</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table className="results-table" aria-label="DNS compliance results">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="col-expand" scope="col" />
+                      <TableHead className="col-domain th-left" scope="col">Domain</TableHead>
+                      <TableHead className="col-status" scope="col">Status</TableHead>
+                      <TableHead className="col-ip" scope="col">Resolved IP</TableHead>
+                      <TableHead className="col-evidence" scope="col">Evidence</TableHead>
+                      <TableHead className="col-last-scanned" scope="col">Last scanned</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {loading ? (
                       <ResultsTableSkeleton />
                     ) : filtered.length === 0 ? (
-                      <tr>
-                        <td colSpan={5}>
+                      <TableRow>
+                        <TableCell colSpan={5}>
                           <div className="empty-state" style={{ padding: '3rem 0' }}>
                             <p className="empty-heading">No results match the current filters</p>
                           </div>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ) : (
                       filtered.map(group => (
                         <URLGroupRow
@@ -546,8 +547,8 @@ function DashboardPage() {
                         />
                       ))
                     )}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               )}
             </div>
           </div>

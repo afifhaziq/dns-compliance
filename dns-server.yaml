@@ -1,13 +1,17 @@
 servers:
-    - name: Google
+    - isp: Google
+      name: Google UDP
       address: 8.8.8.8:53
       protocol: udp
-    - name: Cloudflare
+    - isp: Cloudflare
+      name: Cloudflare UDP
       address: 1.1.1.1:53
       protocol: udp
-    - name: Google DoH
+    - isp: Google
+      name: Google DoH
       address: https://8.8.8.8/dns-query
       protocol: doh
-    - name: Cloudflare DoH
+    - isp: Cloudflare
+      name: Cloudflare DoH
       address: https://1.1.1.1/dns-query
       protocol: doh

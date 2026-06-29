@@ -228,7 +228,7 @@ function URLsPage() {
                         </PreviewLinkCardPanel>
                       </PreviewLinkCard>
                     </TableCell>
-                    <TableCell className="col-status">
+                    <TableCell className="col-status text-center">
                       <span className="dns-name">
                         {DATE_FMT.format(new Date(u.created_at))}
                       </span>

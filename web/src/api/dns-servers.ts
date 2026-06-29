@@ -11,6 +11,7 @@ export async function fetchDnsServerCount(): Promise<number> {
 }
 
 export async function createDnsServer(data: {
+  isp: string
   name: string
   address: string
   protocol: DNSServer['protocol']

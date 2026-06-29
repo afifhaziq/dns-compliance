@@ -7,6 +7,7 @@ import type { DnsRecordSet, DnsRecordsResponse } from '../api/dns-records'
 import { fetchHeatmapByUrlAndYear, fetchResultsByUrl } from '../api/results'
 import type { DailyComplianceStat, DNSServer, ScanResult } from '../api/types'
 import { getCachedDnsRecords, setCachedDnsRecords } from '@/lib/dns-records-cache'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
 import { HeatmapChart } from '@/components/charts/heatmap'
 import { HeatmapChartLoading } from '@/components/charts/heatmap/heatmap-chart-loading'
@@ -62,19 +63,10 @@ function DnsRecordsPanel({
   data: DnsRecordsResponse | null
   loading: boolean
 }) {
-  const resolver = data?.resolver_ip
   const hasRecords = data?.resolved && data.records
 
   return (
     <div className="dash-section dns-records-panel">
-      <p className="dash-label">DNS Records</p>
-
-      {!loading && resolver && (
-        <p className="dns-records-resolver">
-          Looked up via host DNS resolver {resolver}
-        </p>
-      )}
-
       {loading ? (
         <div className="dns-records-grid">
           {DNS_RECORD_LABELS.map(([key]) => (
@@ -135,13 +127,13 @@ function HistorySkeletonRows() {
   return (
     <>
       {[180, 140, 220, 160].map((w, i) => (
-        <tr key={i} className="skeleton-row">
-          <td className="col-domain"><span className="skeleton" style={{ width: w, height: 14 }} /></td>
-          <td className="col-status"><span className="skeleton" style={{ width: 100, height: 20, borderRadius: 4 }} /></td>
-          <td className="col-ip" />
-          <td className="col-evidence" />
-          <td className="col-last-scanned" />
-        </tr>
+        <TableRow key={i} className="skeleton-row">
+          <TableCell className="col-domain"><span className="skeleton" style={{ width: w, height: 14 }} /></TableCell>
+          <TableCell className="col-status"><span className="skeleton" style={{ width: 100, height: 20, borderRadius: 4 }} /></TableCell>
+          <TableCell className="col-ip" />
+          <TableCell className="col-evidence" />
+          <TableCell className="col-last-scanned" />
+        </TableRow>
       ))}
     </>
   )
@@ -264,8 +256,13 @@ function URLHistoryPage() {
       </Link>
       
       <div className="page-header px-0">
-        <h1 className="page-title">{hostname}</h1>
+        <h1 className="page-title text-9xl">{hostname}</h1>
         <p className="page-subtitle">{url} · Last 7 days</p>
+        {!dnsRecordsLoading && dnsRecords?.resolver_ip && (
+          <p className="dns-records-resolver ml-auto">
+            Looked up via host DNS resolver {dnsRecords.resolver_ip}
+          </p>
+        )}
       </div>
 
       <DnsRecordsPanel data={dnsRecords} loading={dnsRecordsLoading} />
@@ -401,50 +398,50 @@ function URLHistoryPage() {
             <p className="empty-body">No scans for this domain in the last 7 days.</p>
           </div>
         ) : (
-          <table className="results-table" aria-label={`Scan history for ${hostname}`}>
-            <thead>
-              <tr>
-                <th className="col-domain" scope="col">DNS Server</th>
-                <th className="col-status" scope="col">Status</th>
-                <th className="col-ip" scope="col">Resolved IP</th>
-                <th className="col-evidence" scope="col">Evidence</th>
-                <th className="col-last-scanned" scope="col">Scanned At</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table className="results-table" aria-label={`Scan history for ${hostname}`}>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="col-domain" scope="col">DNS Server</TableHead>
+                <TableHead className="col-status" scope="col">Status</TableHead>
+                <TableHead className="col-ip" scope="col">Resolved IP</TableHead>
+                <TableHead className="col-evidence" scope="col">Evidence</TableHead>
+                <TableHead className="col-last-scanned" scope="col">Scanned At</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {loading ? (
                 <HistorySkeletonRows />
               ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={5}>
+                <TableRow>
+                  <TableCell colSpan={5}>
                     <div className="empty-state" style={{ padding: '3rem 0' }}>
                       <p className="empty-heading">No results match the current filters</p>
                     </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ) : (
                 filtered.map(r => (
-                  <tr key={r.id} className={!r.compliant ? 'violation-row' : ''}>
-                    <td className="col-domain"><span className="dns-name">{r.dns_server.name}</span></td>
-                    <td className="col-status"><StatusDot compliant={r.compliant} /></td>
-                    <td className="col-ip">
+                  <TableRow key={r.id} className={!r.compliant ? 'violation-row' : ''}>
+                    <TableCell className="col-domain"><span className="dns-name">{r.dns_server.name}</span></TableCell>
+                    <TableCell className="col-status"><StatusDot compliant={r.compliant} /></TableCell>
+                    <TableCell className="col-ip">
                       {r.resolved_ip ? <span className="ip-value">{r.resolved_ip}</span> : <span className="empty-cell" aria-label="Not resolved">—</span>}
-                    </td>
-                    <td className="col-evidence">
+                    </TableCell>
+                    <TableCell className="col-evidence">
                       {r.screenshot_url ? (
                         <a href={r.screenshot_url} target="_blank" rel="noopener noreferrer" className="screenshot-link" aria-label={`View screenshot for ${r.dns_server.name}`}>
                           View screenshot
                         </a>
                       ) : <span className="empty-cell" aria-label="No screenshot">—</span>}
-                    </td>
-                    <td className="col-last-scanned">
+                    </TableCell>
+                    <TableCell className="col-last-scanned">
                       {r.scanned_at ? <span>{DATE_FMT.format(new Date(r.scanned_at))}</span> : <span className="empty-cell">—</span>}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))
               )}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
       </div>
     </div>

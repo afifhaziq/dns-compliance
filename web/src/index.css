@@ -443,7 +443,7 @@ html.dark {
 }
 
 .page-title {
-  @apply text-[17px] font-semibold tracking-[-0.02em];
+  @apply text-[24px] font-semibold tracking-[-0.02em];
 }
 
 .page-subtitle {
@@ -553,6 +553,22 @@ html.dark {
 
 .col-last-scanned {
   @apply w-[130px] whitespace-nowrap text-muted-foreground text-[0.8rem];
+}
+
+/* Opt-in: put directly on a TableHead to left-align that one header cell
+   instead of the default centered .results-table th */
+th.th-left {
+  @apply text-left;
+}
+
+/* Plain row list (admin tables) */
+
+.admin-row {
+  @apply border-t-2 border-stone-border first:border-t-0 transition-colors duration-150 ease-snappy hover:bg-stone-panel;
+}
+
+.admin-row td {
+  @apply py-[9px] px-4;
 }
 
 /* URL group rows */
@@ -795,7 +811,7 @@ html.dark {
 }
 
 .dns-records-resolver {
-  @apply text-[12px] text-stone-muted mt-1 mb-2 font-mono;
+  @apply text-[12px] text-stone-muted font-mono whitespace-nowrap;
 }
 
 /* ─── Server Status Table ────────────────────────────────────────────────── */
@@ -888,6 +904,7 @@ html.dark {
 .btn-row-delete {
   @apply text-[13px] font-medium text-stone-muted bg-transparent border-none py-0.5 px-2 rounded-sm cursor-pointer
     transition-colors duration-150 ease-snappy hover:text-foreground
+    dark:text-[oklch(0.48_0.02_290)] dark:hover:text-[oklch(0.82_0_0)]
     focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink focus-visible:outline-offset-2;
 }
 
