@@ -48,6 +48,9 @@ func (c *completionCapture) ListWatchedURLs(_ context.Context) ([]db.URL, error)
 func (c *completionCapture) ListDNSServers(_ context.Context) ([]db.DNSServer, error) {
 	return []db.DNSServer{{ID: 1, Name: "G", Address: "8.8.8.8:53", Protocol: "udp"}}, nil
 }
+func (c *completionCapture) ListCompliantIPs(_ context.Context) ([]db.CompliantIP, error) {
+	return nil, nil
+}
 
 func waitUntil(t *testing.T, cond func() bool, timeout time.Duration) {
 	t.Helper()

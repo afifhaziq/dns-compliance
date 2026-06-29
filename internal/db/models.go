@@ -68,6 +68,16 @@ type URLEntry struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// CompliantIP is an IP address that counts as compliant even when DNS
+// resolves — used to classify ISP block-pages (e.g. MCMC's redirect IP)
+// as compliant rather than as violations.
+type CompliantIP struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Address   string    `gorm:"uniqueIndex;not null" json:"address"`
+	Note      string    `json:"note"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type ScanRun struct {
 	ID          uint       `gorm:"primaryKey" json:"id"`
 	TriggeredBy string     `json:"triggered_by"` // "scheduled", "manual", "screenshot"

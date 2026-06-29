@@ -122,13 +122,13 @@ const Switch = React.forwardRef<
       >
         <span
           className="absolute inset-0 rounded-full"
-          style={{ backgroundColor: "var(--ic-accent)" }}
+          style={{ backgroundColor: "var(--stone-border)" }}
         />
 
         <motion.span
           className="absolute inset-0 rounded-full"
           style={{
-            backgroundColor: "var(--ic-foreground)",
+            backgroundColor: "var(--ink)",
             opacity: fillOpacity,
           }}
         />

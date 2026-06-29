@@ -387,3 +387,17 @@ func (s *postgresStore) URLOwnedByDepartment(ctx context.Context, departmentID u
 		Count(&count).Error
 	return count > 0, err
 }
+
+func (s *postgresStore) ListCompliantIPs(ctx context.Context) ([]CompliantIP, error) {
+	var ips []CompliantIP
+	return ips, s.db.WithContext(ctx).Order("created_at asc").Find(&ips).Error
+}
+
+func (s *postgresStore) CreateCompliantIP(ctx context.Context, address, note string) (CompliantIP, error) {
+	ip := CompliantIP{Address: address, Note: note}
+	return ip, s.db.WithContext(ctx).Create(&ip).Error
+}
+
+func (s *postgresStore) DeleteCompliantIP(ctx context.Context, id uint) error {
+	return s.db.WithContext(ctx).Delete(&CompliantIP{}, id).Error
+}

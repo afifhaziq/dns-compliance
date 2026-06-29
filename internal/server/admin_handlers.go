@@ -122,3 +122,44 @@ func (h *Handlers) PurgeURL(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// Compliant IPs
+
+func (h *Handlers) ListCompliantIPs(w http.ResponseWriter, r *http.Request) {
+	ips, err := h.store.ListCompliantIPs(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, ips)
+}
+
+func (h *Handlers) CreateCompliantIP(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Address string `json:"address"`
+		Note    string `json:"note"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Address == "" {
+		writeError(w, http.StatusBadRequest, "address is required")
+		return
+	}
+	ip, err := h.store.CreateCompliantIP(r.Context(), body.Address, body.Note)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, ip)
+}
+
+func (h *Handlers) DeleteCompliantIP(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := h.store.DeleteCompliantIP(r.Context(), uint(id)); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { fetchDnsServers, createDnsServer, deleteDnsServer } from '../api/dns-servers'
 import type { DNSServer } from '../api/types'
+import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
   DialogContent,
@@ -11,7 +12,6 @@ import {
   DialogFooter,
 } from '@/components/animate-ui/components/radix/dialog'
 import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 
 export const Route = createFileRoute('/dns-servers')({ component: DNSServersPage })
 
@@ -150,21 +150,22 @@ function groupByISP(servers: DNSServer[]): DNSGroup[] {
 
 /* ─── Skeleton ───────────────────────────────────────────────────────────── */
 
-function SkeletonRows() {
+function SkeletonSection() {
   return (
     <>
-      {[120, 160, 100].map((w, i) => (
-        <TableRow key={i} className="skeleton-row">
-          <TableCell className="col-ip">
-            <span className="skeleton" style={{ width: 130, height: 14 }} />
-          </TableCell>
-          <TableCell className="col-status">
-            <span className="skeleton" style={{ width: 40, height: 20, borderRadius: 99 }} />
-          </TableCell>
-          <TableCell className="col-evidence">
-            <span className="skeleton" style={{ width: w, height: 14 }} />
-          </TableCell>
-        </TableRow>
+      {[2, 1].map((count, gi) => (
+        <div key={gi} className="dns-isp-group">
+          <span className="skeleton" style={{ width: 100, height: 15, marginBottom: 12 }} />
+          {Array.from({ length: count }).map((_, i) => (
+            <div key={i} className="dns-server-entry">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <span className="skeleton" style={{ width: 140, height: 14 }} />
+                <span className="skeleton" style={{ width: 110, height: 12 }} />
+              </div>
+              <span className="skeleton" style={{ width: 38, height: 20, borderRadius: 99 }} />
+            </div>
+          ))}
+        </div>
       ))}
     </>
   )
@@ -245,50 +246,46 @@ function DNSServersPage() {
             <button className="btn-primary" onClick={() => setAddOpen(true)}>Add Server</button>
           </div>
         ) : (
-          <Table className="results-table" aria-label="DNS servers">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="col-ip th-left" scope="col">Address</TableHead>
-                <TableHead className="col-status" scope="col">Protocol</TableHead>
-                <TableHead className="col-evidence" scope="col" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <SkeletonRows />
-              ) : (
-                groupByISP(servers).map(group => (
-                  <React.Fragment key={group.name}>
-                    <TableRow className="dns-group-row">
-                      <TableCell colSpan={3} className="dns-group-name">
-                        {group.name}
-                        <span className="dns-group-count">{group.servers.length}</span>
-                      </TableCell>
-                    </TableRow>
-                    {group.servers.map(s => (
-                      <TableRow key={s.id} className="dns-entry-row">
-                        <TableCell className="col-ip">
-                          <span className="ip-value">{s.address}</span>
-                        </TableCell>
-                        <TableCell className="col-status">
-                          <span className="protocol-badge">{s.protocol}</span>
-                        </TableCell>
-                        <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
-                          <button
-                            className="btn-row-delete"
-                            onClick={() => setDeleteTarget(s)}
-                            aria-label={`Delete ${serverLabel(s)}`}
+          <div>
+            {loading ? (
+              <SkeletonSection />
+            ) : (
+              groupByISP(servers).map(group => (
+                <div key={group.name} className="dns-isp-group">
+                  <div className="dns-isp-header">
+                    <h2 className="dns-isp-name">{group.name}</h2>
+                    <span className="dns-isp-count">{group.servers.length} {group.servers.length === 1 ? 'server' : 'servers'}</span>
+                  </div>
+                  {group.servers.map(s => (
+                    <div key={s.id} className="dns-server-entry">
+                      <div className="dns-server-info">
+                        <div className="flex items-center gap-2">
+                          <span className="dns-server-name">{s.name || s.address}</span>
+                          <Badge
+                            size="sm"
+                            animate={false}
+                            color={s.protocol === 'dot' ? 'teal' : s.protocol === 'doh' ? 'blue' : 'gray'}
                           >
-                            Delete
-                          </button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </React.Fragment>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                            {s.protocol === 'dot' ? 'DoT' : s.protocol === 'doh' ? 'DoH' : 'UDP'}
+                          </Badge>
+                        </div>
+                        {s.name && <span className="dns-server-addr">{s.address}</span>}
+                      </div>
+                      <div className="dns-server-meta">
+                        <button
+                          className="btn-row-delete"
+                          onClick={() => setDeleteTarget(s)}
+                          aria-label={`Delete ${serverLabel(s)}`}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))
+            )}
+          </div>
         )}
       </div>
 

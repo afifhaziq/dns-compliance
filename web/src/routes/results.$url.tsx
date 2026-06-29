@@ -86,7 +86,7 @@ function DnsRecordsPanel({
       ) : (
         <div className="dns-records-grid">
           {DNS_RECORD_LABELS.map(([key, label]) => {
-            const values = data.records[key] ?? []
+            const values = data.records?.[key] ?? []
 
             return (
               <div key={key} className="dns-record-block">
@@ -256,7 +256,7 @@ function URLHistoryPage() {
       </Link>
       
       <div className="page-header px-0">
-        <h1 className="page-title text-9xl">{hostname}</h1>
+        <h1 className="page-title mb-2">{hostname}</h1>
         <p className="page-subtitle">{url} · Last 7 days</p>
         {!dnsRecordsLoading && dnsRecords?.resolver_ip && (
           <p className="dns-records-resolver ml-auto">
@@ -338,12 +338,13 @@ function URLHistoryPage() {
                         an <svg><g> — nesting it there puts the div in the SVG namespace,
                         where browsers don't lay it out (it silently doesn't render). */}
                     <HeatmapLegend
-                      align="center"
+                      align="start"
                       cornerRadius={999}
                       gap={3}
                       lessLabel="Compliant"
                       moreLabel="More violations"
                       colorScale={heatmapYearColorScale}
+                      className='my-2 px-10'
                     />
                   </>
                 )}

@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { Department, URLEntry, User } from './types'
+import type { CompliantIP, Department, URLEntry, User } from './types'
 
 export async function fetchDepartments(): Promise<Department[]> {
   const data = await api.get<Department[]>('/admin/departments')
@@ -37,4 +37,17 @@ export async function fetchUnassignedUrls(): Promise<URLEntry[]> {
 // removeUrl in urls.ts, which only unlinks a department's watchlist entry.
 export async function purgeUrl(id: number): Promise<void> {
   await api.delete<void>(`/admin/urls/${id}`)
+}
+
+export async function fetchCompliantIPs(): Promise<CompliantIP[]> {
+  const data = await api.get<CompliantIP[]>('/admin/compliant-ips')
+  return Array.isArray(data) ? data : []
+}
+
+export async function createCompliantIP(address: string, note: string): Promise<CompliantIP> {
+  return api.post<CompliantIP>('/admin/compliant-ips', { address, note })
+}
+
+export async function deleteCompliantIP(id: number): Promise<void> {
+  await api.delete<void>(`/admin/compliant-ips/${id}`)
 }

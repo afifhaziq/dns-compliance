@@ -55,4 +55,9 @@ type Store interface {
 	ListWatchedURLs(ctx context.Context) ([]URL, error)                                      // urls with >=1 enabled DepartmentURL row — used by the scan sweep
 	ListUnassignedURLs(ctx context.Context) ([]URL, error)                                   // admin view: urls with 0 DepartmentURL rows
 	URLOwnedByDepartment(ctx context.Context, departmentID uint, urlValue string) (bool, error)
+
+	// Compliant IPs — IPs that count as compliant even when DNS resolves
+	ListCompliantIPs(ctx context.Context) ([]CompliantIP, error)
+	CreateCompliantIP(ctx context.Context, address, note string) (CompliantIP, error)
+	DeleteCompliantIP(ctx context.Context, id uint) error
 }

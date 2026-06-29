@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -122,6 +123,9 @@ func (sc *Scanner) run(ctx context.Context, triggeredBy string, requestedURLs []
 		"--dns-servers", dnsFile,
 		"--grpc-addr", sc.grpcAddr,
 	}
+	if ipArg := sc.compliantIPsArg(ctx); ipArg != "" {
+		args = append(args, "--compliant-ips", ipArg)
+	}
 	sc.execCrawler(ctx, args, run.ID)
 }
 
@@ -172,7 +176,26 @@ func (sc *Scanner) runScreenshot(ctx context.Context, rawURL string, dnsServerID
 		"--grpc-addr", sc.grpcAddr,
 		"--screenshots",
 	}
+	if ipArg := sc.compliantIPsArg(ctx); ipArg != "" {
+		args = append(args, "--compliant-ips", ipArg)
+	}
 	sc.execCrawler(ctx, args, run.ID)
+}
+
+// compliantIPsArg fetches the compliant IPs from the store and returns them
+// as a comma-separated string suitable for --compliant-ips. Returns "" if
+// the list is empty or the fetch fails (non-fatal; scan proceeds without it).
+func (sc *Scanner) compliantIPsArg(ctx context.Context) string {
+	ips, err := sc.store.ListCompliantIPs(ctx)
+	if err != nil {
+		log.Printf("scanner: load compliant IPs: %v", err)
+		return ""
+	}
+	addrs := make([]string, len(ips))
+	for i, ip := range ips {
+		addrs[i] = ip.Address
+	}
+	return strings.Join(addrs, ",")
 }
 
 func (sc *Scanner) execCrawler(ctx context.Context, args []string, runID uint) {

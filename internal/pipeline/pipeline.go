@@ -30,6 +30,7 @@ type Config struct {
 	Resolve           func(ctx context.Context, host string) (string, error)
 	Capture           func(ctx context.Context, rawURL string) ([]byte, error)
 	OnResult          func(SiteResult) // called as each result is produced; may be nil
+	CompliantIPs      []string         // IPs treated as compliant even when DNS resolves (e.g. MCMC block-page IP)
 }
 
 type dnsResult struct {
@@ -58,7 +59,7 @@ func Run(ctx context.Context, urls []string, cfg Config) ([]SiteResult, error) {
 			defer dnsWg.Done()
 			for rawURL := range urlCh {
 				siteCtx, cancel := context.WithTimeout(ctx, cfg.DNSTimeout)
-				result := checkDNS(siteCtx, rawURL, cfg.Resolve)
+				result := checkDNS(siteCtx, rawURL, cfg.Resolve, cfg.CompliantIPs)
 				cancel()
 				if result.DNSResolved {
 					screenshotCh <- dnsResult{
@@ -107,7 +108,7 @@ func Run(ctx context.Context, urls []string, cfg Config) ([]SiteResult, error) {
 	return results, nil
 }
 
-func checkDNS(ctx context.Context, rawURL string, resolve func(context.Context, string) (string, error)) SiteResult {
+func checkDNS(ctx context.Context, rawURL string, resolve func(context.Context, string) (string, error), compliantIPs []string) SiteResult {
 	normalized := normalizeURL(rawURL)
 	u, err := url.Parse(normalized)
 	if err != nil || u.Hostname() == "" {
@@ -128,12 +129,20 @@ func checkDNS(ctx context.Context, rawURL string, resolve func(context.Context, 
 			Error:     err.Error(),
 		}
 	}
+
+	compliant := false
+	for _, cip := range compliantIPs {
+		if ip == cip {
+			compliant = true
+			break
+		}
+	}
 	return SiteResult{
 		URL:         rawURL,
 		Timestamp:   time.Now(),
 		DNSResolved: true,
 		ResolvedIP:  ip,
-		Compliant:   false,
+		Compliant:   compliant,
 	}
 }
 

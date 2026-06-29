@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import type React from 'react'
 import {
   createRootRoute,
   Navigate,
@@ -23,8 +24,9 @@ import { fetchMe, logout as apiLogout } from '../api/auth'
 import { fetchUrls } from '../api/urls'
 import type { User, URLEntry } from '../api/types'
 import { ThemeSwitch } from '../components/theme-switch'
-import { ShimmerButton } from '../components/shimmer-button'
 import { GlassNavbar, LogoutButton } from '../components/aicanvas/glass-navbar'
+import { IconBar, IconBarItem } from '@/components/ui/icon-bar'
+import { Zap, Crosshair, X, Plus } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -46,87 +48,169 @@ function ScanSelectedDialog({
   onStart: (urls: string[]) => void
 }) {
   const [watchlistUrls, setWatchlistUrls] = useState<URLEntry[]>([])
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [adhoc, setAdhoc] = useState('')
+  const [chips, setChips] = useState<string[]>([])
+  const [inputText, setInputText] = useState('')
+  const [dropdownOpen, setDropdownOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!open) return
     fetchUrls().then(urls => {
       setWatchlistUrls(urls)
-      setSelected(new Set(urls.filter(u => u.enabled).map(u => u.url)))
     }).catch(() => {})
   }, [open])
 
-  const toggle = (url: string) => {
-    setSelected(prev => {
-      const next = new Set(prev)
-      next.has(url) ? next.delete(url) : next.add(url)
-      return next
-    })
+  const available = watchlistUrls.map(u => u.url).filter(url => !chips.includes(url))
+  const filtered = inputText
+    ? available.filter(url => url.toLowerCase().includes(inputText.toLowerCase()))
+    : []
+
+  const addChip = (value: string) => {
+    const t = value.trim()
+    if (!t || chips.includes(t)) return
+    setChips(prev => [...prev, t])
+    setInputText('')
+    setDropdownOpen(false)
+    setTimeout(() => inputRef.current?.focus(), 0)
   }
 
+  const removeChip = (url: string) => setChips(prev => prev.filter(c => c !== url))
+
   const handleStart = () => {
-    const adhocList = adhoc.split('\n').map(s => s.trim()).filter(Boolean)
-    const all = [...Array.from(selected), ...adhocList]
-    if (all.length === 0) { setError('Select at least one domain'); return }
-    onStart(all)
-    setAdhoc('')
+    if (chips.length === 0) { setError('Select at least one domain'); return }
+    onStart(chips)
     setError(null)
     onClose()
   }
 
-  const handleClose = () => { setAdhoc(''); setError(null); onClose() }
+  const handleClose = () => {
+    setChips([])
+    setInputText('')
+    setDropdownOpen(false)
+    setError(null)
+    onClose()
+  }
+
+  const showAddNew = Boolean(inputText.trim()) && !chips.includes(inputText.trim())
+  const showDropdown = dropdownOpen && (filtered.length > 0 || showAddNew)
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
-      <DialogContent showCloseButton={false} style={{ maxWidth: 480 }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: 500 }}>
         <DialogHeader>
           <DialogTitle>Scan Selected Domains</DialogTitle>
           <DialogDescription>
-            Choose domains from your watchlist or enter additional ones. Each domain is scanned once regardless of how many departments watch it.
+            Search your watchlist or type a domain to add it.
           </DialogDescription>
         </DialogHeader>
 
-        {watchlistUrls.length > 0 && (
-          <div style={{ maxHeight: 220, overflowY: 'auto', marginBottom: 12 }}>
-            {watchlistUrls.map(u => (
-              <label
-                key={u.id}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', cursor: 'pointer', fontSize: '0.875rem' }}
-              >
-                <input
-                  type="checkbox"
-                  checked={selected.has(u.url)}
-                  onChange={() => toggle(u.url)}
-                />
-                <span>{u.url}</span>
-              </label>
-            ))}
-          </div>
-        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Input + dropdown */}
+          <div style={{ position: 'relative' }}>
+            <input
+              ref={inputRef}
+              className="form-input"
+              value={inputText}
+              placeholder="Search watchlist or type a domain..."
+              onChange={e => {
+                setInputText(e.target.value)
+                setDropdownOpen(true)
+              }}
+              onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
+              onKeyDown={e => {
+                if (e.key === 'Escape') { setDropdownOpen(false); return }
+                if (e.key === 'Enter' && showAddNew && filtered.length === 0) {
+                  e.preventDefault()
+                  addChip(inputText)
+                }
+              }}
+              autoComplete="off"
+              spellCheck={false}
+            />
 
-        <div className="form-field">
-          <label className="form-label" htmlFor="scan-adhoc-input">
-            Additional domains{' '}
-            <span style={{ fontWeight: 400 }}>(one per line, not saved to watchlist)</span>
-          </label>
-          <textarea
-            id="scan-adhoc-input"
-            className="form-input"
-            placeholder={'adhoc-domain.com\nanother.com'}
-            value={adhoc}
-            onChange={e => setAdhoc(e.target.value)}
-            rows={3}
-            style={{ resize: 'vertical', fontFamily: 'inherit' }}
-          />
+            {showDropdown && (
+              <div
+                className="absolute left-0 right-0 z-50 rounded-lg border border-stone-border bg-background shadow-[0_4px_20px_rgba(0,0,0,0.12)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.4)] overflow-y-auto py-1"
+                style={{ top: 'calc(100% + 4px)', maxHeight: 220 }}
+              >
+                {filtered.map(url => (
+                  <button
+                    key={url}
+                    type="button"
+                    onMouseDown={e => { e.preventDefault(); addChip(url) }}
+                    className="block w-full text-left px-3 py-[7px] text-sm text-foreground bg-transparent border-none cursor-pointer font-[inherit] hover:bg-stone-panel transition-colors duration-100"
+                  >
+                    {url}
+                  </button>
+                ))}
+                {showAddNew && (
+                  <button
+                    type="button"
+                    onMouseDown={e => { e.preventDefault(); addChip(inputText) }}
+                    className={`flex items-center gap-1.5 w-full text-left px-3 py-[7px] text-sm text-ink bg-transparent border-none cursor-pointer font-[inherit] hover:bg-stone-panel transition-colors duration-100${filtered.length > 0 ? ' border-t border-stone-border mt-1' : ''}`}
+                  >
+                    <Plus size={13} />
+                    Add "{inputText.trim()}"
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Chips */}
+          {chips.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {chips.map(url => (
+                <span
+                  key={url}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '3px 6px 3px 10px',
+                    borderRadius: 5,
+                    fontSize: '0.8125rem',
+                    lineHeight: 1.4,
+                    background: 'color-mix(in oklch, currentColor 6%, transparent)',
+                    border: '1px solid color-mix(in oklch, currentColor 14%, transparent)',
+                    maxWidth: 260,
+                  }}
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                    {url}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeChip(url)}
+                    aria-label={`Remove ${url}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: 2,
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      opacity: 0.5,
+                      flexShrink: 0,
+                      borderRadius: 3,
+                    }}
+                  >
+                    <X size={11} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {error && <p className="form-error">{error}</p>}
 
         <DialogFooter>
           <button className="btn-ghost" onClick={handleClose}>Cancel</button>
-          <button className="btn-primary" onClick={handleStart}>Start Scan</button>
+          <button className="btn-primary" onClick={handleStart}>
+            {chips.length > 0 ? `Start Scan (${chips.length})` : 'Start Scan'}
+          </button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -289,24 +373,20 @@ function RootLayout() {
         <GlassNavbar
           actions={
             <>
-              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                <ShimmerButton
-                  text="Scan All"
-                  scanning={scanning}
+              <IconBar value={null} onValueChange={() => {}}>
+                <IconBarItem
+                  icon={Zap}
+                  label="Scan All"
                   disabled={scanning}
                   onClick={handleScanClick}
-                  ariaLabel={scanning ? 'Scan in progress' : 'Scan all watched domains'}
                 />
-                <button
-                  className="btn-ghost"
+                <IconBarItem
+                  icon={Crosshair}
+                  label="Scan Selected"
                   disabled={scanning}
                   onClick={() => setScanSelectedOpen(true)}
-                  aria-label="Scan selected domains"
-                  style={{ fontSize: '0.8125rem' }}
-                >
-                  Scan Selected
-                </button>
-              </div>
+                />
+              </IconBar>
               <ThemeSwitch />
               <LogoutButton />
             </>

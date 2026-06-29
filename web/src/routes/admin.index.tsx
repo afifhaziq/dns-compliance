@@ -6,8 +6,11 @@ import {
   fetchUsers,
   createUser,
   deleteUser,
+  fetchCompliantIPs,
+  createCompliantIP,
+  deleteCompliantIP,
 } from '../api/admin'
-import type { Department, User } from '../api/types'
+import type { CompliantIP, Department, User } from '../api/types'
 import {
   Dialog,
   DialogContent,
@@ -219,6 +222,94 @@ function AddUserDialog({
   )
 }
 
+/* ─── Add Compliant IP Dialog ────────────────────────────────────────────── */
+
+function AddCompliantIPDialog({
+  open,
+  onClose,
+  onAdded,
+}: {
+  open: boolean
+  onClose: () => void
+  onAdded: () => void
+}) {
+  const [address, setAddress] = useState('')
+  const [note, setNote] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const reset = () => { setAddress(''); setNote(''); setError(null) }
+  const handleClose = () => { reset(); onClose() }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!address.trim()) { setError('IP address is required'); return }
+    setLoading(true)
+    setError(null)
+    try {
+      await createCompliantIP(address.trim(), note.trim())
+      reset()
+      onAdded()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add IP')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: 420 }}>
+        <DialogHeader>
+          <DialogTitle>Add Compliant IP</DialogTitle>
+          <DialogDescription>
+            DNS resolutions to this IP will be classified as compliant — used for ISP block-page redirects (e.g. MCMC).
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit}>
+          <div className="form-field">
+            <label className="form-label" htmlFor="cip-address-input">IP Address</label>
+            <input
+              id="cip-address-input"
+              className="form-input"
+              type="text"
+              placeholder="e.g. 175.139.142.25"
+              value={address}
+              onChange={e => setAddress(e.target.value)}
+              autoFocus
+              disabled={loading}
+            />
+          </div>
+          <div className="form-field">
+            <label className="form-label" htmlFor="cip-note-input">
+              Note <span style={{ color: 'var(--stone-muted)', fontWeight: 400 }}>(optional)</span>
+            </label>
+            <input
+              id="cip-note-input"
+              className="form-input"
+              type="text"
+              placeholder="e.g. MCMC block page"
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              disabled={loading}
+            />
+          </div>
+          {error && <p className="form-error">{error}</p>}
+          <DialogFooter>
+            <button type="button" className="btn-ghost" onClick={handleClose} disabled={loading}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={loading}>
+              {loading ? 'Adding…' : 'Add IP'}
+            </button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 /* ─── Admin Page ─────────────────────────────────────────────────────────── */
 
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -227,19 +318,23 @@ function AdminPage() {
   const { me } = useAuth()
   const [departments, setDepartments] = useState<Department[]>([])
   const [users, setUsers] = useState<User[]>([])
+  const [compliantIPs, setCompliantIPs] = useState<CompliantIP[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addDeptOpen, setAddDeptOpen] = useState(false)
   const [addUserOpen, setAddUserOpen] = useState(false)
+  const [addIPOpen, setAddIPOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
+  const [deleteIPTarget, setDeleteIPTarget] = useState<CompliantIP | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       setError(null)
-      const [d, u] = await Promise.all([fetchDepartments(), fetchUsers()])
+      const [d, u, ips] = await Promise.all([fetchDepartments(), fetchUsers(), fetchCompliantIPs()])
       setDepartments(d)
       setUsers(u)
+      setCompliantIPs(ips)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load admin data')
     } finally {
@@ -265,6 +360,13 @@ function AdminPage() {
     if (!deleteTarget) return
     await deleteUser(deleteTarget.id)
     setDeleteTarget(null)
+    load()
+  }
+
+  const handleDeleteIP = async () => {
+    if (!deleteIPTarget) return
+    await deleteCompliantIP(deleteIPTarget.id)
+    setDeleteIPTarget(null)
     load()
   }
 
@@ -300,7 +402,7 @@ function AdminPage() {
             {departments.map(d => (
               <TableRow key={d.id} className="admin-row">
                 <TableCell className="col-domain">{d.name}</TableCell>
-                <TableCell className="col-status">{DATE_FMT.format(new Date(d.created_at))}</TableCell>
+                <TableCell className="col-status text-center">{DATE_FMT.format(new Date(d.created_at))}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -344,6 +446,51 @@ function AdminPage() {
         </Table>
       </section>
 
+      <section className="results-wrap" style={{ marginBottom: 32 }}>
+        <div className="page-header" style={{ marginBottom: 12 }}>
+          <h2 className="page-title" style={{ fontSize: '1.1rem' }}>Compliant IPs</h2>
+          <p className="page-subtitle" style={{ marginLeft: 8 }}>DNS resolutions to these IPs are classified as compliant</p>
+          <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddIPOpen(true)}>
+            + Add IP
+          </button>
+        </div>
+        <Table className="results-table" aria-label="Compliant IPs">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="col-domain th-left" scope="col">IP Address</TableHead>
+              <TableHead className="col-status" scope="col">Note</TableHead>
+              <TableHead className="col-status" scope="col">Added</TableHead>
+              <TableHead className="col-evidence" scope="col" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {compliantIPs.map(ip => (
+              <TableRow key={ip.id} className="admin-row">
+                <TableCell className="col-domain" style={{ fontFamily: 'monospace' }}>{ip.address}</TableCell>
+                <TableCell className="col-status">{ip.note || '—'}</TableCell>
+                <TableCell className="col-status">{DATE_FMT.format(new Date(ip.created_at))}</TableCell>
+                <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
+                  <button
+                    className="btn-row-delete"
+                    onClick={() => setDeleteIPTarget(ip)}
+                    aria-label={`Delete ${ip.address}`}
+                  >
+                    Delete
+                  </button>
+                </TableCell>
+              </TableRow>
+            ))}
+            {compliantIPs.length === 0 && !loading && (
+              <TableRow>
+                <TableCell colSpan={4} style={{ textAlign: 'center', color: 'var(--stone-muted)', padding: '16px 0' }}>
+                  No compliant IPs configured
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </section>
+
       <AddDepartmentDialog open={addDeptOpen} onClose={() => setAddDeptOpen(false)} onAdded={load} />
       <AddUserDialog
         open={addUserOpen}
@@ -351,11 +498,19 @@ function AdminPage() {
         onAdded={load}
         departments={departments}
       />
+      <AddCompliantIPDialog open={addIPOpen} onClose={() => setAddIPOpen(false)} onAdded={load} />
       <DeleteConfirmDialog
         open={deleteTarget !== null}
         itemLabel={deleteTarget?.username ?? ''}
         onConfirm={handleDeleteUser}
         onCancel={() => setDeleteTarget(null)}
+      />
+      <DeleteConfirmDialog
+        open={deleteIPTarget !== null}
+        itemLabel={deleteIPTarget?.address ?? ''}
+        description="Scans will no longer classify this IP as compliant."
+        onConfirm={handleDeleteIP}
+        onCancel={() => setDeleteIPTarget(null)}
       />
     </div>
   )

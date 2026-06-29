@@ -57,6 +57,10 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 				r.Delete("/admin/users/{id}", h.DeleteUser)
 				r.Get("/admin/urls/unassigned", h.ListUnassignedURLs)
 				r.Delete("/admin/urls/{id}", h.PurgeURL)
+
+				r.Get("/admin/compliant-ips", h.ListCompliantIPs)
+				r.Post("/admin/compliant-ips", h.CreateCompliantIP)
+				r.Delete("/admin/compliant-ips/{id}", h.DeleteCompliantIP)
 			})
 		})
 	})

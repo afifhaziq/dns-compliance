@@ -341,6 +341,14 @@ func (m *fullMockStore) URLOwnedByDepartment(_ context.Context, departmentID uin
 	return false, nil
 }
 
+func (m *fullMockStore) ListCompliantIPs(_ context.Context) ([]db.CompliantIP, error) {
+	return nil, nil
+}
+func (m *fullMockStore) CreateCompliantIP(_ context.Context, address, note string) (db.CompliantIP, error) {
+	return db.CompliantIP{Address: address, Note: note}, nil
+}
+func (m *fullMockStore) DeleteCompliantIP(_ context.Context, _ uint) error { return nil }
+
 var _ db.Store = (*fullMockStore)(nil)
 
 func setupRouter(store db.Store, sc *server.Scanner) http.Handler {

@@ -502,7 +502,7 @@ html.dark {
 }
 
 .heatmap-server-block {
-  @apply mb-8;
+  @apply mb-10;
 }
 
 .heatmap-server-header {
@@ -927,30 +927,41 @@ th.th-left {
   @apply w-4 h-4;
 }
 
-/* ─── DNS Server Grouped List ────────────────────────────────────────────── */
+/* ─── DNS Server List ────────────────────────────────────────────────────── */
 
-.dns-group-row {
-  @apply bg-stone-panel border-t border-stone-border first:border-t-0;
+.dns-isp-group {
+  @apply mb-5;
 }
 
-.dns-group-name {
-  @apply py-1.5 px-4 text-xs font-semibold tracking-[0.04em] text-stone-muted uppercase flex items-center gap-2;
+.dns-isp-header {
+  @apply flex items-center justify-between gap-3 mb-2;
 }
 
-.dns-group-count {
-  @apply inline-flex items-center justify-center min-w-[18px] h-[18px] px-[5px] rounded-full text-[11px] font-semibold bg-stone-border text-stone-muted [font-variant-numeric:tabular-nums];
+.dns-isp-name {
+  @apply text-[15px] font-semibold text-foreground;
 }
 
-.dns-entry-row {
-  @apply border-t border-stone-border transition-colors duration-150 ease-snappy hover:bg-stone-panel;
+.dns-isp-count {
+  @apply text-[13px] font-medium text-stone-muted [font-variant-numeric:tabular-nums];
 }
 
-.dns-entry-row td {
-  @apply py-[9px] px-4;
+.dns-server-entry {
+  @apply flex items-center justify-between gap-4 py-3 border-b border-stone-border last:border-b-0;
 }
 
-/* ─── Protocol Badge ─────────────────────────────────────────────────────── */
-
-.protocol-badge {
-  @apply inline-flex items-center py-0.5 px-2 rounded-full text-[11px] font-semibold tracking-[0.04em] uppercase bg-stone-panel text-stone-muted font-mono;
+.dns-server-info {
+  @apply flex flex-col gap-[3px];
 }
+
+.dns-server-name {
+  @apply text-sm font-medium text-stone-muted;
+}
+
+.dns-server-addr {
+  @apply font-mono text-[12px] text-stone-muted;
+}
+
+.dns-server-meta {
+  @apply flex items-center gap-3 shrink-0;
+}
+

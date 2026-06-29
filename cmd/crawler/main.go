@@ -40,6 +40,7 @@ func main() {
 	waitIdleSec    := flag.Int("wait-idle", 5, "max seconds to wait for network idle after page load before screenshotting anyway")
 	postIdleSleepMs := flag.Int("post-idle-sleep", 2000, "milliseconds to sleep after network idle before taking the screenshot")
 	takeScreenshots  := flag.Bool("screenshots", false, "capture screenshots for resolved sites (default: DNS-only)")
+	compliantIPsFlag := flag.String("compliant-ips", "", "comma-separated IPs treated as compliant even when DNS resolves (e.g. MCMC block-page IP)")
 	flag.Parse()
 
 	urls, err := input.Load(*sitesFile, flag.Args())
@@ -88,11 +89,21 @@ func main() {
 		defer conn.Close()
 	}
 
+	var compliantIPs []string
+	if *compliantIPsFlag != "" {
+		for _, ip := range strings.Split(*compliantIPsFlag, ",") {
+			if t := strings.TrimSpace(ip); t != "" {
+				compliantIPs = append(compliantIPs, t)
+			}
+		}
+	}
+
 	baseCfg := pipeline.Config{
 		DNSWorkers:        *dnsWorkers,
 		ScreenshotWorkers: *ssWorkers,
 		DNSTimeout:        time.Duration(*dnsTimeoutSec) * time.Second,
 		ScreenshotTimeout: time.Duration(*ssTimeoutSec) * time.Second,
+		CompliantIPs:      compliantIPs,
 	}
 	waitIdle := time.Duration(*waitIdleSec) * time.Second
 	postIdleSleep := time.Duration(*postIdleSleepMs) * time.Millisecond
