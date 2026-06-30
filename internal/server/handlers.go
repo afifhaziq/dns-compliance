@@ -622,12 +622,26 @@ func (h *Handlers) ScanProgressStream(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ISPStats(w http.ResponseWriter, r *http.Request) {
 	isp, err := url.PathUnescape(chi.URLParam(r, "isp"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid isp")
+		writeError(w, http.StatusBadRequest, "invalid ISP")
 		return
 	}
-	stats, err := h.store.ISPStats(r.Context(), isp)
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	var stats db.ISPStatsResult
+	if user.IsAdmin {
+		stats, err = h.store.ISPStats(r.Context(), isp)
+	} else {
+		if user.DepartmentID == nil {
+			writeError(w, http.StatusForbidden, "user has no department")
+			return
+		}
+		stats, err = h.store.ISPStatsForDepartment(r.Context(), isp, *user.DepartmentID)
+	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusInternalServerError, "failed to load ISP stats")
 		return
 	}
 	writeJSON(w, http.StatusOK, stats)

@@ -423,9 +423,9 @@ func (s *postgresStore) ISPStats(ctx context.Context, isp string) (ISPStatsResul
 		Select(`scan_results.dns_server_id,
             SUM(CASE WHEN scan_results.compliant = true THEN 1 ELSE 0 END) AS compliant,
             COUNT(*) AS total,
-            AVG(scan_results.latency_ms) AS avg_latency_ms,
-            MIN(scan_results.latency_ms) AS min_latency_ms,
-            MAX(scan_results.latency_ms) AS max_latency_ms`).
+            AVG(CASE WHEN scan_results.latency_ms > 0 THEN scan_results.latency_ms END) AS avg_latency_ms,
+            MIN(CASE WHEN scan_results.latency_ms > 0 THEN scan_results.latency_ms END) AS min_latency_ms,
+            MAX(CASE WHEN scan_results.latency_ms > 0 THEN scan_results.latency_ms END) AS max_latency_ms`).
 		Joins("JOIN (?) AS latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at = latest.max_scanned_at", sub).
 		Joins("JOIN dns_servers ON dns_servers.id = scan_results.dns_server_id").
 		Where("dns_servers.isp = ?", isp).
@@ -467,6 +467,89 @@ func (s *postgresStore) ISPStats(ctx context.Context, isp string) (ISPStatsResul
 		Table("scan_results").
 		Select("scan_results.url_value, COUNT(*) AS violation_count").
 		Joins("JOIN (?) AS latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at = latest.max_scanned_at", sub).
+		Joins("JOIN dns_servers ON dns_servers.id = scan_results.dns_server_id").
+		Where("dns_servers.isp = ? AND scan_results.compliant = false", isp).
+		Group("scan_results.url_value").
+		Order("violation_count DESC").
+		Limit(1).
+		Scan(&vrow).Error; err != nil {
+		return ISPStatsResult{}, err
+	}
+
+	return ISPStatsResult{
+		ISP:                isp,
+		Servers:            serverStats,
+		MostViolatedDomain: vrow.URLValue,
+	}, nil
+}
+
+func (s *postgresStore) ISPStatsForDepartment(ctx context.Context, isp string, departmentID uint) (ISPStatsResult, error) {
+	// Subquery: latest scan per (url_value, dns_server_id)
+	sub := s.db.Model(&ScanResult{}).
+		Select("url_value, dns_server_id, MAX(scanned_at) as max_scanned_at").
+		Group("url_value, dns_server_id")
+
+	// Query 1: per-server compliance + latency stats, scoped to department's enabled watchlist
+	type perServerRow struct {
+		DNSServerID  uint
+		Compliant    int
+		Total        int
+		AvgLatencyMs float64
+		MinLatencyMs int64
+		MaxLatencyMs int64
+	}
+	var rows []perServerRow
+	err := s.db.WithContext(ctx).
+		Table("scan_results").
+		Select(`scan_results.dns_server_id,
+            SUM(CASE WHEN scan_results.compliant = true THEN 1 ELSE 0 END) AS compliant,
+            COUNT(*) AS total,
+            AVG(CASE WHEN scan_results.latency_ms > 0 THEN scan_results.latency_ms END) AS avg_latency_ms,
+            MIN(CASE WHEN scan_results.latency_ms > 0 THEN scan_results.latency_ms END) AS min_latency_ms,
+            MAX(CASE WHEN scan_results.latency_ms > 0 THEN scan_results.latency_ms END) AS max_latency_ms`).
+		Joins("JOIN (?) AS latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at = latest.max_scanned_at", sub).
+		Joins("JOIN department_urls ON department_urls.url_id = scan_results.url_id AND department_urls.department_id = ? AND department_urls.enabled = true", departmentID).
+		Joins("JOIN dns_servers ON dns_servers.id = scan_results.dns_server_id").
+		Where("dns_servers.isp = ?", isp).
+		Group("scan_results.dns_server_id").
+		Scan(&rows).Error
+	if err != nil {
+		return ISPStatsResult{}, err
+	}
+
+	// Build DNS server map to avoid N+1
+	allServers, err := s.ListDNSServers(ctx)
+	if err != nil {
+		return ISPStatsResult{}, err
+	}
+	serverByID := make(map[uint]DNSServer, len(allServers))
+	for _, srv := range allServers {
+		serverByID[srv.ID] = srv
+	}
+
+	serverStats := make([]ISPServerStat, 0, len(rows))
+	for _, row := range rows {
+		serverStats = append(serverStats, ISPServerStat{
+			DNSServer:    serverByID[row.DNSServerID],
+			Compliant:    row.Compliant,
+			Total:        row.Total,
+			AvgLatencyMs: row.AvgLatencyMs,
+			MinLatencyMs: row.MinLatencyMs,
+			MaxLatencyMs: row.MaxLatencyMs,
+		})
+	}
+
+	// Query 2: most violated domain, scoped to department's enabled watchlist
+	type violationRow struct {
+		URLValue       string
+		ViolationCount int
+	}
+	var vrow violationRow
+	if err := s.db.WithContext(ctx).
+		Table("scan_results").
+		Select("scan_results.url_value, COUNT(*) AS violation_count").
+		Joins("JOIN (?) AS latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at = latest.max_scanned_at", sub).
+		Joins("JOIN department_urls ON department_urls.url_id = scan_results.url_id AND department_urls.department_id = ? AND department_urls.enabled = true", departmentID).
 		Joins("JOIN dns_servers ON dns_servers.id = scan_results.dns_server_id").
 		Where("dns_servers.isp = ? AND scan_results.compliant = false", isp).
 		Group("scan_results.url_value").

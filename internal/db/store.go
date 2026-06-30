@@ -31,6 +31,7 @@ type Store interface {
 	InsertResult(ctx context.Context, r ScanResult) error
 	UpdateScreenshot(ctx context.Context, resultID uint, screenshotURL string) error
 	ISPStats(ctx context.Context, isp string) (ISPStatsResult, error)
+	ISPStatsForDepartment(ctx context.Context, isp string, departmentID uint) (ISPStatsResult, error)
 
 	// Departments
 	ListDepartments(ctx context.Context) ([]Department, error)
