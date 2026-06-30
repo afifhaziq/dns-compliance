@@ -463,7 +463,7 @@ func (s *postgresStore) ISPStats(ctx context.Context, isp string) (ISPStatsResul
 		ViolationCount int
 	}
 	var vrow violationRow
-	s.db.WithContext(ctx).
+	if err := s.db.WithContext(ctx).
 		Table("scan_results").
 		Select("scan_results.url_value, COUNT(*) AS violation_count").
 		Joins("JOIN (?) AS latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at = latest.max_scanned_at", sub).
@@ -472,7 +472,9 @@ func (s *postgresStore) ISPStats(ctx context.Context, isp string) (ISPStatsResul
 		Group("scan_results.url_value").
 		Order("violation_count DESC").
 		Limit(1).
-		Scan(&vrow)
+		Scan(&vrow).Error; err != nil {
+		return ISPStatsResult{}, err
+	}
 
 	return ISPStatsResult{
 		ISP:                isp,
