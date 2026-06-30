@@ -14,6 +14,7 @@ function ISPDetailPage() {
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
+    setLoading(true)
     try {
       setError(null)
       setStats(await fetchISPStats(isp))
@@ -34,7 +35,7 @@ function ISPDetailPage() {
       </Link>
 
       <div className="page-header px-0">
-        <h1 className="page-title mb-2">{decodeURIComponent(isp)}</h1>
+        <h1 className="page-title mb-2">{isp}</h1>
         {stats && (
           <p className="page-subtitle">{stats.servers.length} {stats.servers.length === 1 ? 'server' : 'servers'}</p>
         )}
@@ -73,7 +74,7 @@ function ISPDetailPage() {
             <button className="btn-primary" onClick={load}>Retry</button>
           </div>
         ) : (
-          <Table className="server-table" aria-label={`DNS servers for ${decodeURIComponent(isp)}`}>
+          <Table className="server-table" aria-label={`DNS servers for ${isp}`}>
             <TableHeader>
               <TableRow>
                 <TableHead scope="col">Server</TableHead>
