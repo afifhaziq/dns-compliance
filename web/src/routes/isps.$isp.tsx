@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowLeftIcon } from 'lucide-react'
-import { fetchISPStats } from '@/api/isps'
-import type { ISPStats } from '@/api/types'
+import { fetchISPStats, fetchISPTrend } from '@/api/isps'
+import type { ISPStats, ISPTrendStat } from '@/api/types'
 import { Table, TableBody, TableRow, TableCell, TableHead, TableHeader } from '@/components/ui/table'
+import { LineChart } from '@/components/charts/line-chart'
+import { Line } from '@/components/charts/line'
 
 export const Route = createFileRoute('/isps/$isp')({ component: ISPDetailPage })
 
@@ -12,12 +14,18 @@ function ISPDetailPage() {
   const [stats, setStats] = useState<ISPStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [trend, setTrend] = useState<ISPTrendStat[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       setError(null)
-      setStats(await fetchISPStats(isp))
+      const [statsData, trendData] = await Promise.all([
+        fetchISPStats(isp),
+        fetchISPTrend(isp, 30),
+      ])
+      setStats(statsData)
+      setTrend(trendData)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load')
     } finally {
@@ -25,10 +33,18 @@ function ISPDetailPage() {
     }
   }, [isp])
 
+  const trendChartData = useMemo(() =>
+    trend.map(s => ({
+      date: new Date(s.day),
+      compliance: s.total > 0 ? Math.round((s.compliant / s.total) * 100) : 0,
+    })),
+    [trend]
+  )
+
   useEffect(() => { load() }, [load])
 
   return (
-    <div className="mx-60">
+    <div className="mx-20">
       <Link to="/" className="back-link mt-8">
         <ArrowLeftIcon className="back-link-icon" />
         Overview
@@ -52,6 +68,21 @@ function ISPDetailPage() {
           >
             {stats.most_violated_domain}
           </Link>
+        </div>
+      )}
+
+      {/* Compliance Trend */}
+      {!loading && trendChartData.length >= 2 && (
+        <div className="dash-section">
+          <p className="dash-label">Compliance Trend (last 30 days)</p>
+          <LineChart
+            data={trendChartData}
+            xDataKey="date"
+            aspectRatio="4 / 1"
+            margin={{ top: 8, right: 8, bottom: 24, left: 32 }}
+          >
+            <Line dataKey="compliance" stroke="var(--color-accent)" />
+          </LineChart>
         </div>
       )}
 
