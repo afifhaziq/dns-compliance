@@ -125,7 +125,7 @@ function ISPDetailPage() {
                   <TableRow key={s.dns_server.id}>
                     <TableCell>
                       <span className="server-name">{s.dns_server.name}</span>
-                      <span className="text-xs text-muted ml-2">{s.dns_server.protocol.toUpperCase()}</span>
+                      <span className="text-xs text-muted ml-2">{(s.dns_server.protocol || 'UDP').toUpperCase()}</span>
                     </TableCell>
                     <TableCell>
                       <div className="server-bar-wrap">

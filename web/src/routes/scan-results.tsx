@@ -159,7 +159,7 @@ function ScanResultsPage() {
 
   if (urls.length === 0) {
     return (
-      <div className="mx-60">
+      <div className="mx-20">
         <Link to="/" className="back-link mt-8">
           <ArrowLeftIcon className="back-link-icon" />
           Overview

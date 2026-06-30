@@ -37,6 +37,16 @@ import {
   DialogFooter,
 } from '@/components/animate-ui/components/radix/dialog'
 
+/* ─── URL normalization (mirrors urlnorm.Normalize on the server) ──────────── */
+
+function normalizeForClient(raw: string): string {
+  let s = raw.trim().toLowerCase()
+  s = s.replace(/^https?:\/\//, '')     // strip scheme
+  s = s.replace(/^[^@]+@/, '')          // strip userinfo
+  const host = s.split('/')[0]          // drop path
+  return host.replace(/:\d+$/, '').replace(/\.$/, '')  // drop port, trailing dot
+}
+
 /* ─── Scan Selected Dialog ─────────────────────────────────────────────────── */
 
 function ScanSelectedDialog({
@@ -329,17 +339,19 @@ function RootLayout() {
 
   const handleScanSelected = useCallback(async (urls: string[]) => {
     if (scanning) return
+    const triggeredAt = new Date().toISOString()
+    const normalizedUrls = urls.map(normalizeForClient)
     try {
-      const triggeredAt = new Date().toISOString()
       // Snapshot current results before this scan overwrites latest-per-(url,server).
       const baseline = await fetchResults()
       sessionStorage.setItem(`scan-baseline-${triggeredAt}`, JSON.stringify(baseline))
-      await triggerScan(urls)
+      await triggerScan(normalizedUrls)
       setScanning(true)
       startPolling()
-      navigate({ to: '/scan-results', search: { urls, triggeredAt } })
+      navigate({ to: '/scan-results', search: { urls: normalizedUrls, triggeredAt } })
     } catch (err) {
       console.error('Targeted scan trigger failed:', err)
+      sessionStorage.removeItem(`scan-baseline-${triggeredAt}`)
     }
   }, [scanning, startPolling, navigate])
 
