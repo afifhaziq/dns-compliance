@@ -18,6 +18,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResultsIndexRouteImport } from './routes/results.index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as ResultsUrlRouteImport } from './routes/results.$url'
+import { Route as IspsIspRouteImport } from './routes/isps.$isp'
 
 const UrlsRoute = UrlsRouteImport.update({
   id: '/urls',
@@ -64,6 +65,11 @@ const ResultsUrlRoute = ResultsUrlRouteImport.update({
   path: '/$url',
   getParentRoute: () => ResultsRoute,
 } as any)
+const IspsIspRoute = IspsIspRouteImport.update({
+  id: '/isps/$isp',
+  path: '/isps/$isp',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/results': typeof ResultsRouteWithChildren
   '/urls': typeof UrlsRoute
+  '/isps/$isp': typeof IspsIspRoute
   '/results/$url': typeof ResultsUrlRoute
   '/admin/': typeof AdminIndexRoute
   '/results/': typeof ResultsIndexRoute
@@ -81,6 +88,7 @@ export interface FileRoutesByTo {
   '/dns-servers': typeof DnsServersRoute
   '/login': typeof LoginRoute
   '/urls': typeof UrlsRoute
+  '/isps/$isp': typeof IspsIspRoute
   '/results/$url': typeof ResultsUrlRoute
   '/admin': typeof AdminIndexRoute
   '/results': typeof ResultsIndexRoute
@@ -93,6 +101,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/results': typeof ResultsRouteWithChildren
   '/urls': typeof UrlsRoute
+  '/isps/$isp': typeof IspsIspRoute
   '/results/$url': typeof ResultsUrlRoute
   '/admin/': typeof AdminIndexRoute
   '/results/': typeof ResultsIndexRoute
@@ -106,6 +115,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/results'
     | '/urls'
+    | '/isps/$isp'
     | '/results/$url'
     | '/admin/'
     | '/results/'
@@ -115,6 +125,7 @@ export interface FileRouteTypes {
     | '/dns-servers'
     | '/login'
     | '/urls'
+    | '/isps/$isp'
     | '/results/$url'
     | '/admin'
     | '/results'
@@ -126,6 +137,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/results'
     | '/urls'
+    | '/isps/$isp'
     | '/results/$url'
     | '/admin/'
     | '/results/'
@@ -138,6 +150,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ResultsRoute: typeof ResultsRouteWithChildren
   UrlsRoute: typeof UrlsRoute
+  IspsIspRoute: typeof IspsIspRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -205,6 +218,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResultsUrlRouteImport
       parentRoute: typeof ResultsRoute
     }
+    '/isps/$isp': {
+      id: '/isps/$isp'
+      path: '/isps/$isp'
+      fullPath: '/isps/$isp'
+      preLoaderRoute: typeof IspsIspRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -238,6 +258,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ResultsRoute: ResultsRouteWithChildren,
   UrlsRoute: UrlsRoute,
+  IspsIspRoute: IspsIspRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

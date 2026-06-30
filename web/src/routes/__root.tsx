@@ -11,7 +11,6 @@ import {
   useRef,
   useState,
 } from 'react'
-import type React from 'react'
 import {
   createRootRoute,
   Navigate,

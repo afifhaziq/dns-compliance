@@ -63,3 +63,18 @@ export type DailyComplianceStat = {
   compliant: number
   level: number
 }
+
+export type ISPServerStat = {
+  dns_server: DNSServer
+  compliant: number
+  total: number
+  avg_latency_ms: number
+  min_latency_ms: number
+  max_latency_ms: number
+}
+
+export type ISPStats = {
+  isp: string
+  servers: ISPServerStat[]
+  most_violated_domain: string
+}
