@@ -16,6 +16,7 @@ import {
   Navigate,
   Outlet,
   useLocation,
+  useNavigate,
 } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/router-devtools'
 import { fetchScanStatus, isScanning, triggerScan } from '../api/scan'
@@ -254,6 +255,7 @@ export const useScan = () => useContext(ScanContext)
 
 function RootLayout() {
   const location = useLocation()
+  const navigate = useNavigate()
   const [me, setMe] = useState<User | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
 
@@ -330,10 +332,11 @@ function RootLayout() {
       await triggerScan(urls)
       setScanning(true)
       startPolling()
+      navigate({ to: '/scan-results', search: { urls, triggeredAt: new Date().toISOString() } })
     } catch (err) {
       console.error('Targeted scan trigger failed:', err)
     }
-  }, [scanning, startPolling])
+  }, [scanning, startPolling, navigate])
 
   const authValue: AuthContextValue = { me, loading: authLoading, logout, refresh: refreshAuth }
   const isLoginRoute = location.pathname === '/login'

@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UrlsRouteImport } from './routes/urls'
+import { Route as ScanResultsRouteImport } from './routes/scan-results'
 import { Route as ResultsRouteImport } from './routes/results'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DnsServersRouteImport } from './routes/dns-servers'
@@ -23,6 +24,11 @@ import { Route as IspsIspRouteImport } from './routes/isps.$isp'
 const UrlsRoute = UrlsRouteImport.update({
   id: '/urls',
   path: '/urls',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ScanResultsRoute = ScanResultsRouteImport.update({
+  id: '/scan-results',
+  path: '/scan-results',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResultsRoute = ResultsRouteImport.update({
@@ -77,6 +83,7 @@ export interface FileRoutesByFullPath {
   '/dns-servers': typeof DnsServersRoute
   '/login': typeof LoginRoute
   '/results': typeof ResultsRouteWithChildren
+  '/scan-results': typeof ScanResultsRoute
   '/urls': typeof UrlsRoute
   '/isps/$isp': typeof IspsIspRoute
   '/results/$url': typeof ResultsUrlRoute
@@ -87,6 +94,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dns-servers': typeof DnsServersRoute
   '/login': typeof LoginRoute
+  '/scan-results': typeof ScanResultsRoute
   '/urls': typeof UrlsRoute
   '/isps/$isp': typeof IspsIspRoute
   '/results/$url': typeof ResultsUrlRoute
@@ -100,6 +108,7 @@ export interface FileRoutesById {
   '/dns-servers': typeof DnsServersRoute
   '/login': typeof LoginRoute
   '/results': typeof ResultsRouteWithChildren
+  '/scan-results': typeof ScanResultsRoute
   '/urls': typeof UrlsRoute
   '/isps/$isp': typeof IspsIspRoute
   '/results/$url': typeof ResultsUrlRoute
@@ -114,6 +123,7 @@ export interface FileRouteTypes {
     | '/dns-servers'
     | '/login'
     | '/results'
+    | '/scan-results'
     | '/urls'
     | '/isps/$isp'
     | '/results/$url'
@@ -124,6 +134,7 @@ export interface FileRouteTypes {
     | '/'
     | '/dns-servers'
     | '/login'
+    | '/scan-results'
     | '/urls'
     | '/isps/$isp'
     | '/results/$url'
@@ -136,6 +147,7 @@ export interface FileRouteTypes {
     | '/dns-servers'
     | '/login'
     | '/results'
+    | '/scan-results'
     | '/urls'
     | '/isps/$isp'
     | '/results/$url'
@@ -149,6 +161,7 @@ export interface RootRouteChildren {
   DnsServersRoute: typeof DnsServersRoute
   LoginRoute: typeof LoginRoute
   ResultsRoute: typeof ResultsRouteWithChildren
+  ScanResultsRoute: typeof ScanResultsRoute
   UrlsRoute: typeof UrlsRoute
   IspsIspRoute: typeof IspsIspRoute
 }
@@ -160,6 +173,13 @@ declare module '@tanstack/react-router' {
       path: '/urls'
       fullPath: '/urls'
       preLoaderRoute: typeof UrlsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/scan-results': {
+      id: '/scan-results'
+      path: '/scan-results'
+      fullPath: '/scan-results'
+      preLoaderRoute: typeof ScanResultsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/results': {
@@ -257,6 +277,7 @@ const rootRouteChildren: RootRouteChildren = {
   DnsServersRoute: DnsServersRoute,
   LoginRoute: LoginRoute,
   ResultsRoute: ResultsRouteWithChildren,
+  ScanResultsRoute: ScanResultsRoute,
   UrlsRoute: UrlsRoute,
   IspsIspRoute: IspsIspRoute,
 }
