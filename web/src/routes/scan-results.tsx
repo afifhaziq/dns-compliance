@@ -5,6 +5,7 @@ import { fetchResults } from '@/api/results'
 import type { ScanResult } from '@/api/types'
 import { useScan } from '@/routes/__root'
 import { Table, TableBody, TableRow, TableCell, TableHead, TableHeader } from '@/components/ui/table'
+import { classifyDNSError, dnsErrorLabel } from '@/lib/dns-error'
 
 export const Route = createFileRoute('/scan-results')({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -44,6 +45,7 @@ function ScanResultsPage() {
   // resultsByUrl: url -> ScanResult[] (only fresh results for this scan)
   const [resultsByUrl, setResultsByUrl] = useState<Map<string, ScanResult[]>>(new Map())
   const [fetchError, setFetchError] = useState<string | null>(null)
+  const [newlyViolatingUrls, setNewlyViolatingUrls] = useState<Set<string>>(new Set())
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const processFreshResults = useCallback((all: ScanResult[]) => {
@@ -88,12 +90,38 @@ function ScanResultsPage() {
         setFetchError(null)
         const all = await fetchResults()
         processFreshResults(all)
+
+        // Compute newly violating: was compliant in baseline, is now a violation.
+        const key = `scan-baseline-${triggeredAt}`
+        const baselineJson = sessionStorage.getItem(key)
+        if (baselineJson) {
+          const baseline: ScanResult[] = JSON.parse(baselineJson)
+          const baselineMap = new Map<string, boolean>()
+          for (const r of baseline) {
+            baselineMap.set(`${r.url}:${r.dns_server_id}`, r.compliant)
+          }
+          const freshForScan = all.filter(
+            r => urls.includes(r.url) && new Date(r.scanned_at).getTime() >= triggerTime
+          )
+          const newViolating = new Set<string>()
+          for (const r of freshForScan) {
+            if (!r.compliant) {
+              const wasCompliant = baselineMap.get(`${r.url}:${r.dns_server_id}`)
+              // undefined means no prior result for that (url, server) pair → treat as newly seen
+              if (wasCompliant === true || wasCompliant === undefined) {
+                newViolating.add(r.url)
+              }
+            }
+          }
+          setNewlyViolatingUrls(newViolating)
+          sessionStorage.removeItem(key)
+        }
       } catch (err) {
         setFetchError(err instanceof Error ? err.message : 'Failed to load results')
       }
     }
     finalFetch()
-  }, [refreshSignal, scanning, processFreshResults])
+  }, [refreshSignal, scanning, processFreshResults, triggeredAt, urls, triggerTime])
 
   const completedCount = resultsByUrl.size
   const totalViolations = useMemo(() => {
@@ -114,6 +142,21 @@ function ScanResultsPage() {
     return isps.size
   }, [resultsByUrl])
 
+  const worstISP = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const results of resultsByUrl.values()) {
+      for (const r of results) {
+        if (!r.compliant) counts.set(r.dns_server.isp, (counts.get(r.dns_server.isp) ?? 0) + 1)
+      }
+    }
+    if (counts.size === 0) return null
+    let best = { isp: '', count: 0 }
+    for (const [isp, count] of counts) {
+      if (count > best.count) best = { isp, count }
+    }
+    return best
+  }, [resultsByUrl])
+
   if (urls.length === 0) {
     return (
       <div className="mx-60">
@@ -130,7 +173,7 @@ function ScanResultsPage() {
   }
 
   return (
-    <div className="mx-60">
+    <div className="mx-20">
       <Link to="/" className="back-link mt-8">
         <ArrowLeftIcon className="back-link-icon" />
         Overview
@@ -163,7 +206,7 @@ function ScanResultsPage() {
       {completedCount > 0 && (
         <div className="dash-section">
           <p className="dash-label">Summary</p>
-          <div style={{ display: 'flex', gap: '2rem' }}>
+          <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
             <div>
               <p className="server-count">{completedCount} / {urls.length}</p>
               <p className="dash-label">Domains scanned</p>
@@ -178,6 +221,20 @@ function ScanResultsPage() {
                 <p className="dash-label">{ispViolations === 1 ? 'ISP' : 'ISPs'} with violations</p>
               </div>
             )}
+            {worstISP && (
+              <div>
+                <Link to="/isps/$isp" params={{ isp: worstISP.isp }} className="server-count" style={{ color: 'var(--color-accent)' }}>
+                  {worstISP.isp}
+                </Link>
+                <p className="dash-label">Worst ISP ({worstISP.count} violations)</p>
+              </div>
+            )}
+            {newlyViolatingUrls.size > 0 && (
+              <div>
+                <p className="server-count label-violation">{newlyViolatingUrls.size}</p>
+                <p className="dash-label">Newly violating</p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -190,14 +247,17 @@ function ScanResultsPage() {
 
       {/* Per-domain cards */}
       {urls.map(url => {
-        const hostname = (() => { try { return new URL(url).hostname } catch { return url } })()
         const results = resultsByUrl.get(url)
         const hasResults = results && results.length > 0
+        const isNewlyViolating = newlyViolatingUrls.has(url)
 
         return (
           <div key={url} className="dash-section">
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem' }}>
-              <p className="dash-label">{hostname}</p>
+              <p className="dash-label">{url}</p>
+              {isNewlyViolating && (
+                <span className="label-violation" style={{ fontSize: '0.7rem', fontWeight: 600 }}>NEW</span>
+              )}
               <Link to="/results/$url" params={{ url }} className="text-xs" style={{ color: 'var(--color-accent)' }}>
                 Full history →
               </Link>
@@ -215,32 +275,42 @@ function ScanResultsPage() {
                 ))}
               </div>
             ) : (
-              <Table className="results-table" aria-label={`Scan results for ${hostname}`}>
+              <Table className="results-table" aria-label={`Scan results for ${url}`}>
                 <TableHeader>
                   <TableRow>
                     <TableHead scope="col">DNS Server</TableHead>
                     <TableHead scope="col">Status</TableHead>
                     <TableHead scope="col">Resolved IP</TableHead>
+                    <TableHead scope="col">Reason</TableHead>
                     <TableHead scope="col">Evidence</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {results.map(r => (
-                    <TableRow key={r.id} className={!r.compliant ? 'violation-row' : ''}>
-                      <TableCell><span className="dns-name">{r.dns_server.name}</span></TableCell>
-                      <TableCell><StatusDot compliant={r.compliant} /></TableCell>
-                      <TableCell>
-                        {r.resolved_ip
-                          ? <span className="ip-value">{r.resolved_ip}</span>
-                          : <span className="empty-cell">—</span>}
-                      </TableCell>
-                      <TableCell>
-                        {r.screenshot_url
-                          ? <a href={r.screenshot_url} target="_blank" rel="noopener noreferrer" className="screenshot-link">View screenshot</a>
-                          : <span className="empty-cell">—</span>}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {results.map(r => {
+                    const errType = classifyDNSError(r.error)
+                    const errLabel = dnsErrorLabel(errType)
+                    return (
+                      <TableRow key={r.id} className={!r.compliant ? 'violation-row' : ''}>
+                        <TableCell><span className="dns-name">{r.dns_server.name}</span></TableCell>
+                        <TableCell><StatusDot compliant={r.compliant} /></TableCell>
+                        <TableCell>
+                          {r.resolved_ip
+                            ? <span className="ip-value">{r.resolved_ip}</span>
+                            : <span className="empty-cell">—</span>}
+                        </TableCell>
+                        <TableCell>
+                          {errLabel
+                            ? <span className="ip-value">{errLabel}</span>
+                            : <span className="empty-cell">—</span>}
+                        </TableCell>
+                        <TableCell>
+                          {r.screenshot_url
+                            ? <a href={r.screenshot_url} target="_blank" rel="noopener noreferrer" className="screenshot-link">View screenshot</a>
+                            : <span className="empty-cell">—</span>}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             )}
