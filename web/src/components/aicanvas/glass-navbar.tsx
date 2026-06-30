@@ -20,7 +20,11 @@ interface GlassNavbarProps {
 export function LogoutButton() {
   const { logout } = useAuth()
   return (
-    <button className="btn-ghost" onClick={() => { logout() }}>
+    <button
+      className="btn-ghost"
+      style={{ color: 'var(--ink)', borderColor: 'color-mix(in srgb, var(--ink) 40%, transparent)' }}
+      onClick={() => { logout() }}
+    >
       Sign Out
     </button>
   )

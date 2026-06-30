@@ -181,7 +181,9 @@ function ScanResultsPage() {
 
       <div className="page-header px-0">
         <h1 className="page-title mb-2">Scan Results</h1>
-        <p className="page-subtitle">{urls.length} {urls.length === 1 ? 'domain' : 'domains'} selected</p>
+        <p className="page-subtitle">
+          {urls.length === 1 ? urls[0] : `${urls.length} domains selected`}
+        </p>
       </div>
 
       {/* Progress bar */}
@@ -208,22 +210,22 @@ function ScanResultsPage() {
           <p className="dash-label">Summary</p>
           <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
             <div>
-              <p className="server-count">{completedCount} / {urls.length}</p>
+              <p className="server-count" style={{ color: 'var(--ink)' }}>{completedCount} / {urls.length}</p>
               <p className="dash-label">Domains scanned</p>
             </div>
             <div>
-              <p className="server-count">{totalViolations}</p>
+              <p className="server-count" style={{ color: 'var(--ink)' }}>{totalViolations}</p>
               <p className="dash-label">Total violations</p>
             </div>
             {ispViolations > 0 && (
               <div>
-                <p className="server-count">{ispViolations}</p>
+                <p className="server-count" style={{ color: 'var(--ink)' }}>{ispViolations}</p>
                 <p className="dash-label">{ispViolations === 1 ? 'ISP' : 'ISPs'} with violations</p>
               </div>
             )}
             {worstISP && (
               <div>
-                <Link to="/isps/$isp" params={{ isp: worstISP.isp }} className="server-count" style={{ color: 'var(--color-accent)' }}>
+                <Link to="/isps/$isp" params={{ isp: worstISP.isp }} className="server-count" style={{ color: 'var(--ink)' }}>
                   {worstISP.isp}
                 </Link>
                 <p className="dash-label">Worst ISP ({worstISP.count} violations)</p>
@@ -252,13 +254,13 @@ function ScanResultsPage() {
         const isNewlyViolating = newlyViolatingUrls.has(url)
 
         return (
-          <div key={url} className="dash-section">
+          <div key={url} className="dash-section mb-4">
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem' }}>
-              <p className="dash-label">{url}</p>
+              <div className="text-[16px] font-semibold tracking-[-0.02em] mb-2">{url}</div>
               {isNewlyViolating && (
                 <span className="label-violation" style={{ fontSize: '0.7rem', fontWeight: 600 }}>NEW</span>
               )}
-              <Link to="/results/$url" params={{ url }} className="text-xs" style={{ color: 'var(--color-accent)' }}>
+              <Link to="/results/$url" params={{ url }} className="text-xs" style={{ color: 'var(--ink)' }}>
                 Full history →
               </Link>
             </div>

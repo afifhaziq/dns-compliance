@@ -398,12 +398,14 @@ function RootLayout() {
                   label="Scan All"
                   disabled={scanning}
                   onClick={handleScanClick}
+                  className="bg-transparent hover:bg-primary hover:text-white"
                 />
                 <IconBarItem
                   icon={Crosshair}
                   label="Scan Selected"
                   disabled={scanning}
                   onClick={() => setScanSelectedOpen(true)}
+                  className="bg-transparent hover:bg-primary hover:text-white"
                 />
               </IconBar>
               <ThemeSwitch />

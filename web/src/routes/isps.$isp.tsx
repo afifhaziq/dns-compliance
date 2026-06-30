@@ -6,6 +6,9 @@ import type { ISPStats, ISPTrendStat } from '@/api/types'
 import { Table, TableBody, TableRow, TableCell, TableHead, TableHeader } from '@/components/ui/table'
 import { LineChart } from '@/components/charts/line-chart'
 import { Line } from '@/components/charts/line'
+import { Grid } from '@/components/charts/grid'
+import { XAxis } from '@/components/charts/x-axis'
+import { ChartTooltip } from '@/components/charts/tooltip'
 
 export const Route = createFileRoute('/isps/$isp')({ component: ISPDetailPage })
 
@@ -79,9 +82,25 @@ function ISPDetailPage() {
             data={trendChartData}
             xDataKey="date"
             aspectRatio="4 / 1"
-            margin={{ top: 8, right: 8, bottom: 24, left: 32 }}
+            margin={{ top: 16, right: 16, bottom: 36, left: 40 }}
           >
-            <Line dataKey="compliance" stroke="var(--color-accent)" />
+            <Grid horizontal numTicksRows={4} />
+            <XAxis numTicks={5} />
+            <Line
+              dataKey="compliance"
+              stroke="var(--ink)"
+              strokeWidth={2}
+              showMarkers
+              markers={{ radius: 3, fill: 'var(--ink)', stroke: 'var(--chart-background)', strokeWidth: 2 }}
+              fadeEdges={false}
+            />
+            <ChartTooltip
+              rows={(point) => [{
+                color: 'var(--ink)',
+                label: 'Compliance',
+                value: `${point.compliance as number}%`,
+              }]}
+            />
           </LineChart>
         </div>
       )}
