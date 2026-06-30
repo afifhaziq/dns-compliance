@@ -357,6 +357,13 @@ func (m *fullMockStore) ISPStatsForDepartment(_ context.Context, _ string, _ uin
 	return db.ISPStatsResult{}, nil
 }
 
+func (m *fullMockStore) ISPTrend(_ context.Context, _ string, _, _ time.Time) ([]db.ISPTrendStat, error) {
+	return nil, nil
+}
+func (m *fullMockStore) ISPTrendForDepartment(_ context.Context, _ string, _, _ time.Time, _ uint) ([]db.ISPTrendStat, error) {
+	return nil, nil
+}
+
 var _ db.Store = (*fullMockStore)(nil)
 
 func setupRouter(store db.Store, sc *server.Scanner) http.Handler {

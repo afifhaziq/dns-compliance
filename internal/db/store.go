@@ -32,6 +32,8 @@ type Store interface {
 	UpdateScreenshot(ctx context.Context, resultID uint, screenshotURL string) error
 	ISPStats(ctx context.Context, isp string) (ISPStatsResult, error)
 	ISPStatsForDepartment(ctx context.Context, isp string, departmentID uint) (ISPStatsResult, error)
+	ISPTrend(ctx context.Context, isp string, since, until time.Time) ([]ISPTrendStat, error)
+	ISPTrendForDepartment(ctx context.Context, isp string, since, until time.Time, departmentID uint) ([]ISPTrendStat, error)
 
 	// Departments
 	ListDepartments(ctx context.Context) ([]Department, error)

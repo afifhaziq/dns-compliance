@@ -647,6 +647,49 @@ func (h *Handlers) ISPStats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, stats)
 }
 
+// ISP Trend
+
+func (h *Handlers) ISPTrend(w http.ResponseWriter, r *http.Request) {
+	isp, err := url.PathUnescape(chi.URLParam(r, "isp"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid ISP")
+		return
+	}
+	now := time.Now()
+	since := now.AddDate(0, 0, -30)
+	until := now
+	if s := r.URL.Query().Get("since"); s != "" {
+		if t, err2 := time.Parse(time.RFC3339, s); err2 == nil {
+			since = t
+		}
+	}
+	if u := r.URL.Query().Get("until"); u != "" {
+		if t, err2 := time.Parse(time.RFC3339, u); err2 == nil {
+			until = t
+		}
+	}
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	var stats []db.ISPTrendStat
+	if user.IsAdmin {
+		stats, err = h.store.ISPTrend(r.Context(), isp, since, until)
+	} else {
+		if user.DepartmentID == nil {
+			writeError(w, http.StatusForbidden, "user has no department")
+			return
+		}
+		stats, err = h.store.ISPTrendForDepartment(r.Context(), isp, since, until, *user.DepartmentID)
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load trend data")
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
+}
+
 // Screenshot
 
 func (h *Handlers) TriggerScreenshot(w http.ResponseWriter, r *http.Request) {

@@ -138,6 +138,14 @@ type ISPStatsResult struct {
 	MostViolatedDomain string          `json:"most_violated_domain"`
 }
 
+// ISPTrendStat is one calendar day of aggregated compliance for an ISP,
+// used by GET /api/isps/{isp}/trend.
+type ISPTrendStat struct {
+	Day       string `json:"day"` // YYYY-MM-DD
+	Total     int    `json:"total"`
+	Compliant int    `json:"compliant"`
+}
+
 // DailyComplianceLevel buckets a day's results onto the heatmap's 5-level
 // scale: 0 = no scans, 1 = fully compliant, 2-4 = increasing violation
 // severity (share of that day's scans that failed).

@@ -565,3 +565,40 @@ func (s *postgresStore) ISPStatsForDepartment(ctx context.Context, isp string, d
 		MostViolatedDomain: vrow.URLValue,
 	}, nil
 }
+
+func (s *postgresStore) ISPTrend(ctx context.Context, isp string, since, until time.Time) ([]ISPTrendStat, error) {
+	var rows []ISPTrendStat
+	err := s.db.WithContext(ctx).
+		Table("scan_results").
+		Select(`TO_CHAR(scan_results.scanned_at, 'YYYY-MM-DD') AS day,
+            COUNT(*) AS total,
+            SUM(CASE WHEN scan_results.compliant = true THEN 1 ELSE 0 END) AS compliant`).
+		Joins("JOIN dns_servers ON dns_servers.id = scan_results.dns_server_id").
+		Where("dns_servers.isp = ? AND scan_results.scanned_at >= ? AND scan_results.scanned_at <= ?", isp, since, until).
+		Group("TO_CHAR(scan_results.scanned_at, 'YYYY-MM-DD')").
+		Order("day").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (s *postgresStore) ISPTrendForDepartment(ctx context.Context, isp string, since, until time.Time, departmentID uint) ([]ISPTrendStat, error) {
+	var rows []ISPTrendStat
+	err := s.db.WithContext(ctx).
+		Table("scan_results").
+		Select(`TO_CHAR(scan_results.scanned_at, 'YYYY-MM-DD') AS day,
+            COUNT(*) AS total,
+            SUM(CASE WHEN scan_results.compliant = true THEN 1 ELSE 0 END) AS compliant`).
+		Joins("JOIN dns_servers ON dns_servers.id = scan_results.dns_server_id").
+		Joins("JOIN department_urls ON department_urls.url_id = scan_results.url_id AND department_urls.department_id = ? AND department_urls.enabled = true", departmentID).
+		Where("dns_servers.isp = ? AND scan_results.scanned_at >= ? AND scan_results.scanned_at <= ?", isp, since, until).
+		Group("TO_CHAR(scan_results.scanned_at, 'YYYY-MM-DD')").
+		Order("day").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
