@@ -78,3 +78,9 @@ export type ISPStats = {
   servers: ISPServerStat[]
   most_violated_domain: string
 }
+
+export type ISPTrendStat = {
+  day: string       // YYYY-MM-DD
+  total: number
+  compliant: number
+}
