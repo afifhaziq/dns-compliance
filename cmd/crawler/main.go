@@ -59,7 +59,7 @@ func main() {
 			log.Fatalf("loading DNS servers: %v", err)
 		}
 		for _, s := range cfg.Servers {
-			var resolveFn func(context.Context, string) (string, error)
+			var resolveFn func(context.Context, string) (string, int64, error)
 			switch s.Protocol {
 			case "dot":
 				resolveFn = dns.NewDoTResolver(s.Address)
@@ -130,7 +130,7 @@ func main() {
 
 type serverEntry struct {
 	name    string
-	resolve func(context.Context, string) (string, error)
+	resolve func(context.Context, string) (string, int64, error)
 }
 
 func runSweep(
@@ -459,6 +459,7 @@ func buildReport(results []pipeline.SiteResult) *pb.ComplianceReport {
 			Screenshot: r.Screenshot,
 			Error:      r.Error,
 			DnsServer:  r.DNSServer,
+			LatencyMs:  r.LatencyMs,
 		}
 	}
 	return &pb.ComplianceReport{Results: pbResults}

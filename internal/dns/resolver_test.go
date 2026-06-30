@@ -12,7 +12,7 @@ func TestResolveKnownDomain(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	ip, err := dns.Resolve(ctx, "google.com")
+	ip, _, err := dns.Resolve(ctx, "google.com")
 	if err != nil {
 		t.Fatalf("expected google.com to resolve, got error: %v", err)
 	}
@@ -25,7 +25,7 @@ func TestResolveNXDomain(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err := dns.Resolve(ctx, "this-domain-does-not-exist-xyz123abc.com")
+	_, _, err := dns.Resolve(ctx, "this-domain-does-not-exist-xyz123abc.com")
 	if err == nil {
 		t.Fatal("expected error for non-existent domain, got nil")
 	}
@@ -35,7 +35,7 @@ func TestResolveRespectsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := dns.Resolve(ctx, "google.com")
+	_, _, err := dns.Resolve(ctx, "google.com")
 	if err == nil {
 		t.Fatal("expected error from cancelled context, got nil")
 	}
@@ -46,7 +46,7 @@ func TestNewResolverKnownDomain(t *testing.T) {
 	defer cancel()
 
 	resolve := dns.NewResolver("8.8.8.8:53")
-	ip, err := resolve(ctx, "google.com")
+	ip, _, err := resolve(ctx, "google.com")
 	if err != nil {
 		t.Fatalf("expected google.com to resolve via 8.8.8.8, got error: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestNewResolverNXDomain(t *testing.T) {
 	defer cancel()
 
 	resolve := dns.NewResolver("8.8.8.8:53")
-	output, err := resolve(ctx, "https://www.tiktok.com/@mbah.sugeng.sujiwo/photo/7367929772485152005")
+	output, _, err := resolve(ctx, "https://www.tiktok.com/@mbah.sugeng.sujiwo/photo/7367929772485152005")
 	print(output)
 	if err == nil {
 		t.Fatal("expected error for non-existent domain, got nil")

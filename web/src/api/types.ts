@@ -17,6 +17,7 @@ export type ScanResult = {
   resolved_ip: string
   screenshot_url: string
   error: string
+  latency_ms: number
   scanned_at: string
 }
 

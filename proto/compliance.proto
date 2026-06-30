@@ -12,6 +12,7 @@ message SiteResult {
   bytes  screenshot  = 5;
   string error       = 6;
   string dns_server  = 7;
+  int64  latency_ms  = 8;
 }
 
 message ComplianceReport {

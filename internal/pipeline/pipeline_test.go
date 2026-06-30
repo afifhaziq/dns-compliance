@@ -9,9 +9,9 @@ import (
 	"github.com/afif/dns-tracking/internal/pipeline"
 )
 
-func mockResolve(ip string, err error) func(context.Context, string) (string, error) {
-	return func(_ context.Context, _ string) (string, error) {
-		return ip, err
+func mockResolve(ip string, err error) func(context.Context, string) (string, int64, error) {
+	return func(_ context.Context, _ string) (string, int64, error) {
+		return ip, 0, err
 	}
 }
 

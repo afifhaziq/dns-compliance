@@ -64,6 +64,7 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 			Compliant:   r.Compliant,
 			ResolvedIP:  r.ResolvedIp,
 			Error:       r.Error,
+			LatencyMs:   r.GetLatencyMs(),
 			ScannedAt:   time.Unix(r.Timestamp, 0),
 		}
 

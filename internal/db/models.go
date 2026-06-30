@@ -98,6 +98,7 @@ type ScanResult struct {
 	ResolvedIP    string    `json:"resolved_ip"`
 	ScreenshotURL string    `json:"screenshot_url"`
 	Error         string    `json:"error"`
+	LatencyMs     int64     `gorm:"default:0" json:"latency_ms"`
 	ScannedAt     time.Time `json:"scanned_at"`
 }
 
