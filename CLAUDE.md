@@ -5,6 +5,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
+# Full-stack dev startup (PostgreSQL via Docker, server on :8080, Vite on :5173)
+# Builds crawler, starts postgres, launches server + frontend; Ctrl+C shuts all down
+./dev.sh
+
 # Build both binaries
 go build -o server  ./cmd/server/
 go build -o crawler ./cmd/crawler/

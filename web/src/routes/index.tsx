@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { fetchResults, groupResults, lastScanTime } from '../api/results'
 import { fetchUrlCount } from '../api/urls'
-import { fetchDnsServerCount } from '../api/dns-servers'
 import type { ScanResult } from '../api/types'
 import { useScan } from './__root'
 import { Table, TableBody, TableRow, TableCell } from '@/components/ui/table'
@@ -11,24 +10,33 @@ export const Route = createFileRoute('/')({ component: DashboardPage })
 
 /* ─── Derived types ──────────────────────────────────────────────────────── */
 
-type ServerStat = { name: string; compliant: number; total: number }
+type ISPStat = { isp: string; compliant: number; total: number; serverCount: number }
 
 /* ─── Computation ────────────────────────────────────────────────────────── */
 
-function computeServerStats(results: ScanResult[]): ServerStat[] {
-  const map = new Map<string, ServerStat>()
+function computeISPStats(results: ScanResult[]): ISPStat[] {
+  const map = new Map<string, ISPStat>()
+  const serversSeen = new Map<string, Set<string>>() // isp -> set of server names
   for (const r of results) {
-    const s = map.get(r.dns_server.name) ?? { name: r.dns_server.name, compliant: 0, total: 0 }
+    const isp = r.dns_server.isp
+    const s = map.get(isp) ?? { isp, compliant: 0, total: 0, serverCount: 0 }
     s.total++
     if (r.compliant) s.compliant++
-    map.set(r.dns_server.name, s)
+    map.set(isp, s)
+    const seen = serversSeen.get(isp) ?? new Set()
+    seen.add(r.dns_server.name)
+    serversSeen.set(isp, seen)
+  }
+  // Set serverCount from unique server names
+  for (const [isp, s] of map) {
+    s.serverCount = serversSeen.get(isp)?.size ?? 0
   }
   return Array.from(map.values()).sort((a, b) => a.compliant / a.total - b.compliant / b.total)
 }
 
 /* ─── Skeleton ───────────────────────────────────────────────────────────── */
 
-function ServerStatusSkeleton({ count }: { count: number }) {
+function ISPStatusSkeleton({ count }: { count: number }) {
   return (
     <div className="dash-table-wrap">
       {Array.from({ length: count }, (_, i) => (
@@ -42,11 +50,11 @@ function ServerStatusSkeleton({ count }: { count: number }) {
   )
 }
 
-/* ─── Server Status Table ────────────────────────────────────────────────── */
+/* ─── ISP Status Table ────────────────────────────────────────────────── */
 
-function ServerStatusTable({ stats }: { stats: ServerStat[] }) {
+function ISPStatusTable({ stats }: { stats: ISPStat[] }) {
   return (
-    <Table className="server-table" aria-label="DNS server compliance status">
+    <Table className="server-table" aria-label="ISP compliance status">
       <TableBody>
         {stats.map(s => {
           const pct = s.total > 0 ? Math.round((s.compliant / s.total) * 100) : 0
@@ -54,9 +62,15 @@ function ServerStatusTable({ stats }: { stats: ServerStat[] }) {
           const violations = s.total - s.compliant
 
           return (
-            <TableRow key={s.name} className="server-row">
+            <TableRow key={s.isp} className="server-row">
               <TableCell className="server-name-cell">
-                <span className="server-name">{s.name}</span>
+                <Link
+                  to="/isps/$isp"
+                  params={{ isp: s.isp }}
+                  className="server-name"
+                >
+                  {s.isp}
+                </Link>
               </TableCell>
               <TableCell className="server-bar-cell">
                 <div className="server-bar-wrap">
@@ -96,21 +110,18 @@ function DashboardPage() {
 
   const [results, setResults] = useState<ScanResult[]>([])
   const [urlCount, setUrlCount] = useState<number | null>(null)
-  const [serverCount, setServerCount] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
       setError(null)
-      const [raw, urls, servers] = await Promise.all([
+      const [raw, urls] = await Promise.all([
         fetchResults(),
         fetchUrlCount(),
-        fetchDnsServerCount(),
       ])
       setResults(raw)
       setUrlCount(urls)
-      setServerCount(servers)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load')
     } finally {
@@ -120,16 +131,15 @@ function DashboardPage() {
 
   useEffect(() => { load() }, [load, refreshSignal])
 
-  const serverStats = useMemo(() => computeServerStats(results), [results])
+  const ispStats = useMemo(() => computeISPStats(results), [results])
   const lastScan = useMemo(() => lastScanTime(groupResults(results)), [results])
   const hasResults = results.length > 0
 
   const subtitleParts: string[] = []
   if (!loading) {
     const u = urlCount ?? 0
-    const s = serverCount ?? 0
     if (u > 0) subtitleParts.push(`${u} ${u === 1 ? 'domain' : 'domains'}`)
-    if (s > 0) subtitleParts.push(`${s} ${s === 1 ? 'server' : 'servers'}`)
+    if (ispStats.length > 0) subtitleParts.push(`${ispStats.length} ${ispStats.length === 1 ? 'ISP' : 'ISPs'}`)
     if (lastScan) subtitleParts.push(`Last scan: ${lastScan}`)
   }
 
@@ -164,16 +174,16 @@ function DashboardPage() {
       ) : (
         <div className="dash-body">
           <div className="dash-section mt-4">
-            <p className="dash-label">DNS Server Status</p>
+            <p className="dash-label">ISP Compliance Status</p>
             {loading ? (
-              <ServerStatusSkeleton count={3} />
+              <ISPStatusSkeleton count={3} />
             ) : !hasResults ? (
               <div className="dash-table-wrap dash-empty">
                 <p className="dash-empty-heading">No scan data yet</p>
-                <p className="dash-empty-body">Run a scan to see DNS server compliance status.</p>
+                <p className="dash-empty-body">Run a scan to see ISP compliance status.</p>
               </div>
             ) : (
-              <ServerStatusTable stats={serverStats} />
+              <ISPStatusTable stats={ispStats} />
             )}
           </div>
         </div>
