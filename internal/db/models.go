@@ -120,6 +120,24 @@ type DailyComplianceStat struct {
 	Level         int    `json:"level"`
 }
 
+// ISPServerStat holds per-DNS-server compliance and latency statistics for
+// a single ISP, aggregated over the latest scan per (url_value, dns_server_id).
+type ISPServerStat struct {
+	DNSServer    DNSServer `json:"dns_server"`
+	Compliant    int       `json:"compliant"`
+	Total        int       `json:"total"`
+	AvgLatencyMs float64   `json:"avg_latency_ms"`
+	MinLatencyMs int64     `json:"min_latency_ms"`
+	MaxLatencyMs int64     `json:"max_latency_ms"`
+}
+
+// ISPStatsResult is the response shape for GET /api/isps/{isp}.
+type ISPStatsResult struct {
+	ISP                string          `json:"isp"`
+	Servers            []ISPServerStat `json:"servers"`
+	MostViolatedDomain string          `json:"most_violated_domain"`
+}
+
 // DailyComplianceLevel buckets a day's results onto the heatmap's 5-level
 // scale: 0 = no scans, 1 = fully compliant, 2-4 = increasing violation
 // severity (share of that day's scans that failed).

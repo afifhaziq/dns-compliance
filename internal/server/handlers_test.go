@@ -349,6 +349,10 @@ func (m *fullMockStore) CreateCompliantIP(_ context.Context, address, note strin
 }
 func (m *fullMockStore) DeleteCompliantIP(_ context.Context, _ uint) error { return nil }
 
+func (m *fullMockStore) ISPStats(_ context.Context, _ string) (db.ISPStatsResult, error) {
+	return db.ISPStatsResult{}, nil
+}
+
 var _ db.Store = (*fullMockStore)(nil)
 
 func setupRouter(store db.Store, sc *server.Scanner) http.Handler {

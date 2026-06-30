@@ -617,6 +617,22 @@ func (h *Handlers) ScanProgressStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ISP Stats
+
+func (h *Handlers) ISPStats(w http.ResponseWriter, r *http.Request) {
+	isp, err := url.PathUnescape(chi.URLParam(r, "isp"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid isp")
+		return
+	}
+	stats, err := h.store.ISPStats(r.Context(), isp)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
+}
+
 // Screenshot
 
 func (h *Handlers) TriggerScreenshot(w http.ResponseWriter, r *http.Request) {
