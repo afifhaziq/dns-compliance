@@ -188,6 +188,14 @@
   --color-chart-foreground-muted: var(--chart-foreground-muted);
   --color-chart-foreground: var(--chart-foreground);
   --color-chart-background: var(--chart-background);
+  @keyframes shimmer {
+  0% {
+    background-position: 0% 0;
+    }
+  100% {
+    background-position: 100% 0;
+    }
+  }
 }
 
 /* ─── Dark Mode ──────────────────────────────────────────────────────────── */
@@ -415,7 +423,6 @@ html.dark {
     focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink focus-visible:outline-offset-2;
 }
 
-
 .btn-ghost {
   @apply inline-flex items-center py-1.5 px-3.5 text-[13px] font-medium text-foreground bg-transparent border border-stone-border rounded-lg whitespace-nowrap
     transition-[background-color,border-color] duration-150 ease-snappy
@@ -438,7 +445,7 @@ html.dark {
 }
 
 .page-header {
-  @apply px-6 pt-8 flex items-baseline gap-3;
+  @apply px-6 flex items-baseline gap-3;
   padding-inline: 0;
 }
 
@@ -477,7 +484,7 @@ html.dark {
 /* ─── Scan Status Banner ─────────────────────────────────────────────────── */
 
 .scan-banner {
-  @apply mx-6 py-2 px-4 bg-ink-subtle border border-[oklch(0.905_0_0)] rounded-lg text-[13px] font-medium text-ink-hover flex items-center gap-2;
+  @apply py-2 px-4 bg-ink-subtle border border-[oklch(0.905_0_0)] rounded-lg text-[13px] font-medium text-ink-hover flex items-center gap-2;
 }
 
 .scan-banner-dot {
@@ -536,23 +543,23 @@ html.dark {
 }
 
 .col-domain {
-  @apply min-w-[200px];
+  @apply min-w-[250px];
 }
 
 .col-status {
-  @apply w-40;
+  @apply w-1/4;
 }
 
 .col-ip {
-  @apply w-1/2;
+  @apply w-1/4;
 }
 
 .col-evidence {
-  @apply w-[130px] text-center;
+  @apply w-1/4 text-center;
 }
 
 .col-last-scanned {
-  @apply w-[130px] whitespace-nowrap text-muted-foreground text-[0.8rem];
+  @apply w-1/4 whitespace-nowrap text-muted-foreground text-[0.8rem];
 }
 
 /* Opt-in: put directly on a TableHead to left-align that one header cell
@@ -641,6 +648,26 @@ th.th-left {
 
 .screenshot-link:focus-visible {
   @apply outline outline-2 outline-ink outline-offset-2 rounded-xs;
+}
+
+.screenshot-icon-btn {
+  @apply appearance-none inline-flex items-center justify-center bg-transparent border-none p-1 m-0 rounded-sm cursor-pointer text-ink transition-colors duration-150 ease-snappy hover:text-ink-hover hover:bg-stone-panel;
+}
+
+.screenshot-icon-btn:focus-visible {
+  @apply outline outline-2 outline-ink outline-offset-2 rounded-xs;
+}
+
+.screenshot-icon-btn:disabled {
+  @apply text-stone-muted cursor-not-allowed hover:bg-transparent;
+}
+
+.screenshot-icon {
+  @apply w-4 h-4;
+}
+
+.screenshot-pending {
+  @apply inline-flex items-center justify-center text-stone-muted;
 }
 
 /* ─── Status Dot (sub-row indicator) ────────────────────────────────────── */
@@ -772,7 +799,7 @@ th.th-left {
 }
 
 .dash-section {
-  
+
 }
 
 .dash-label {
@@ -934,11 +961,7 @@ th.th-left {
 }
 
 .dns-isp-header {
-  @apply flex items-center justify-between gap-3 mb-2;
-}
-
-.dns-isp-name {
-  @apply text-[15px] font-semibold text-foreground;
+  @apply flex items-center justify-between gap-3;
 }
 
 .dns-isp-count {
@@ -954,7 +977,7 @@ th.th-left {
 }
 
 .dns-server-name {
-  @apply text-sm font-medium text-stone-muted;
+  @apply text-sm font-medium text-foreground;
 }
 
 .dns-server-addr {
@@ -965,3 +988,17 @@ th.th-left {
   @apply flex items-center gap-3 shrink-0;
 }
 
+/* ─── Protocol Badge ─────────────────────────────────────────────────────── */
+
+.protocol-badge {
+  @apply inline-flex items-center py-0.5 px-2 rounded-full text-[11px] font-semibold tracking-[0.04em] uppercase bg-stone-panel text-stone-muted font-mono;
+}
+
+.shimmer-text {
+  color: transparent;
+  background: linear-gradient(90deg, var(--stone-muted) 0%, var(--stone-muted) 35%, var(--stone-text) 50%, var(--stone-muted) 65%, var(--stone-muted) 100%);
+  background-size: 300% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: shimmer 1.5s ease-in-out infinite;
+}

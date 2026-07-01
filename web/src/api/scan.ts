@@ -1,3 +1,4 @@
+import { api } from './client'
 import type { ScanRun, ScanStatus } from './types'
 
 export async function triggerScan(urls?: string[]): Promise<void> {
@@ -38,4 +39,8 @@ export async function fetchScanProgress(): Promise<ScanProgressResponse> {
   if (res.status === 404) throw Object.assign(new Error('no_run'), { code: 'no_run' })
   if (!res.ok) throw new Error(`Failed to load progress: ${res.status}`)
   return res.json()
+}
+
+export async function triggerScreenshot(url: string, dnsServerId: number): Promise<void> {
+  await api.post<void>('/screenshot', { url, dns_server_id: dnsServerId })
 }

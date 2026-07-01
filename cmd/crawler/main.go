@@ -327,7 +327,7 @@ func captureResolved(
 				siteCtx, cancel := context.WithTimeout(ctx, ssTimeout)
 				defer cancel()
 
-				buf, err := screenshot.CaptureWithAllocator(siteCtx, groupAllocCtx, j.url, waitIdle, postIdleSleep)
+				buf, err := captureWithSchemeFallback(siteCtx, groupAllocCtx, j.url, waitIdle, postIdleSleep)
 				if err != nil {
 					log.Printf("screenshot failed for %s: %v", j.url, err)
 					return
@@ -446,6 +446,23 @@ func hostnameFromURL(rawURL string) string {
 		return u.Hostname()
 	}
 	return rawURL
+}
+
+// captureWithSchemeFallback prefixes a bare hostname (watchlist URLs are
+// stored scheme-less, see internal/urlnorm) with https:// so Chrome's
+// navigate call accepts it as an absolute URL, then falls back to plain
+// http:// if that connection is refused — some blocked/parked sites (e.g.
+// domain-parking pages) only ever serve on port 80. URLs that already carry
+// an explicit scheme are tried as-is, with no fallback.
+func captureWithSchemeFallback(ctx, allocCtx context.Context, rawURL string, waitIdle, postIdleSleep time.Duration) ([]byte, error) {
+	if strings.Contains(rawURL, "://") {
+		return screenshot.CaptureWithAllocator(ctx, allocCtx, rawURL, waitIdle, postIdleSleep)
+	}
+	buf, err := screenshot.CaptureWithAllocator(ctx, allocCtx, "https://"+rawURL, waitIdle, postIdleSleep)
+	if err == nil {
+		return buf, nil
+	}
+	return screenshot.CaptureWithAllocator(ctx, allocCtx, "http://"+rawURL, waitIdle, postIdleSleep)
 }
 
 func buildReport(results []pipeline.SiteResult) *pb.ComplianceReport {

@@ -10,7 +10,7 @@ cleanup() {
   echo "Shutting down..."
   [[ -n "$SERVER_PID" ]] && kill "$SERVER_PID" 2>/dev/null || true
   [[ -n "$VITE_PID" ]]  && kill "$VITE_PID"  2>/dev/null || true
-  docker compose -f docker-compose.yml -f docker-compose.dev.yml stop postgres
+  docker compose -f docker-compose.yml -f docker-compose.dev.yml stop postgres minio
 }
 trap cleanup EXIT INT TERM
 
@@ -28,6 +28,15 @@ echo "==> Starting PostgreSQL..."
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres
 echo -n "    Waiting for postgres"
 until docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T postgres pg_isready -U postgres -q 2>/dev/null; do
+  echo -n "."
+  sleep 1
+done
+echo " ready"
+
+echo "==> Starting MinIO..."
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d minio minio-init
+echo -n "    Waiting for MinIO"
+until curl -sf -o /dev/null http://localhost:9000/minio/health/live 2>/dev/null; do
   echo -n "."
   sleep 1
 done

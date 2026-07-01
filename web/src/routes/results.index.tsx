@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { HistoryIcon } from 'lucide-react'
+import { HistoryIcon, Camera, Image as ImageIcon } from 'lucide-react'
 import { fetchResults, groupResults, lastScanTime } from '../api/results'
+import { fetchScanStatus, isScanning, triggerScreenshot } from '../api/scan'
 import type { GroupedResult, ScanResult } from '../api/types'
 import { useScan } from './__root'
 import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
@@ -12,6 +13,9 @@ import {
   PreviewLinkCardImage,
 } from '@/components/animate-ui/components/base/preview-link-card'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
+import { BrailleLoader } from '@/components/ui/braille-loader'
+import { ThinkingIndicator } from '@/components/ui/thinking-indicator'
 
 export const Route = createFileRoute('/results/')({ component: ResultsPage })
 
@@ -75,7 +79,21 @@ function StatusDot({ compliant }: { compliant: boolean }) {
 
 /* ─── Sub-rows (expanded DNS results) ───────────────────────────────────── */
 
-function SubRows({ results, visible }: { results: ScanResult[]; visible: boolean }) {
+function SubRows({
+  results,
+  visible,
+  pendingScreenshotId,
+  screenshotErrors,
+  screenshotsBlocked,
+  onRequestScreenshot,
+}: {
+  results: ScanResult[]
+  visible: boolean
+  pendingScreenshotId: number | null
+  screenshotErrors: Record<number, string>
+  screenshotsBlocked: boolean
+  onRequestScreenshot: (result: ScanResult) => void
+}) {
   if (!visible) return null
   return (
     <>
@@ -109,11 +127,27 @@ function SubRows({ results, visible }: { results: ScanResult[]; visible: boolean
                 href={r.screenshot_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="screenshot-link"
+                className="screenshot-icon-btn"
                 aria-label={`View screenshot for ${r.dns_server.name}`}
+                title="View screenshot"
               >
-                View screenshot
+                <ImageIcon className="screenshot-icon" aria-hidden="true" />
               </a>
+            ) : pendingScreenshotId === r.id ? (
+              <span className="screenshot-pending" aria-live="polite" aria-label="Requesting screenshot">
+                <BrailleLoader variant="typing" fontSize={13} />
+              </span>
+            ) : !r.compliant ? (
+              <button
+                type="button"
+                className="screenshot-icon-btn"
+                onClick={() => onRequestScreenshot(r)}
+                disabled={screenshotsBlocked}
+                title={screenshotErrors[r.id] ?? 'Take screenshot'}
+                aria-label={`Request screenshot for ${r.dns_server.name}`}
+              >
+                <Camera className="screenshot-icon" aria-hidden="true" />
+              </button>
             ) : (
               <span className="empty-cell" aria-label="No screenshot">—</span>
             )}
@@ -137,10 +171,18 @@ function URLGroupRow({
   group,
   expanded,
   onToggle,
+  pendingScreenshotId,
+  screenshotErrors,
+  screenshotsBlocked,
+  onRequestScreenshot,
 }: {
   group: GroupedResult
   expanded: boolean
   onToggle: () => void
+  pendingScreenshotId: number | null
+  screenshotErrors: Record<number, string>
+  screenshotsBlocked: boolean
+  onRequestScreenshot: (result: ScanResult) => void
 }) {
   const { violationCount, totalCount, hostname, url } = group
   const allCompliant = violationCount === 0
@@ -199,7 +241,14 @@ function URLGroupRow({
           )}
         </TableCell>
       </TableRow>
-      <SubRows results={group.results} visible={expanded} />
+      <SubRows
+        results={group.results}
+        visible={expanded}
+        pendingScreenshotId={pendingScreenshotId}
+        screenshotErrors={screenshotErrors}
+        screenshotsBlocked={screenshotsBlocked}
+        onRequestScreenshot={onRequestScreenshot}
+      />
     </>
   )
 }
@@ -242,6 +291,10 @@ function ResultsPage() {
   const [dnsFilter, setDnsFilter] = useState<string>('all')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
+  const [pendingScreenshotId, setPendingScreenshotId] = useState<number | null>(null)
+  const [screenshotErrors, setScreenshotErrors] = useState<Record<number, string>>({})
+  const screenshotPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
   const load = useCallback(async () => {
     try {
       setError(null)
@@ -254,6 +307,45 @@ function ResultsPage() {
   }, [])
 
   useEffect(() => { load() }, [load, refreshSignal])
+
+  useEffect(() => {
+    return () => {
+      if (screenshotPollRef.current) clearInterval(screenshotPollRef.current)
+    }
+  }, [])
+
+  const requestScreenshot = useCallback(async (result: ScanResult) => {
+    setScreenshotErrors(prev => {
+      if (!(result.id in prev)) return prev
+      const next = { ...prev }
+      delete next[result.id]
+      return next
+    })
+    setPendingScreenshotId(result.id)
+    try {
+      await triggerScreenshot(result.url, result.dns_server_id)
+    } catch (err) {
+      setPendingScreenshotId(null)
+      setScreenshotErrors(prev => ({
+        ...prev,
+        [result.id]: err instanceof Error ? err.message : 'Failed to request screenshot',
+      }))
+      return
+    }
+    screenshotPollRef.current = setInterval(async () => {
+      try {
+        const status = await fetchScanStatus()
+        if (!isScanning(status)) {
+          if (screenshotPollRef.current) clearInterval(screenshotPollRef.current)
+          screenshotPollRef.current = null
+          setPendingScreenshotId(null)
+          load()
+        }
+      } catch {
+        // transient error while polling; keep trying
+      }
+    }, 3000)
+  }, [load])
 
   const toggleExpanded = useCallback((url: string) => {
     setExpanded(prev => {
@@ -290,7 +382,7 @@ function ResultsPage() {
   }, [groups, statusFilter, dnsFilter])
 
   return (
-    <div className="mx-20">
+    <div className="mx-20 mt-10">
       <div className="page-header">
         <h1 className="page-title">Compliance Results</h1>
         {!loading && lastScan && (
@@ -299,9 +391,8 @@ function ResultsPage() {
       </div>
 
       {scanning && (
-        <div className="scan-banner" role="status" aria-live="polite">
-          <span className="scan-banner-dot" aria-hidden="true" />
-          Scan in progress — results will update automatically
+        <div className="scan-banner">
+          <ThinkingIndicator className="p-0" />
         </div>
       )}
 
@@ -330,17 +421,15 @@ function ResultsPage() {
             {dnsServers.length > 1 && (
               <>
                 <span className="filter-label" id="dns-label">DNS Server</span>
-                <select
-                  className="filter-select"
-                  value={dnsFilter}
-                  onChange={e => setDnsFilter(e.target.value)}
-                  aria-labelledby="dns-label"
-                >
-                  <option value="all">All servers</option>
-                  {dnsServers.map(name => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
+                <Select value={dnsFilter} onValueChange={setDnsFilter}>
+                  <SelectTrigger aria-labelledby="dns-label" />
+                  <SelectContent>
+                    <SelectItem index={0} value="all">All servers</SelectItem>
+                    {dnsServers.map((name, i) => (
+                      <SelectItem key={name} index={i + 1} value={name}>{name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </>
             )}
           </div>
@@ -384,6 +473,10 @@ function ResultsPage() {
                         group={group}
                         expanded={expanded.has(group.url)}
                         onToggle={() => toggleExpanded(group.url)}
+                        pendingScreenshotId={pendingScreenshotId}
+                        screenshotErrors={screenshotErrors}
+                        screenshotsBlocked={scanning || pendingScreenshotId !== null}
+                        onRequestScreenshot={requestScreenshot}
                       />
                     ))
                   )}

@@ -5,6 +5,7 @@ import { fetchUrlCount } from '../api/urls'
 import type { ScanResult } from '../api/types'
 import { useScan } from './__root'
 import { Table, TableBody, TableRow, TableCell } from '@/components/ui/table'
+import { ThinkingIndicator } from '@/components/ui/thinking-indicator'
 
 export const Route = createFileRoute('/')({ component: DashboardPage })
 
@@ -144,7 +145,7 @@ function DashboardPage() {
   }
 
   return (
-    <div className="mx-20">
+    <div className="mx-20 mt-10">
       <div className="page-header">
         <h1 className="page-title">Overview</h1>
         {subtitleParts.length > 0 && (
@@ -153,14 +154,8 @@ function DashboardPage() {
       </div>
 
       {scanning && (
-        <div
-          className="scan-banner"
-          role="status"
-          aria-live="polite"
-          style={{ marginTop: 'var(--sp-4)' }}
-        >
-          <span className="scan-banner-dot" aria-hidden="true" />
-          Scan in progress — results will update automatically
+        <div className="scan-banner">
+          <ThinkingIndicator className="p-0" />
         </div>
       )}
 

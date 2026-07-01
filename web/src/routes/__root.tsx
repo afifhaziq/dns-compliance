@@ -332,10 +332,11 @@ function RootLayout() {
       await triggerScan()
       setScanning(true)
       startPolling()
+      navigate({ to: '/results' })
     } catch (err) {
       console.error('Scan trigger failed:', err)
     }
-  }, [scanning, startPolling])
+  }, [scanning, startPolling, navigate])
 
   const handleScanSelected = useCallback(async (urls: string[]) => {
     if (scanning) return
@@ -348,7 +349,7 @@ function RootLayout() {
       await triggerScan(normalizedUrls)
       setScanning(true)
       startPolling()
-      navigate({ to: '/scan-results', search: { urls: normalizedUrls, triggeredAt } })
+      navigate({ to: '/results' })
     } catch (err) {
       console.error('Targeted scan trigger failed:', err)
       sessionStorage.removeItem(`scan-baseline-${triggeredAt}`)
@@ -408,7 +409,7 @@ function RootLayout() {
                   className="bg-transparent hover:bg-primary hover:text-white"
                 />
               </IconBar>
-              <ThemeSwitch />
+              <ThemeSwitch className="bg-transparent"/>
               <LogoutButton />
             </>
           }
