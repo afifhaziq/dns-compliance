@@ -246,6 +246,7 @@ When `--screenshots` is off (default), `Capture` is a no-op. When multiple DNS s
 - **Overview page (`web/src/routes/index.tsx`)**: renders a single ISP-grouped `ISPStatusTable` (CSS progress-bar rows, one per ISP, sorted worst-compliance-first, linking to `/isps/$isp`). The per-DNS-server breakdown and expandable "Compliance Results" table (`URLGroupRow`/`SubRows`) now live on `/results` (`results.index.tsx`), not here. What's still missing:
   - An **overall compliance summary** — single progress bar / stat showing % of domains compliant across all servers combined
   - Animated chart variant for the ISP table — replace or augment the CSS bars with the `LiveLineChart` pattern from `results.index.tsx` if a richer visualization is wanted
+- **Screenshot viewing page**: `screenshot_url` is currently only ever surfaced as a raw "View screenshot" link (`results.index.tsx`, `results.$url.tsx`) that opens the bare PNG in a new tab — there's no in-app gallery for browsing evidence. Likely lands on `results.$url.tsx` (`/results/$url`), since that page already lists every scan row (DNS server, timestamp, screenshot) for one URL: add a thumbnail/lightbox view over the existing history table instead of (or alongside) the plain link, so an auditor can flip through a domain's captured screenshots over time without leaving the app.
 
 ## Product & Design
 
