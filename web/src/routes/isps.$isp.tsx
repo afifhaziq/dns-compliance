@@ -47,7 +47,7 @@ function ISPDetailPage() {
   useEffect(() => { load() }, [load])
 
   return (
-    <div className="mx-20">
+    <div className="mx-20 mb-20">
       <Link to="/" className="back-link mt-8">
         <ArrowLeftIcon className="back-link-icon" />
         Overview
@@ -76,13 +76,13 @@ function ISPDetailPage() {
 
       {/* Compliance Trend */}
       {!loading && trendChartData.length >= 2 && (
-        <div className="dash-section">
+        <div className="">
           <p className="dash-label">Compliance Trend (last 30 days)</p>
           <LineChart
             data={trendChartData}
             xDataKey="date"
-            aspectRatio="4 / 1"
-            margin={{ top: 16, right: 16, bottom: 36, left: 40 }}
+            aspectRatio="6 / 1"
+            margin={{ top: 16, right: 40, bottom: 36, left: 40 }}
           >
             <Grid horizontal numTicksRows={4} />
             <XAxis numTicks={5} />

@@ -21,6 +21,7 @@ import {
 } from '@/components/animate-ui/components/radix/dialog'
 import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
 import { useAuth } from './__root'
 
 export const Route = createFileRoute('/admin/')({ component: AdminPage })
@@ -193,19 +194,20 @@ function AddUserDialog({
             </label>
           </div>
           <div className="form-field">
-            <label className="form-label" htmlFor="user-department-select">Department</label>
-            <select
-              id="user-department-select"
-              className="form-select"
-              value={departmentId}
-              onChange={e => setDepartmentId(e.target.value === '' ? '' : Number(e.target.value))}
+            <label className="form-label" id="user-department-label">Department</label>
+            <Select
+              value={String(departmentId)}
+              onValueChange={v => setDepartmentId(v === '' ? '' : Number(v))}
               disabled={loading || isAdmin}
             >
-              <option value="">Select a department…</option>
-              {departments.map(d => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
+              <SelectTrigger aria-labelledby="user-department-label" placeholder="Select a department…" className="w-full" />
+              <SelectContent>
+                <SelectItem index={0} value="">Select a department…</SelectItem>
+                {departments.map((d, i) => (
+                  <SelectItem key={d.id} index={i + 1} value={String(d.id)}>{d.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           {error && <p className="form-error">{error}</p>}
           <DialogFooter>
@@ -371,7 +373,7 @@ function AdminPage() {
   }
 
   return (
-    <div className="mx-20">
+    <div className="mx-20 mt-10">
       <div className="page-header">
         <h1 className="page-title">Admin</h1>
         <p className="page-subtitle">{!loading && `${departments.length} departments, ${users.length} users`}</p>
@@ -407,9 +409,7 @@ function AdminPage() {
             ))}
           </TableBody>
         </Table>
-      </section>
 
-      <section className="results-wrap">
         <div className="page-header" style={{ marginBottom: 12 }}>
           <h2 className="page-title" style={{ fontSize: '1.1rem' }}>Users</h2>
           <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddUserOpen(true)}>
@@ -444,9 +444,7 @@ function AdminPage() {
             ))}
           </TableBody>
         </Table>
-      </section>
-
-      <section className="results-wrap" style={{ marginBottom: 32 }}>
+      
         <div className="page-header" style={{ marginBottom: 12 }}>
           <h2 className="page-title" style={{ fontSize: '1.1rem' }}>Compliant IPs</h2>
           <p className="page-subtitle" style={{ marginLeft: 8 }}>DNS resolutions to these IPs are classified as compliant</p>

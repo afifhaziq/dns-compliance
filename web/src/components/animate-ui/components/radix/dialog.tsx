@@ -56,10 +56,23 @@ type DialogContentProps = DialogContentPrimitiveProps & {
   showCloseButton?: boolean;
 };
 
+// Elements portalled to document.body by components other than this Dialog
+// (e.g. our custom Select's popover) live outside the DialogContent DOM
+// subtree even though they render visually on top of it. Radix's dismissable
+// layer only checks DOM containment, so without this it treats any click
+// inside one of those portals as an "outside" interaction and closes the
+// dialog before the click can register — see the Select popover's
+// data-slot="select-content" marker.
+function isIgnoredOutsideTarget(event: { target: EventTarget | null }) {
+  return !!(event.target as HTMLElement | null)?.closest('[data-slot="select-content"]');
+}
+
 function DialogContent({
   className,
   children,
   showCloseButton = true,
+  onPointerDownOutside,
+  onInteractOutside,
   ...props
 }: DialogContentProps) {
   return (
@@ -70,6 +83,14 @@ function DialogContent({
           'bg-background fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg sm:max-w-lg',
           className,
         )}
+        onPointerDownOutside={(e) => {
+          if (isIgnoredOutsideTarget(e)) { e.preventDefault(); return; }
+          onPointerDownOutside?.(e);
+        }}
+        onInteractOutside={(e) => {
+          if (isIgnoredOutsideTarget(e)) { e.preventDefault(); return; }
+          onInteractOutside?.(e);
+        }}
         {...props}
       >
         {children}

@@ -9,6 +9,7 @@ import type { DailyComplianceStat, DNSServer, ScanResult } from '../api/types'
 import { getCachedDnsRecords, setCachedDnsRecords } from '@/lib/dns-records-cache'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
+import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
 import { HeatmapChart } from '@/components/charts/heatmap'
 import { HeatmapChartLoading } from '@/components/charts/heatmap/heatmap-chart-loading'
 import { HeatmapCells } from '@/components/charts/heatmap/heatmap-cells'
@@ -17,6 +18,7 @@ import { HeatmapYAxis } from '@/components/charts/heatmap/heatmap-y-axis'
 import { HeatmapTooltip } from '@/components/charts/heatmap/heatmap-tooltip'
 import { HeatmapLegend } from '@/components/charts/heatmap/heatmap-legend'
 import {
+  aggregateStatsByDay,
   buildYearHeatmapColumns,
   compliancePercentFromStats,
   dateKey,
@@ -218,6 +220,25 @@ function URLHistoryPage() {
     [dnsServerList],
   )
 
+  const isps = useMemo(
+    () => Array.from(new Set(dnsServerList.map(s => s.isp))).sort(),
+    [dnsServerList],
+  )
+
+  const [ispFilter, setIspFilter] = useState<string>('overall')
+
+  // Servers to render heatmaps for: every server when viewing "Overall",
+  // or just the servers belonging to the selected ISP.
+  const ispHeatmapServers = useMemo(
+    () => (ispFilter === 'overall'
+      ? heatmapDnsServers
+      : dnsServerList.filter(s => s.isp === ispFilter).map(s => s.name).sort()),
+    [dnsServerList, heatmapDnsServers, ispFilter],
+  )
+
+  const overallStatsByDay = useMemo(() => aggregateStatsByDay(heatmapStats), [heatmapStats])
+  const overallPct = useMemo(() => compliancePercentFromStats(heatmapStats), [heatmapStats])
+
   // Fetches once per page visit; a sessionStorage cache (keyed by hostname,
   // not full URL) means revisiting this page later in the same tab skips
   // the network call entirely — these records don't change fast enough to
@@ -269,6 +290,21 @@ function URLHistoryPage() {
 
       {(dnsServerListLoading || heatmapDnsServers.length > 0) && (
         <div className="dash-section">
+          {isps.length > 0 && (
+            <div className="filter-bar mb-2">
+              <span className="filter-label" id="isp-heatmap-label">ISP</span>
+              <Select value={ispFilter} onValueChange={setIspFilter}>
+                <SelectTrigger aria-labelledby="isp-heatmap-label" />
+                <SelectContent>
+                  <SelectItem index={0} value="overall">Overall</SelectItem>
+                  {isps.map((isp, i) => (
+                    <SelectItem key={isp} index={i + 1} value={isp}>{isp}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <div className="heatmap-year-nav">
             <button
               type="button"
@@ -302,7 +338,50 @@ function URLHistoryPage() {
                 label="Loading compliance history"
               />
             </div>
-          ) : heatmapDnsServers.map(name => {
+          ) : ispFilter === 'overall' ? (
+            (() => {
+              const columns = buildYearHeatmapColumns(selectedYear, overallStatsByDay)
+
+              return (
+                <div className="heatmap-server-block">
+                  <div className="heatmap-server-header">
+                    <p className="dash-label">Overall</p>
+                    {overallPct !== null && !yearLoading && (
+                      <span className="heatmap-compliance-badge">{overallPct}% compliant</span>
+                    )}
+                  </div>
+
+                  {yearLoading ? (
+                    <HeatmapChartLoading data={columns} gap={3} cornerRadius={999} label="Loading compliance history" />
+                  ) : (
+                    <>
+                      <HeatmapChart data={columns} gap={3} layout="fluid" levelColors={HEATMAP_LEVEL_COLORS}>
+                        <HeatmapCells cornerRadius={999} />
+                        <HeatmapXAxis />
+                        <HeatmapYAxis />
+                        <HeatmapTooltip
+                          formatLabel={(_count, date) => {
+                            const stat = overallStatsByDay.get(dateKey(date))
+                            if (!stat) return `No scans · ${heatmapTooltipDateFmt.format(date)}`
+                            return `${stat.compliant} of ${stat.total} compliant · ${heatmapTooltipDateFmt.format(date)}`
+                          }}
+                        />
+                      </HeatmapChart>
+                      <HeatmapLegend
+                        align="start"
+                        cornerRadius={999}
+                        gap={3}
+                        lessLabel="Compliant"
+                        moreLabel="More violations"
+                        colorScale={heatmapYearColorScale}
+                        className='my-2 px-10'
+                      />
+                    </>
+                  )}
+                </div>
+              )
+            })()
+          ) : ispHeatmapServers.map(name => {
             const serverStats = heatmapStats.filter(s => s.dns_server_name === name)
             const statsByDay = new Map(serverStats.map(s => [s.day, s]))
             const columns = buildYearHeatmapColumns(selectedYear, statsByDay)
@@ -371,17 +450,15 @@ function URLHistoryPage() {
         {dnsServers.length > 1 && (
           <>
             <span className="filter-label" id="dns-label">DNS Server</span>
-            <select
-              className="filter-select"
-              value={dnsFilter}
-              onChange={e => setDnsFilter(e.target.value)}
-              aria-labelledby="dns-label"
-            >
-              <option value="all">All servers</option>
-              {dnsServers.map(name => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
+            <Select value={dnsFilter} onValueChange={setDnsFilter}>
+              <SelectTrigger aria-labelledby="dns-label" />
+              <SelectContent>
+                <SelectItem index={0} value="all">All servers</SelectItem>
+                {dnsServers.map((name, i) => (
+                  <SelectItem key={name} index={i + 1} value={name}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </>
         )}
       </div>

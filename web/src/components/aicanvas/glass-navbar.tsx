@@ -55,8 +55,8 @@ export function GlassNavbar({ actions }: GlassNavbarProps) {
         animate={{ y: 0, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 220, damping: 26 }}
         className="relative isolate mx-auto flex max-w-5xl items-center gap-1 rounded-full px-2 py-1.5
-                   bg-white/50 border border-black/[0.10] shadow-[0_4px_28px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,1)]
-                   dark:bg-white/[0.09] dark:border-white/[0.13] dark:shadow-[0_8px_32px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.10)]"
+                   bg-white/25 border border-black/[0.10] shadow-[0_4px_28px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,1)]
+                   dark:bg-white/[0.05] dark:border-white/[0.13] dark:shadow-[0_8px_32px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.10)]"
         style={{
           backdropFilter: 'blur(28px) saturate(2)',
           WebkitBackdropFilter: 'blur(28px) saturate(2)',

@@ -177,7 +177,7 @@ function URLsPage() {
   }
 
   return (
-    <div className="mx-20">
+    <div className="mx-20 mt-10">
       <div className="page-header">
         <h1 className="page-title mb-4">Domains</h1>
         <p className="page-subtitle">{!loading && `${urls.length} monitored`}</p>

@@ -65,3 +65,41 @@ export function compliancePercentFromStats(stats: DailyComplianceStat[]): number
   if (total === 0) return null
   return Math.round((compliant / total) * 100)
 }
+
+// Mirrors db.DailyComplianceLevel (internal/db/models.go) — buckets a day's
+// results onto the heatmap's 5-level scale from raw total/compliant counts.
+function dailyComplianceLevel(total: number, compliant: number): number {
+  if (total === 0) return 0
+  const violations = total - compliant
+  if (violations === 0) return 1
+  const rate = violations / total
+  if (rate <= 1 / 3) return 2
+  if (rate <= 2 / 3) return 3
+  return 4
+}
+
+// Combines per-DNS-server DailyComplianceStat rows into one row per day —
+// used for the "Overall" heatmap view, which represents compliance across
+// every configured server rather than one server at a time.
+export function aggregateStatsByDay(stats: DailyComplianceStat[]): Map<string, DailyComplianceStat> {
+  const totals = new Map<string, { total: number; compliant: number }>()
+  for (const s of stats) {
+    const cur = totals.get(s.day) ?? { total: 0, compliant: 0 }
+    cur.total += s.total
+    cur.compliant += s.compliant
+    totals.set(s.day, cur)
+  }
+
+  const result = new Map<string, DailyComplianceStat>()
+  for (const [day, { total, compliant }] of totals) {
+    result.set(day, {
+      dns_server_id: 0,
+      dns_server_name: 'Overall',
+      day,
+      total,
+      compliant,
+      level: dailyComplianceLevel(total, compliant),
+    })
+  }
+  return result
+}

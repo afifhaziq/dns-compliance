@@ -78,6 +78,7 @@ export function ThemeSwitch({ iconSize = 16, className }: ThemeSwitchProps) {
       whileTap={{ scale: 0.88 }}
       transition={{ type: 'spring', duration: 0.2, bounce: 0 }}
       aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      style={{ backgroundColor: 'transparent', border: 'none'}}
     >
       <AnimatePresence mode="wait" initial={false}>
         {isDark ? (

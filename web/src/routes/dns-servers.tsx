@@ -12,6 +12,7 @@ import {
   DialogFooter,
 } from '@/components/animate-ui/components/radix/dialog'
 import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
+import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
 
 export const Route = createFileRoute('/dns-servers')({ component: DNSServersPage })
 
@@ -107,18 +108,15 @@ function AddDnsServerDialog({
             />
           </div>
           <div className="form-field">
-            <label className="form-label" htmlFor="dns-protocol-select">Protocol</label>
-            <select
-              id="dns-protocol-select"
-              className="form-select"
-              value={protocol}
-              onChange={e => setProtocol(e.target.value as Protocol)}
-              disabled={loading}
-            >
-              <option value="udp">udp — plain DNS</option>
-              <option value="dot">dot — DNS-over-TLS</option>
-              <option value="doh">doh — DNS-over-HTTPS</option>
-            </select>
+            <label className="form-label" id="dns-protocol-label">Protocol</label>
+            <Select value={protocol} onValueChange={v => setProtocol(v as Protocol)} disabled={loading}>
+              <SelectTrigger aria-labelledby="dns-protocol-label" className="w-full" />
+              <SelectContent>
+                <SelectItem index={0} value="udp">udp — plain DNS</SelectItem>
+                <SelectItem index={1} value="dot">dot — DNS-over-TLS</SelectItem>
+                <SelectItem index={2} value="doh">doh — DNS-over-HTTPS</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           {error && <p className="form-error">{error}</p>}
           <DialogFooter>
@@ -219,7 +217,7 @@ function DNSServersPage() {
   }
 
   return (
-    <div className="mx-20">
+    <div className="mx-20 mt-10">
       <div className="page-header">
         <h1 className="page-title mb-4">DNS Servers</h1>
         <p className="page-subtitle">{!loading && `${servers.length} configured`}</p>
