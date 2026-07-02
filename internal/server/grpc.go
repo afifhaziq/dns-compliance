@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/afif/dns-tracking/internal/db"
+	"github.com/afif/dns-tracking/internal/ipinfo"
 	"github.com/afif/dns-tracking/internal/storage"
 	"github.com/afif/dns-tracking/internal/urlnorm"
 	pb "github.com/afif/dns-tracking/proto"
@@ -16,10 +17,11 @@ type grpcServer struct {
 	store       db.Store
 	storage     storage.Storage
 	broadcaster *Broadcaster
+	ipFetch     ipinfo.Fetcher // nil disables ASN/org lookups
 }
 
-func NewGRPCServer(store db.Store, stor storage.Storage, broadcaster *Broadcaster) pb.ComplianceServiceServer {
-	return &grpcServer{store: store, storage: stor, broadcaster: broadcaster}
+func NewGRPCServer(store db.Store, stor storage.Storage, broadcaster *Broadcaster, ipFetch ipinfo.Fetcher) pb.ComplianceServiceServer {
+	return &grpcServer{store: store, storage: stor, broadcaster: broadcaster, ipFetch: ipFetch}
 }
 
 func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*pb.Acknowledgement, error) {
@@ -56,16 +58,37 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 			}
 		}
 
+		lookupIP := r.ResolvedIp
+		if lookupIP == "" {
+			lookupIP = r.ResolvedIpv6
+		}
+		var asn uint
+		var org string
+		if lookupIP != "" {
+			if cached, _ := s.store.GetIPInfo(ctx, lookupIP); cached != nil {
+				asn, org = cached.ASN, cached.Org
+			} else if s.ipFetch != nil {
+				// Cache miss — fetch is detached from this request so a
+				// slow/unreachable ipinfo.io never delays result ingestion.
+				// This scan's row is inserted with a blank ASN/org; the
+				// cache fill only benefits later scans of the same IP.
+				go fetchAndCacheIPInfo(s.store, s.ipFetch, lookupIP)
+			}
+		}
+
 		result := db.ScanResult{
-			ScanRunID:   runID,
-			URLID:       urlID,
-			URLValue:    r.Url,
-			DNSServerID: serverByName[r.DnsServer],
-			Compliant:   r.Compliant,
-			ResolvedIP:  r.ResolvedIp,
-			Error:       r.Error,
-			LatencyMs:   r.GetLatencyMs(),
-			ScannedAt:   time.Unix(r.Timestamp, 0),
+			ScanRunID:    runID,
+			URLID:        urlID,
+			URLValue:     r.Url,
+			DNSServerID:  serverByName[r.DnsServer],
+			Compliant:    r.Compliant,
+			ResolvedIP:   r.ResolvedIp,
+			ResolvedIPv6: r.ResolvedIpv6,
+			ResolvedASN:  asn,
+			ResolvedOrg:  org,
+			Error:        r.Error,
+			LatencyMs:    r.GetLatencyMs(),
+			ScannedAt:    time.Unix(r.Timestamp, 0),
 		}
 
 		if err := s.store.InsertResult(ctx, result); err != nil {
@@ -95,4 +118,26 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 	}
 
 	return &pb.Acknowledgement{Ok: true}, nil
+}
+
+// fetchAndCacheIPInfo runs an ipinfo.io lookup and caches the result (or the
+// failure) keyed by ip, so every later scan seeing the same IP hits the
+// cache instead of the network. Detached from the request context.
+func fetchAndCacheIPInfo(store db.Store, fetch ipinfo.Fetcher, ip string) {
+	fetchCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	res, err := fetch(fetchCtx, ip)
+	cancel()
+
+	info := db.IPInfo{IP: ip, FetchedAt: time.Now()}
+	if err != nil {
+		info.FetchError = err.Error()
+	} else {
+		info.ASN, info.Org = res.ASN, res.Org
+	}
+
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer dbCancel()
+	if err := store.UpsertIPInfo(dbCtx, info); err != nil {
+		log.Printf("ipinfo: upsert for %s: %v", ip, err)
+	}
 }

@@ -13,8 +13,10 @@ import (
 
 	"github.com/afif/dns-tracking/internal/db"
 	"github.com/afif/dns-tracking/internal/dnsconfig"
+	"github.com/afif/dns-tracking/internal/ipinfo"
 	"github.com/afif/dns-tracking/internal/server"
 	"github.com/afif/dns-tracking/internal/storage"
+	"github.com/afif/dns-tracking/internal/whois"
 	pb "github.com/afif/dns-tracking/proto"
 	"github.com/go-chi/chi/v5"
 	"google.golang.org/grpc"
@@ -35,6 +37,9 @@ func main() {
 	cookieSecure := flag.Bool("cookie-secure", envOr("COOKIE_SECURE", "true") == "true", "mark the session cookie Secure (disable for local plain-HTTP dev)")
 	bootstrapAdminUser := flag.String("bootstrap-admin-username", envOr("BOOTSTRAP_ADMIN_USERNAME", ""), "username for the bootstrap admin, created only if the users table is empty")
 	bootstrapAdminPass := flag.String("bootstrap-admin-password", envOr("BOOTSTRAP_ADMIN_PASSWORD", ""), "password for the bootstrap admin, created only if the users table is empty")
+	ipinfoToken := flag.String("ipinfo-token", envOr("IPINFO_TOKEN", ""), "ipinfo.io API token for ASN/org lookups; empty uses the unauthenticated (lower rate limit) tier")
+	whoisRefreshIntervalMin := flag.Int("whois-refresh-interval", 1440, "WHOIS/RDAP refresh sweep interval in minutes")
+	whoisStaleDays := flag.Int("whois-stale-days", 30, "re-fetch a domain's WHOIS/RDAP data once its cached copy is older than this many days")
 	flag.Parse()
 
 	// Connect to PostgreSQL and run AutoMigrate.
@@ -87,6 +92,11 @@ func main() {
 		log.Fatalf("minio: %v", err)
 	}
 
+	// ASN/org lookups via ipinfo.io, cached per-IP in the DB (see
+	// internal/server/grpc.go's fetchAndCacheIPInfo) rather than called on
+	// every scan.
+	ipFetch := ipinfo.NewFetcher(*ipinfoToken)
+
 	// Scanner manages crawler subprocess lifecycle.
 	sc := server.NewScanner(*crawlerPath, *grpcAddr, store)
 
@@ -101,7 +111,7 @@ func main() {
 		log.Fatalf("grpc listen: %v", err)
 	}
 	grpcSrv := grpc.NewServer()
-	pb.RegisterComplianceServiceServer(grpcSrv, server.NewGRPCServer(store, stor, broadcaster))
+	pb.RegisterComplianceServiceServer(grpcSrv, server.NewGRPCServer(store, stor, broadcaster, ipFetch))
 	go func() {
 		log.Printf("gRPC listening on %s", *grpcAddr)
 		if err := grpcSrv.Serve(grpcLis); err != nil {
@@ -112,9 +122,13 @@ func main() {
 	// Start the hourly scan scheduler.
 	server.StartScheduler(ctx, sc, time.Duration(*intervalMin)*time.Minute)
 
+	// Start the WHOIS/RDAP refresher — re-fetches stale DomainWhois rows on
+	// a much slower cadence than the scan scheduler.
+	server.StartWhoisRefresher(ctx, store, whois.Fetch, time.Duration(*whoisRefreshIntervalMin)*time.Minute, *whoisStaleDays)
+
 	// HTTP server — REST API for the frontend.
 	r := chi.NewRouter()
-	server.RegisterRoutes(r, store, sc, broadcaster, *cookieSecure)
+	server.RegisterRoutes(r, store, sc, broadcaster, *cookieSecure, whois.Fetch)
 
 	httpSrv := &http.Server{Addr: *httpAddr, Handler: r}
 	go func() {

@@ -4,6 +4,8 @@ import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { fetchDnsServers } from '../api/dns-servers'
 import { fetchDnsRecords } from '../api/dns-records'
 import type { DnsRecordSet, DnsRecordsResponse } from '../api/dns-records'
+import { fetchDomainInfo } from '../api/domain'
+import type { DomainInfo } from '../api/domain'
 import { fetchHeatmapByUrlAndYear, fetchResultsByUrl } from '../api/results'
 import type { DailyComplianceStat, DNSServer, ScanResult } from '../api/types'
 import { getCachedDnsRecords, setCachedDnsRecords } from '@/lib/dns-records-cache'
@@ -114,6 +116,70 @@ function DnsRecordsPanel({
   )
 }
 
+const DOMAIN_INFO_LABELS: ReadonlyArray<readonly [keyof DomainInfo, string]> = [
+  ['registrar', 'Registrar'],
+  ['domain_created', 'Created'],
+  ['domain_expires', 'Expires'],
+  ['last_fetched_at', 'Last refreshed'],
+]
+
+function DomainInfoPanel({
+  data,
+  loading,
+}: {
+  data: DomainInfo | null
+  loading: boolean
+}) {
+  const hasInfo = data?.fetched
+
+  return (
+    <div className="dash-section dns-records-panel">
+      {loading ? (
+        <div className="dns-records-grid">
+          {DOMAIN_INFO_LABELS.map(([key]) => (
+            <div key={key} className="dns-record-block">
+              <span className="skeleton" style={{ width: 60, height: 11 }} />
+              <span
+                className="skeleton"
+                style={{ width: 120, height: 14, marginTop: 6 }}
+              />
+            </div>
+          ))}
+        </div>
+      ) : !hasInfo ? (
+        <p className="dns-records-error">
+          No WHOIS data fetched for this domain yet.
+        </p>
+      ) : (
+        <>
+          <div className="dns-records-grid">
+            {DOMAIN_INFO_LABELS.map(([key, label]) => {
+              const value = data[key]
+              const display = key === 'domain_created' || key === 'domain_expires' || key === 'last_fetched_at'
+                ? (value ? DATE_FMT.format(new Date(value as string)) : null)
+                : (value as string | undefined)
+
+              return (
+                <div key={key} className="dns-record-block">
+                  <span className="dns-record-type">{label}</span>
+                  {display ? (
+                    <span className="ip-value">{display}</span>
+                  ) : (
+                    <span className="empty-cell">—</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          {data.fetch_error && (
+            <p className="dns-records-error">{data.fetch_error}</p>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 function StatusDot({ compliant }: { compliant: boolean }) {
   return (
     <span className="status-dot-label">
@@ -189,6 +255,9 @@ function URLHistoryPage() {
   const [dnsRecords, setDnsRecords] = useState<DnsRecordsResponse | null>(null)
   const [dnsRecordsLoading, setDnsRecordsLoading] = useState(true)
 
+  const [domainInfo, setDomainInfo] = useState<DomainInfo | null>(null)
+  const [domainInfoLoading, setDomainInfoLoading] = useState(true)
+
   const loadYear = useCallback(async (year: number) => {
     try {
       setYearLoading(true)
@@ -260,6 +329,14 @@ function URLHistoryPage() {
       .finally(() => setDnsRecordsLoading(false))
   }, [url, hostname])
 
+  useEffect(() => {
+    setDomainInfoLoading(true)
+    fetchDomainInfo(url)
+      .then(setDomainInfo)
+      .catch(() => setDomainInfo({ fetched: false }))
+      .finally(() => setDomainInfoLoading(false))
+  }, [url])
+
   const filtered = useMemo(() => {
     return results.filter(r => {
       if (dnsFilter !== 'all' && r.dns_server.name !== dnsFilter) return false
@@ -287,6 +364,11 @@ function URLHistoryPage() {
       </div>
 
       <DnsRecordsPanel data={dnsRecords} loading={dnsRecordsLoading} />
+
+      <div className="dash-section">
+        <p className="dash-label">Domain info</p>
+        <DomainInfoPanel data={domainInfo} loading={domainInfoLoading} />
+      </div>
 
       {(dnsServerListLoading || heatmapDnsServers.length > 0) && (
         <div className="dash-section">
@@ -503,7 +585,15 @@ function URLHistoryPage() {
                     <TableCell className="col-domain"><span className="dns-name">{r.dns_server.name}</span></TableCell>
                     <TableCell className="col-status"><StatusDot compliant={r.compliant} /></TableCell>
                     <TableCell className="col-ip">
-                      {r.resolved_ip ? <span className="ip-value">{r.resolved_ip}</span> : <span className="empty-cell" aria-label="Not resolved">—</span>}
+                      <div className="ip-meta">
+                        {r.resolved_ip ? <span className="ip-value">{r.resolved_ip}</span> : <span className="empty-cell" aria-label="Not resolved">—</span>}
+                        {r.resolved_ipv6 && <span className="ip-meta-secondary">{r.resolved_ipv6}</span>}
+                        {r.resolved_asn > 0 && (
+                          <span className="ip-meta-secondary">
+                            AS{r.resolved_asn}{r.resolved_org && ` — ${r.resolved_org}`}
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="col-evidence">
                       {r.screenshot_url ? (

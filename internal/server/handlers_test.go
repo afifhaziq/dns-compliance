@@ -29,6 +29,8 @@ type fullMockStore struct {
 	users          []db.User
 	sessions       []db.Session
 	departmentURLs []db.DepartmentURL
+	domainWhois    []db.DomainWhois
+	ipInfo         []db.IPInfo
 }
 
 func (m *fullMockStore) ListURLs(_ context.Context) ([]db.URL, error) { return m.urls, nil }
@@ -112,7 +114,7 @@ func (m *fullMockStore) DailyComplianceByURL(_ context.Context, u string, since,
 		day         string
 	}
 	type bucket struct {
-		dnsServerName        string
+		dnsServerName       string
 		total, compliantSum int
 	}
 	buckets := make(map[bucketKey]*bucket)
@@ -245,7 +247,7 @@ func (m *fullMockStore) ListDepartmentURLs(_ context.Context, departmentID uint)
 		}
 		for _, u := range m.urls {
 			if u.ID == du.URLID {
-				out = append(out, db.URLEntry{ID: u.ID, URL: u.URL, Enabled: du.Enabled, CreatedAt: u.CreatedAt})
+				out = append(out, db.URLEntry{ID: u.ID, URL: u.URL, Enabled: du.Enabled, OrderedAt: du.OrderedAt, CreatedAt: u.CreatedAt})
 			}
 		}
 	}
@@ -270,6 +272,16 @@ func (m *fullMockStore) SetURLEnabled(_ context.Context, departmentID, urlID uin
 	for i, du := range m.departmentURLs {
 		if du.DepartmentID == departmentID && du.URLID == urlID {
 			m.departmentURLs[i].Enabled = enabled
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (m *fullMockStore) SetURLOrderedAt(_ context.Context, departmentID, urlID uint, orderedAt *time.Time) (bool, error) {
+	for i, du := range m.departmentURLs {
+		if du.DepartmentID == departmentID && du.URLID == urlID {
+			m.departmentURLs[i].OrderedAt = orderedAt
 			return true, nil
 		}
 	}
@@ -364,11 +376,113 @@ func (m *fullMockStore) ISPTrendForDepartment(_ context.Context, _ string, _, _ 
 	return nil, nil
 }
 
+func (m *fullMockStore) ISPComplianceTiming(_ context.Context, isp string) (db.ISPTimingResult, error) {
+	return db.ISPTimingResult{ISP: isp}, nil
+}
+func (m *fullMockStore) ISPComplianceTimingForDepartment(_ context.Context, isp string, _ uint) (db.ISPTimingResult, error) {
+	return db.ISPTimingResult{ISP: isp}, nil
+}
+
+func (m *fullMockStore) NationalTrend(_ context.Context, _, _ time.Time) ([]db.ISPTrendStat, error) {
+	return nil, nil
+}
+func (m *fullMockStore) NationalTrendForDepartment(_ context.Context, _, _ time.Time, _ uint) ([]db.ISPTrendStat, error) {
+	return nil, nil
+}
+
+func (m *fullMockStore) UpsertDomainWhois(_ context.Context, w db.DomainWhois) error {
+	for i, existing := range m.domainWhois {
+		if existing.URLID == w.URLID {
+			m.domainWhois[i] = w
+			return nil
+		}
+	}
+	m.domainWhois = append(m.domainWhois, w)
+	return nil
+}
+
+func (m *fullMockStore) GetDomainWhois(_ context.Context, urlValue string) (*db.DomainWhois, error) {
+	normalized, err := urlnorm.Normalize(urlValue)
+	if err != nil {
+		return nil, err
+	}
+	var urlID uint
+	found := false
+	for _, u := range m.urls {
+		if u.URL == normalized {
+			urlID = u.ID
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, nil
+	}
+	for _, w := range m.domainWhois {
+		if w.URLID == urlID {
+			wCopy := w
+			return &wCopy, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *fullMockStore) ListStaleDomains(_ context.Context, olderThan time.Time, limit int) ([]db.URL, error) {
+	fetchedAt := make(map[uint]time.Time, len(m.domainWhois))
+	for _, w := range m.domainWhois {
+		fetchedAt[w.URLID] = w.LastFetchedAt
+	}
+	watchedIDs := make(map[uint]bool)
+	for _, du := range m.departmentURLs {
+		if du.Enabled {
+			watchedIDs[du.URLID] = true
+		}
+	}
+	var out []db.URL
+	for _, u := range m.urls {
+		if !watchedIDs[u.ID] {
+			continue
+		}
+		last, fetched := fetchedAt[u.ID]
+		if fetched && !last.Before(olderThan) {
+			continue
+		}
+		out = append(out, u)
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+func (m *fullMockStore) GetIPInfo(_ context.Context, ip string) (*db.IPInfo, error) {
+	for _, info := range m.ipInfo {
+		if info.IP == ip {
+			infoCopy := info
+			return &infoCopy, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *fullMockStore) UpsertIPInfo(_ context.Context, info db.IPInfo) error {
+	for i, existing := range m.ipInfo {
+		if existing.IP == info.IP {
+			m.ipInfo[i] = info
+			return nil
+		}
+	}
+	m.ipInfo = append(m.ipInfo, info)
+	return nil
+}
+
 var _ db.Store = (*fullMockStore)(nil)
 
 func setupRouter(store db.Store, sc *server.Scanner) http.Handler {
 	r := chi.NewRouter()
-	server.RegisterRoutes(r, store, sc, nil, false)
+	// whoisFetch is nil — the lazy on-add fetch goroutine never runs in
+	// tests, so no test hits the network.
+	server.RegisterRoutes(r, store, sc, nil, false, nil)
 	return r
 }
 
@@ -1153,6 +1267,68 @@ func TestToggleURL_NotOnWatchlistReturns404(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("want 404 for URL not on watchlist, got %d", w.Code)
+	}
+}
+
+func TestToggleURL_SetsOrderedAtWithoutTouchingEnabled(t *testing.T) {
+	deptID := uint(1)
+	store := &fullMockStore{
+		urls:           []db.URL{{ID: 1, URL: "example.com"}},
+		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1, Enabled: true}},
+	}
+	cookie := deptCookie(store, deptID)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]string{"ordered_at": "2026-01-15T00:00:00Z"})
+	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if !store.departmentURLs[0].Enabled {
+		t.Fatal("expected Enabled to remain untouched by an ordered_at-only body")
+	}
+	if store.departmentURLs[0].OrderedAt == nil {
+		t.Fatal("expected ordered_at to be set")
+	}
+
+	// Clearing with an empty string
+	clearBody, _ := json.Marshal(map[string]string{"ordered_at": ""})
+	req2 := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(clearBody))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.AddCookie(cookie)
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusNoContent {
+		t.Fatalf("want 204 on clear, got %d: %s", w2.Code, w2.Body.String())
+	}
+	if store.departmentURLs[0].OrderedAt != nil {
+		t.Fatal("expected ordered_at to be cleared by an empty string")
+	}
+}
+
+func TestToggleURL_InvalidOrderedAtReturns400(t *testing.T) {
+	deptID := uint(1)
+	store := &fullMockStore{
+		urls:           []db.URL{{ID: 1, URL: "example.com"}},
+		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1, Enabled: true}},
+	}
+	cookie := deptCookie(store, deptID)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]string{"ordered_at": "not-a-date"})
+	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for invalid ordered_at, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

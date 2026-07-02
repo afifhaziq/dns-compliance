@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	"github.com/afif/dns-tracking/internal/urlnorm"
@@ -150,7 +151,7 @@ func (s *postgresStore) DailyComplianceByURL(ctx context.Context, urlValue strin
 		day         string
 	}
 	type bucket struct {
-		dnsServerName        string
+		dnsServerName       string
 		total, compliantSum int
 	}
 	buckets := make(map[bucketKey]*bucket)
@@ -309,7 +310,7 @@ func (s *postgresStore) ListDepartmentURLs(ctx context.Context, departmentID uin
 	var entries []URLEntry
 	err := s.db.WithContext(ctx).
 		Table("urls").
-		Select("urls.id, urls.url, urls.created_at, du.enabled").
+		Select("urls.id, urls.url, urls.created_at, du.enabled, du.ordered_at").
 		Joins("JOIN department_urls du ON du.url_id = urls.id AND du.department_id = ?", departmentID).
 		Order("urls.created_at asc").
 		Scan(&entries).Error
@@ -345,6 +346,17 @@ func (s *postgresStore) SetURLEnabled(ctx context.Context, departmentID, urlID u
 		Model(&DepartmentURL{}).
 		Where("department_id = ? AND url_id = ?", departmentID, urlID).
 		Update("enabled", enabled)
+	return res.RowsAffected > 0, res.Error
+}
+
+// SetURLOrderedAt sets or clears (orderedAt == nil) the takedown-order date
+// for one department's watchlist entry. Optional field — leaving it unset
+// just excludes the domain from time-to-compliance aggregates.
+func (s *postgresStore) SetURLOrderedAt(ctx context.Context, departmentID, urlID uint, orderedAt *time.Time) (bool, error) {
+	res := s.db.WithContext(ctx).
+		Model(&DepartmentURL{}).
+		Where("department_id = ? AND url_id = ?", departmentID, urlID).
+		Update("ordered_at", orderedAt)
 	return res.RowsAffected > 0, res.Error
 }
 
@@ -601,4 +613,296 @@ func (s *postgresStore) ISPTrendForDepartment(ctx context.Context, isp string, s
 		return nil, err
 	}
 	return rows, nil
+}
+
+// dailyTrend aggregates compliance across all ISPs into one bucket per
+// calendar day, optionally scoped to one department's enabled watchlist.
+// Aggregated in Go (not SQL, unlike ISPTrend's TO_CHAR) so it also works
+// against the in-memory SQLite backend used by tests.
+func (s *postgresStore) dailyTrend(ctx context.Context, since, until time.Time, departmentID *uint) ([]ISPTrendStat, error) {
+	type row struct {
+		ScannedAt time.Time
+		Compliant bool
+	}
+	q := s.db.WithContext(ctx).
+		Table("scan_results").
+		Select("scan_results.scanned_at, scan_results.compliant").
+		Where("scan_results.scanned_at >= ? AND scan_results.scanned_at <= ?", since, until)
+	if departmentID != nil {
+		q = q.Joins("JOIN department_urls ON department_urls.url_id = scan_results.url_id AND department_urls.department_id = ? AND department_urls.enabled = true", *departmentID)
+	}
+	var rows []row
+	if err := q.Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	type bucket struct{ total, compliant int }
+	buckets := make(map[string]*bucket)
+	order := make([]string, 0)
+	for _, r := range rows {
+		day := r.ScannedAt.Format("2006-01-02")
+		b, ok := buckets[day]
+		if !ok {
+			b = &bucket{}
+			buckets[day] = b
+			order = append(order, day)
+		}
+		b.total++
+		if r.Compliant {
+			b.compliant++
+		}
+	}
+	sort.Strings(order)
+
+	stats := make([]ISPTrendStat, 0, len(order))
+	for _, day := range order {
+		b := buckets[day]
+		stats = append(stats, ISPTrendStat{Day: day, Total: b.total, Compliant: b.compliant})
+	}
+	return stats, nil
+}
+
+func (s *postgresStore) NationalTrend(ctx context.Context, since, until time.Time) ([]ISPTrendStat, error) {
+	return s.dailyTrend(ctx, since, until, nil)
+}
+
+func (s *postgresStore) NationalTrendForDepartment(ctx context.Context, since, until time.Time, departmentID uint) ([]ISPTrendStat, error) {
+	return s.dailyTrend(ctx, since, until, &departmentID)
+}
+
+// ispComplianceTiming computes time-to-block stats for one ISP, optionally
+// scoped to one department's watchlist. Aggregated in Go, following the same
+// SQLite-portability reasoning as dailyTrend/DailyComplianceByURL.
+func (s *postgresStore) ispComplianceTiming(ctx context.Context, isp string, departmentID *uint) (ISPTimingResult, error) {
+	// Plain (non-aggregated) column read, reduced to a min-per-url_id map in
+	// Go: SQLite's driver can't scan a SQL MIN() of a datetime column
+	// directly into time.Time, so the reduction happens here instead.
+	type deptURLOrderRow struct {
+		URLID     uint
+		OrderedAt time.Time
+	}
+	orderQuery := s.db.WithContext(ctx).
+		Table("department_urls").
+		Select("url_id, ordered_at").
+		Where("ordered_at IS NOT NULL")
+	if departmentID != nil {
+		orderQuery = orderQuery.Where("department_id = ?", *departmentID)
+	}
+	var deptURLOrderRows []deptURLOrderRow
+	if err := orderQuery.Scan(&deptURLOrderRows).Error; err != nil {
+		return ISPTimingResult{}, err
+	}
+	orderedAtByURL := make(map[uint]time.Time, len(deptURLOrderRows))
+	for _, r := range deptURLOrderRows {
+		existing, ok := orderedAtByURL[r.URLID]
+		if !ok || r.OrderedAt.Before(existing) {
+			orderedAtByURL[r.URLID] = r.OrderedAt
+		}
+	}
+	orderRows := make([]deptURLOrderRow, 0, len(orderedAtByURL))
+	for urlID, orderedAt := range orderedAtByURL {
+		orderRows = append(orderRows, deptURLOrderRow{URLID: urlID, OrderedAt: orderedAt})
+	}
+
+	// Total monitored domains in this scope — the denominator for the
+	// "N domains have a recorded order date" coverage figure.
+	totalQuery := s.db.WithContext(ctx).Table("department_urls").Select("COUNT(DISTINCT url_id)")
+	if departmentID != nil {
+		totalQuery = totalQuery.Where("department_id = ?", *departmentID)
+	}
+	var totalDomains int64
+	if err := totalQuery.Scan(&totalDomains).Error; err != nil {
+		return ISPTimingResult{}, err
+	}
+
+	// Compliant scans for this ISP, oldest first, so the first hit per url_id
+	// found below is the first-observed-compliant timestamp.
+	type complianceRow struct {
+		URLID     uint
+		URLValue  string
+		ScannedAt time.Time
+	}
+	complianceQuery := s.db.WithContext(ctx).
+		Table("scan_results").
+		Select("scan_results.url_id, urls.url as url_value, scan_results.scanned_at").
+		Joins("JOIN dns_servers ON dns_servers.id = scan_results.dns_server_id").
+		Joins("JOIN urls ON urls.id = scan_results.url_id").
+		Where("dns_servers.isp = ? AND scan_results.compliant = true", isp).
+		Order("scan_results.scanned_at asc")
+	if departmentID != nil {
+		complianceQuery = complianceQuery.Joins("JOIN department_urls du2 ON du2.url_id = scan_results.url_id AND du2.department_id = ?", *departmentID)
+	}
+	var complianceRows []complianceRow
+	if err := complianceQuery.Scan(&complianceRows).Error; err != nil {
+		return ISPTimingResult{}, err
+	}
+
+	firstCompliantAfterOrder := make(map[uint]time.Time)
+	domainNameByURL := make(map[uint]string)
+	for _, r := range complianceRows {
+		domainNameByURL[r.URLID] = r.URLValue
+		orderedAt, hasOrder := orderedAtByURL[r.URLID]
+		if !hasOrder {
+			continue
+		}
+		if _, already := firstCompliantAfterOrder[r.URLID]; already {
+			continue
+		}
+		if r.ScannedAt.Before(orderedAt) {
+			continue // compliant scan predates the recorded order — not this order's block event
+		}
+		firstCompliantAfterOrder[r.URLID] = r.ScannedAt
+	}
+
+	// Domain names for ordered URLs that have no compliant scan yet (still open).
+	var missingIDs []uint
+	for _, r := range orderRows {
+		if _, known := domainNameByURL[r.URLID]; !known {
+			missingIDs = append(missingIDs, r.URLID)
+		}
+	}
+	if len(missingIDs) > 0 {
+		var missing []URL
+		if err := s.db.WithContext(ctx).Where("id IN ?", missingIDs).Find(&missing).Error; err != nil {
+			return ISPTimingResult{}, err
+		}
+		for _, u := range missing {
+			domainNameByURL[u.ID] = u.URL
+		}
+	}
+
+	now := time.Now()
+	timings := make([]DomainTiming, 0, len(orderRows))
+	var blockedDays []float64
+	for _, r := range orderRows {
+		domain := domainNameByURL[r.URLID]
+		if firstCompliant, blocked := firstCompliantAfterOrder[r.URLID]; blocked {
+			days := firstCompliant.Sub(r.OrderedAt).Hours() / 24
+			if days < 0 {
+				days = 0 // order recorded after the domain was already observed compliant
+			}
+			timings = append(timings, DomainTiming{Domain: domain, DaysToBlock: int(days + 0.5), Blocked: true})
+			blockedDays = append(blockedDays, days)
+		} else {
+			waited := now.Sub(r.OrderedAt).Hours() / 24
+			if waited < 0 {
+				waited = 0
+			}
+			timings = append(timings, DomainTiming{Domain: domain, DaysToBlock: int(waited + 0.5), Blocked: false})
+		}
+	}
+
+	sort.Slice(timings, func(i, j int) bool { return timings[i].DaysToBlock > timings[j].DaysToBlock })
+	slowest := timings
+	if len(slowest) > 5 {
+		slowest = slowest[:5]
+	}
+
+	sort.Float64s(blockedDays)
+	var median, avg float64
+	if n := len(blockedDays); n > 0 {
+		if n%2 == 1 {
+			median = blockedDays[n/2]
+		} else {
+			median = (blockedDays[n/2-1] + blockedDays[n/2]) / 2
+		}
+		sum := 0.0
+		for _, d := range blockedDays {
+			sum += d
+		}
+		avg = sum / float64(n)
+	}
+
+	return ISPTimingResult{
+		ISP:                isp,
+		MedianDaysToBlock:  median,
+		AvgDaysToBlock:     avg,
+		BlockedCount:       len(blockedDays),
+		StillOpenCount:     len(orderRows) - len(blockedDays),
+		WithOrderDateCount: len(orderRows),
+		TotalDomains:       int(totalDomains),
+		Slowest:            slowest,
+	}, nil
+}
+
+func (s *postgresStore) ISPComplianceTiming(ctx context.Context, isp string) (ISPTimingResult, error) {
+	return s.ispComplianceTiming(ctx, isp, nil)
+}
+
+func (s *postgresStore) ISPComplianceTimingForDepartment(ctx context.Context, isp string, departmentID uint) (ISPTimingResult, error) {
+	return s.ispComplianceTiming(ctx, isp, &departmentID)
+}
+
+// UpsertDomainWhois inserts or replaces the cached RDAP row for a domain —
+// there's only ever one row per URLID (its primary key), so a re-fetch just
+// overwrites the previous result.
+func (s *postgresStore) UpsertDomainWhois(ctx context.Context, w DomainWhois) error {
+	return s.db.WithContext(ctx).
+		Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "url_id"}}, UpdateAll: true}).
+		Create(&w).Error
+}
+
+// GetDomainWhois looks up the cached RDAP row for urlValue. Returns
+// nil, nil (not an error) both when the URL is unknown and when it's known
+// but has never been fetched — callers can't distinguish the two, which
+// matches this being a read-only cache lookup, not an existence check.
+func (s *postgresStore) GetDomainWhois(ctx context.Context, urlValue string) (*DomainWhois, error) {
+	normalized, err := urlnorm.Normalize(urlValue)
+	if err != nil {
+		return nil, err
+	}
+	var u URL
+	if err := s.db.WithContext(ctx).Where("url = ?", normalized).First(&u).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var w DomainWhois
+	err = s.db.WithContext(ctx).Where("url_id = ?", u.ID).First(&w).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &w, nil
+}
+
+// ListStaleDomains returns watched URLs (the same set ListWatchedURLs scans)
+// that either have no DomainWhois row yet or whose last fetch predates
+// olderThan — the refresher's work queue, capped by limit per tick.
+func (s *postgresStore) ListStaleDomains(ctx context.Context, olderThan time.Time, limit int) ([]URL, error) {
+	var urls []URL
+	err := s.db.WithContext(ctx).
+		Distinct("urls.*").
+		Joins("JOIN department_urls du ON du.url_id = urls.id AND du.enabled = true").
+		Joins("LEFT JOIN domain_whois dw ON dw.url_id = urls.id").
+		Where("dw.url_id IS NULL OR dw.last_fetched_at < ?", olderThan).
+		Order("urls.created_at asc").
+		Limit(limit).
+		Find(&urls).Error
+	return urls, err
+}
+
+// GetIPInfo looks up the cached ASN/org row for ip. Returns nil, nil (not an
+// error) when the IP has never been fetched.
+func (s *postgresStore) GetIPInfo(ctx context.Context, ip string) (*IPInfo, error) {
+	var info IPInfo
+	err := s.db.WithContext(ctx).Where("ip = ?", ip).First(&info).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &info, nil
+}
+
+// UpsertIPInfo inserts or replaces the cached row for an IP — there's only
+// ever one row per IP (its primary key), so a re-fetch just overwrites it.
+func (s *postgresStore) UpsertIPInfo(ctx context.Context, info IPInfo) error {
+	return s.db.WithContext(ctx).
+		Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "ip"}}, UpdateAll: true}).
+		Create(&info).Error
 }

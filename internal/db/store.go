@@ -34,6 +34,10 @@ type Store interface {
 	ISPStatsForDepartment(ctx context.Context, isp string, departmentID uint) (ISPStatsResult, error)
 	ISPTrend(ctx context.Context, isp string, since, until time.Time) ([]ISPTrendStat, error)
 	ISPTrendForDepartment(ctx context.Context, isp string, since, until time.Time, departmentID uint) ([]ISPTrendStat, error)
+	ISPComplianceTiming(ctx context.Context, isp string) (ISPTimingResult, error)
+	ISPComplianceTimingForDepartment(ctx context.Context, isp string, departmentID uint) (ISPTimingResult, error)
+	NationalTrend(ctx context.Context, since, until time.Time) ([]ISPTrendStat, error)
+	NationalTrendForDepartment(ctx context.Context, since, until time.Time, departmentID uint) ([]ISPTrendStat, error)
 
 	// Departments
 	ListDepartments(ctx context.Context) ([]Department, error)
@@ -54,14 +58,24 @@ type Store interface {
 	// Department watchlists
 	ListDepartmentURLs(ctx context.Context, departmentID uint) ([]URLEntry, error)
 	AddURLToWatchlist(ctx context.Context, departmentID uint, rawURL string) (URL, error)
-	RemoveURLFromWatchlist(ctx context.Context, departmentID, urlID uint) (bool, error) // false if no row was deleted (not on that watchlist)
-	SetURLEnabled(ctx context.Context, departmentID, urlID uint, enabled bool) (bool, error) // false if the URL is not on that watchlist
-	ListWatchedURLs(ctx context.Context) ([]URL, error)                                      // urls with >=1 enabled DepartmentURL row — used by the scan sweep
-	ListUnassignedURLs(ctx context.Context) ([]URL, error)                                   // admin view: urls with 0 DepartmentURL rows
+	RemoveURLFromWatchlist(ctx context.Context, departmentID, urlID uint) (bool, error)                // false if no row was deleted (not on that watchlist)
+	SetURLEnabled(ctx context.Context, departmentID, urlID uint, enabled bool) (bool, error)           // false if the URL is not on that watchlist
+	SetURLOrderedAt(ctx context.Context, departmentID, urlID uint, orderedAt *time.Time) (bool, error) // nil clears the order date; false if the URL is not on that watchlist
+	ListWatchedURLs(ctx context.Context) ([]URL, error)                                                // urls with >=1 enabled DepartmentURL row — used by the scan sweep
+	ListUnassignedURLs(ctx context.Context) ([]URL, error)                                             // admin view: urls with 0 DepartmentURL rows
 	URLOwnedByDepartment(ctx context.Context, departmentID uint, urlValue string) (bool, error)
 
 	// Compliant IPs — IPs that count as compliant even when DNS resolves
 	ListCompliantIPs(ctx context.Context) ([]CompliantIP, error)
 	CreateCompliantIP(ctx context.Context, address, note string) (CompliantIP, error)
 	DeleteCompliantIP(ctx context.Context, id uint) error
+
+	// Domain WHOIS — per-domain RDAP cache, not per-scan
+	UpsertDomainWhois(ctx context.Context, w DomainWhois) error
+	GetDomainWhois(ctx context.Context, urlValue string) (*DomainWhois, error)           // nil, nil if never fetched (or urlValue is unknown)
+	ListStaleDomains(ctx context.Context, olderThan time.Time, limit int) ([]URL, error) // watched URLs with no DomainWhois row or LastFetchedAt < olderThan
+
+	// IP info — ASN/org cache keyed by resolved IP, fetched at most once per IP
+	GetIPInfo(ctx context.Context, ip string) (*IPInfo, error) // nil, nil if never fetched
+	UpsertIPInfo(ctx context.Context, info IPInfo) error
 }

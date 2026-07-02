@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { fetchUrls, createUrl, deleteUrl, setUrlEnabled } from '../api/urls'
+import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlOrderedAt } from '../api/urls'
 import type { URLEntry } from '../api/types'
 import {
   Dialog,
@@ -112,6 +112,9 @@ function SkeletonRows() {
           <TableCell className="col-status">
             <span className="skeleton" style={{ width: 90, height: 14 }} />
           </TableCell>
+          <TableCell className="col-status">
+            <span className="skeleton" style={{ width: 90, height: 14 }} />
+          </TableCell>
           <TableCell style={{ width: 52 }} />
           <TableCell className="col-evidence" />
         </TableRow>
@@ -169,6 +172,17 @@ function URLsPage() {
     }
   }, [])
 
+  const handleOrderedAtChange = useCallback(async (id: number, dateStr: string) => {
+    const previous = urls.find(u => u.id === id)?.ordered_at
+    const orderedAt = dateStr ? new Date(dateStr).toISOString() : null
+    setUrls(prev => prev.map(u => u.id === id ? { ...u, ordered_at: orderedAt ?? undefined } : u))
+    try {
+      await setUrlOrderedAt(id, orderedAt)
+    } catch {
+      setUrls(prev => prev.map(u => u.id === id ? { ...u, ordered_at: previous } : u))
+    }
+  }, [urls])
+
   const handleDelete = async () => {
     if (!deleteTarget) return
     await deleteUrl(deleteTarget.id)
@@ -208,6 +222,7 @@ function URLsPage() {
               <TableRow>
                 <TableHead className="col-domain th-left" scope="col">Domain</TableHead>
                 <TableHead className="col-status" scope="col">Added</TableHead>
+                <TableHead className="col-status" scope="col">Order Date</TableHead>
                 <TableHead scope="col" style={{ width: 52, textAlign: 'center' }}>Scan</TableHead>
                 <TableHead className="col-evidence" scope="col" />
               </TableRow>
@@ -232,6 +247,16 @@ function URLsPage() {
                       <span className="dns-name">
                         {DATE_FMT.format(new Date(u.created_at))}
                       </span>
+                    </TableCell>
+                    <TableCell className="col-status text-center">
+                      <input
+                        type="date"
+                        className="form-input"
+                        style={{ width: 140 }}
+                        value={u.ordered_at ? u.ordered_at.slice(0, 10) : ''}
+                        onChange={e => handleOrderedAtChange(u.id, e.target.value)}
+                        aria-label={`Order date for ${u.url}`}
+                      />
                     </TableCell>
                     <TableCell style={{ textAlign: 'center' }}>
                       <Switch

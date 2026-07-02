@@ -31,6 +31,7 @@ type SiteResult struct {
 	Error         string                 `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`
 	DnsServer     string                 `protobuf:"bytes,7,opt,name=dns_server,json=dnsServer,proto3" json:"dns_server,omitempty"`
 	LatencyMs     int64                  `protobuf:"varint,8,opt,name=latency_ms,json=latencyMs,proto3" json:"latency_ms,omitempty"`
+	ResolvedIpv6  string                 `protobuf:"bytes,9,opt,name=resolved_ipv6,json=resolvedIpv6,proto3" json:"resolved_ipv6,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -119,6 +120,13 @@ func (x *SiteResult) GetLatencyMs() int64 {
 		return x.LatencyMs
 	}
 	return 0
+}
+
+func (x *SiteResult) GetResolvedIpv6() string {
+	if x != nil {
+		return x.ResolvedIpv6
+	}
+	return ""
 }
 
 type ComplianceReport struct {
@@ -214,7 +222,7 @@ var File_proto_compliance_proto protoreflect.FileDescriptor
 const file_proto_compliance_proto_rawDesc = "" +
 	"\n" +
 	"\x16proto/compliance.proto\x12\n" +
-	"compliance\"\xef\x01\n" +
+	"compliance\"\x94\x02\n" +
 	"\n" +
 	"SiteResult\x12\x10\n" +
 	"\x03url\x18\x01 \x01(\tR\x03url\x12\x1c\n" +
@@ -229,7 +237,8 @@ const file_proto_compliance_proto_rawDesc = "" +
 	"\n" +
 	"dns_server\x18\a \x01(\tR\tdnsServer\x12\x1d\n" +
 	"\n" +
-	"latency_ms\x18\b \x01(\x03R\tlatencyMs\"D\n" +
+	"latency_ms\x18\b \x01(\x03R\tlatencyMs\x12#\n" +
+	"\rresolved_ipv6\x18\t \x01(\tR\fresolvedIpv6\"D\n" +
 	"\x10ComplianceReport\x120\n" +
 	"\aresults\x18\x01 \x03(\v2\x16.compliance.SiteResultR\aresults\"!\n" +
 	"\x0fAcknowledgement\x12\x0e\n" +

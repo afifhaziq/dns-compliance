@@ -52,20 +52,22 @@ type Session struct {
 // a domain anymore. Its OnDelete:CASCADE only fires on the admin-only
 // "purge a domain" path that deletes the URL row itself.
 type DepartmentURL struct {
-	DepartmentID uint      `gorm:"primaryKey;autoIncrement:false" json:"department_id"`
-	URLID        uint      `gorm:"primaryKey;autoIncrement:false" json:"url_id"`
-	URL          URL       `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
-	Enabled      bool      `gorm:"not null;default:true" json:"enabled"`
-	CreatedAt    time.Time `json:"created_at"`
+	DepartmentID uint       `gorm:"primaryKey;autoIncrement:false" json:"department_id"`
+	URLID        uint       `gorm:"primaryKey;autoIncrement:false" json:"url_id"`
+	URL          URL        `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
+	Enabled      bool       `gorm:"not null;default:true" json:"enabled"`
+	OrderedAt    *time.Time `json:"ordered_at,omitempty"` // optional: when the takedown order was issued for this domain, set at add-time or later
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 // URLEntry is the department-scoped view of a URL, carrying the watchlist
-// enabled flag that the shared URL model does not have.
+// enabled flag and order date that the shared URL model does not have.
 type URLEntry struct {
-	ID        uint      `json:"id"`
-	URL       string    `json:"url"`
-	Enabled   bool      `json:"enabled"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        uint       `json:"id"`
+	URL       string     `json:"url"`
+	Enabled   bool       `json:"enabled"`
+	OrderedAt *time.Time `json:"ordered_at,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 // CompliantIP is an IP address that counts as compliant even when DNS
@@ -96,10 +98,40 @@ type ScanResult struct {
 	DNSServer     DNSServer `gorm:"foreignKey:DNSServerID" json:"dns_server"`
 	Compliant     bool      `gorm:"not null" json:"compliant"`
 	ResolvedIP    string    `json:"resolved_ip"`
+	ResolvedIPv6  string    `json:"resolved_ipv6"`
+	ResolvedASN   uint      `json:"resolved_asn"`
+	ResolvedOrg   string    `json:"resolved_org"`
 	ScreenshotURL string    `json:"screenshot_url"`
 	Error         string    `json:"error"`
 	LatencyMs     int64     `gorm:"default:0" json:"latency_ms"`
 	ScannedAt     time.Time `json:"scanned_at"`
+}
+
+// DomainWhois caches RDAP registration metadata for a domain (not a scan —
+// registrar/expiry rarely change, so this is refreshed on its own slow
+// cadence rather than every scan). Absent row = never fetched. FetchError
+// holds the last fetch failure (e.g. no RDAP coverage for the TLD); the
+// stale registrar/date fields, if any, are left in place rather than wiped.
+type DomainWhois struct {
+	URLID         uint       `gorm:"primaryKey;autoIncrement:false" json:"url_id"`
+	Registrar     string     `json:"registrar"`
+	DomainCreated *time.Time `json:"domain_created,omitempty"`
+	DomainExpires *time.Time `json:"domain_expires,omitempty"`
+	LastFetchedAt time.Time  `gorm:"index" json:"last_fetched_at"`
+	FetchError    string     `json:"fetch_error,omitempty"`
+}
+
+// IPInfo caches ASN + network-operator lookups from ipinfo.io, keyed by
+// resolved IP rather than domain — an IP's ASN is stable regardless of which
+// domain currently resolves to it, so a distinct IP is looked up at most
+// once, ever (no periodic refresh; ASN reassignment is rare enough not to
+// matter here). Absent row = never fetched.
+type IPInfo struct {
+	IP         string    `gorm:"primaryKey" json:"ip"`
+	ASN        uint      `json:"asn"`
+	Org        string    `json:"org"`
+	FetchedAt  time.Time `json:"fetched_at"`
+	FetchError string    `json:"fetch_error,omitempty"`
 }
 
 type ProgressEntry struct {
@@ -139,11 +171,35 @@ type ISPStatsResult struct {
 }
 
 // ISPTrendStat is one calendar day of aggregated compliance for an ISP,
-// used by GET /api/isps/{isp}/trend.
+// used by GET /api/isps/{isp}/trend and GET /api/trend.
 type ISPTrendStat struct {
 	Day       string `json:"day"` // YYYY-MM-DD
 	Total     int    `json:"total"`
 	Compliant int    `json:"compliant"`
+}
+
+// DomainTiming is how long one domain took (or has been waiting) to be
+// blocked by an ISP, measured from its order date. Blocked=false means
+// still open — DaysToBlock is then "days waited so far", not a final figure.
+type DomainTiming struct {
+	Domain      string `json:"domain"`
+	DaysToBlock int    `json:"days_to_block"`
+	Blocked     bool   `json:"blocked"`
+}
+
+// ISPTimingResult is the response shape for GET /api/isps/{isp}/timing.
+// Median/avg are computed only over domains with Blocked=true; domains with
+// no recorded order date are excluded entirely (WithOrderDateCount tracks
+// coverage against TotalDomains so the figure isn't silently misleading).
+type ISPTimingResult struct {
+	ISP                string         `json:"isp"`
+	MedianDaysToBlock  float64        `json:"median_days_to_block"`
+	AvgDaysToBlock     float64        `json:"avg_days_to_block"`
+	BlockedCount       int            `json:"blocked_count"`
+	StillOpenCount     int            `json:"still_open_count"`
+	WithOrderDateCount int            `json:"with_order_date_count"`
+	TotalDomains       int            `json:"total_domains"`
+	Slowest            []DomainTiming `json:"slowest"` // top 5 by days-to-block, blocked and still-open combined
 }
 
 // DailyComplianceLevel buckets a day's results onto the heatmap's 5-level

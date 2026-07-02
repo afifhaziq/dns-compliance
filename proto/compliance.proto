@@ -5,14 +5,15 @@ package compliance;
 option go_package = "github.com/afif/dns-tracking/proto";
 
 message SiteResult {
-  string url         = 1;
-  int64  timestamp   = 2;
-  bool   compliant   = 3;
-  string resolved_ip = 4;
-  bytes  screenshot  = 5;
-  string error       = 6;
-  string dns_server  = 7;
-  int64  latency_ms  = 8;
+  string url           = 1;
+  int64  timestamp     = 2;
+  bool   compliant     = 3;
+  string resolved_ip   = 4;
+  bytes  screenshot    = 5;
+  string error         = 6;
+  string dns_server    = 7;
+  int64  latency_ms    = 8;
+  string resolved_ipv6 = 9;
 }
 
 message ComplianceReport {

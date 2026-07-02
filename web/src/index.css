@@ -638,6 +638,14 @@ th.th-left {
   @apply font-mono text-[13px] text-foreground;
 }
 
+.ip-meta {
+  @apply flex flex-col gap-0.5;
+}
+
+.ip-meta-secondary {
+  @apply font-mono text-[11px] text-stone-muted;
+}
+
 .empty-cell {
   @apply text-stone-muted;
 }

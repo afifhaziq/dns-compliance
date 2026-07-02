@@ -21,3 +21,8 @@ export async function deleteUrl(id: number): Promise<void> {
 export async function setUrlEnabled(id: number, enabled: boolean): Promise<void> {
   await api.patch<void>(`/urls/${id}`, { enabled })
 }
+
+// orderedAt is an RFC3339 string; pass null to clear a previously set order date.
+export async function setUrlOrderedAt(id: number, orderedAt: string | null): Promise<void> {
+  await api.patch<void>(`/urls/${id}`, { ordered_at: orderedAt ?? '' })
+}

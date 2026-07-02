@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/afif/dns-tracking/internal/db"
+	"github.com/afif/dns-tracking/internal/whois"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -20,10 +22,11 @@ type Handlers struct {
 	store       db.Store
 	scanner     *Scanner
 	broadcaster *Broadcaster
+	whoisFetch  whois.Fetcher // nil disables the lazy on-add fetch (e.g. in tests)
 }
 
-func NewHandlers(store db.Store, scanner *Scanner, broadcaster *Broadcaster) *Handlers {
-	return &Handlers{store: store, scanner: scanner, broadcaster: broadcaster}
+func NewHandlers(store db.Store, scanner *Scanner, broadcaster *Broadcaster, whoisFetch whois.Fetcher) *Handlers {
+	return &Handlers{store: store, scanner: scanner, broadcaster: broadcaster, whoisFetch: whoisFetch}
 }
 
 func buildProgressPayload(ctx context.Context, store db.Store) ([]byte, error) {
@@ -103,7 +106,36 @@ func (h *Handlers) AddToWatchlist(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	// Lazy WHOIS fetch — detached from the request, own timeout context, so
+	// a slow/unreachable RDAP server never delays or fails the add.
+	if h.whoisFetch != nil {
+		go fetchAndStoreWhois(h.store, h.whoisFetch, u.ID, u.URL)
+	}
+
 	writeJSON(w, http.StatusCreated, db.URLEntry{ID: u.ID, URL: u.URL, Enabled: true, CreatedAt: u.CreatedAt})
+}
+
+// fetchAndStoreWhois runs a RDAP lookup and caches the result (or the
+// failure) in DomainWhois. Called from a detached goroutine on watchlist-add
+// and, with a paced caller loop, from the periodic refresher.
+func fetchAndStoreWhois(store db.Store, fetch whois.Fetcher, urlID uint, domain string) {
+	fetchCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	res, err := fetch(fetchCtx, domain)
+	cancel()
+
+	w := db.DomainWhois{URLID: urlID, LastFetchedAt: time.Now()}
+	if err != nil {
+		w.FetchError = err.Error()
+	} else {
+		w.Registrar, w.DomainCreated, w.DomainExpires = res.Registrar, res.DomainCreated, res.DomainExpires
+	}
+
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer dbCancel()
+	if err := store.UpsertDomainWhois(dbCtx, w); err != nil {
+		log.Printf("whois: upsert for %s: %v", domain, err)
+	}
 }
 
 // RemoveFromWatchlist unlinks a URL from the caller's department watchlist
@@ -138,8 +170,10 @@ func (h *Handlers) RemoveFromWatchlist(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ToggleURL enables or disables a URL in the caller's department watchlist.
-// Does not affect other departments watching the same domain.
+// ToggleURL updates a URL in the caller's department watchlist: the enabled
+// flag and/or the optional order date. Does not affect other departments
+// watching the same domain. Only fields present in the body are touched —
+// omit "enabled" to change only "ordered_at" and vice versa.
 func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
 	if !ok {
@@ -158,17 +192,41 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Enabled bool `json:"enabled"`
+		Enabled *bool `json:"enabled"`
+		// OrderedAt is RFC3339 when setting a date, or "" to clear it.
+		// Omit the key entirely to leave the order date untouched.
+		OrderedAt *string `json:"ordered_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
 
-	found, err := h.store.SetURLEnabled(r.Context(), *user.DepartmentID, uint(id), body.Enabled)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+	found := false
+	if body.Enabled != nil {
+		f, err := h.store.SetURLEnabled(r.Context(), *user.DepartmentID, uint(id), *body.Enabled)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		found = found || f
+	}
+	if body.OrderedAt != nil {
+		var orderedAt *time.Time
+		if *body.OrderedAt != "" {
+			t, err := time.Parse(time.RFC3339, *body.OrderedAt)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid ordered_at, expected RFC3339")
+				return
+			}
+			orderedAt = &t
+		}
+		f, err := h.store.SetURLOrderedAt(r.Context(), *user.DepartmentID, uint(id), orderedAt)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		found = found || f
 	}
 	if !found {
 		writeError(w, http.StatusNotFound, "url not on this department's watchlist")
@@ -382,6 +440,38 @@ func (h *Handlers) HeatmapByURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, stats)
+}
+
+type domainInfoResponse struct {
+	Fetched bool `json:"fetched"`
+	*db.DomainWhois
+}
+
+// DomainInfoByURL returns the cached RDAP registrar/expiry info for a
+// domain, scoped the same way as /api/results (404 rather than 403 for a
+// non-owning department, so the response doesn't confirm the domain
+// exists). Returns {"fetched":false} — not a 404 — when the domain is owned
+// but has no cached WHOIS row yet (never fetched).
+func (h *Handlers) DomainInfoByURL(w http.ResponseWriter, r *http.Request) {
+	urlValue, err := url.PathUnescape(chi.URLParam(r, "*"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid url")
+		return
+	}
+	if !requireDomainOwnership(h, w, r, urlValue) {
+		return
+	}
+
+	info, err := h.store.GetDomainWhois(r.Context(), urlValue)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if info == nil {
+		writeJSON(w, http.StatusOK, domainInfoResponse{Fetched: false})
+		return
+	}
+	writeJSON(w, http.StatusOK, domainInfoResponse{Fetched: true, DomainWhois: info})
 }
 
 // DNS Records (live lookup, independent of the compliance-scan pipeline)
@@ -682,6 +772,75 @@ func (h *Handlers) ISPTrend(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		stats, err = h.store.ISPTrendForDepartment(r.Context(), isp, since, until, *user.DepartmentID)
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load trend data")
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
+}
+
+// ISP Compliance Timing
+
+func (h *Handlers) ISPTiming(w http.ResponseWriter, r *http.Request) {
+	isp, err := url.PathUnescape(chi.URLParam(r, "isp"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid ISP")
+		return
+	}
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	var timing db.ISPTimingResult
+	if user.IsAdmin {
+		timing, err = h.store.ISPComplianceTiming(r.Context(), isp)
+	} else {
+		if user.DepartmentID == nil {
+			writeError(w, http.StatusForbidden, "user has no department")
+			return
+		}
+		timing, err = h.store.ISPComplianceTimingForDepartment(r.Context(), isp, *user.DepartmentID)
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load timing data")
+		return
+	}
+	writeJSON(w, http.StatusOK, timing)
+}
+
+// National Trend
+
+func (h *Handlers) NationalTrend(w http.ResponseWriter, r *http.Request) {
+	now := time.Now()
+	since := now.AddDate(0, 0, -30)
+	until := now
+	if s := r.URL.Query().Get("since"); s != "" {
+		if t, err2 := time.Parse(time.RFC3339, s); err2 == nil {
+			since = t
+		}
+	}
+	if u := r.URL.Query().Get("until"); u != "" {
+		if t, err2 := time.Parse(time.RFC3339, u); err2 == nil {
+			until = t
+		}
+	}
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	var stats []db.ISPTrendStat
+	var err error
+	if user.IsAdmin {
+		stats, err = h.store.NationalTrend(r.Context(), since, until)
+	} else {
+		if user.DepartmentID == nil {
+			writeError(w, http.StatusForbidden, "user has no department")
+			return
+		}
+		stats, err = h.store.NationalTrendForDepartment(r.Context(), since, until, *user.DepartmentID)
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load trend data")

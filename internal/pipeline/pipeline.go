@@ -10,15 +10,16 @@ import (
 
 // SiteResult holds the outcome of checking one website.
 type SiteResult struct {
-	URL         string
-	Timestamp   time.Time
-	DNSServer   string // name of the DNS server used; empty means system resolver
-	DNSResolved bool
-	ResolvedIP  string
-	Compliant   bool   // true = unreachable (good), false = accessible (violation)
-	Screenshot  []byte // nil if DNS failed or screenshot errored
-	Error       string // populated on DNS failure, timeout, or screenshot error
-	LatencyMs   int64  // DNS round-trip latency in milliseconds; 0 on failure
+	URL          string
+	Timestamp    time.Time
+	DNSServer    string // name of the DNS server used; empty means system resolver
+	DNSResolved  bool
+	ResolvedIP   string
+	ResolvedIPv6 string // AAAA record, if any; informational only, never affects Compliant
+	Compliant    bool   // true = unreachable (good), false = accessible (violation)
+	Screenshot   []byte // nil if DNS failed or screenshot errored
+	Error        string // populated on DNS failure, timeout, or screenshot error
+	LatencyMs    int64  // DNS round-trip latency in milliseconds; 0 on failure
 }
 
 // Config controls pipeline concurrency and injects the DNS and screenshot
@@ -29,16 +30,18 @@ type Config struct {
 	DNSTimeout        time.Duration
 	ScreenshotTimeout time.Duration
 	Resolve           func(ctx context.Context, host string) (string, int64, error)
+	ResolveIPv6       func(ctx context.Context, host string) (string, error) // optional; nil = skip AAAA lookup
 	Capture           func(ctx context.Context, rawURL string) ([]byte, error)
 	OnResult          func(SiteResult) // called as each result is produced; may be nil
 	CompliantIPs      []string         // IPs treated as compliant even when DNS resolves (e.g. MCMC block-page IP)
 }
 
 type dnsResult struct {
-	rawURL     string
-	resolvedIP string
-	timestamp  time.Time
-	latencyMs  int64
+	rawURL       string
+	resolvedIP   string
+	resolvedIPv6 string
+	timestamp    time.Time
+	latencyMs    int64
 }
 
 // Run executes one full sweep over urls and returns one SiteResult per URL.
@@ -61,14 +64,15 @@ func Run(ctx context.Context, urls []string, cfg Config) ([]SiteResult, error) {
 			defer dnsWg.Done()
 			for rawURL := range urlCh {
 				siteCtx, cancel := context.WithTimeout(ctx, cfg.DNSTimeout)
-				result := checkDNS(siteCtx, rawURL, cfg.Resolve, cfg.CompliantIPs)
+				result := checkDNS(siteCtx, rawURL, cfg.Resolve, cfg.ResolveIPv6, cfg.CompliantIPs)
 				cancel()
 				if result.DNSResolved {
 					screenshotCh <- dnsResult{
-						rawURL:     rawURL,
-						resolvedIP: result.ResolvedIP,
-						timestamp:  result.Timestamp,
-						latencyMs:  result.LatencyMs,
+						rawURL:       rawURL,
+						resolvedIP:   result.ResolvedIP,
+						resolvedIPv6: result.ResolvedIPv6,
+						timestamp:    result.Timestamp,
+						latencyMs:    result.LatencyMs,
 					}
 				} else {
 					resultCh <- result
@@ -111,7 +115,7 @@ func Run(ctx context.Context, urls []string, cfg Config) ([]SiteResult, error) {
 	return results, nil
 }
 
-func checkDNS(ctx context.Context, rawURL string, resolve func(context.Context, string) (string, int64, error), compliantIPs []string) SiteResult {
+func checkDNS(ctx context.Context, rawURL string, resolve func(context.Context, string) (string, int64, error), resolveIPv6 func(context.Context, string) (string, error), compliantIPs []string) SiteResult {
 	normalized := normalizeURL(rawURL)
 	u, err := url.Parse(normalized)
 	if err != nil || u.Hostname() == "" {
@@ -140,13 +144,21 @@ func checkDNS(ctx context.Context, rawURL string, resolve func(context.Context, 
 			break
 		}
 	}
+
+	var ipv6 string
+	if resolveIPv6 != nil {
+		// Informational only — error ignored, never affects Compliant.
+		ipv6, _ = resolveIPv6(ctx, u.Hostname())
+	}
+
 	return SiteResult{
-		URL:         rawURL,
-		Timestamp:   time.Now(),
-		DNSResolved: true,
-		ResolvedIP:  ip,
-		Compliant:   compliant,
-		LatencyMs:   latencyMs,
+		URL:          rawURL,
+		Timestamp:    time.Now(),
+		DNSResolved:  true,
+		ResolvedIP:   ip,
+		ResolvedIPv6: ipv6,
+		Compliant:    compliant,
+		LatencyMs:    latencyMs,
 	}
 }
 
@@ -154,23 +166,25 @@ func takeScreenshot(ctx context.Context, dr dnsResult, capture func(context.Cont
 	buf, err := capture(ctx, dr.rawURL)
 	if err != nil {
 		return SiteResult{
-			URL:         dr.rawURL,
-			Timestamp:   dr.timestamp,
-			DNSResolved: true,
-			ResolvedIP:  dr.resolvedIP,
-			Compliant:   false,
-			Error:       err.Error(),
-			LatencyMs:   dr.latencyMs,
+			URL:          dr.rawURL,
+			Timestamp:    dr.timestamp,
+			DNSResolved:  true,
+			ResolvedIP:   dr.resolvedIP,
+			ResolvedIPv6: dr.resolvedIPv6,
+			Compliant:    false,
+			Error:        err.Error(),
+			LatencyMs:    dr.latencyMs,
 		}
 	}
 	return SiteResult{
-		URL:         dr.rawURL,
-		Timestamp:   dr.timestamp,
-		DNSResolved: true,
-		ResolvedIP:  dr.resolvedIP,
-		Compliant:   false,
-		Screenshot:  buf,
-		LatencyMs:   dr.latencyMs,
+		URL:          dr.rawURL,
+		Timestamp:    dr.timestamp,
+		DNSResolved:  true,
+		ResolvedIP:   dr.resolvedIP,
+		ResolvedIPv6: dr.resolvedIPv6,
+		Compliant:    false,
+		Screenshot:   buf,
+		LatencyMs:    dr.latencyMs,
 	}
 }
 

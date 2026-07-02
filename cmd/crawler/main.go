@@ -60,21 +60,26 @@ func main() {
 		}
 		for _, s := range cfg.Servers {
 			var resolveFn func(context.Context, string) (string, int64, error)
+			var resolveIPv6Fn func(context.Context, string) (string, error)
 			switch s.Protocol {
 			case "dot":
 				resolveFn = dns.NewDoTResolver(s.Address)
+				resolveIPv6Fn = dns.NewDoTResolverIPv6(s.Address)
 			case "doh":
 				resolveFn = dns.NewDoHResolver(s.Address)
+				resolveIPv6Fn = dns.NewDoHResolverIPv6(s.Address)
 			default:
 				resolveFn = dns.NewResolver(s.Address)
+				resolveIPv6Fn = dns.NewResolverIPv6(s.Address)
 			}
 			servers = append(servers, serverEntry{
-				name:    s.Name,
-				resolve: resolveFn,
+				name:        s.Name,
+				resolve:     resolveFn,
+				resolveIPv6: resolveIPv6Fn,
 			})
 		}
 	} else {
-		servers = []serverEntry{{name: "", resolve: dns.Resolve}}
+		servers = []serverEntry{{name: "", resolve: dns.Resolve, resolveIPv6: dns.ResolveIPv6}}
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -129,8 +134,9 @@ func main() {
 }
 
 type serverEntry struct {
-	name    string
-	resolve func(context.Context, string) (string, int64, error)
+	name        string
+	resolve     func(context.Context, string) (string, int64, error)
+	resolveIPv6 func(context.Context, string) (string, error)
 }
 
 func runSweep(
@@ -155,6 +161,7 @@ func runSweep(
 	for _, srv := range servers {
 		cfg := baseCfg
 		cfg.Resolve = srv.resolve
+		cfg.ResolveIPv6 = srv.resolveIPv6
 		cfg.Capture = noop
 		cfg.OnResult = func(r pipeline.SiteResult) {
 			completed++
@@ -469,14 +476,15 @@ func buildReport(results []pipeline.SiteResult) *pb.ComplianceReport {
 	pbResults := make([]*pb.SiteResult, len(results))
 	for i, r := range results {
 		pbResults[i] = &pb.SiteResult{
-			Url:        r.URL,
-			Timestamp:  r.Timestamp.Unix(),
-			Compliant:  r.Compliant,
-			ResolvedIp: r.ResolvedIP,
-			Screenshot: r.Screenshot,
-			Error:      r.Error,
-			DnsServer:  r.DNSServer,
-			LatencyMs:  r.LatencyMs,
+			Url:          r.URL,
+			Timestamp:    r.Timestamp.Unix(),
+			Compliant:    r.Compliant,
+			ResolvedIp:   r.ResolvedIP,
+			ResolvedIpv6: r.ResolvedIPv6,
+			Screenshot:   r.Screenshot,
+			Error:        r.Error,
+			DnsServer:    r.DNSServer,
+			LatencyMs:    r.LatencyMs,
 		}
 	}
 	return &pb.ComplianceReport{Results: pbResults}

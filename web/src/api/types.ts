@@ -15,6 +15,9 @@ export type ScanResult = {
   dns_server: DNSServer
   compliant: boolean
   resolved_ip: string
+  resolved_ipv6: string
+  resolved_asn: number
+  resolved_org: string
   screenshot_url: string
   error: string
   latency_ms: number
@@ -40,7 +43,7 @@ export type GroupedResult = {
   latestScannedAt: string
 }
 
-export type URLEntry = { id: number; url: string; enabled: boolean; created_at: string }
+export type URLEntry = { id: number; url: string; enabled: boolean; ordered_at?: string; created_at: string }
 
 export type Department = { id: number; name: string; created_at: string }
 
@@ -83,4 +86,21 @@ export type ISPTrendStat = {
   day: string       // YYYY-MM-DD
   total: number
   compliant: number
+}
+
+export type DomainTiming = {
+  domain: string
+  days_to_block: number
+  blocked: boolean
+}
+
+export type ISPTiming = {
+  isp: string
+  median_days_to_block: number
+  avg_days_to_block: number
+  blocked_count: number
+  still_open_count: number
+  with_order_date_count: number
+  total_domains: number
+  slowest: DomainTiming[]
 }

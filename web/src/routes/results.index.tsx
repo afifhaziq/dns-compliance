@@ -115,11 +115,19 @@ function SubRows({
             <StatusDot compliant={r.compliant} />
           </TableCell>
           <TableCell className="col-ip">
-            {r.resolved_ip ? (
-              <span className="ip-value">{r.resolved_ip}</span>
-            ) : (
-              <span className="empty-cell" aria-label="Not resolved">—</span>
-            )}
+            <div className="ip-meta">
+              {r.resolved_ip ? (
+                <span className="ip-value">{r.resolved_ip}</span>
+              ) : (
+                <span className="empty-cell" aria-label="Not resolved">—</span>
+              )}
+              {r.resolved_ipv6 && <span className="ip-meta-secondary">{r.resolved_ipv6}</span>}
+              {r.resolved_asn > 0 && (
+                <span className="ip-meta-secondary">
+                  AS{r.resolved_asn}{r.resolved_org && ` — ${r.resolved_org}`}
+                </span>
+              )}
+            </div>
           </TableCell>
           <TableCell className="col-evidence">
             {r.screenshot_url ? (
@@ -449,10 +457,10 @@ function ResultsPage() {
                   <TableRow>
                     <TableHead className="col-expand" scope="col" />
                     <TableHead className="col-domain th-left" scope="col">Domain</TableHead>
-                    <TableHead className="col-status" scope="col">Status</TableHead>
-                    <TableHead className="col-ip" scope="col">Resolved IP</TableHead>
-                    <TableHead className="col-evidence" scope="col">Evidence</TableHead>
-                    <TableHead className="col-last-scanned" scope="col">Last scanned</TableHead>
+                    <TableHead className="col-status th-left" scope="col">Status</TableHead>
+                    <TableHead className="col-ip th-left" scope="col">Resolved IP</TableHead>
+                    <TableHead className="col-evidence th-left" scope="col">Evidence</TableHead>
+                    <TableHead className="col-last-scanned th-left" scope="col">Last scanned</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

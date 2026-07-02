@@ -2,12 +2,15 @@ package server
 
 import (
 	"github.com/afif/dns-tracking/internal/db"
+	"github.com/afif/dns-tracking/internal/whois"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster *Broadcaster, cookieSecure bool) {
-	h := NewHandlers(store, scanner, broadcaster)
+// whoisFetch may be nil to disable the lazy on-watchlist-add WHOIS fetch
+// (tests pass nil so they never hit the network).
+func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster *Broadcaster, cookieSecure bool, whoisFetch whois.Fetcher) {
+	h := NewHandlers(store, scanner, broadcaster, whoisFetch)
 	ah := NewAuthHandlers(store, cookieSecure)
 
 	r.Use(middleware.Logger)
@@ -41,8 +44,11 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Get("/results/*", h.ResultsByURL)
 			r.Get("/heatmap/*", h.HeatmapByURL)
 			r.Get("/dns-records/*", h.DNSRecordsByURL)
+			r.Get("/domain/*", h.DomainInfoByURL)
 			r.Get("/isps/{isp}", h.ISPStats)
 			r.Get("/isps/{isp}/trend", h.ISPTrend)
+			r.Get("/isps/{isp}/timing", h.ISPTiming)
+			r.Get("/trend", h.NationalTrend)
 
 			r.Post("/screenshot", h.TriggerScreenshot)
 

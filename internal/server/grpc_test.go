@@ -45,6 +45,8 @@ func (m *mockStore) ResultsByURL(_ context.Context, _ string, _, _ time.Time) ([
 	return m.insertedResults, nil
 }
 func (m *mockStore) UpdateScreenshot(_ context.Context, _ uint, _ string) error { return nil }
+func (m *mockStore) GetIPInfo(_ context.Context, _ string) (*db.IPInfo, error) { return nil, nil }
+func (m *mockStore) UpsertIPInfo(_ context.Context, _ db.IPInfo) error         { return nil }
 
 // mockStorage satisfies storage.Storage.
 type mockStorage struct{ uploadedCount int }
@@ -60,7 +62,7 @@ func newTestGRPCClient(t *testing.T, store db.Store, stor storage.Storage) pb.Co
 	t.Helper()
 	lis := bufconn.Listen(bufSize)
 	grpcSrv := grpc.NewServer()
-	pb.RegisterComplianceServiceServer(grpcSrv, server.NewGRPCServer(store, stor, nil))
+	pb.RegisterComplianceServiceServer(grpcSrv, server.NewGRPCServer(store, stor, nil, nil))
 	go grpcSrv.Serve(lis) //nolint:errcheck
 	t.Cleanup(grpcSrv.Stop)
 

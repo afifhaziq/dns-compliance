@@ -728,6 +728,184 @@ func TestListWatchedURLsDeduplicatesAcrossDepartments(t *testing.T) {
 	}
 }
 
+func TestSetURLOrderedAt(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	dept, _ := s.CreateDepartment(ctx, "TestDept4")
+	u, _ := s.AddURLToWatchlist(ctx, dept.ID, "example.com")
+
+	orderedAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	found, err := s.SetURLOrderedAt(ctx, dept.ID, u.ID, &orderedAt)
+	if err != nil || !found {
+		t.Fatalf("SetURLOrderedAt(set): found=%v err=%v", found, err)
+	}
+
+	entries, _ := s.ListDepartmentURLs(ctx, dept.ID)
+	if len(entries) != 1 || entries[0].OrderedAt == nil || !entries[0].OrderedAt.Equal(orderedAt) {
+		t.Fatalf("expected ordered_at to be set, got %+v", entries)
+	}
+
+	// Clear it
+	found, err = s.SetURLOrderedAt(ctx, dept.ID, u.ID, nil)
+	if err != nil || !found {
+		t.Fatalf("SetURLOrderedAt(clear): found=%v err=%v", found, err)
+	}
+	entries, _ = s.ListDepartmentURLs(ctx, dept.ID)
+	if len(entries) != 1 || entries[0].OrderedAt != nil {
+		t.Fatalf("expected ordered_at to be cleared, got %+v", entries)
+	}
+}
+
+func TestSetURLOrderedAtNotOnWatchlist(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	dept, _ := s.CreateDepartment(ctx, "TestDept5")
+	u, _ := s.CreateURL(ctx, "notlinked2.com")
+
+	orderedAt := time.Now()
+	found, err := s.SetURLOrderedAt(ctx, dept.ID, u.ID, &orderedAt)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if found {
+		t.Fatal("expected found=false for URL not on watchlist")
+	}
+}
+
+func TestISPComplianceTiming_BlockedAndStillOpen(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "TelCo", Name: "TelCo DNS", Address: "1.2.3.4:53", Protocol: "udp"})
+	dept, _ := s.CreateDepartment(ctx, "TimingDept")
+	run, _ := s.CreateScanRun(ctx, "manual")
+
+	blocked, _ := s.AddURLToWatchlist(ctx, dept.ID, "blocked.com")
+	stillOpen, _ := s.AddURLToWatchlist(ctx, dept.ID, "open.com")
+	noOrderDate, _ := s.AddURLToWatchlist(ctx, dept.ID, "noorder.com")
+
+	blockedOrder := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	openOrder := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := s.SetURLOrderedAt(ctx, dept.ID, blocked.ID, &blockedOrder); err != nil {
+		t.Fatalf("SetURLOrderedAt blocked: %v", err)
+	}
+	if _, err := s.SetURLOrderedAt(ctx, dept.ID, stillOpen.ID, &openOrder); err != nil {
+		t.Fatalf("SetURLOrderedAt open: %v", err)
+	}
+	_ = noOrderDate
+
+	// blocked.com: compliant 3 days after order
+	if err := s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run.ID, URLID: blocked.ID, URLValue: blocked.URL, DNSServerID: srv.ID,
+		Compliant: true, ScannedAt: blockedOrder.AddDate(0, 0, 3),
+	}); err != nil {
+		t.Fatalf("InsertResult: %v", err)
+	}
+	// open.com: never compliant (still open) — no result inserted, or a non-compliant one
+	if err := s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run.ID, URLID: stillOpen.ID, URLValue: stillOpen.URL, DNSServerID: srv.ID,
+		Compliant: false, ScannedAt: openOrder.AddDate(0, 0, 1),
+	}); err != nil {
+		t.Fatalf("InsertResult: %v", err)
+	}
+
+	timing, err := s.ISPComplianceTiming(ctx, "TelCo")
+	if err != nil {
+		t.Fatalf("ISPComplianceTiming: %v", err)
+	}
+	if timing.BlockedCount != 1 {
+		t.Fatalf("expected 1 blocked domain, got %d", timing.BlockedCount)
+	}
+	if timing.StillOpenCount != 1 {
+		t.Fatalf("expected 1 still-open domain, got %d", timing.StillOpenCount)
+	}
+	if timing.WithOrderDateCount != 2 {
+		t.Fatalf("expected 2 domains with an order date, got %d", timing.WithOrderDateCount)
+	}
+	if timing.TotalDomains != 3 {
+		t.Fatalf("expected 3 total monitored domains, got %d", timing.TotalDomains)
+	}
+	if timing.MedianDaysToBlock != 3 {
+		t.Fatalf("expected median 3 days, got %v", timing.MedianDaysToBlock)
+	}
+
+	deptTiming, err := s.ISPComplianceTimingForDepartment(ctx, "TelCo", dept.ID)
+	if err != nil {
+		t.Fatalf("ISPComplianceTimingForDepartment: %v", err)
+	}
+	if deptTiming.BlockedCount != 1 || deptTiming.StillOpenCount != 1 {
+		t.Fatalf("expected department-scoped timing to match global scope here, got %+v", deptTiming)
+	}
+}
+
+func TestISPComplianceTiming_NegativeClampedToZero(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "TelCo2", Name: "TelCo2 DNS", Address: "1.2.3.5:53", Protocol: "udp"})
+	dept, _ := s.CreateDepartment(ctx, "TimingDept2")
+	run, _ := s.CreateScanRun(ctx, "manual")
+
+	u, _ := s.AddURLToWatchlist(ctx, dept.ID, "alreadyblocked.com")
+	// Compliant scan happened BEFORE the recorded order date.
+	early := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	orderedAt := early.AddDate(0, 0, 5)
+	if err := s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
+		Compliant: true, ScannedAt: early,
+	}); err != nil {
+		t.Fatalf("InsertResult: %v", err)
+	}
+	if _, err := s.SetURLOrderedAt(ctx, dept.ID, u.ID, &orderedAt); err != nil {
+		t.Fatalf("SetURLOrderedAt: %v", err)
+	}
+
+	timing, err := s.ISPComplianceTiming(ctx, "TelCo2")
+	if err != nil {
+		t.Fatalf("ISPComplianceTiming: %v", err)
+	}
+	// The only compliant scan predates the order date, so it's still "open"
+	// from the order's perspective (no valid block event recorded after it).
+	if timing.StillOpenCount != 1 || timing.BlockedCount != 0 {
+		t.Fatalf("expected still-open (pre-order compliant scan doesn't count), got blocked=%d open=%d", timing.BlockedCount, timing.StillOpenCount)
+	}
+}
+
+func TestNationalTrend_AggregatesAcrossISPs(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srv1, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "ISP1", Name: "S1", Address: "1.1.1.1:53", Protocol: "udp"})
+	srv2, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "ISP2", Name: "S2", Address: "2.2.2.2:53", Protocol: "udp"})
+	run, _ := s.CreateScanRun(ctx, "manual")
+
+	day := time.Date(2026, 6, 22, 12, 0, 0, 0, time.UTC)
+	results := []db.ScanResult{
+		{ScanRunID: run.ID, URLValue: "https://a.com", DNSServerID: srv1.ID, Compliant: true, ScannedAt: day},
+		{ScanRunID: run.ID, URLValue: "https://b.com", DNSServerID: srv2.ID, Compliant: false, ScannedAt: day},
+	}
+	for _, r := range results {
+		if err := s.InsertResult(ctx, r); err != nil {
+			t.Fatalf("InsertResult: %v", err)
+		}
+	}
+
+	since := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	until := time.Date(2026, 6, 30, 23, 59, 59, 0, time.UTC)
+	stats, err := s.NationalTrend(ctx, since, until)
+	if err != nil {
+		t.Fatalf("NationalTrend: %v", err)
+	}
+	if len(stats) != 1 {
+		t.Fatalf("expected 1 day bucket, got %d: %+v", len(stats), stats)
+	}
+	if stats[0].Total != 2 || stats[0].Compliant != 1 {
+		t.Fatalf("expected total=2 compliant=1 across both ISPs, got total=%d compliant=%d", stats[0].Total, stats[0].Compliant)
+	}
+}
+
 func TestListWatchedURLsEnabledByAnyDept(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

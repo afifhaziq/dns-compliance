@@ -50,17 +50,63 @@ func resolve(ctx context.Context, r *net.Resolver, host string) (string, int64, 
 // NewDoTResolver returns a resolver that sends queries to address over DNS-over-TLS
 // (port 853). address should be host:port, e.g. "1.1.1.1:853".
 func NewDoTResolver(address string) func(context.Context, string) (string, int64, error) {
+	r := newDoTResolver(address)
+	return func(ctx context.Context, host string) (string, int64, error) {
+		return resolve(ctx, r, host)
+	}
+}
+
+func newDoTResolver(address string) *net.Resolver {
 	host, _, _ := net.SplitHostPort(address)
-	r := &net.Resolver{
+	return &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
 			d := tls.Dialer{Config: &tls.Config{ServerName: host}}
 			return d.DialContext(ctx, "tcp", address)
 		},
 	}
-	return func(ctx context.Context, host string) (string, int64, error) {
-		return resolve(ctx, r, host)
+}
+
+// ResolveIPv6 performs an AAAA-record lookup for host and returns the first
+// resolved IPv6 address. Informational only — never affects the compliance
+// verdict, so callers ignore errors.
+func ResolveIPv6(ctx context.Context, host string) (string, error) {
+	return resolveIPv6(ctx, net.DefaultResolver, host)
+}
+
+// NewResolverIPv6 returns an AAAA-lookup function that queries server instead
+// of the system resolver.
+func NewResolverIPv6(server string) func(context.Context, string) (string, error) {
+	r := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			d := net.Dialer{}
+			return d.DialContext(ctx, "udp", server)
+		},
 	}
+	return func(ctx context.Context, host string) (string, error) {
+		return resolveIPv6(ctx, r, host)
+	}
+}
+
+// NewDoTResolverIPv6 returns an AAAA-lookup function that queries address over
+// DNS-over-TLS.
+func NewDoTResolverIPv6(address string) func(context.Context, string) (string, error) {
+	r := newDoTResolver(address)
+	return func(ctx context.Context, host string) (string, error) {
+		return resolveIPv6(ctx, r, host)
+	}
+}
+
+func resolveIPv6(ctx context.Context, r *net.Resolver, host string) (string, error) {
+	addrs, err := r.LookupIP(ctx, "ip6", host)
+	if err != nil {
+		return "", err
+	}
+	if len(addrs) == 0 {
+		return "", fmt.Errorf("no AAAA addresses returned for %s", host)
+	}
+	return addrs[0].String(), nil
 }
 
 // NewDoHResolver returns a resolver that sends queries to endpoint over
@@ -116,6 +162,61 @@ func NewDoHResolver(endpoint string) func(context.Context, string) (string, int6
 			}
 		}
 		return "", 0, fmt.Errorf("no A records for %s", host)
+	}
+}
+
+// NewDoHResolverIPv6 returns an AAAA-lookup function that queries endpoint
+// over DNS-over-HTTPS.
+func NewDoHResolverIPv6(endpoint string) func(context.Context, string) (string, error) {
+	client := &http.Client{}
+	return func(ctx context.Context, host string) (string, error) {
+		msg := dnsmessage.Message{
+			Header: dnsmessage.Header{ID: 1, RecursionDesired: true},
+			Questions: []dnsmessage.Question{{
+				Name:  dohName(host + "."),
+				Type:  dnsmessage.TypeAAAA,
+				Class: dnsmessage.ClassINET,
+			}},
+		}
+		buf, err := msg.Pack()
+		if err != nil {
+			return "", fmt.Errorf("building DNS query: %w", err)
+		}
+
+		reqURL := endpoint + "?dns=" + base64.RawURLEncoding.EncodeToString(buf)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+		if err != nil {
+			return "", err
+		}
+		req.Header.Set("Accept", "application/dns-message")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return "", err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("DoH server returned HTTP %d", resp.StatusCode)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", err
+		}
+
+		var reply dnsmessage.Message
+		if err := reply.Unpack(body); err != nil {
+			return "", fmt.Errorf("parsing DoH response: %w", err)
+		}
+		if reply.Header.RCode == dnsmessage.RCodeNameError {
+			return "", &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+		}
+		for _, ans := range reply.Answers {
+			if a, ok := ans.Body.(*dnsmessage.AAAAResource); ok {
+				return net.IP(a.AAAA[:]).String(), nil
+			}
+		}
+		return "", fmt.Errorf("no AAAA records for %s", host)
 	}
 }
 

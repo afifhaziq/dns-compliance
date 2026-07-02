@@ -32,8 +32,8 @@ function LoginPage() {
       <AuroraBars className="fixed inset-0 -z-10" gap={0} />
 
       <div
-        className="rounded-2xl border border-white/10 shadow-2xl"
-        style={{ width: 360, padding: 32, background: '#000000' }}
+        className="rounded-2xl shadow-2xl backdrop-blur-md"
+        style={{ width: 360, padding: 32, background: 'rgba(20, 20, 22, 0.45)' }}
       >
         <div className="page-header mb-4" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4, padding: 0 }}>
           <h1 className="page-title" style={{ color: '#fff' }}>DNS Compliance</h1>

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowLeftIcon } from 'lucide-react'
-import { fetchISPStats, fetchISPTrend } from '@/api/isps'
-import type { ISPStats, ISPTrendStat } from '@/api/types'
+import { fetchISPStats, fetchISPTiming, fetchISPTrend } from '@/api/isps'
+import type { ISPStats, ISPTiming, ISPTrendStat } from '@/api/types'
 import { Table, TableBody, TableRow, TableCell, TableHead, TableHeader } from '@/components/ui/table'
 import { LineChart } from '@/components/charts/line-chart'
 import { Line } from '@/components/charts/line'
@@ -15,6 +15,7 @@ export const Route = createFileRoute('/isps/$isp')({ component: ISPDetailPage })
 function ISPDetailPage() {
   const { isp } = Route.useParams()
   const [stats, setStats] = useState<ISPStats | null>(null)
+  const [timing, setTiming] = useState<ISPTiming | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [trend, setTrend] = useState<ISPTrendStat[]>([])
@@ -23,12 +24,14 @@ function ISPDetailPage() {
     setLoading(true)
     try {
       setError(null)
-      const [statsData, trendData] = await Promise.all([
+      const [statsData, trendData, timingData] = await Promise.all([
         fetchISPStats(isp),
         fetchISPTrend(isp, 30),
+        fetchISPTiming(isp),
       ])
       setStats(statsData)
       setTrend(trendData)
+      setTiming(timingData)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load')
     } finally {
@@ -71,6 +74,27 @@ function ISPDetailPage() {
           >
             {stats.most_violated_domain}
           </Link>
+        </div>
+      )}
+
+      {/* Time to compliance */}
+      {!loading && timing && timing.with_order_date_count > 0 && (
+        <div className="dash-section">
+          <p className="dash-label mt-3">Time to Compliance</p>
+          <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+            <div>
+              <p className="server-count" style={{ color: 'var(--ink)' }}>{timing.median_days_to_block.toFixed(1)} days</p>
+              <p className="dash-label">Median time to block</p>
+            </div>
+            <div>
+              <p className="server-count label-violation">{timing.still_open_count}</p>
+              <p className="dash-label">Still open</p>
+            </div>
+            <div>
+              <p className="server-count" style={{ color: 'var(--ink)' }}>{timing.with_order_date_count} / {timing.total_domains}</p>
+              <p className="dash-label">Domains with order date</p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -182,6 +206,41 @@ function ISPDetailPage() {
           </Table>
         )}
       </div>
+
+      {/* Slowest domains to block */}
+      {!loading && timing && timing.slowest.length > 0 && (
+        <div className="dash-section">
+          <p className="dash-label">Slowest Domains to Block</p>
+          <Table className="server-table" aria-label="Slowest domains to block">
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">Domain</TableHead>
+                <TableHead scope="col">Days</TableHead>
+                <TableHead scope="col">Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {timing.slowest.map(t => (
+                <TableRow key={t.domain}>
+                  <TableCell>
+                    <Link to="/results/$url" params={{ url: t.domain }} className="server-name">
+                      {t.domain}
+                    </Link>
+                  </TableCell>
+                  <TableCell><span className="ip-value">{t.days_to_block}</span></TableCell>
+                  <TableCell>
+                    {t.blocked ? (
+                      <span className="label-compliant">Blocked</span>
+                    ) : (
+                      <span className="label-violation">Still open</span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
     </div>
   )
 }
