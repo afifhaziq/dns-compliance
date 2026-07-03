@@ -66,7 +66,8 @@ function ISPDetailPage() {
       {/* Most violated domain */}
       {!loading && stats?.most_violated_domain && (
         <div className="dash-section">
-          <p className="dash-label">Most Non-Compliant Domain</p>
+          <p className="section-title">Most Non-Compliant Domain</p>
+          <div className="mb-4">
           <Link
             to="/results/$url"
             params={{ url: stats.most_violated_domain }}
@@ -74,13 +75,13 @@ function ISPDetailPage() {
           >
             {stats.most_violated_domain}
           </Link>
+          </div>
         </div>
       )}
-
       {/* Time to compliance */}
       {!loading && timing && timing.with_order_date_count > 0 && (
         <div className="dash-section">
-          <p className="dash-label mt-3">Time to Compliance</p>
+          <p className="section-title mt-3 mb-3">Time to Compliance</p>
           <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
             <div>
               <p className="server-count" style={{ color: 'var(--ink)' }}>{timing.median_days_to_block.toFixed(1)} days</p>
@@ -101,7 +102,7 @@ function ISPDetailPage() {
       {/* Compliance Trend */}
       {!loading && trendChartData.length >= 2 && (
         <div className="">
-          <p className="dash-label">Compliance Trend (last 30 days)</p>
+          <p className="section-title mb-3">Compliance Trend (last 30 days)</p>
           <LineChart
             data={trendChartData}
             xDataKey="date"
@@ -131,7 +132,7 @@ function ISPDetailPage() {
 
       {/* Per-server table */}
       <div className="dash-section">
-        <p className="dash-label">DNS Servers</p>
+        <p className="section-title mb-3">DNS Servers</p>
         {loading ? (
           <div className="dash-table-wrap">
             {[1, 2, 3].map(i => (
@@ -210,7 +211,7 @@ function ISPDetailPage() {
       {/* Slowest domains to block */}
       {!loading && timing && timing.slowest.length > 0 && (
         <div className="dash-section">
-          <p className="dash-label">Slowest Domains to Block</p>
+          <p className="section-title mb-3">Slowest Domains to Block</p>
           <Table className="server-table" aria-label="Slowest domains to block">
             <TableHeader>
               <TableRow>

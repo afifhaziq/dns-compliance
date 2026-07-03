@@ -388,7 +388,7 @@ function AdminPage() {
 
       <section className="results-wrap" style={{ marginBottom: 32 }}>
         <div className="page-header" style={{ marginBottom: 12 }}>
-          <h2 className="page-title" style={{ fontSize: '1.1rem' }}>Departments</h2>
+          <h2 className="section-title">Departments</h2>
           <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddDeptOpen(true)}>
             + Add Department
           </button>
@@ -411,7 +411,7 @@ function AdminPage() {
         </Table>
 
         <div className="page-header" style={{ marginBottom: 12 }}>
-          <h2 className="page-title" style={{ fontSize: '1.1rem' }}>Users</h2>
+          <h2 className="section-title">Users</h2>
           <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddUserOpen(true)}>
             + Create User
           </button>
@@ -446,7 +446,7 @@ function AdminPage() {
         </Table>
       
         <div className="page-header" style={{ marginBottom: 12 }}>
-          <h2 className="page-title" style={{ fontSize: '1.1rem' }}>Compliant IPs</h2>
+          <h2 className="section-title">Compliant IPs</h2>
           <p className="page-subtitle" style={{ marginLeft: 8 }}>DNS resolutions to these IPs are classified as compliant</p>
           <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddIPOpen(true)}>
             + Add IP

@@ -193,10 +193,8 @@ function URLGroupRow({
   onRequestScreenshot: (result: ScanResult) => void
 }) {
   const { violationCount, totalCount, hostname, url } = group
-  const allCompliant = violationCount === 0
-  const summaryLabel = allCompliant
-    ? `All ${totalCount} compliant`
-    : `${violationCount} of ${totalCount} non-compliant`
+  const compliantCount = totalCount - violationCount
+  const pct = totalCount > 0 ? Math.round((compliantCount / totalCount) * 100) : 0
 
   return (
     <>
@@ -223,9 +221,12 @@ function URLGroupRow({
           </PreviewLinkCard>
         </TableCell>
         <TableCell className="col-status">
-          <span className={`summary-chip ${allCompliant ? 'all-compliant' : 'has-violations'}`}>
-            {summaryLabel}
-          </span>
+          <div className="server-bar-wrap">
+            <div className="server-bar" role="presentation">
+              <div className="server-bar-fill" style={{ width: `${pct}%` }} />
+            </div>
+            <span className="server-count">{compliantCount} / {totalCount}</span>
+          </div>
         </TableCell>
         <TableCell className="col-ip" />
         <TableCell className="col-evidence">

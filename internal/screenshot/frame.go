@@ -7,11 +7,17 @@ import (
 	"math"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 )
+
+// malaysiaTime is a fixed UTC+8 zone (Malaysia has no DST) so the embedded
+// screenshot timestamp doesn't depend on a system tzdata database being
+// installed in the runtime container.
+var malaysiaTime = time.FixedZone("MYT", 8*60*60)
 
 const browserHTML = `<!DOCTYPE html>
 <html>
@@ -20,16 +26,37 @@ const browserHTML = `<!DOCTYPE html>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  font-family: 'Segoe UI', Arial, sans-serif;
-  background: #dee1e6;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  background: #dcdcdc;
   width: 1920px;
   overflow: hidden;
 }
+.mac-topbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 14px 0;
+  height: 38px;
+}
+.traffic-lights {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.tl {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.15);
+}
+.tl-close { background: #ff5f57; }
+.tl-min { background: #febc2e; }
+.tl-max { background: #28c840; }
 .tab-strip {
   display: flex;
   align-items: flex-end;
-  padding: 8px 8px 0;
-  height: 44px;
+  flex: 1;
+  height: 100%;
 }
 .tab {
   display: flex;
@@ -37,17 +64,16 @@ body {
   background: white;
   border-radius: 8px 8px 0 0;
   padding: 0 14px;
-  height: 36px;
+  height: 30px;
   min-width: 180px;
   max-width: 240px;
   gap: 8px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
 }
 .favicon {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border-radius: 2px;
-  background: #5f6368;
+  background: #8a8a8e;
   flex-shrink: 0;
 }
 .tab-title {
@@ -55,61 +81,78 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  color: #3c4043;
+  font-size: 12px;
+  color: #3c3c43;
 }
-.tab-close { color: #5f6368; font-size: 15px; }
+.tab-close { color: #8a8a8e; font-size: 14px; }
 .toolbar {
-  background: #f1f3f4;
+  background: white;
   display: flex;
   align-items: center;
-  padding: 6px 8px;
-  gap: 4px;
-  height: 48px;
-  border-bottom: 1px solid #dadce0;
+  padding: 8px 12px;
+  gap: 6px;
+  height: 46px;
+  border-bottom: 1px solid #d9d9d9;
 }
 .nav-btn {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #5f6368;
-  font-size: 16px;
+  color: #8a8a8e;
+  font-size: 15px;
   flex-shrink: 0;
 }
 .address-bar {
   flex: 1;
-  background: white;
-  border-radius: 20px;
-  height: 32px;
+  background: #f0f0f0;
+  border-radius: 14px;
+  height: 30px;
   display: flex;
   align-items: center;
+  justify-content: center;
   padding: 0 14px;
   gap: 6px;
   margin: 0 8px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
-.lock { color: #137333; font-size: 13px; font-weight: 500; }
+.lock { color: #3c3c43; flex-shrink: 0; }
 .url-text {
-  font-size: 14px;
-  color: #202124;
+  font-size: 13px;
+  color: #3c3c43;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.menu-btn { color: #5f6368; font-size: 20px; flex-shrink: 0; }
+.menu-btn { color: #8a8a8e; font-size: 18px; flex-shrink: 0; }
+.clock-chip {
+  font-family: 'Menlo', 'SF Mono', 'Consolas', monospace;
+  font-size: 12px;
+  color: #3c3c43;
+  background: #f0f0f0;
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
 .page { line-height: 0; }
 .page img { width: 1920px; display: block; }
 </style>
 </head>
 <body>
-<div class="tab-strip">
-  <div class="tab">
-    <div class="favicon"></div>
-    <span class="tab-title">{{HOSTNAME}}</span>
-    <span class="tab-close">&#215;</span>
+<div class="mac-topbar">
+  <div class="traffic-lights">
+    <span class="tl tl-close"></span>
+    <span class="tl tl-min"></span>
+    <span class="tl tl-max"></span>
+  </div>
+  <div class="tab-strip">
+    <div class="tab">
+      <div class="favicon"></div>
+      <span class="tab-title">{{HOSTNAME}}</span>
+      <span class="tab-close">&#215;</span>
+    </div>
   </div>
 </div>
 <div class="toolbar">
@@ -117,9 +160,13 @@ body {
   <div class="nav-btn" style="opacity:.35">&#8594;</div>
   <div class="nav-btn">&#8635;</div>
   <div class="address-bar">
-    <span class="lock">&#128274;</span>
+    <svg class="lock" width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" stroke-width="2"/>
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="currentColor" stroke-width="2"/>
+    </svg>
     <span class="url-text">{{URL}}</span>
   </div>
+  <div class="clock-chip">{{TIMESTAMP}}</div>
   <div class="menu-btn">&#8942;</div>
 </div>
 <div class="page">
@@ -129,12 +176,16 @@ body {
 </html>`
 
 // addBrowserFrame composites pageBytes into a Chrome-like browser mockup by
-// navigating to a locally generated HTML page and screenshotting it.
-func addBrowserFrame(chromeCtx context.Context, pageBytes []byte, rawURL string) ([]byte, error) {
+// navigating to a locally generated HTML page and screenshotting it. capturedAt
+// is stamped into the mockup as a system-tray-style clock chip — burning the
+// capture time into the evidence image itself, the same purpose served by
+// manually screenshotting the OS taskbar clock, without needing one.
+func addBrowserFrame(chromeCtx context.Context, pageBytes []byte, rawURL string, capturedAt time.Time) ([]byte, error) {
 	hostname := hostnameFromURL(rawURL)
 	htmlContent := strings.NewReplacer(
 		"{{HOSTNAME}}", html.EscapeString(hostname),
 		"{{URL}}", html.EscapeString(rawURL),
+		"{{TIMESTAMP}}", html.EscapeString(capturedAt.In(malaysiaTime).Format("2006-01-02 15:04:05 MST")),
 		"{{BASE64}}", base64.StdEncoding.EncodeToString(pageBytes),
 	).Replace(browserHTML)
 

@@ -251,7 +251,7 @@ function DNSServersPage() {
               groupByISP(servers).map(group => (
                 <div key={group.name} className="dns-isp-group">
                   <div className="dns-isp-header">
-                    <h2 className="dns-isp-name">{group.name}</h2>
+                    <h2 className="section-title">{group.name}</h2>
                     <span className="dns-isp-count">{group.servers.length} {group.servers.length === 1 ? 'server' : 'servers'}</span>
                   </div>
                   {group.servers.map(s => (

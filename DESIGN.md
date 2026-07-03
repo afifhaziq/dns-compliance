@@ -64,15 +64,16 @@ All backgrounds, surfaces, borders, muted text, and structural chrome. Zero chro
 **Character:** Maximum legibility at small sizes. A flat enough scale to support dense table interfaces without creating a noise of contrasting sizes. Authority through weight, not scale drama.
 
 ### Hierarchy
-- **Title** (600 weight, ~1.25rem, 1.3 line-height): Page headings, major section titles. Rare.
+- **Title** (600 weight, 24px/1.5rem, tracked -0.02em): Page headings only — one per page (`.page-title`). Rare.
+- **Section** (600 weight, 18px/1.125rem, tracked -0.02em, sentence case, full foreground color): Major section titles within a page — "National Compliance", "DNS Servers", "Time to Compliance" (`.section-title`). Reads as a smaller sibling of Title, not a bigger Label — case and color stay full-strength so it's unambiguously a heading, not a caption.
 - **Body** (400 weight, 0.9375rem, 1.5 line-height, max 70ch for prose): Table cells, labels, supporting text, prose descriptions.
-- **Label** (500 weight, 0.75rem, tracked +0.02em, uppercase or title-case): Column headers, status chip text, navigation items, secondary metadata.
+- **Label** (500 weight, 0.75rem, tracked +0.02em, uppercase or title-case): Column headers, status chip text, navigation items, secondary metadata, stat captions nested under a Section title (`.dash-label`).
 - **Mono** (system monospace, 0.875rem): IP addresses, domain strings, DNS server identifiers. Inline only.
 
 ### Named Rules
 **The One Family Rule.** No display/body pairing. No serif accent for headings. One technical sans, tuned at every size. Hierarchy comes from weight and case contrast, not family switching.
 
-**The Fixed Scale Rule.** Fixed rem values, not fluid clamp type. Compliance officers view this tool at consistent screen sizes; a fluid h1 that shrinks in a side panel is wrong. Scale steps: [to be resolved — target 1.125–1.2 ratio between adjacent steps].
+**The Fixed Scale Rule.** Fixed rem values, not fluid clamp type. Compliance officers view this tool at consistent screen sizes; a fluid h1 that shrinks in a side panel is wrong. Scale steps as shipped: 24 / 18 / 15 / 11px (Title / Section / Body / Label). Not a single clean ratio (24/18=1.33, 18/15=1.2, 15/11=1.36) — Title, Body, and Label were fixed values already in use before Section was introduced; a fully rebalanced geometric scale would mean resizing those too, which is out of scope for now.
 
 ## 4. Elevation
 

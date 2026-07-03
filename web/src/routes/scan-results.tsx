@@ -207,7 +207,7 @@ function ScanResultsPage() {
       {/* Summary stats (shown once any results arrive) */}
       {completedCount > 0 && (
         <div className="dash-section">
-          <p className="dash-label">Summary</p>
+          <p className="section-title mb-3">Summary</p>
           <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
             <div>
               <p className="server-count" style={{ color: 'var(--ink)' }}>{completedCount} / {urls.length}</p>
@@ -256,7 +256,7 @@ function ScanResultsPage() {
         return (
           <div key={url} className="dash-section mb-4">
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem' }}>
-              <div className="text-[16px] font-semibold tracking-[-0.02em] mb-2">{url}</div>
+              <div className="section-title mb-2">{url}</div>
               {isNewlyViolating && (
                 <span className="label-violation" style={{ fontSize: '0.7rem', fontWeight: 600 }}>NEW</span>
               )}

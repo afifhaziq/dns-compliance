@@ -81,6 +81,7 @@ func CaptureWithAllocator(ctx, allocCtx context.Context, rawURL string, waitIdle
 	})
 
 	var pageBuf []byte
+	var capturedAt time.Time
 	if err := chromedp.Run(tabCtx,
 		chromedp.EmulateViewport(1920, 1080),
 		// Set realistic UA, Accept-Language, and platform so sites like
@@ -139,6 +140,7 @@ func CaptureWithAllocator(ctx, allocCtx context.Context, rawURL string, waitIdle
 				WithFormat(page.CaptureScreenshotFormatPng).
 				WithCaptureBeyondViewport(true).
 				Do(ctx)
+			capturedAt = time.Now()
 			return err
 		}),
 	); err != nil {
@@ -147,7 +149,7 @@ func CaptureWithAllocator(ctx, allocCtx context.Context, rawURL string, waitIdle
 
 	// Wrap the page screenshot in a Chrome-like browser mockup.
 	// Fall back to the raw screenshot if framing fails.
-	framed, err := addBrowserFrame(tabCtx, pageBuf, rawURL)
+	framed, err := addBrowserFrame(tabCtx, pageBuf, rawURL, capturedAt)
 	if err != nil {
 		return pageBuf, nil
 	}

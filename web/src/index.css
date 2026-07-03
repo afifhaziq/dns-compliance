@@ -530,10 +530,6 @@ html.dark {
   @apply w-full border-collapse border border-stone-border rounded-lg overflow-hidden text-sm;
 }
 
-.results-table thead {
-  @apply bg-stone-panel;
-}
-
 .results-table th {
   @apply py-2 px-4 text-[11px] font-semibold tracking-[0.06em] uppercase text-stone-muted text-center border-b border-stone-border;
 }
@@ -678,6 +674,53 @@ th.th-left {
   @apply inline-flex items-center justify-center text-stone-muted;
 }
 
+/* ─── Scan Group Rows (collapsible, one header per scan_run_id) ─────────── */
+
+.scan-group-row {
+  @apply cursor-pointer bg-stone-panel hover:bg-stone-border/60 transition-colors duration-150 ease-snappy;
+}
+
+.scan-group-row:focus-visible {
+  @apply outline outline-2 outline-ink outline-offset-[-2px];
+}
+
+.scan-group-header {
+  @apply flex items-center gap-2 py-1;
+}
+
+.scan-group-chevron {
+  @apply w-4 h-4 text-stone-muted shrink-0 transition-transform duration-150 ease-snappy;
+}
+
+.scan-group-chevron.expanded {
+  @apply rotate-90;
+}
+
+.scan-group-time {
+  @apply text-[13px] font-medium text-foreground [font-variant-numeric:tabular-nums];
+}
+
+.scan-group-summary {
+  @apply text-[13px] text-stone-muted;
+}
+
+/* ─── Table Pagination ───────────────────────────────────────────────────── */
+
+.pagination {
+  @apply flex items-center justify-end gap-3 pt-3;
+}
+
+.pagination-btn {
+  @apply flex items-center justify-center w-7 h-7 rounded-md bg-transparent border-none text-stone-muted cursor-pointer
+    transition-colors duration-150 ease-snappy hover:bg-stone-panel hover:text-foreground
+    disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent
+    focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink focus-visible:outline-offset-2;
+}
+
+.pagination-label {
+  @apply text-[13px] text-stone-muted [font-variant-numeric:tabular-nums];
+}
+
 /* ─── Status Dot (sub-row indicator) ────────────────────────────────────── */
 
 .status-dot-label {
@@ -702,20 +745,6 @@ th.th-left {
 
 .label-compliant {
   @apply text-compliant-text;
-}
-
-/* ─── Summary Chip (URL-level row) ──────────────────────────────────────── */
-
-.summary-chip {
-  @apply inline-flex items-center py-0.5 px-2 rounded-full text-xs font-medium whitespace-nowrap;
-}
-
-.summary-chip.has-violations {
-  @apply bg-violation-subtle text-violation-text;
-}
-
-.summary-chip.all-compliant {
-  @apply bg-compliant-subtle text-compliant-text;
 }
 
 /* ─── Loading Skeleton ───────────────────────────────────────────────────── */
@@ -812,6 +841,10 @@ th.th-left {
 
 .dash-label {
   @apply text-[11px] font-semibold tracking-[0.08em] uppercase text-stone-muted mb-3;
+}
+
+.section-title {
+  @apply text-[18px] font-semibold tracking-[-0.02em] text-foreground;
 }
 
 /* Shared wrapper: border + radius around both table and empty states */

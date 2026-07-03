@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { fetchDnsServers } from '../api/dns-servers'
@@ -9,6 +9,7 @@ import type { DomainInfo } from '../api/domain'
 import { fetchHeatmapByUrlAndYear, fetchResultsByUrl } from '../api/results'
 import type { DailyComplianceStat, DNSServer, ScanResult } from '../api/types'
 import { getCachedDnsRecords, setCachedDnsRecords } from '@/lib/dns-records-cache'
+import { cn } from '@/lib/utils'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
@@ -31,6 +32,14 @@ import {
 export const Route = createFileRoute('/results/$url')({ component: URLHistoryPage })
 
 type StatusFilter = 'all' | 'violations' | 'compliant'
+
+type ScanGroup = {
+  scanRunId: number
+  scannedAt: string
+  results: ScanResult[]
+}
+
+const PAGE_SIZE = 25
 
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric',
@@ -225,6 +234,7 @@ function URLHistoryPage() {
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [dnsFilter, setDnsFilter] = useState<string>('all')
+  const [page, setPage] = useState(1)
 
   const load = useCallback(async () => {
     try {
@@ -346,6 +356,36 @@ function URLHistoryPage() {
     })
   }, [results, statusFilter, dnsFilter])
 
+  const groups = useMemo(() => {
+    const byRun = new Map<number, ScanGroup>()
+    for (const r of filtered) {
+      let g = byRun.get(r.scan_run_id)
+      if (!g) {
+        g = { scanRunId: r.scan_run_id, scannedAt: r.scanned_at, results: [] }
+        byRun.set(r.scan_run_id, g)
+      }
+      g.results.push(r)
+    }
+    return Array.from(byRun.values())
+  }, [filtered])
+
+  const totalPages = Math.max(1, Math.ceil(groups.length / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+  const paginatedGroups = useMemo(
+    () => groups.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [groups, currentPage],
+  )
+
+  const [expandedRuns, setExpandedRuns] = useState<Set<number>>(new Set())
+  const toggleRun = useCallback((scanRunId: number) => {
+    setExpandedRuns(prev => {
+      const next = new Set(prev)
+      if (next.has(scanRunId)) next.delete(scanRunId)
+      else next.add(scanRunId)
+      return next
+    })
+  }, [])
+
   return (
     <div className="mx-60">
       <Link to="/" className="back-link mt-8">
@@ -366,7 +406,7 @@ function URLHistoryPage() {
       <DnsRecordsPanel data={dnsRecords} loading={dnsRecordsLoading} />
 
       <div className="dash-section">
-        <p className="dash-label">Domain info</p>
+        <p className="section-title mb-3">Domain info</p>
         <DomainInfoPanel data={domainInfo} loading={domainInfoLoading} />
       </div>
 
@@ -520,7 +560,7 @@ function URLHistoryPage() {
         <ToggleGroup
           type="single"
           value={statusFilter}
-          onValueChange={v => { if (v) setStatusFilter(v as StatusFilter) }}
+          onValueChange={v => { if (v) { setStatusFilter(v as StatusFilter); setPage(1) } }}
           variant="outline"
           aria-labelledby="status-label"
         >
@@ -532,7 +572,7 @@ function URLHistoryPage() {
         {dnsServers.length > 1 && (
           <>
             <span className="filter-label" id="dns-label">DNS Server</span>
-            <Select value={dnsFilter} onValueChange={setDnsFilter}>
+            <Select value={dnsFilter} onValueChange={v => { setDnsFilter(v); setPage(1) }}>
               <SelectTrigger aria-labelledby="dns-label" />
               <SelectContent>
                 <SelectItem index={0} value="all">All servers</SelectItem>
@@ -558,58 +598,115 @@ function URLHistoryPage() {
             <p className="empty-body">No scans for this domain in the last 7 days.</p>
           </div>
         ) : (
-          <Table className="results-table" aria-label={`Scan history for ${hostname}`}>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="col-domain" scope="col">DNS Server</TableHead>
-                <TableHead className="col-status" scope="col">Status</TableHead>
-                <TableHead className="col-ip" scope="col">Resolved IP</TableHead>
-                <TableHead className="col-evidence" scope="col">Evidence</TableHead>
-                <TableHead className="col-last-scanned" scope="col">Scanned At</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <HistorySkeletonRows />
-              ) : filtered.length === 0 ? (
+          <>
+            <Table className="results-table" aria-label={`Scan history for ${hostname}`}>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={5}>
-                    <div className="empty-state" style={{ padding: '3rem 0' }}>
-                      <p className="empty-heading">No results match the current filters</p>
-                    </div>
-                  </TableCell>
+                  <TableHead className="col-domain" scope="col">DNS Server</TableHead>
+                  <TableHead className="col-status" scope="col">Status</TableHead>
+                  <TableHead className="col-ip" scope="col">Resolved IP</TableHead>
+                  <TableHead className="col-evidence" scope="col">Evidence</TableHead>
+                  <TableHead className="col-last-scanned" scope="col">Scanned At</TableHead>
                 </TableRow>
-              ) : (
-                filtered.map(r => (
-                  <TableRow key={r.id} className={!r.compliant ? 'violation-row' : ''}>
-                    <TableCell className="col-domain"><span className="dns-name">{r.dns_server.name}</span></TableCell>
-                    <TableCell className="col-status"><StatusDot compliant={r.compliant} /></TableCell>
-                    <TableCell className="col-ip">
-                      <div className="ip-meta">
-                        {r.resolved_ip ? <span className="ip-value">{r.resolved_ip}</span> : <span className="empty-cell" aria-label="Not resolved">—</span>}
-                        {r.resolved_ipv6 && <span className="ip-meta-secondary">{r.resolved_ipv6}</span>}
-                        {r.resolved_asn > 0 && (
-                          <span className="ip-meta-secondary">
-                            AS{r.resolved_asn}{r.resolved_org && ` — ${r.resolved_org}`}
-                          </span>
-                        )}
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <HistorySkeletonRows />
+                ) : filtered.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5}>
+                      <div className="empty-state" style={{ padding: '3rem 0' }}>
+                        <p className="empty-heading">No results match the current filters</p>
                       </div>
                     </TableCell>
-                    <TableCell className="col-evidence">
-                      {r.screenshot_url ? (
-                        <a href={r.screenshot_url} target="_blank" rel="noopener noreferrer" className="screenshot-link" aria-label={`View screenshot for ${r.dns_server.name}`}>
-                          View screenshot
-                        </a>
-                      ) : <span className="empty-cell" aria-label="No screenshot">—</span>}
-                    </TableCell>
-                    <TableCell className="col-last-scanned">
-                      {r.scanned_at ? <span>{DATE_FMT.format(new Date(r.scanned_at))}</span> : <span className="empty-cell">—</span>}
-                    </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : (
+                  paginatedGroups.map(g => {
+                    const expanded = expandedRuns.has(g.scanRunId)
+                    const violations = g.results.filter(r => !r.compliant).length
+                    const compliantCount = g.results.length - violations
+
+                    return (
+                      <Fragment key={g.scanRunId}>
+                        <TableRow
+                          className="scan-group-row"
+                          onClick={() => toggleRun(g.scanRunId)}
+                          role="button"
+                          tabIndex={0}
+                          aria-expanded={expanded}
+                          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleRun(g.scanRunId) } }}
+                        >
+                          <TableCell colSpan={5}>
+                            <div className="scan-group-header">
+                              <ChevronRightIcon className={cn('scan-group-chevron', expanded && 'expanded')} />
+                              <span className="scan-group-time">
+                                {g.scannedAt ? DATE_FMT.format(new Date(g.scannedAt)) : '—'}
+                              </span>
+                              <span className="scan-group-summary">
+                                {violations > 0 && <span className="label-violation">{violations} {violations === 1 ? 'violation' : 'violations'}</span>}
+                                {violations > 0 && compliantCount > 0 && ', '}
+                                {compliantCount > 0 && <span className="label-compliant">{compliantCount} compliant</span>}
+                              </span>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                        {expanded && g.results.map(r => (
+                          <TableRow key={r.id} className={!r.compliant ? 'violation-row' : ''}>
+                            <TableCell className="col-domain"><span className="dns-name">{r.dns_server.name}</span></TableCell>
+                            <TableCell className="col-status"><StatusDot compliant={r.compliant} /></TableCell>
+                            <TableCell className="col-ip">
+                              <div className="ip-meta">
+                                {r.resolved_ip ? <span className="ip-value">{r.resolved_ip}</span> : <span className="empty-cell" aria-label="Not resolved">—</span>}
+                                {r.resolved_ipv6 && <span className="ip-meta-secondary">{r.resolved_ipv6}</span>}
+                                {r.resolved_asn > 0 && (
+                                  <span className="ip-meta-secondary">
+                                    AS{r.resolved_asn}{r.resolved_org && ` — ${r.resolved_org}`}
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="col-evidence">
+                              {r.screenshot_url ? (
+                                <a href={r.screenshot_url} target="_blank" rel="noopener noreferrer" className="screenshot-link" aria-label={`View screenshot for ${r.dns_server.name}`}>
+                                  View screenshot
+                                </a>
+                              ) : <span className="empty-cell" aria-label="No screenshot">—</span>}
+                            </TableCell>
+                            <TableCell className="col-last-scanned">
+                              {r.scanned_at ? <span>{DATE_FMT.format(new Date(r.scanned_at))}</span> : <span className="empty-cell">—</span>}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </Fragment>
+                    )
+                  })
+                )}
+              </TableBody>
+            </Table>
+            {!loading && totalPages > 1 && (
+              <div className="pagination">
+                <span className="pagination-label">Page {currentPage} of {totalPages}</span>
+                <button
+                  type="button"
+                  className="pagination-btn"
+                  onClick={() => setPage(p => p - 1)}
+                  disabled={currentPage <= 1}
+                  aria-label="Previous page"
+                >
+                  <ChevronLeftIcon className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  className="pagination-btn"
+                  onClick={() => setPage(p => p + 1)}
+                  disabled={currentPage >= totalPages}
+                  aria-label="Next page"
+                >
+                  <ChevronRightIcon className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
