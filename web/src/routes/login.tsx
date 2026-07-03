@@ -29,7 +29,7 @@ function LoginPage() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden">
-      <AuroraBars className="fixed inset-0 -z-10" gap={0} />
+      <AuroraBars className="fixed inset-0 -z-10" gap={0} blur={3.142} />
 
       <div
         className="rounded-2xl shadow-2xl backdrop-blur-md"

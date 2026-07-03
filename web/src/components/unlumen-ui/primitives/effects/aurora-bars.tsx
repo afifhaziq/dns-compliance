@@ -72,7 +72,7 @@ export function AuroraBars({
       className={cn("relative w-full h-full overflow-hidden", className)}
       style={{ background }}
     >
-      <div className="absolute inset-0 flex items-end">
+      <div className="absolute inset-0 flex items-end" style={{ filter: `blur(${blur}px)` }}>
         {Array.from({ length: barCount }).map((_, i) => {
           const heightFraction = heights[i] ?? maxHeightRatio;
           return (
@@ -92,7 +92,6 @@ export function AuroraBars({
                   height: `${heightFraction * 100}%`,
                   background: gradient,
                   borderRadius: "9999px 9999px 0 0",
-                  filter: `blur(${blur}px)`,
                   opacity: 0.85,
                 }}
               />
