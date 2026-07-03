@@ -17,7 +17,7 @@ const circleB =
 // Scan-lifecycle words instead of the registry default's generic AI-assistant
 // copy ("Thinking"/"Moonwalking") — this indicator narrates a DNS sweep, not
 // a chat response.
-const words = ["Scanning", "Resolving DNS", "Checking compliance", "Refreshing results"];
+const words = ["Scanning", "Is it blocked?", "Is it not?", "Refreshing results"];
 
 interface ThinkingIndicatorProps extends HTMLAttributes<HTMLDivElement> {
   /** Show the morphing circle⇄infinity glyph before the label. Set to `false`

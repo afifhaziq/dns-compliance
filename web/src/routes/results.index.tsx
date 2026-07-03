@@ -129,7 +129,7 @@ function SubRows({
               )}
             </div>
           </TableCell>
-          <TableCell className="col-evidence">
+          <TableCell className="col-evidence text-center">
             {r.screenshot_url ? (
               <a
                 href={r.screenshot_url}

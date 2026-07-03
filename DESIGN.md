@@ -1,11 +1,11 @@
 <!-- SEED: re-run /impeccable document once there's code to capture the actual tokens and components. -->
 
 ---
-name: DNS Compliance Checker
+name: Citadel
 description: ISP DNS takedown compliance monitoring for regulatory auditors
 ---
 
-# Design System: DNS Compliance Checker
+# Design System: Citadel
 
 ## 1. Overview
 

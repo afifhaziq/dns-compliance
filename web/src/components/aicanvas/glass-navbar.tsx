@@ -66,7 +66,7 @@ export function GlassNavbar({ actions }: GlassNavbarProps) {
         {/* Brand */}
         <Link to="/" className="nav-brand">
           <BrandMark />
-          DNS Compliance
+          Citadel
         </Link>
 
         {/* Nav links */}

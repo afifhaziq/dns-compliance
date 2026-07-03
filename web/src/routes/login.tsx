@@ -36,7 +36,7 @@ function LoginPage() {
         style={{ width: 360, padding: 32, background: 'rgba(20, 20, 22, 0.45)' }}
       >
         <div className="page-header mb-4" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4, padding: 0 }}>
-          <h1 className="page-title" style={{ color: '#fff' }}>DNS Compliance</h1>
+          <h1 className="page-title" style={{ color: '#fff' }}>Citadel</h1>
           <p className="page-subtitle" style={{ color: 'rgba(255,255,255,0.6)' }}>Sign in to continue</p>
         </div>
         <form onSubmit={handleSubmit}>
