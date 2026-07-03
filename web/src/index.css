@@ -457,6 +457,26 @@ html.dark {
   @apply text-[13px] text-stone-muted font-normal;
 }
 
+/* ─── Tabs ───────────────────────────────────────────────────────────────── */
+
+.tabs-list {
+  @apply flex items-center gap-1 border-b border-stone-border mb-6;
+}
+
+.tabs-trigger {
+  @apply relative inline-flex items-center py-2.5 px-3 text-[13px] font-medium text-stone-muted bg-transparent border-none cursor-pointer
+    transition-colors duration-150 ease-snappy hover:text-foreground
+    focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink focus-visible:outline-offset-2;
+}
+
+.tabs-trigger[data-state='active'] {
+  @apply text-ink font-semibold;
+}
+
+.tabs-trigger[data-state='active']::after {
+  @apply content-[''] absolute left-0 right-0 -bottom-px h-[2px] bg-ink rounded-full;
+}
+
 /* ─── Filter Bar ─────────────────────────────────────────────────────────── */
 
 .filter-bar {
@@ -494,7 +514,7 @@ html.dark {
 /* ─── Compliance Heatmap (per-URL history) ─────────────────────────────── */
 
 .heatmap-year-nav {
-  @apply flex items-center justify-center gap-3 pb-4;
+  @apply flex items-center justify-center gap-3;
 }
 
 .heatmap-year-nav-btn {
@@ -513,7 +533,7 @@ html.dark {
 }
 
 .heatmap-server-header {
-  @apply flex items-center justify-between gap-3;
+  @apply flex items-center justify-between;
 }
 
 .heatmap-compliance-badge {
@@ -538,6 +558,10 @@ html.dark {
   @apply w-10;
 }
 
+.col-scan-id {
+  @apply w-20 whitespace-nowrap text-muted-foreground text-[0.8rem] [font-variant-numeric:tabular-nums];
+}
+
 .col-domain {
   @apply min-w-[250px];
 }
@@ -551,7 +575,7 @@ html.dark {
 }
 
 .col-evidence {
-  @apply w-1/4 text-center;
+  @apply w-1/4;
 }
 
 .col-last-scanned {
@@ -983,6 +1007,27 @@ th.th-left {
 
 .back-link-icon {
   @apply w-3.5 h-3.5;
+}
+
+.breadcrumbs {
+  @apply flex items-center text-[13px] font-medium text-stone-muted mb-3;
+}
+
+.breadcrumb-item {
+  @apply inline-flex items-center gap-1;
+}
+
+.breadcrumb-link {
+  @apply no-underline text-stone-muted transition-colors duration-150 ease-snappy hover:text-foreground
+    focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink focus-visible:outline-offset-2;
+}
+
+.breadcrumb-current {
+  @apply text-foreground;
+}
+
+.breadcrumb-sep {
+  @apply w-3.5 h-3.5 mx-1 text-stone-muted/60;
 }
 
 .btn-row-history {

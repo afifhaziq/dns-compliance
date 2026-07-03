@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { createFileRoute } from '@tanstack/react-router'
+import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { Breadcrumbs } from '@/components/breadcrumbs'
 import { fetchDnsServers } from '../api/dns-servers'
 import { fetchDnsRecords } from '../api/dns-records'
 import type { DnsRecordSet, DnsRecordsResponse } from '../api/dns-records'
@@ -13,6 +14,7 @@ import { cn } from '@/lib/utils'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { HeatmapChart } from '@/components/charts/heatmap'
 import { HeatmapChartLoading } from '@/components/charts/heatmap/heatmap-chart-loading'
 import { HeatmapCells } from '@/components/charts/heatmap/heatmap-cells'
@@ -205,6 +207,8 @@ function HistorySkeletonRows() {
     <>
       {[180, 140, 220, 160].map((w, i) => (
         <TableRow key={i} className="skeleton-row">
+          <TableCell className="col-expand" />
+          <TableCell className="col-scan-id" />
           <TableCell className="col-domain"><span className="skeleton" style={{ width: w, height: 14 }} /></TableCell>
           <TableCell className="col-status"><span className="skeleton" style={{ width: 100, height: 20, borderRadius: 4 }} /></TableCell>
           <TableCell className="col-ip" />
@@ -387,12 +391,9 @@ function URLHistoryPage() {
   }, [])
 
   return (
-    <div className="mx-60">
-      <Link to="/" className="back-link mt-8">
-        <ArrowLeftIcon className="back-link-icon"  />
-        Overview
-      </Link>
-      
+    <div className="mx-60 mb-10">
+      <Breadcrumbs items={[{ label: 'Overview', to: '/' }, { label: 'Results', to: '/results' }, { label: hostname }]} />
+
       <div className="page-header px-0">
         <h1 className="page-title mb-2">{hostname}</h1>
         <p className="page-subtitle">{url} · Last 7 days</p>
@@ -403,30 +404,15 @@ function URLHistoryPage() {
         )}
       </div>
 
-      <DnsRecordsPanel data={dnsRecords} loading={dnsRecordsLoading} />
+      <Tabs defaultValue="overview">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
+        </TabsList>
 
-      <div className="dash-section">
-        <p className="section-title mb-3">Domain info</p>
-        <DomainInfoPanel data={domainInfo} loading={domainInfoLoading} />
-      </div>
-
+        <TabsContent value="overview">
       {(dnsServerListLoading || heatmapDnsServers.length > 0) && (
         <div className="dash-section">
-          {isps.length > 0 && (
-            <div className="filter-bar mb-2">
-              <span className="filter-label" id="isp-heatmap-label">ISP</span>
-              <Select value={ispFilter} onValueChange={setIspFilter}>
-                <SelectTrigger aria-labelledby="isp-heatmap-label" />
-                <SelectContent>
-                  <SelectItem index={0} value="overall">Overall</SelectItem>
-                  {isps.map((isp, i) => (
-                    <SelectItem key={isp} index={i + 1} value={isp}>{isp}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
           <div className="heatmap-year-nav">
             <button
               type="button"
@@ -460,20 +446,34 @@ function URLHistoryPage() {
                 label="Loading compliance history"
               />
             </div>
-          ) : ispFilter === 'overall' ? (
-            (() => {
-              const columns = buildYearHeatmapColumns(selectedYear, overallStatsByDay)
+          ) : (
+            <>
+              <div className="heatmap-server-header">
+                {isps.length > 0 ? (
+                  <Select value={ispFilter} onValueChange={setIspFilter}>
+                    <SelectTrigger aria-label="Filter heatmap by ISP" />
+                    <SelectContent>
+                      <SelectItem index={0} value="overall">Overall</SelectItem>
+                      {isps.map((isp, i) => (
+                        <SelectItem key={isp} index={i + 1} value={isp}>{isp}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="dash-label">Overall</p>
+                )}
+                {ispFilter === 'overall' && overallPct !== null && !yearLoading && (
+                  <span className="heatmap-compliance-badge">{overallPct}% compliant</span>
+                )}
+              </div>
 
-              return (
-                <div className="heatmap-server-block">
-                  <div className="heatmap-server-header">
-                    <p className="dash-label">Overall</p>
-                    {overallPct !== null && !yearLoading && (
-                      <span className="heatmap-compliance-badge">{overallPct}% compliant</span>
-                    )}
-                  </div>
+              {ispFilter === 'overall' ? (
+                (() => {
+                  const columns = buildYearHeatmapColumns(selectedYear, overallStatsByDay)
 
-                  {yearLoading ? (
+                  return (
+                    <div className="heatmap-server-block">
+                      {yearLoading ? (
                     <HeatmapChartLoading data={columns} gap={3} cornerRadius={999} label="Loading compliance history" />
                   ) : (
                     <>
@@ -500,61 +500,72 @@ function URLHistoryPage() {
                       />
                     </>
                   )}
-                </div>
-              )
-            })()
-          ) : ispHeatmapServers.map(name => {
-            const serverStats = heatmapStats.filter(s => s.dns_server_name === name)
-            const statsByDay = new Map(serverStats.map(s => [s.day, s]))
-            const columns = buildYearHeatmapColumns(selectedYear, statsByDay)
-            const pct = compliancePercentFromStats(serverStats)
+                    </div>
+                  )
+                })()
+              ) : ispHeatmapServers.map(name => {
+                const serverStats = heatmapStats.filter(s => s.dns_server_name === name)
+                const statsByDay = new Map(serverStats.map(s => [s.day, s]))
+                const columns = buildYearHeatmapColumns(selectedYear, statsByDay)
+                const pct = compliancePercentFromStats(serverStats)
 
-            return (
-              <div key={name} className="heatmap-server-block">
-                <div className="heatmap-server-header">
-                  <p className="dash-label">{name}</p>
-                  {pct !== null && !yearLoading && (
-                    <span className="heatmap-compliance-badge">{pct}% compliant</span>
-                  )}
-                </div>
+                return (
+                  <div key={name} className="heatmap-server-block">
+                    <div className="heatmap-server-header">
+                      <p className="dash-label">{name}</p>
+                      {pct !== null && !yearLoading && (
+                        <span className="heatmap-compliance-badge">{pct}% compliant</span>
+                      )}
+                    </div>
 
-                {yearLoading ? (
-                  <HeatmapChartLoading data={columns} gap={3} cornerRadius={999} label="Loading compliance history" />
-                ) : (
-                  <>
-                    <HeatmapChart data={columns} gap={3} layout="fluid" levelColors={HEATMAP_LEVEL_COLORS}>
-                      <HeatmapCells cornerRadius={999} />
-                      <HeatmapXAxis />
-                      <HeatmapYAxis />
-                      <HeatmapTooltip
-                        formatLabel={(_count, date) => {
-                          const stat = statsByDay.get(dateKey(date))
-                          if (!stat) return `No scans · ${heatmapTooltipDateFmt.format(date)}`
-                          return `${stat.compliant} of ${stat.total} compliant · ${heatmapTooltipDateFmt.format(date)}`
-                        }}
-                      />
-                    </HeatmapChart>
-                    {/* Rendered as a sibling, not a HeatmapChart child: HeatmapLegend
-                        renders a plain <div>, and the chart places its children inside
-                        an <svg><g> — nesting it there puts the div in the SVG namespace,
-                        where browsers don't lay it out (it silently doesn't render). */}
-                    <HeatmapLegend
-                      align="start"
-                      cornerRadius={999}
-                      gap={3}
-                      lessLabel="Compliant"
-                      moreLabel="More violations"
-                      colorScale={heatmapYearColorScale}
-                      className='my-2 px-10'
-                    />
-                  </>
-                )}
-              </div>
-            )
-          })}
+                    {yearLoading ? (
+                      <HeatmapChartLoading data={columns} gap={3} cornerRadius={999} label="Loading compliance history" />
+                    ) : (
+                      <>
+                        <HeatmapChart data={columns} gap={3} layout="fluid" levelColors={HEATMAP_LEVEL_COLORS}>
+                          <HeatmapCells cornerRadius={999} />
+                          <HeatmapXAxis />
+                          <HeatmapYAxis />
+                          <HeatmapTooltip
+                            formatLabel={(_count, date) => {
+                              const stat = statsByDay.get(dateKey(date))
+                              if (!stat) return `No scans · ${heatmapTooltipDateFmt.format(date)}`
+                              return `${stat.compliant} of ${stat.total} compliant · ${heatmapTooltipDateFmt.format(date)}`
+                            }}
+                          />
+                        </HeatmapChart>
+                        {/* Rendered as a sibling, not a HeatmapChart child: HeatmapLegend
+                            renders a plain <div>, and the chart places its children inside
+                            an <svg><g> — nesting it there puts the div in the SVG namespace,
+                            where browsers don't lay it out (it silently doesn't render). */}
+                        <HeatmapLegend
+                          align="start"
+                          cornerRadius={999}
+                          gap={3}
+                          lessLabel="Compliant"
+                          moreLabel="More violations"
+                          colorScale={heatmapYearColorScale}
+                          className='my-2 px-10'
+                        />
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </>
+          )}
         </div>
       )}
 
+      <DnsRecordsPanel data={dnsRecords} loading={dnsRecordsLoading} />
+
+      <div className="dash-section">
+        <p className="section-title mb-3">Domain info</p>
+        <DomainInfoPanel data={domainInfo} loading={domainInfoLoading} />
+      </div>
+        </TabsContent>
+
+        <TabsContent value="history">
       <div className="filter-bar">
         <span className="filter-label" id="status-label">Status</span>
         <ToggleGroup
@@ -602,11 +613,13 @@ function URLHistoryPage() {
             <Table className="results-table" aria-label={`Scan history for ${hostname}`}>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="col-domain" scope="col">DNS Server</TableHead>
-                  <TableHead className="col-status" scope="col">Status</TableHead>
-                  <TableHead className="col-ip" scope="col">Resolved IP</TableHead>
-                  <TableHead className="col-evidence" scope="col">Evidence</TableHead>
-                  <TableHead className="col-last-scanned" scope="col">Scanned At</TableHead>
+                  <TableHead className="col-expand" scope="col" />
+                  <TableHead className="col-scan-id th-left" scope="col">Scan ID</TableHead>
+                  <TableHead className="col-domain th-left" scope="col">DNS Server</TableHead>
+                  <TableHead className="col-status th-left" scope="col">Status</TableHead>
+                  <TableHead className="col-ip th-left" scope="col">Resolved IP</TableHead>
+                  <TableHead className="col-evidence th-left" scope="col">Evidence</TableHead>
+                  <TableHead className="col-last-scanned th-left" scope="col">Scanned At</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -614,7 +627,7 @@ function URLHistoryPage() {
                   <HistorySkeletonRows />
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5}>
+                    <TableCell colSpan={7}>
                       <div className="empty-state" style={{ padding: '3rem 0' }}>
                         <p className="empty-heading">No results match the current filters</p>
                       </div>
@@ -636,9 +649,12 @@ function URLHistoryPage() {
                           aria-expanded={expanded}
                           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleRun(g.scanRunId) } }}
                         >
+                          <TableCell className="col-expand">
+                            <ChevronRightIcon className={cn('scan-group-chevron', expanded && 'expanded')} />
+                          </TableCell>
+                          <TableCell className="col-scan-id">#{g.scanRunId}</TableCell>
                           <TableCell colSpan={5}>
                             <div className="scan-group-header">
-                              <ChevronRightIcon className={cn('scan-group-chevron', expanded && 'expanded')} />
                               <span className="scan-group-time">
                                 {g.scannedAt ? DATE_FMT.format(new Date(g.scannedAt)) : '—'}
                               </span>
@@ -652,6 +668,8 @@ function URLHistoryPage() {
                         </TableRow>
                         {expanded && g.results.map(r => (
                           <TableRow key={r.id} className={!r.compliant ? 'violation-row' : ''}>
+                            <TableCell className="col-expand" />
+                            <TableCell className="col-scan-id" />
                             <TableCell className="col-domain"><span className="dns-name">{r.dns_server.name}</span></TableCell>
                             <TableCell className="col-status"><StatusDot compliant={r.compliant} /></TableCell>
                             <TableCell className="col-ip">
@@ -709,6 +727,8 @@ function URLHistoryPage() {
           </>
         )}
       </div>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

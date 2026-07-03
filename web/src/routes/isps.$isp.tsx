@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { ArrowLeftIcon } from 'lucide-react'
+import { Breadcrumbs } from '@/components/breadcrumbs'
 import { fetchISPStats, fetchISPTiming, fetchISPTrend } from '@/api/isps'
 import type { ISPStats, ISPTiming, ISPTrendStat } from '@/api/types'
 import { Table, TableBody, TableRow, TableCell, TableHead, TableHeader } from '@/components/ui/table'
@@ -51,10 +51,7 @@ function ISPDetailPage() {
 
   return (
     <div className="mx-20 mb-20">
-      <Link to="/" className="back-link mt-8">
-        <ArrowLeftIcon className="back-link-icon" />
-        Overview
-      </Link>
+      <Breadcrumbs items={[{ label: 'Overview', to: '/' }, { label: isp }]} />
 
       <div className="page-header px-0">
         <h1 className="page-title mb-2">{isp}</h1>

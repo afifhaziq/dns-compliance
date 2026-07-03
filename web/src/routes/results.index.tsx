@@ -229,7 +229,7 @@ function URLGroupRow({
           </div>
         </TableCell>
         <TableCell className="col-ip" />
-        <TableCell className="col-evidence">
+        <TableCell className="col-evidence text-center">
           <Link
             to="/results/$url"
             params={{ url }}
@@ -458,9 +458,9 @@ function ResultsPage() {
                   <TableRow>
                     <TableHead className="col-expand" scope="col" />
                     <TableHead className="col-domain th-left" scope="col">Domain</TableHead>
-                    <TableHead className="col-status th-left" scope="col">Status</TableHead>
+                    <TableHead className="col-status th-left" scope= "col">Status</TableHead>
                     <TableHead className="col-ip th-left" scope="col">Resolved IP</TableHead>
-                    <TableHead className="col-evidence th-left" scope="col">Evidence</TableHead>
+                    <TableHead className="col-evidence th-center" scope="col">Evidence</TableHead>
                     <TableHead className="col-last-scanned th-left" scope="col">Last scanned</TableHead>
                   </TableRow>
                 </TableHeader>
