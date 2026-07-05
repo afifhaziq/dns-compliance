@@ -478,7 +478,6 @@ function URLHistoryPage() {
                     items={ispItems}
                     value={ispItems.find(i => i.value === ispFilter) ?? null}
                     onValueChange={item => setIspFilter(item ? item.value : 'overall')}
-                    className="w-48"
                   >
                     <ComboboxInput aria-label="Filter heatmap by ISP" showClear={false} size="sm" className="w-48" />
                     <ComboboxContent>
