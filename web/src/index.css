@@ -469,26 +469,6 @@ html.dark {
   @apply text-[13px] text-stone-muted font-normal;
 }
 
-/* ─── Tabs ───────────────────────────────────────────────────────────────── */
-
-.tabs-list {
-  @apply flex items-center gap-1 border-b border-stone-border mb-6;
-}
-
-.tabs-trigger {
-  @apply relative inline-flex items-center py-2.5 px-3 text-[13px] font-medium text-stone-muted bg-transparent border-none cursor-pointer
-    transition-colors duration-150 ease-snappy hover:text-foreground
-    focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink focus-visible:outline-offset-2;
-}
-
-.tabs-trigger[data-state='active'] {
-  @apply text-ink font-semibold;
-}
-
-.tabs-trigger[data-state='active']::after {
-  @apply content-[''] absolute left-0 right-0 -bottom-px h-[2px] bg-ink rounded-full;
-}
-
 /* ─── Filter Bar ─────────────────────────────────────────────────────────── */
 
 .filter-bar {

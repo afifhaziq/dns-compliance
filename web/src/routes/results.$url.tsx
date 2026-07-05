@@ -15,7 +15,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
 import { Combobox, ComboboxInput, ComboboxContent, ComboboxEmpty, ComboboxList, ComboboxItem } from '@/components/ui/b-combobox'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/motion/tabs'
 import { HeatmapChart } from '@/components/charts/heatmap'
 import { HeatmapChartLoading } from '@/components/charts/heatmap/heatmap-chart-loading'
 import { HeatmapCells } from '@/components/charts/heatmap/heatmap-cells'
@@ -448,7 +448,7 @@ function URLHistoryPage() {
         )}
       </div>
 
-      <Tabs defaultValue="overview">
+      <Tabs defaultValue="overview" variant="underline">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
