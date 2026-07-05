@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
+import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlOrderedAt } from '../api/urls'
 import type { URLEntry } from '../api/types'
 import {
@@ -142,12 +143,15 @@ const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric', month: 'short', year: 'numeric',
 })
 
+const PAGE_SIZE = 25
+
 function URLsPage() {
   const [urls, setUrls] = useState<URLEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<URLEntry | null>(null)
+  const [page, setPage] = useState(1)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -190,6 +194,13 @@ function URLsPage() {
     load()
   }
 
+  const totalPages = Math.max(1, Math.ceil(urls.length / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+  const paginated = useMemo(
+    () => urls.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [urls, currentPage],
+  )
+
   return (
     <div className="mx-20 mt-10">
       <div className="page-header">
@@ -231,7 +242,7 @@ function URLsPage() {
               {loading ? (
                 <SkeletonRows />
               ) : (
-                urls.map(u => (
+                paginated.map(u => (
                   <TableRow key={u.id} className="url-row">
                     <TableCell className="col-domain">
                       <PreviewLinkCard href={u.url}>
@@ -279,6 +290,29 @@ function URLsPage() {
               )}
             </TableBody>
           </Table>
+        )}
+        {!loading && totalPages > 1 && (
+          <div className="pagination">
+            <span className="pagination-label">Page {currentPage} of {totalPages}</span>
+            <button
+              type="button"
+              className="pagination-btn"
+              onClick={() => setPage(p => p - 1)}
+              disabled={currentPage <= 1}
+              aria-label="Previous page"
+            >
+              <ChevronLeftIcon className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              className="pagination-btn"
+              onClick={() => setPage(p => p + 1)}
+              disabled={currentPage >= totalPages}
+              aria-label="Next page"
+            >
+              <ChevronRightIcon className="w-4 h-4" />
+            </button>
+          </div>
         )}
       </div>
 

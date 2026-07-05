@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { HistoryIcon, Camera, Image as ImageIcon } from 'lucide-react'
+import { HistoryIcon, Camera, Image as ImageIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { fetchResults, groupResults, lastScanTime } from '../api/results'
 import { fetchScanStatus, isScanning, triggerScreenshot } from '../api/scan'
 import type { GroupedResult, ScanResult } from '../api/types'
@@ -22,6 +22,8 @@ export const Route = createFileRoute('/results/')({ component: ResultsPage })
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
 type StatusFilter = 'all' | 'violations' | 'compliant'
+
+const PAGE_SIZE = 25
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
 
@@ -299,6 +301,7 @@ function ResultsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [dnsFilter, setDnsFilter] = useState<string>('all')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [page, setPage] = useState(1)
 
   const [pendingScreenshotId, setPendingScreenshotId] = useState<number | null>(null)
   const [screenshotErrors, setScreenshotErrors] = useState<Record<number, string>>({})
@@ -390,6 +393,15 @@ function ResultsPage() {
       .filter(Boolean) as GroupedResult[]
   }, [groups, statusFilter, dnsFilter])
 
+  useEffect(() => { setPage(1) }, [statusFilter, dnsFilter])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+  const paginated = useMemo(
+    () => filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filtered, currentPage],
+  )
+
   return (
     <div className="mx-20 mt-10">
       <div className="page-header">
@@ -476,7 +488,7 @@ function ResultsPage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filtered.map(group => (
+                    paginated.map(group => (
                       <URLGroupRow
                         key={group.url}
                         group={group}
@@ -491,6 +503,29 @@ function ResultsPage() {
                   )}
                 </TableBody>
               </Table>
+            )}
+            {!loading && totalPages > 1 && (
+              <div className="pagination">
+                <span className="pagination-label">Page {currentPage} of {totalPages}</span>
+                <button
+                  type="button"
+                  className="pagination-btn"
+                  onClick={() => setPage(p => p - 1)}
+                  disabled={currentPage <= 1}
+                  aria-label="Previous page"
+                >
+                  <ChevronLeftIcon className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  className="pagination-btn"
+                  onClick={() => setPage(p => p + 1)}
+                  disabled={currentPage >= totalPages}
+                  aria-label="Next page"
+                >
+                  <ChevronRightIcon className="w-4 h-4" />
+                </button>
+              </div>
             )}
           </div>
         </div>
