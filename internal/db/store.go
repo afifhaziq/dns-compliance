@@ -71,6 +71,7 @@ type Store interface {
 	DeleteCompliantIP(ctx context.Context, id uint) error
 
 	// Domain WHOIS — per-domain RDAP cache, not per-scan
+	GetURLByValue(ctx context.Context, urlValue string) (*URL, error) // nil, nil if urlValue is unknown
 	UpsertDomainWhois(ctx context.Context, w DomainWhois) error
 	GetDomainWhois(ctx context.Context, urlValue string) (*DomainWhois, error)           // nil, nil if never fetched (or urlValue is unknown)
 	ListStaleDomains(ctx context.Context, olderThan time.Time, limit int) ([]URL, error) // watched URLs with no DomainWhois row or LastFetchedAt < olderThan

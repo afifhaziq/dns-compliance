@@ -1,11 +1,11 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, RefreshCwIcon } from 'lucide-react'
 import { Breadcrumbs } from '@/components/breadcrumbs'
 import { fetchDnsServers } from '../api/dns-servers'
 import { fetchDnsRecords } from '../api/dns-records'
 import type { DnsRecordSet, DnsRecordsResponse } from '../api/dns-records'
-import { fetchDomainInfo } from '../api/domain'
+import { fetchDomainInfo, refreshDomainInfo } from '../api/domain'
 import type { DomainInfo } from '../api/domain'
 import { fetchHeatmapByUrlAndYear, fetchResultsByUrl } from '../api/results'
 import type { DailyComplianceStat, DNSServer, ScanResult } from '../api/types'
@@ -273,6 +273,20 @@ function URLHistoryPage() {
 
   const [domainInfo, setDomainInfo] = useState<DomainInfo | null>(null)
   const [domainInfoLoading, setDomainInfoLoading] = useState(true)
+  const [domainInfoRefreshing, setDomainInfoRefreshing] = useState(false)
+
+  const handleRefreshDomainInfo = useCallback(async () => {
+    setDomainInfoRefreshing(true)
+    try {
+      setDomainInfo(await refreshDomainInfo(url))
+    } catch {
+      // ponytail: keep the stale cached info on a failed refresh rather than
+      // clearing it — the fetch_error field already surfaces server-side
+      // failures when the refresh does succeed.
+    } finally {
+      setDomainInfoRefreshing(false)
+    }
+  }, [url])
 
   const loadYear = useCallback(async (year: number) => {
     try {
@@ -584,7 +598,19 @@ function URLHistoryPage() {
         </div>
 
         <div className="dash-section">
-          <p className="section-title mb-3 text-right">Domain info</p>
+          <div className="flex items-center justify-end gap-2 mb-3">
+            <button
+              type="button"
+              className="heatmap-year-nav-btn"
+              onClick={handleRefreshDomainInfo}
+              disabled={domainInfoLoading || domainInfoRefreshing}
+              aria-label="Refresh domain info"
+              title="Refresh WHOIS data"
+            >
+              <RefreshCwIcon className={cn('w-3.5 h-3.5', domainInfoRefreshing && 'animate-spin')} />
+            </button>
+            <p className="section-title">Domain info</p>
+          </div>
           <DomainInfoPanel data={domainInfo} loading={domainInfoLoading} />
         </div>
       </div>

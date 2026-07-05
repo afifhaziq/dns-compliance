@@ -401,23 +401,29 @@ func (m *fullMockStore) UpsertDomainWhois(_ context.Context, w db.DomainWhois) e
 	return nil
 }
 
-func (m *fullMockStore) GetDomainWhois(_ context.Context, urlValue string) (*db.DomainWhois, error) {
+func (m *fullMockStore) GetURLByValue(_ context.Context, urlValue string) (*db.URL, error) {
 	normalized, err := urlnorm.Normalize(urlValue)
 	if err != nil {
 		return nil, err
 	}
-	var urlID uint
-	found := false
 	for _, u := range m.urls {
 		if u.URL == normalized {
-			urlID = u.ID
-			found = true
-			break
+			uCopy := u
+			return &uCopy, nil
 		}
 	}
-	if !found {
+	return nil, nil
+}
+
+func (m *fullMockStore) GetDomainWhois(ctx context.Context, urlValue string) (*db.DomainWhois, error) {
+	u, err := m.GetURLByValue(ctx, urlValue)
+	if err != nil {
+		return nil, err
+	}
+	if u == nil {
 		return nil, nil
 	}
+	urlID := u.ID
 	for _, w := range m.domainWhois {
 		if w.URLID == urlID {
 			wCopy := w

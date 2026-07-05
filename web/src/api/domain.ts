@@ -16,3 +16,7 @@ export type DomainInfo = {
 export function fetchDomainInfo(url: string): Promise<DomainInfo> {
   return api.get<DomainInfo>(`/domain/${encodeURIComponent(url)}`)
 }
+
+export function refreshDomainInfo(url: string): Promise<DomainInfo> {
+  return api.post<DomainInfo>(`/domain/${encodeURIComponent(url)}`, undefined)
+}
