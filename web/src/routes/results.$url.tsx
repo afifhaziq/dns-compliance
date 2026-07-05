@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
+import { Combobox, ComboboxInput, ComboboxContent, ComboboxEmpty, ComboboxList, ComboboxItem } from '@/components/ui/b-combobox'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { HeatmapChart } from '@/components/charts/heatmap'
 import { HeatmapChartLoading } from '@/components/charts/heatmap/heatmap-chart-loading'
@@ -144,15 +145,15 @@ function DomainInfoPanel({
   const hasInfo = data?.fetched
 
   return (
-    <div className="dash-section dns-records-panel">
+    <div className="dash-section dns-records-panel domain-info-panel">
       {loading ? (
         <div className="dns-records-grid">
           {DOMAIN_INFO_LABELS.map(([key]) => (
             <div key={key} className="dns-record-block">
-              <span className="skeleton" style={{ width: 60, height: 11 }} />
+              <span className="skeleton" style={{ width: 60, height: 11, marginLeft: 'auto' }} />
               <span
                 className="skeleton"
-                style={{ width: 120, height: 14, marginTop: 6 }}
+                style={{ width: 120, height: 14, marginTop: 6, marginLeft: 'auto' }}
               />
             </div>
           ))}
@@ -308,6 +309,11 @@ function URLHistoryPage() {
     [dnsServerList],
   )
 
+  const ispItems = useMemo(
+    () => [{ value: 'overall', label: 'Overall' }, ...isps.map(isp => ({ value: isp, label: isp }))],
+    [isps],
+  )
+
   const [ispFilter, setIspFilter] = useState<string>('overall')
 
   // Servers to render heatmaps for: every server when viewing "Overall",
@@ -390,6 +396,29 @@ function URLHistoryPage() {
     })
   }, [])
 
+  const yearNav = (
+    <div className="heatmap-year-nav pr-5">
+      <button
+        type="button"
+        className="heatmap-year-nav-btn"
+        onClick={() => setSelectedYear(y => y - 1)}
+        aria-label="Previous year"
+      >
+        <ChevronLeftIcon className="w-4 h-4" />
+      </button>
+      <span className="heatmap-year-label">{selectedYear}</span>
+      <button
+        type="button"
+        className="heatmap-year-nav-btn"
+        onClick={() => setSelectedYear(y => y + 1)}
+        disabled={selectedYear >= currentYear}
+        aria-label="Next year"
+      >
+        <ChevronRightIcon className="w-4 h-4" />
+      </button>
+    </div>
+  )
+
   return (
     <div className="mx-60 mb-10">
       <Breadcrumbs items={[{ label: 'Overview', to: '/' }, { label: 'Results', to: '/results' }, { label: hostname }]} />
@@ -413,31 +442,11 @@ function URLHistoryPage() {
         <TabsContent value="overview">
       {(dnsServerListLoading || heatmapDnsServers.length > 0) && (
         <div className="dash-section">
-          <div className="heatmap-year-nav">
-            <button
-              type="button"
-              className="heatmap-year-nav-btn"
-              onClick={() => setSelectedYear(y => y - 1)}
-              aria-label="Previous year"
-            >
-              <ChevronLeftIcon className="w-4 h-4" />
-            </button>
-            <span className="heatmap-year-label">{selectedYear}</span>
-            <button
-              type="button"
-              className="heatmap-year-nav-btn"
-              onClick={() => setSelectedYear(y => y + 1)}
-              disabled={selectedYear >= currentYear}
-              aria-label="Next year"
-            >
-              <ChevronRightIcon className="w-4 h-4" />
-            </button>
-          </div>
-
           {dnsServerListLoading ? (
             <div className="heatmap-server-block">
               <div className="heatmap-server-header">
                 <p className="dash-label">&nbsp;</p>
+                {yearNav}
               </div>
               <HeatmapChartLoading
                 data={buildYearHeatmapColumns(selectedYear, new Map())}
@@ -448,23 +457,28 @@ function URLHistoryPage() {
             </div>
           ) : (
             <>
-              <div className="heatmap-server-header">
+              <div className="heatmap-server-header mb-4">
                 {isps.length > 0 ? (
-                  <Select value={ispFilter} onValueChange={setIspFilter}>
-                    <SelectTrigger aria-label="Filter heatmap by ISP" />
-                    <SelectContent>
-                      <SelectItem index={0} value="overall">Overall</SelectItem>
-                      {isps.map((isp, i) => (
-                        <SelectItem key={isp} index={i + 1} value={isp}>{isp}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Combobox
+                    items={ispItems}
+                    value={ispItems.find(i => i.value === ispFilter) ?? null}
+                    onValueChange={item => setIspFilter(item ? item.value : 'overall')}
+                    className="w-48"
+                  >
+                    <ComboboxInput aria-label="Filter heatmap by ISP" showClear={false} size="sm" className="w-48" />
+                    <ComboboxContent>
+                      <ComboboxEmpty>No ISPs found.</ComboboxEmpty>
+                      <ComboboxList>
+                        {(item: { value: string; label: string }) => (
+                          <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>
+                        )}
+                      </ComboboxList>
+                    </ComboboxContent>
+                  </Combobox>
                 ) : (
                   <p className="dash-label">Overall</p>
                 )}
-                {ispFilter === 'overall' && overallPct !== null && !yearLoading && (
-                  <span className="heatmap-compliance-badge">{overallPct}% compliant</span>
-                )}
+                {yearNav}
               </div>
 
               {ispFilter === 'overall' ? (
@@ -489,15 +503,19 @@ function URLHistoryPage() {
                           }}
                         />
                       </HeatmapChart>
-                      <HeatmapLegend
-                        align="start"
-                        cornerRadius={999}
-                        gap={3}
-                        lessLabel="Compliant"
-                        moreLabel="More violations"
-                        colorScale={heatmapYearColorScale}
-                        className='my-2 px-10'
-                      />
+                      <div className="heatmap-legend-row pl-10 pr-5 my-2">
+                        <HeatmapLegend
+                          align="start"
+                          cornerRadius={999}
+                          gap={3}
+                          lessLabel="Compliant"
+                          moreLabel="More violations"
+                          colorScale={heatmapYearColorScale}
+                        />
+                        {overallPct !== null && (
+                          <span className="heatmap-compliance-badge">{overallPct}% compliant</span>
+                        )}
+                      </div>
                     </>
                   )}
                     </div>
@@ -513,9 +531,6 @@ function URLHistoryPage() {
                   <div key={name} className="heatmap-server-block">
                     <div className="heatmap-server-header">
                       <p className="dash-label">{name}</p>
-                      {pct !== null && !yearLoading && (
-                        <span className="heatmap-compliance-badge">{pct}% compliant</span>
-                      )}
                     </div>
 
                     {yearLoading ? (
@@ -538,15 +553,19 @@ function URLHistoryPage() {
                             renders a plain <div>, and the chart places its children inside
                             an <svg><g> — nesting it there puts the div in the SVG namespace,
                             where browsers don't lay it out (it silently doesn't render). */}
-                        <HeatmapLegend
-                          align="start"
-                          cornerRadius={999}
-                          gap={3}
-                          lessLabel="Compliant"
-                          moreLabel="More violations"
-                          colorScale={heatmapYearColorScale}
-                          className='my-2 px-10'
-                        />
+                        <div className="heatmap-legend-row pl-10 pr-6 my-2">
+                          <HeatmapLegend
+                            align="start"
+                            cornerRadius={999}
+                            gap={3}
+                            lessLabel="Compliant"
+                            moreLabel="More violations"
+                            colorScale={heatmapYearColorScale}
+                          />
+                          {pct !== null && (
+                            <span className="heatmap-compliance-badge">{pct}% compliant</span>
+                          )}
+                        </div>
                       </>
                     )}
                   </div>
@@ -557,11 +576,16 @@ function URLHistoryPage() {
         </div>
       )}
 
-      <DnsRecordsPanel data={dnsRecords} loading={dnsRecordsLoading} />
+      <div className="grid grid-cols-2 gap-x-10">
+        <div className="dash-section">
+          <p className="section-title mb-3">DNS info</p>
+          <DnsRecordsPanel data={dnsRecords} loading={dnsRecordsLoading} />
+        </div>
 
-      <div className="dash-section">
-        <p className="section-title mb-3">Domain info</p>
-        <DomainInfoPanel data={domainInfo} loading={domainInfoLoading} />
+        <div className="dash-section">
+          <p className="section-title mb-3 text-right">Domain info</p>
+          <DomainInfoPanel data={domainInfo} loading={domainInfoLoading} />
+        </div>
       </div>
         </TabsContent>
 

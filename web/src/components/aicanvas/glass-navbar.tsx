@@ -32,12 +32,10 @@ export function LogoutButton() {
 
 function BrandMark() {
   return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true" className="brand-mark">
-      <path d="M12 7.5 L6.4 14.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-      <path d="M12 7.5 L17.6 14.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-      <circle cx="12" cy="5" r="2.4" fill="currentColor" />
-      <circle className="brand-mark-leaf" cx="6" cy="17" r="2.2" fill="currentColor" style={{ animationDelay: '0s' }} />
-      <circle className="brand-mark-leaf" cx="18" cy="17" r="2.2" fill="currentColor" style={{ animationDelay: '0.5s' }} />
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true" className="brand-mark">
+      <line x1="7.5" y1="16" x2="7.5" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <line className="brand-mark-watch" x1="12" y1="16" x2="12" y2="7.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <line x1="16.5" y1="16" x2="16.5" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   )
 }

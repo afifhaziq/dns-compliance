@@ -59,7 +59,7 @@ All backgrounds, surfaces, borders, muted text, and structural chrome. Zero chro
 
 **Body/UI Font:** DM Sans — neutral, highly legible at 12–14px, authoritative without personality. One family carries all levels: headings, labels, table cells, buttons, body. Stack: `'DM Sans', ui-sans-serif, system-ui, sans-serif`.
 
-**Mono:** Geist Mono — for IP addresses, domain names, DNS server addresses, and other technical strings. Inline only, not as a UI theme. Stack: `'Geist Mono', ui-monospace, monospace`.
+**Mono:** JetBrains Mono — for IP addresses, domain names, DNS server addresses, and other technical strings. Inline only, not as a UI theme. Stack: `'JetBrains Mono', ui-monospace, monospace`.
 
 **Character:** Maximum legibility at small sizes. A flat enough scale to support dense table interfaces without creating a noise of contrasting sizes. Authority through weight, not scale drama.
 
@@ -104,7 +104,7 @@ Flat by default. Structure comes from tonal surface shifts — a slightly darker
 - **Do** make compliance status legible through both color and text label. Color alone is not the signal.
 - **Do** use tables as the primary data surface. Rows are the canonical affordance; cards are not.
 - **Do** treat ledger indigo as the action/identity color only: primary buttons, active nav, focus rings, links, selected rows, quantity-bar fills. Nowhere else.
-- **Do** use inline monospace (Geist Mono) for IP addresses, domain strings, and DNS server identifiers.
+- **Do** use inline monospace (JetBrains Mono) for IP addresses, domain strings, and DNS server identifiers.
 - **Do** include all interactive states: hover, focus-visible, loading skeleton, empty state. Especially on the scan results table.
 - **Do** keep motion in the 150–250 ms range for state transitions. Feedback on action, not choreography on load.
 

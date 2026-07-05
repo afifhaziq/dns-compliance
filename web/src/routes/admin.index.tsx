@@ -386,7 +386,8 @@ function AdminPage() {
         </div>
       )}
 
-      <section className="results-wrap" style={{ marginBottom: 32 }}>
+      <div className="results-wrap" style={{ marginBottom: 32 }}>
+        <div className='mb-4'>
         <div className="page-header" style={{ marginBottom: 12 }}>
           <h2 className="section-title">Departments</h2>
           <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddDeptOpen(true)}>
@@ -409,7 +410,8 @@ function AdminPage() {
             ))}
           </TableBody>
         </Table>
-
+        </div>
+        <div className='mb-4'>
         <div className="page-header" style={{ marginBottom: 12 }}>
           <h2 className="section-title">Users</h2>
           <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddUserOpen(true)}>
@@ -444,7 +446,8 @@ function AdminPage() {
             ))}
           </TableBody>
         </Table>
-      
+        </div>
+        <div className='mb-4'>
         <div className="page-header" style={{ marginBottom: 12 }}>
           <h2 className="section-title">Compliant IPs</h2>
           <p className="page-subtitle" style={{ marginLeft: 8 }}>DNS resolutions to these IPs are classified as compliant</p>
@@ -487,7 +490,8 @@ function AdminPage() {
             )}
           </TableBody>
         </Table>
-      </section>
+        </div>
+      </div>
 
       <AddDepartmentDialog open={addDeptOpen} onClose={() => setAddDeptOpen(false)} onAdded={load} />
       <AddUserDialog
