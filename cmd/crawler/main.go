@@ -196,12 +196,13 @@ func runSweep(
 
 	// Phase 2: Screenshot each unique (URL, IP) pair (only when --screenshots is set).
 	var screenshots map[string][]byte
+	var screenshotErrs map[string]string
 	if takeScreenshots {
-		screenshots = captureResolved(ctx, allResults, baseCfg.ScreenshotWorkers, baseCfg.ScreenshotTimeout, waitIdle, postIdleSleep)
+		screenshots, screenshotErrs = captureResolved(ctx, allResults, baseCfg.ScreenshotWorkers, baseCfg.ScreenshotTimeout, waitIdle, postIdleSleep)
 	}
 
 	// Attach screenshots to the first matching result per URL; mark others shared.
-	assignScreenshots(allResults, screenshots)
+	assignScreenshots(allResults, screenshots, screenshotErrs)
 
 	compliant, nonCompliant := 0, 0
 	for _, r := range allResults {
@@ -276,7 +277,8 @@ func groupJobs(jobs []screenshotJob) [][]screenshotJob {
 // captureResolved screenshots each unique (URL, resolvedIP) pair, forcing
 // Chrome to connect to the pre-resolved IP via --host-resolver-rules so the
 // screenshot reflects what that DNS server's users actually see.
-// Returns a map keyed by shotKey(url, ip).
+// Returns the screenshot bytes and any capture errors, both keyed by
+// shotKey(url, ip).
 func captureResolved(
 	ctx context.Context,
 	results []pipeline.SiteResult,
@@ -284,7 +286,7 @@ func captureResolved(
 	ssTimeout time.Duration,
 	waitIdle time.Duration,
 	postIdleSleep time.Duration,
-) map[string][]byte {
+) (map[string][]byte, map[string]string) {
 	// Collect unique (url, ip) jobs preserving order.
 	seen := make(map[string]struct{})
 	var jobs []screenshotJob
@@ -299,10 +301,11 @@ func captureResolved(
 		}
 	}
 	if len(jobs) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	shots := make(map[string][]byte, len(jobs))
+	errs := make(map[string]string, len(jobs))
 	var mu sync.Mutex
 
 	for _, group := range groupJobs(jobs) {
@@ -337,6 +340,9 @@ func captureResolved(
 				buf, err := captureWithSchemeFallback(siteCtx, groupAllocCtx, j.url, waitIdle, postIdleSleep)
 				if err != nil {
 					log.Printf("screenshot failed for %s: %v", j.url, err)
+					mu.Lock()
+					errs[shotKey(j.url, j.ip)] = err.Error()
+					mu.Unlock()
 					return
 				}
 				mu.Lock()
@@ -347,16 +353,21 @@ func captureResolved(
 		wg.Wait()
 		groupAllocCancel()
 	}
-	return shots
+	return shots, errs
 }
 
 // assignScreenshots copies screenshot bytes into the first SiteResult for each
 // (URL, IP) pair; subsequent results for the same pair keep nil bytes and
-// display "(shared)" in the table.
-func assignScreenshots(results []pipeline.SiteResult, shots map[string][]byte) {
+// display "(shared)" in the table. Capture errors are copied onto every
+// SiteResult sharing that pair, since each one otherwise shows an unexplained
+// missing screenshot.
+func assignScreenshots(results []pipeline.SiteResult, shots map[string][]byte, errs map[string]string) {
 	assigned := make(map[string]bool)
 	for i, r := range results {
 		key := shotKey(r.URL, r.ResolvedIP)
+		if errMsg, ok := errs[key]; ok {
+			results[i].Error = errMsg
+		}
 		buf, ok := shots[key]
 		if !ok {
 			continue

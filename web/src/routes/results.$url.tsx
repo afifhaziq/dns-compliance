@@ -213,6 +213,7 @@ function HistorySkeletonRows() {
           <TableCell className="col-domain"><span className="skeleton" style={{ width: w, height: 14 }} /></TableCell>
           <TableCell className="col-status"><span className="skeleton" style={{ width: 100, height: 20, borderRadius: 4 }} /></TableCell>
           <TableCell className="col-ip" />
+          <TableCell className="col-error" />
           <TableCell className="col-evidence" />
           <TableCell className="col-last-scanned" />
         </TableRow>
@@ -642,6 +643,7 @@ function URLHistoryPage() {
                   <TableHead className="col-domain th-left" scope="col">DNS Server</TableHead>
                   <TableHead className="col-status th-left" scope="col">Status</TableHead>
                   <TableHead className="col-ip th-left" scope="col">Resolved IP</TableHead>
+                  <TableHead className="col-error th-left" scope="col">Error</TableHead>
                   <TableHead className="col-evidence th-left" scope="col">Evidence</TableHead>
                   <TableHead className="col-last-scanned th-left" scope="col">Scanned At</TableHead>
                 </TableRow>
@@ -651,7 +653,7 @@ function URLHistoryPage() {
                   <HistorySkeletonRows />
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7}>
+                    <TableCell colSpan={8}>
                       <div className="empty-state" style={{ padding: '3rem 0' }}>
                         <p className="empty-heading">No results match the current filters</p>
                       </div>
@@ -677,7 +679,7 @@ function URLHistoryPage() {
                             <ChevronRightIcon className={cn('scan-group-chevron', expanded && 'expanded')} />
                           </TableCell>
                           <TableCell className="col-scan-id">#{g.scanRunId}</TableCell>
-                          <TableCell colSpan={5}>
+                          <TableCell colSpan={6}>
                             <div className="scan-group-header">
                               <span className="scan-group-time">
                                 {g.scannedAt ? DATE_FMT.format(new Date(g.scannedAt)) : '—'}
@@ -706,6 +708,13 @@ function URLHistoryPage() {
                                   </span>
                                 )}
                               </div>
+                            </TableCell>
+                            <TableCell className="col-error">
+                              {r.error ? (
+                                <span className="col-error-text" title={r.error}>{r.error}</span>
+                              ) : (
+                                <span className="empty-cell">—</span>
+                              )}
                             </TableCell>
                             <TableCell className="col-evidence">
                               {r.screenshot_url ? (

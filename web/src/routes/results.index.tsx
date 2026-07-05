@@ -104,14 +104,6 @@ function SubRows({
           <TableCell className="col-expand" />
           <TableCell className="col-domain">
             <span className="dns-name">{r.dns_server.name}</span>
-            {r.error && (
-              <span
-                style={{ marginLeft: 8, fontSize: '0.75rem', color: 'var(--violation-text)' }}
-                title={r.error}
-              >
-                (error)
-              </span>
-            )}
           </TableCell>
           <TableCell className="col-status">
             <StatusDot compliant={r.compliant} />
@@ -130,6 +122,13 @@ function SubRows({
                 </span>
               )}
             </div>
+          </TableCell>
+          <TableCell className="col-error">
+            {r.error ? (
+              <span className="col-error-text" title={r.error}>{r.error}</span>
+            ) : (
+              <span className="empty-cell">—</span>
+            )}
           </TableCell>
           <TableCell className="col-evidence text-center">
             {r.screenshot_url ? (
@@ -231,6 +230,7 @@ function URLGroupRow({
           </div>
         </TableCell>
         <TableCell className="col-ip" />
+        <TableCell className="col-error" />
         <TableCell className="col-evidence text-center">
           <Link
             to="/results/$url"
@@ -281,6 +281,7 @@ function ResultsTableSkeleton() {
             <span className="skeleton" style={{ width: 100, height: 20, borderRadius: 4 }} />
           </TableCell>
           <TableCell className="col-ip" />
+          <TableCell className="col-error" />
           <TableCell className="col-evidence" />
           <TableCell className="col-last-scanned" />
         </TableRow>
@@ -472,6 +473,7 @@ function ResultsPage() {
                     <TableHead className="col-domain th-left" scope="col">Domain</TableHead>
                     <TableHead className="col-status th-left" scope= "col">Status</TableHead>
                     <TableHead className="col-ip th-left" scope="col">Resolved IP</TableHead>
+                    <TableHead className="col-error th-left" scope="col">Error</TableHead>
                     <TableHead className="col-evidence th-center" scope="col">Evidence</TableHead>
                     <TableHead className="col-last-scanned th-left" scope="col">Last scanned</TableHead>
                   </TableRow>
@@ -481,7 +483,7 @@ function ResultsPage() {
                     <ResultsTableSkeleton />
                   ) : filtered.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5}>
+                      <TableCell colSpan={7}>
                         <div className="empty-state" style={{ padding: '3rem 0' }}>
                           <p className="empty-heading">No results match the current filters</p>
                         </div>

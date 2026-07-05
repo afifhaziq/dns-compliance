@@ -594,6 +594,14 @@ html.dark {
   @apply w-1/4;
 }
 
+.col-error {
+  @apply w-1/5 text-muted-foreground text-[0.8rem];
+}
+
+.col-error-text {
+  @apply block max-w-[220px] truncate;
+}
+
 .col-last-scanned {
   @apply w-1/4 whitespace-nowrap text-muted-foreground text-[0.8rem];
 }
