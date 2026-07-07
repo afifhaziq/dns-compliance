@@ -7,7 +7,8 @@ import { useAuth } from '@/routes/__root'
 const BASE_NAV_ITEMS = [
   { to: '/' as const, label: 'Overview' },
   { to: '/results' as const, label: 'Results' },
-  { to: '/urls' as const, label: 'Domains' },
+  { to: '/domain' as const, label: 'Domain' },
+  { to: '/urls' as const, label: 'Watchlist' },
   { to: '/dns-servers' as const, label: 'DNS Servers' },
 ]
 

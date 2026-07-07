@@ -66,8 +66,9 @@ function ISPDetailPage() {
           <p className="section-title">Most Non-Compliant Domain</p>
           <div className="mb-4">
           <Link
-            to="/results/$url"
+            to="/domain/$url"
             params={{ url: stats.most_violated_domain }}
+            search={{ tab: 'overview' }}
             className="server-name"
           >
             {stats.most_violated_domain}
@@ -221,7 +222,7 @@ function ISPDetailPage() {
               {timing.slowest.map(t => (
                 <TableRow key={t.domain}>
                   <TableCell>
-                    <Link to="/results/$url" params={{ url: t.domain }} className="server-name">
+                    <Link to="/domain/$url" params={{ url: t.domain }} search={{ tab: 'overview' }} className="server-name">
                       {t.domain}
                     </Link>
                   </TableCell>

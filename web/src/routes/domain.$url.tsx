@@ -32,7 +32,12 @@ import {
   heatmapYearColorScale,
 } from '@/lib/heatmap-year'
 
-export const Route = createFileRoute('/results/$url')({ component: URLHistoryPage })
+export const Route = createFileRoute('/domain/$url')({
+  validateSearch: (search: Record<string, unknown>) => ({
+    tab: search.tab === 'history' ? 'history' as const : 'overview' as const,
+  }),
+  component: URLHistoryPage,
+})
 
 type StatusFilter = 'all' | 'violations' | 'compliant'
 
@@ -235,6 +240,7 @@ const heatmapTooltipDateFmt = new Intl.DateTimeFormat('en-US', {
 
 function URLHistoryPage() {
   const { url } = Route.useParams()
+  const { tab } = Route.useSearch()
   const hostname = useMemo(() => { try { return new URL(url).hostname } catch { return url } }, [url])
 
   const [results, setResults] = useState<ScanResult[]>([])
@@ -451,7 +457,7 @@ function URLHistoryPage() {
         )}
       </div>
 
-      <Tabs defaultValue="overview" variant="underline">
+      <Tabs defaultValue={tab} variant="underline">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>

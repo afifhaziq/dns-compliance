@@ -260,7 +260,7 @@ function ScanResultsPage() {
               {isNewlyViolating && (
                 <span className="label-violation" style={{ fontSize: '0.7rem', fontWeight: 600 }}>NEW</span>
               )}
-              <Link to="/results/$url" params={{ url }} className="text-xs" style={{ color: 'var(--ink)' }}>
+              <Link to="/domain/$url" params={{ url }} search={{ tab: 'overview' }} className="text-xs" style={{ color: 'var(--ink)' }}>
                 Full history →
               </Link>
             </div>
