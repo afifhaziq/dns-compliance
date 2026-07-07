@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/r-switch'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { FaviconSearch } from '@/components/unlumen-ui/favicon-search'
+import { faviconApiUrl } from '../api/domain'
 import {
   PreviewLinkCard,
   PreviewLinkCardTrigger,
@@ -283,7 +284,10 @@ function URLsPage() {
                     <TableCell className="col-domain">
                       <PreviewLinkCard href={u.url}>
                         <PreviewLinkCardTrigger>
-                          <span className="hostname">{u.url}</span>
+                          <span className="hostname flex items-center gap-2">
+                            <img src={faviconApiUrl(u.url)} alt="" width={16} height={16} className="shrink-0" onError={e => { e.currentTarget.style.visibility = 'hidden' }} />
+                            {u.url}
+                          </span>
                         </PreviewLinkCardTrigger>
                         <PreviewLinkCardPanel>
                           <PreviewLinkCardImage />

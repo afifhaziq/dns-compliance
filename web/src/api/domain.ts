@@ -23,3 +23,12 @@ export function fetchDomainInfo(url: string): Promise<DomainInfo> {
 export function refreshDomainInfo(url: string): Promise<DomainInfo> {
   return api.post<DomainInfo>(`/domain/${encodeURIComponent(url)}`, undefined)
 }
+
+// Server-cached favicon endpoint (GET /api/favicon/*url) — for use directly
+// as an <img src>, not via api.get, since the response is raw image bytes.
+// Fetches and caches the domain's favicon server-side on first request, so
+// the browser never has to contact the domain (or Google's favicon proxy)
+// directly — see db.Favicon's comment for why that matters for this app.
+export function faviconApiUrl(domain: string): string {
+  return `/api/favicon/${encodeURIComponent(domain)}`
+}

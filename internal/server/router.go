@@ -2,15 +2,17 @@ package server
 
 import (
 	"github.com/afif/dns-tracking/internal/db"
+	"github.com/afif/dns-tracking/internal/favicon"
 	"github.com/afif/dns-tracking/internal/whois"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-// whoisFetch may be nil to disable the lazy on-watchlist-add WHOIS fetch
-// (tests pass nil so they never hit the network).
-func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster *Broadcaster, cookieSecure bool, whoisFetch whois.Fetcher) {
-	h := NewHandlers(store, scanner, broadcaster, whoisFetch)
+// whoisFetch and faviconFetch may be nil to disable the lazy on-watchlist-add
+// WHOIS fetch / on-demand favicon fetch (tests pass nil so they never hit the
+// network).
+func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster *Broadcaster, cookieSecure bool, whoisFetch whois.Fetcher, faviconFetch favicon.Fetcher) {
+	h := NewHandlers(store, scanner, broadcaster, whoisFetch, faviconFetch)
 	ah := NewAuthHandlers(store, cookieSecure)
 
 	r.Use(middleware.Logger)
@@ -44,6 +46,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Get("/results/*", h.ResultsByURL)
 			r.Get("/heatmap/*", h.HeatmapByURL)
 			r.Get("/dns-records/*", h.DNSRecordsByURL)
+			r.Get("/favicon/*", h.FaviconByURL)
 			r.Get("/domain/*", h.DomainInfoByURL)
 			r.Post("/domain/*", h.RefreshDomainInfo)
 			r.Get("/isps/{isp}", h.ISPStats)

@@ -20,7 +20,7 @@ export interface FaviconSearchProps {
   inputClassName?: string;
 }
 
-function faviconUrl(domain: string, size: number) {
+export function faviconUrl(domain: string, size: number) {
   return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=${size}`;
 }
 

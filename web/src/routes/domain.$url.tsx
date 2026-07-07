@@ -5,7 +5,7 @@ import { Breadcrumbs } from '@/components/breadcrumbs'
 import { fetchDnsServers } from '../api/dns-servers'
 import { fetchDnsRecords } from '../api/dns-records'
 import type { DnsRecordSet, DnsRecordsResponse } from '../api/dns-records'
-import { fetchDomainInfo, refreshDomainInfo } from '../api/domain'
+import { fetchDomainInfo, refreshDomainInfo, faviconApiUrl } from '../api/domain'
 import type { DomainInfo } from '../api/domain'
 import { fetchHeatmapByUrlAndYear, fetchResultsByUrl } from '../api/results'
 import type { DailyComplianceStat, DNSServer, ScanResult } from '../api/types'
@@ -143,12 +143,16 @@ const DOMAIN_INFO_LABELS: ReadonlyArray<readonly [keyof DomainInfo, string]> = [
   ['last_fetched_at', 'Last refreshed'],
 ]
 
+type HostingInfo = { asn: number; org: string; netname: string }
+
 function DomainInfoPanel({
   data,
   loading,
+  hosting,
 }: {
   data: DomainInfo | null
   loading: boolean
+  hosting: HostingInfo | null
 }) {
   const hasInfo = data?.fetched
 
@@ -195,6 +199,23 @@ function DomainInfoPanel({
             <p className="dns-records-error">{data.fetch_error}</p>
           )}
         </>
+      )}
+
+      {hosting && (
+        <div className="dns-records-grid mt-3">
+          <div className="dns-record-block">
+            <span className="dns-record-type">Hosting Provider</span>
+            {hosting.org ? <span className="ip-value">{hosting.org}</span> : <span className="empty-cell">—</span>}
+          </div>
+          <div className="dns-record-block">
+            <span className="dns-record-type">ASN</span>
+            {hosting.asn > 0 ? <span className="ip-value">AS{hosting.asn}</span> : <span className="empty-cell">—</span>}
+          </div>
+          <div className="dns-record-block">
+            <span className="dns-record-type">NetName</span>
+            {hosting.netname ? <span className="ip-value">{hosting.netname}</span> : <span className="empty-cell">—</span>}
+          </div>
+        </div>
       )}
     </div>
   )
@@ -349,6 +370,16 @@ function URLHistoryPage() {
     [dnsServerList, heatmapDnsServers, ispFilter],
   )
 
+  // Most recently resolved scan result across all DNS servers — the domain's
+  // current hosting/ASN info, independent of the separate domain-WHOIS fetch.
+  const hosting = useMemo(() => {
+    const resolved = results
+      .filter(r => r.resolved_ip)
+      .sort((a, b) => b.scanned_at.localeCompare(a.scanned_at))[0]
+    if (!resolved) return null
+    return { asn: resolved.resolved_asn, org: resolved.resolved_org, netname: resolved.resolved_netname }
+  }, [results])
+
   const overallStatsByDay = useMemo(() => aggregateStatsByDay(heatmapStats), [heatmapStats])
   const overallPct = useMemo(() => compliancePercentFromStats(heatmapStats), [heatmapStats])
 
@@ -447,9 +478,14 @@ function URLHistoryPage() {
     <div className="mx-60 mb-10">
       <Breadcrumbs items={[{ label: 'Overview', to: '/' }, { label: 'Results', to: '/results' }, { label: hostname }]} />
 
-      <div className="page-header px-0">
-        <h1 className="page-title mb-2">{hostname}</h1>
-        <p className="page-subtitle">{url} · Last 7 days</p>
+      <div className="page-header">
+        <div>
+        <h1 className="page-title flex justify-end items-end gap-3">
+          <img src={faviconApiUrl(hostname)} alt="" width={16} height={16} className="shrink-0" onError={e => { e.currentTarget.style.visibility = 'hidden' }} />
+          {hostname}
+        </h1>
+        </div>
+        <div className="page-subtitle">{url} · Last 7 days</div>
         {!dnsRecordsLoading && dnsRecords?.resolver_ip && (
           <p className="dns-records-resolver ml-auto">
             Looked up via host DNS resolver {dnsRecords.resolver_ip}
@@ -619,7 +655,7 @@ function URLHistoryPage() {
             </button>
             <p className="section-title">Domain info</p>
           </div>
-          <DomainInfoPanel data={domainInfo} loading={domainInfoLoading} />
+          <DomainInfoPanel data={domainInfo} loading={domainInfoLoading} hosting={hosting} />
         </div>
       </div>
         </TabsContent>
