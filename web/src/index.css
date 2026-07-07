@@ -42,7 +42,7 @@
 
   /* Typography */
   --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 
   /* shadcn surface tokens — aliased onto the design tokens above so every
      surface in the app (including third-party primitives) reads from the
@@ -127,8 +127,7 @@
   /* Named easing for the "snappy" UI motion curve → ease-snappy */
   --ease-snappy: cubic-bezier(0.16, 1, 0.3, 1);
 
-  /* Looping accents → animate-leaf-pulse, animate-banner-pulse, animate-shimmer-sweep, animate-spin-fast */
-  --animate-leaf-pulse: pulse-soft 1.6s ease-in-out infinite;
+  /* Looping accents → animate-banner-pulse, animate-shimmer-sweep, animate-spin-fast */
   --animate-banner-pulse: pulse-soft 1.4s ease-in-out infinite;
   --animate-shimmer-sweep: shimmer 1.4s ease-in-out infinite;
   --animate-spin-fast: spin 0.7s linear infinite;
@@ -309,6 +308,18 @@ html.dark {
   }
 }
 
+@keyframes brand-mark-breathe {
+
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+
+  50% {
+    transform: scaleY(1.3);
+  }
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -399,8 +410,9 @@ html.dark {
   @apply scale-[1.08];
 }
 
-.brand-mark-leaf {
-  @apply animate-leaf-pulse origin-center;
+.brand-mark-watch {
+  transform-origin: 12px 16px;
+  animation: brand-mark-breathe 3.2s ease-in-out infinite;
 }
 
 .nav-link {
@@ -494,7 +506,7 @@ html.dark {
 /* ─── Compliance Heatmap (per-URL history) ─────────────────────────────── */
 
 .heatmap-year-nav {
-  @apply flex items-center justify-center gap-3 pb-4;
+  @apply flex items-center justify-center gap-3;
 }
 
 .heatmap-year-nav-btn {
@@ -513,11 +525,15 @@ html.dark {
 }
 
 .heatmap-server-header {
-  @apply flex items-center justify-between gap-3;
+  @apply flex items-center justify-between;
 }
 
 .heatmap-compliance-badge {
-  @apply text-[13px] font-medium text-stone-muted [font-variant-numeric:tabular-nums];
+  @apply text-[13px] font-medium text-stone-muted whitespace-nowrap shrink-0 [font-variant-numeric:tabular-nums];
+}
+
+.heatmap-legend-row {
+  @apply flex items-center justify-between;
 }
 
 /* ─── Results Table ──────────────────────────────────────────────────────── */
@@ -538,6 +554,10 @@ html.dark {
   @apply w-10;
 }
 
+.col-scan-id {
+  @apply w-20 whitespace-nowrap text-muted-foreground text-[0.8rem] [font-variant-numeric:tabular-nums];
+}
+
 .col-domain {
   @apply min-w-[250px];
 }
@@ -551,7 +571,15 @@ html.dark {
 }
 
 .col-evidence {
-  @apply w-1/4 text-center;
+  @apply w-1/4;
+}
+
+.col-error {
+  @apply w-1/5 text-muted-foreground text-[0.8rem];
+}
+
+.col-error-text {
+  @apply block max-w-[220px] truncate;
 }
 
 .col-last-scanned {
@@ -878,6 +906,14 @@ th.th-left {
   @apply text-sm text-stone-muted mt-1;
 }
 
+.domain-info-panel .dns-record-block {
+  @apply items-end text-right;
+}
+
+.domain-info-panel .dns-records-error {
+  @apply text-right;
+}
+
 .dns-records-resolver {
   @apply text-[12px] text-stone-muted font-mono whitespace-nowrap;
 }
@@ -983,6 +1019,27 @@ th.th-left {
 
 .back-link-icon {
   @apply w-3.5 h-3.5;
+}
+
+.breadcrumbs {
+  @apply flex items-center text-[13px] font-medium text-stone-muted mb-3;
+}
+
+.breadcrumb-item {
+  @apply inline-flex items-center gap-1;
+}
+
+.breadcrumb-link {
+  @apply no-underline text-stone-muted transition-colors duration-150 ease-snappy hover:text-foreground
+    focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink focus-visible:outline-offset-2;
+}
+
+.breadcrumb-current {
+  @apply text-foreground;
+}
+
+.breadcrumb-sep {
+  @apply w-3.5 h-3.5 mx-1 text-stone-muted/60;
 }
 
 .btn-row-history {

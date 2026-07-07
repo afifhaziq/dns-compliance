@@ -7,6 +7,9 @@ export type DomainInfo = {
   fetched: boolean
   url_id?: number
   registrar?: string
+  registrar_url?: string
+  registrar_abuse_email?: string
+  registrar_abuse_phone?: string
   domain_created?: string | null
   domain_expires?: string | null
   last_fetched_at?: string
@@ -15,4 +18,8 @@ export type DomainInfo = {
 
 export function fetchDomainInfo(url: string): Promise<DomainInfo> {
   return api.get<DomainInfo>(`/domain/${encodeURIComponent(url)}`)
+}
+
+export function refreshDomainInfo(url: string): Promise<DomainInfo> {
+  return api.post<DomainInfo>(`/domain/${encodeURIComponent(url)}`, undefined)
 }

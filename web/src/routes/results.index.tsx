@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { HistoryIcon, Camera, Image as ImageIcon } from 'lucide-react'
+import { HistoryIcon, Camera, Image as ImageIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { fetchResults, groupResults, lastScanTime } from '../api/results'
 import { fetchScanStatus, isScanning, triggerScreenshot } from '../api/scan'
 import type { GroupedResult, ScanResult } from '../api/types'
@@ -22,6 +22,8 @@ export const Route = createFileRoute('/results/')({ component: ResultsPage })
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
 type StatusFilter = 'all' | 'violations' | 'compliant'
+
+const PAGE_SIZE = 25
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
 
@@ -102,14 +104,6 @@ function SubRows({
           <TableCell className="col-expand" />
           <TableCell className="col-domain">
             <span className="dns-name">{r.dns_server.name}</span>
-            {r.error && (
-              <span
-                style={{ marginLeft: 8, fontSize: '0.75rem', color: 'var(--violation-text)' }}
-                title={r.error}
-              >
-                (error)
-              </span>
-            )}
           </TableCell>
           <TableCell className="col-status">
             <StatusDot compliant={r.compliant} />
@@ -127,9 +121,17 @@ function SubRows({
                   AS{r.resolved_asn}{r.resolved_org && ` — ${r.resolved_org}`}
                 </span>
               )}
+              {r.resolved_netname && <span className="ip-meta-secondary">{r.resolved_netname}</span>}
             </div>
           </TableCell>
-          <TableCell className="col-evidence">
+          <TableCell className="col-error">
+            {r.error ? (
+              <span className="col-error-text" title={r.error}>{r.error}</span>
+            ) : (
+              <span className="empty-cell">—</span>
+            )}
+          </TableCell>
+          <TableCell className="col-evidence text-center">
             {r.screenshot_url ? (
               <a
                 href={r.screenshot_url}
@@ -229,7 +231,8 @@ function URLGroupRow({
           </div>
         </TableCell>
         <TableCell className="col-ip" />
-        <TableCell className="col-evidence">
+        <TableCell className="col-error" />
+        <TableCell className="col-evidence text-center">
           <Link
             to="/results/$url"
             params={{ url }}
@@ -279,6 +282,7 @@ function ResultsTableSkeleton() {
             <span className="skeleton" style={{ width: 100, height: 20, borderRadius: 4 }} />
           </TableCell>
           <TableCell className="col-ip" />
+          <TableCell className="col-error" />
           <TableCell className="col-evidence" />
           <TableCell className="col-last-scanned" />
         </TableRow>
@@ -299,6 +303,7 @@ function ResultsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [dnsFilter, setDnsFilter] = useState<string>('all')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [page, setPage] = useState(1)
 
   const [pendingScreenshotId, setPendingScreenshotId] = useState<number | null>(null)
   const [screenshotErrors, setScreenshotErrors] = useState<Record<number, string>>({})
@@ -390,6 +395,15 @@ function ResultsPage() {
       .filter(Boolean) as GroupedResult[]
   }, [groups, statusFilter, dnsFilter])
 
+  useEffect(() => { setPage(1) }, [statusFilter, dnsFilter])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+  const paginated = useMemo(
+    () => filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filtered, currentPage],
+  )
+
   return (
     <div className="mx-20 mt-10">
       <div className="page-header">
@@ -458,9 +472,10 @@ function ResultsPage() {
                   <TableRow>
                     <TableHead className="col-expand" scope="col" />
                     <TableHead className="col-domain th-left" scope="col">Domain</TableHead>
-                    <TableHead className="col-status th-left" scope="col">Status</TableHead>
+                    <TableHead className="col-status th-left" scope= "col">Status</TableHead>
                     <TableHead className="col-ip th-left" scope="col">Resolved IP</TableHead>
-                    <TableHead className="col-evidence th-left" scope="col">Evidence</TableHead>
+                    <TableHead className="col-error th-left" scope="col">Error</TableHead>
+                    <TableHead className="col-evidence th-center" scope="col">Evidence</TableHead>
                     <TableHead className="col-last-scanned th-left" scope="col">Last scanned</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -469,14 +484,14 @@ function ResultsPage() {
                     <ResultsTableSkeleton />
                   ) : filtered.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5}>
+                      <TableCell colSpan={7}>
                         <div className="empty-state" style={{ padding: '3rem 0' }}>
                           <p className="empty-heading">No results match the current filters</p>
                         </div>
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filtered.map(group => (
+                    paginated.map(group => (
                       <URLGroupRow
                         key={group.url}
                         group={group}
@@ -491,6 +506,29 @@ function ResultsPage() {
                   )}
                 </TableBody>
               </Table>
+            )}
+            {!loading && totalPages > 1 && (
+              <div className="pagination">
+                <span className="pagination-label">Page {currentPage} of {totalPages}</span>
+                <button
+                  type="button"
+                  className="pagination-btn"
+                  onClick={() => setPage(p => p - 1)}
+                  disabled={currentPage <= 1}
+                  aria-label="Previous page"
+                >
+                  <ChevronLeftIcon className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  className="pagination-btn"
+                  onClick={() => setPage(p => p + 1)}
+                  disabled={currentPage >= totalPages}
+                  aria-label="Next page"
+                >
+                  <ChevronRightIcon className="w-4 h-4" />
+                </button>
+              </div>
             )}
           </div>
         </div>

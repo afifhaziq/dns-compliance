@@ -1,4 +1,4 @@
-# DNS Compliance Checker
+# Citadel
 
 Verifies ISP takedown compliance by checking whether blocked websites are still accessible via DNS. A site that **fails** DNS resolution is considered **compliant** (the ISP has blocked it); a site that **resolves** is a **violation**.
 

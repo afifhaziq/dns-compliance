@@ -129,6 +129,7 @@ func fetchAndStoreWhois(store db.Store, fetch whois.Fetcher, urlID uint, domain 
 		w.FetchError = err.Error()
 	} else {
 		w.Registrar, w.DomainCreated, w.DomainExpires = res.Registrar, res.DomainCreated, res.DomainExpires
+		w.RegistrarURL, w.RegistrarAbuseEmail, w.RegistrarAbusePhone = res.RegistrarURL, res.RegistrarAbuseEmail, res.RegistrarAbusePhone
 	}
 
 	dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -469,6 +470,44 @@ func (h *Handlers) DomainInfoByURL(w http.ResponseWriter, r *http.Request) {
 	}
 	if info == nil {
 		writeJSON(w, http.StatusOK, domainInfoResponse{Fetched: false})
+		return
+	}
+	writeJSON(w, http.StatusOK, domainInfoResponse{Fetched: true, DomainWhois: info})
+}
+
+// RefreshDomainInfo triggers an on-demand RDAP re-fetch for a domain,
+// bypassing the periodic refresher's staleness check. Scoped like
+// DomainInfoByURL; blocks until the fetch completes so the response
+// reflects the fresh result (or fetch error) immediately.
+func (h *Handlers) RefreshDomainInfo(w http.ResponseWriter, r *http.Request) {
+	urlValue, err := url.PathUnescape(chi.URLParam(r, "*"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid url")
+		return
+	}
+	if !requireDomainOwnership(h, w, r, urlValue) {
+		return
+	}
+	if h.whoisFetch == nil {
+		writeError(w, http.StatusServiceUnavailable, "whois lookups are disabled")
+		return
+	}
+
+	u, err := h.store.GetURLByValue(r.Context(), urlValue)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if u == nil {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	fetchAndStoreWhois(h.store, h.whoisFetch, u.ID, u.URL)
+
+	info, err := h.store.GetDomainWhois(r.Context(), urlValue)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, domainInfoResponse{Fetched: true, DomainWhois: info})

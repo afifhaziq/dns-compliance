@@ -842,11 +842,9 @@ func (s *postgresStore) UpsertDomainWhois(ctx context.Context, w DomainWhois) er
 		Create(&w).Error
 }
 
-// GetDomainWhois looks up the cached RDAP row for urlValue. Returns
-// nil, nil (not an error) both when the URL is unknown and when it's known
-// but has never been fetched — callers can't distinguish the two, which
-// matches this being a read-only cache lookup, not an existence check.
-func (s *postgresStore) GetDomainWhois(ctx context.Context, urlValue string) (*DomainWhois, error) {
+// GetURLByValue looks up a URL row by normalized value. Returns nil, nil
+// (not an error) if urlValue doesn't match any known URL.
+func (s *postgresStore) GetURLByValue(ctx context.Context, urlValue string) (*URL, error) {
 	normalized, err := urlnorm.Normalize(urlValue)
 	if err != nil {
 		return nil, err
@@ -857,6 +855,21 @@ func (s *postgresStore) GetDomainWhois(ctx context.Context, urlValue string) (*D
 			return nil, nil
 		}
 		return nil, err
+	}
+	return &u, nil
+}
+
+// GetDomainWhois looks up the cached RDAP row for urlValue. Returns
+// nil, nil (not an error) both when the URL is unknown and when it's known
+// but has never been fetched — callers can't distinguish the two, which
+// matches this being a read-only cache lookup, not an existence check.
+func (s *postgresStore) GetDomainWhois(ctx context.Context, urlValue string) (*DomainWhois, error) {
+	u, err := s.GetURLByValue(ctx, urlValue)
+	if err != nil {
+		return nil, err
+	}
+	if u == nil {
+		return nil, nil
 	}
 	var w DomainWhois
 	err = s.db.WithContext(ctx).Where("url_id = ?", u.ID).First(&w).Error

@@ -18,6 +18,7 @@ export type ScanResult = {
   resolved_ipv6: string
   resolved_asn: number
   resolved_org: string
+  resolved_netname: string
   screenshot_url: string
   error: string
   latency_ms: number

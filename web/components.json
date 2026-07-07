@@ -26,6 +26,7 @@
     "@animate-ui": "https://animate-ui.com/r/{name}.json",
     "@bklit": "https://ui.bklit.com/r/{name}.json",
     "@aicanvas": "https://aicanvas.me/r/{name}.json",
-    "@iconiq": "https://iconiqui.com/r/{name}.json"
+    "@iconiq": "https://iconiqui.com/r/{name}.json",
+    "@beui": "https://beui.dev/r/{name}.json"
   }
 }
