@@ -129,6 +129,7 @@ func fetchAndStoreWhois(store db.Store, fetch whois.Fetcher, urlID uint, domain 
 		w.FetchError = err.Error()
 	} else {
 		w.Registrar, w.DomainCreated, w.DomainExpires = res.Registrar, res.DomainCreated, res.DomainExpires
+		w.RegistrarURL, w.RegistrarAbuseEmail, w.RegistrarAbusePhone = res.RegistrarURL, res.RegistrarAbuseEmail, res.RegistrarAbusePhone
 	}
 
 	dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)

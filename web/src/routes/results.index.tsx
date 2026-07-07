@@ -121,6 +121,7 @@ function SubRows({
                   AS{r.resolved_asn}{r.resolved_org && ` — ${r.resolved_org}`}
                 </span>
               )}
+              {r.resolved_netname && <span className="ip-meta-secondary">{r.resolved_netname}</span>}
             </div>
           </TableCell>
           <TableCell className="col-error">

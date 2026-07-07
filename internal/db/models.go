@@ -89,22 +89,23 @@ type ScanRun struct {
 }
 
 type ScanResult struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	ScanRunID     uint      `gorm:"not null;index" json:"scan_run_id"`
-	URLID         uint      `gorm:"not null;index" json:"url_id"`
-	URLRef        URL       `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
-	URLValue      string    `gorm:"not null" json:"url"`
-	DNSServerID   uint      `gorm:"not null" json:"dns_server_id"`
-	DNSServer     DNSServer `gorm:"foreignKey:DNSServerID" json:"dns_server"`
-	Compliant     bool      `gorm:"not null" json:"compliant"`
-	ResolvedIP    string    `json:"resolved_ip"`
-	ResolvedIPv6  string    `json:"resolved_ipv6"`
-	ResolvedASN   uint      `json:"resolved_asn"`
-	ResolvedOrg   string    `json:"resolved_org"`
-	ScreenshotURL string    `json:"screenshot_url"`
-	Error         string    `json:"error"`
-	LatencyMs     int64     `gorm:"default:0" json:"latency_ms"`
-	ScannedAt     time.Time `json:"scanned_at"`
+	ID              uint      `gorm:"primaryKey" json:"id"`
+	ScanRunID       uint      `gorm:"not null;index" json:"scan_run_id"`
+	URLID           uint      `gorm:"not null;index" json:"url_id"`
+	URLRef          URL       `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
+	URLValue        string    `gorm:"not null" json:"url"`
+	DNSServerID     uint      `gorm:"not null" json:"dns_server_id"`
+	DNSServer       DNSServer `gorm:"foreignKey:DNSServerID" json:"dns_server"`
+	Compliant       bool      `gorm:"not null" json:"compliant"`
+	ResolvedIP      string    `json:"resolved_ip"`
+	ResolvedIPv6    string    `json:"resolved_ipv6"`
+	ResolvedASN     uint      `json:"resolved_asn"`
+	ResolvedOrg     string    `json:"resolved_org"`
+	ResolvedNetName string    `json:"resolved_netname"`
+	ScreenshotURL   string    `json:"screenshot_url"`
+	Error           string    `json:"error"`
+	LatencyMs       int64     `gorm:"default:0" json:"latency_ms"`
+	ScannedAt       time.Time `json:"scanned_at"`
 }
 
 // DomainWhois caches RDAP registration metadata for a domain (not a scan —
@@ -113,12 +114,15 @@ type ScanResult struct {
 // holds the last fetch failure (e.g. no RDAP coverage for the TLD); the
 // stale registrar/date fields, if any, are left in place rather than wiped.
 type DomainWhois struct {
-	URLID         uint       `gorm:"primaryKey;autoIncrement:false" json:"url_id"`
-	Registrar     string     `json:"registrar"`
-	DomainCreated *time.Time `json:"domain_created,omitempty"`
-	DomainExpires *time.Time `json:"domain_expires,omitempty"`
-	LastFetchedAt time.Time  `gorm:"index" json:"last_fetched_at"`
-	FetchError    string     `json:"fetch_error,omitempty"`
+	URLID               uint       `gorm:"primaryKey;autoIncrement:false" json:"url_id"`
+	Registrar           string     `json:"registrar"`
+	RegistrarURL        string     `json:"registrar_url"`
+	RegistrarAbuseEmail string     `json:"registrar_abuse_email"`
+	RegistrarAbusePhone string     `json:"registrar_abuse_phone"`
+	DomainCreated       *time.Time `json:"domain_created,omitempty"`
+	DomainExpires       *time.Time `json:"domain_expires,omitempty"`
+	LastFetchedAt       time.Time  `gorm:"index" json:"last_fetched_at"`
+	FetchError          string     `json:"fetch_error,omitempty"`
 }
 
 // IPInfo caches ASN + network-operator lookups from ipinfo.io, keyed by
@@ -130,6 +134,7 @@ type IPInfo struct {
 	IP         string    `gorm:"primaryKey" json:"ip"`
 	ASN        uint      `json:"asn"`
 	Org        string    `json:"org"`
+	NetName    string    `json:"netname"`
 	FetchedAt  time.Time `json:"fetched_at"`
 	FetchError string    `json:"fetch_error,omitempty"`
 }

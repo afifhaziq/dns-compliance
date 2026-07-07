@@ -24,16 +24,16 @@ import (
 )
 
 func main() {
-	httpAddr     := flag.String("http-addr", ":8080", "HTTP listen address")
-	grpcAddr     := flag.String("grpc-addr", ":50051", "gRPC listen address")
-	dbURL        := flag.String("db-url", envOr("DB_URL", "host=localhost user=postgres password=postgres dbname=dns_compliance port=5432 sslmode=disable"), "PostgreSQL DSN")
-	minioAddr    := flag.String("minio-endpoint", envOr("MINIO_ENDPOINT", "localhost:9000"), "MinIO endpoint (host:port)")
-	minioKey     := flag.String("minio-access-key", envOr("MINIO_ACCESS_KEY", "minioadmin"), "MinIO access key")
-	minioSecret  := flag.String("minio-secret-key", envOr("MINIO_SECRET_KEY", "minioadmin"), "MinIO secret key")
-	minioBucket  := flag.String("minio-bucket", envOr("MINIO_BUCKET", "screenshots"), "MinIO bucket name")
-	crawlerPath  := flag.String("crawler-path", envOr("CRAWLER_PATH", "./crawler"), "path to crawler binary")
-	seedFile     := flag.String("seed-dns", "dns-server.yaml", "YAML file to seed DNS servers on first run; empty to skip")
-	intervalMin  := flag.Int("interval", 60, "scan interval in minutes")
+	httpAddr := flag.String("http-addr", ":8080", "HTTP listen address")
+	grpcAddr := flag.String("grpc-addr", ":50051", "gRPC listen address")
+	dbURL := flag.String("db-url", envOr("DB_URL", "host=localhost user=postgres password=postgres dbname=dns_compliance port=5432 sslmode=disable"), "PostgreSQL DSN")
+	minioAddr := flag.String("minio-endpoint", envOr("MINIO_ENDPOINT", "localhost:9000"), "MinIO endpoint (host:port)")
+	minioKey := flag.String("minio-access-key", envOr("MINIO_ACCESS_KEY", "minioadmin"), "MinIO access key")
+	minioSecret := flag.String("minio-secret-key", envOr("MINIO_SECRET_KEY", "minioadmin"), "MinIO secret key")
+	minioBucket := flag.String("minio-bucket", envOr("MINIO_BUCKET", "screenshots"), "MinIO bucket name")
+	crawlerPath := flag.String("crawler-path", envOr("CRAWLER_PATH", "./crawler"), "path to crawler binary")
+	seedFile := flag.String("seed-dns", "dns-server.yaml", "YAML file to seed DNS servers on first run; empty to skip")
+	intervalMin := flag.Int("interval", 60, "scan interval in minutes")
 	cookieSecure := flag.Bool("cookie-secure", envOr("COOKIE_SECURE", "true") == "true", "mark the session cookie Secure (disable for local plain-HTTP dev)")
 	bootstrapAdminUser := flag.String("bootstrap-admin-username", envOr("BOOTSTRAP_ADMIN_USERNAME", ""), "username for the bootstrap admin, created only if the users table is empty")
 	bootstrapAdminPass := flag.String("bootstrap-admin-password", envOr("BOOTSTRAP_ADMIN_PASSWORD", ""), "password for the bootstrap admin, created only if the users table is empty")
@@ -111,7 +111,7 @@ func main() {
 		log.Fatalf("grpc listen: %v", err)
 	}
 	grpcSrv := grpc.NewServer()
-	pb.RegisterComplianceServiceServer(grpcSrv, server.NewGRPCServer(store, stor, broadcaster, ipFetch))
+	pb.RegisterComplianceServiceServer(grpcSrv, server.NewGRPCServer(store, stor, broadcaster, ipFetch, whois.FetchIP))
 	go func() {
 		log.Printf("gRPC listening on %s", *grpcAddr)
 		if err := grpcSrv.Serve(grpcLis); err != nil {

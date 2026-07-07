@@ -23,6 +23,7 @@ type mockStore struct {
 	insertedResults []db.ScanResult
 	activeScanRun   *db.ScanRun
 	dnsServers      []db.DNSServer
+	ipInfo          *db.IPInfo // returned by GetIPInfo, nil = cache miss
 }
 
 func (m *mockStore) InsertResult(_ context.Context, r db.ScanResult) error {
@@ -45,8 +46,8 @@ func (m *mockStore) ResultsByURL(_ context.Context, _ string, _, _ time.Time) ([
 	return m.insertedResults, nil
 }
 func (m *mockStore) UpdateScreenshot(_ context.Context, _ uint, _ string) error { return nil }
-func (m *mockStore) GetIPInfo(_ context.Context, _ string) (*db.IPInfo, error) { return nil, nil }
-func (m *mockStore) UpsertIPInfo(_ context.Context, _ db.IPInfo) error         { return nil }
+func (m *mockStore) GetIPInfo(_ context.Context, _ string) (*db.IPInfo, error)  { return m.ipInfo, nil }
+func (m *mockStore) UpsertIPInfo(_ context.Context, _ db.IPInfo) error          { return nil }
 
 // mockStorage satisfies storage.Storage.
 type mockStorage struct{ uploadedCount int }
@@ -62,7 +63,7 @@ func newTestGRPCClient(t *testing.T, store db.Store, stor storage.Storage) pb.Co
 	t.Helper()
 	lis := bufconn.Listen(bufSize)
 	grpcSrv := grpc.NewServer()
-	pb.RegisterComplianceServiceServer(grpcSrv, server.NewGRPCServer(store, stor, nil, nil))
+	pb.RegisterComplianceServiceServer(grpcSrv, server.NewGRPCServer(store, stor, nil, nil, nil))
 	go grpcSrv.Serve(lis) //nolint:errcheck
 	t.Cleanup(grpcSrv.Stop)
 
@@ -86,11 +87,11 @@ func TestSubmitStoresResults(t *testing.T) {
 	_, err := client.Submit(context.Background(), &pb.ComplianceReport{
 		Results: []*pb.SiteResult{
 			{
-				Url:       "https://example.com",
-				Compliant: false,
+				Url:        "https://example.com",
+				Compliant:  false,
 				ResolvedIp: "1.2.3.4",
-				DnsServer: "Google",
-				Timestamp: time.Now().Unix(),
+				DnsServer:  "Google",
+				Timestamp:  time.Now().Unix(),
 			},
 		},
 	})
@@ -124,6 +125,35 @@ func TestSubmitUploadsScreenshot(t *testing.T) {
 	}
 	if stor.uploadedCount != 1 {
 		t.Fatalf("expected 1 upload, got %d", stor.uploadedCount)
+	}
+}
+
+func TestSubmitReadsNetNameFromCache(t *testing.T) {
+	store := &mockStore{
+		activeScanRun: &db.ScanRun{ID: 1, Status: "running"},
+		ipInfo:        &db.IPInfo{IP: "1.2.3.4", ASN: 15169, Org: "Google LLC", NetName: "GOOGLE"},
+	}
+	client := newTestGRPCClient(t, store, &mockStorage{})
+
+	_, err := client.Submit(context.Background(), &pb.ComplianceReport{
+		Results: []*pb.SiteResult{
+			{
+				Url:        "https://example.com",
+				Compliant:  false,
+				ResolvedIp: "1.2.3.4",
+				DnsServer:  "Google",
+				Timestamp:  time.Now().Unix(),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	if len(store.insertedResults) != 1 {
+		t.Fatalf("expected 1 inserted result, got %d", len(store.insertedResults))
+	}
+	if got := store.insertedResults[0].ResolvedNetName; got != "GOOGLE" {
+		t.Fatalf("ResolvedNetName = %q, want %q", got, "GOOGLE")
 	}
 }
 

@@ -14,6 +14,10 @@ func TestParseDomain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewVCard: %v", err)
 	}
+	abuseVCard, err := rdap.NewVCard([]byte(`["vcard",[["version",{},"text","4.0"],["email",{},"text","abuse@registrar.example"],["tel",{},"text","+1.5551234567"]]]`))
+	if err != nil {
+		t.Fatalf("NewVCard (abuse): %v", err)
+	}
 
 	d := &rdap.Domain{
 		Events: []rdap.Event{
@@ -24,7 +28,14 @@ func TestParseDomain(t *testing.T) {
 		},
 		Entities: []rdap.Entity{
 			{Roles: []string{"administrative"}},
-			{Roles: []string{"registrar"}, VCard: vcard},
+			{
+				Roles: []string{"registrar"},
+				VCard: vcard,
+				Links: []rdap.Link{{Rel: "about", Href: "https://registrar.example/"}},
+				Entities: []rdap.Entity{
+					{Roles: []string{"abuse"}, VCard: abuseVCard},
+				},
+			},
 		},
 	}
 
@@ -38,5 +49,73 @@ func TestParseDomain(t *testing.T) {
 	}
 	if res.DomainExpires == nil || res.DomainExpires.Year() != 2030 {
 		t.Errorf("DomainExpires = %v, want 2030", res.DomainExpires)
+	}
+	if res.RegistrarURL != "https://registrar.example/" {
+		t.Errorf("RegistrarURL = %q, want %q", res.RegistrarURL, "https://registrar.example/")
+	}
+	if res.RegistrarAbuseEmail != "abuse@registrar.example" {
+		t.Errorf("RegistrarAbuseEmail = %q, want %q", res.RegistrarAbuseEmail, "abuse@registrar.example")
+	}
+	if res.RegistrarAbusePhone != "+1.5551234567" {
+		t.Errorf("RegistrarAbusePhone = %q, want %q", res.RegistrarAbusePhone, "+1.5551234567")
+	}
+}
+
+// TestParseDomainStripsURISchemes confirms the tel:/mailto: scheme prefix is
+// stripped — real RDAP registrars (observed live against a .lu domain) encode
+// these as "uri"-typed jCard values rather than the plain "text" type the
+// spec's example uses, so parseDomain must handle both.
+func TestParseDomainStripsURISchemes(t *testing.T) {
+	abuseVCard, err := rdap.NewVCard([]byte(`["vcard",[["version",{},"text","4.0"],["email",{},"uri","mailto:abuse@registrar.example"],["tel",{},"uri","tel:+352.27220150"]]]`))
+	if err != nil {
+		t.Fatalf("NewVCard (abuse): %v", err)
+	}
+
+	d := &rdap.Domain{
+		Entities: []rdap.Entity{
+			{
+				Roles: []string{"registrar"},
+				Entities: []rdap.Entity{
+					{Roles: []string{"abuse"}, VCard: abuseVCard},
+				},
+			},
+		},
+	}
+
+	res := parseDomain(d)
+
+	if res.RegistrarAbuseEmail != "abuse@registrar.example" {
+		t.Errorf("RegistrarAbuseEmail = %q, want %q", res.RegistrarAbuseEmail, "abuse@registrar.example")
+	}
+	if res.RegistrarAbusePhone != "+352.27220150" {
+		t.Errorf("RegistrarAbusePhone = %q, want %q", res.RegistrarAbusePhone, "+352.27220150")
+	}
+}
+
+// TestParseDomainNoAbuseOrLinks confirms the 3 new fields stay empty when
+// the registrar entity has no links/nested abuse entity — the common case
+// for registries that don't publish this data via RDAP.
+func TestParseDomainNoAbuseOrLinks(t *testing.T) {
+	vcard, err := rdap.NewVCard([]byte(`["vcard",[["version",{},"text","4.0"],["fn",{},"text","Example Registrar Inc."]]]`))
+	if err != nil {
+		t.Fatalf("NewVCard: %v", err)
+	}
+
+	d := &rdap.Domain{
+		Entities: []rdap.Entity{
+			{Roles: []string{"registrar"}, VCard: vcard},
+		},
+	}
+
+	res := parseDomain(d)
+
+	if res.RegistrarURL != "" {
+		t.Errorf("RegistrarURL = %q, want empty", res.RegistrarURL)
+	}
+	if res.RegistrarAbuseEmail != "" {
+		t.Errorf("RegistrarAbuseEmail = %q, want empty", res.RegistrarAbuseEmail)
+	}
+	if res.RegistrarAbusePhone != "" {
+		t.Errorf("RegistrarAbusePhone = %q, want empty", res.RegistrarAbusePhone)
 	}
 }

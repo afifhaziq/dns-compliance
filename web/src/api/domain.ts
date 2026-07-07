@@ -7,6 +7,9 @@ export type DomainInfo = {
   fetched: boolean
   url_id?: number
   registrar?: string
+  registrar_url?: string
+  registrar_abuse_email?: string
+  registrar_abuse_phone?: string
   domain_created?: string | null
   domain_expires?: string | null
   last_fetched_at?: string

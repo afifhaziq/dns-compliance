@@ -130,6 +130,9 @@ function DnsRecordsPanel({
 
 const DOMAIN_INFO_LABELS: ReadonlyArray<readonly [keyof DomainInfo, string]> = [
   ['registrar', 'Registrar'],
+  ['registrar_url', 'Registrar URL'],
+  ['registrar_abuse_email', 'Registrar Abuse Email'],
+  ['registrar_abuse_phone', 'Registrar Abuse Phone'],
   ['domain_created', 'Created'],
   ['domain_expires', 'Expires'],
   ['last_fetched_at', 'Last refreshed'],
@@ -732,6 +735,7 @@ function URLHistoryPage() {
                                     AS{r.resolved_asn}{r.resolved_org && ` — ${r.resolved_org}`}
                                   </span>
                                 )}
+                                {r.resolved_netname && <span className="ip-meta-secondary">{r.resolved_netname}</span>}
                               </div>
                             </TableCell>
                             <TableCell className="col-error">
