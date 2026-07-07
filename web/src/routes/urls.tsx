@@ -15,12 +15,48 @@ import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/r-switch'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { FaviconSearch } from '@/components/unlumen-ui/favicon-search'
 import {
   PreviewLinkCard,
   PreviewLinkCardTrigger,
   PreviewLinkCardPanel,
   PreviewLinkCardImage,
 } from '@/components/animate-ui/components/base/preview-link-card'
+
+/* ─── Quick Add (single domain, favicon preview) ─────────────────────────── */
+
+function QuickAddFavicon({ onAdded }: { onAdded: () => void }) {
+  const [key, setKey] = useState(0) // bumped to reset FaviconSearch's internal input after a successful add
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const handleSearch = async (value: string) => {
+    setLoading(true)
+    setError(null)
+    try {
+      await createUrl(value)
+      onAdded()
+      setKey(k => k + 1)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add domain')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <FaviconSearch
+        key={key}
+        placeholder="Quick add a domain…"
+        className="w-72"
+        onSearch={value => handleSearch(value)}
+      />
+      {loading && <span className="text-xs text-stone-muted">Adding…</span>}
+      {error && <span className="form-error">{error}</span>}
+    </div>
+  )
+}
 
 export const Route = createFileRoute('/urls')({ component: URLsPage })
 
@@ -206,12 +242,12 @@ function URLsPage() {
       <div className="page-header">
         <h1 className="page-title mb-4">Domains</h1>
         <p className="page-subtitle">{!loading && `${urls.length} monitored`}</p>
-        <Button
-          style={{ marginLeft: 'auto' }}
-          onClick={() => setAddOpen(true)}
-        >
-          + Add Domain
-        </Button>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <QuickAddFavicon onAdded={load} />
+          <Button onClick={() => setAddOpen(true)}>
+            + Add Domain
+          </Button>
+        </div>
       </div>
 
       <div className="results-wrap">
