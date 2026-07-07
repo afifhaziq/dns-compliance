@@ -79,4 +79,8 @@ type Store interface {
 	// IP info — ASN/org cache keyed by resolved IP, fetched at most once per IP
 	GetIPInfo(ctx context.Context, ip string) (*IPInfo, error) // nil, nil if never fetched
 	UpsertIPInfo(ctx context.Context, info IPInfo) error
+
+	// Favicon cache — keyed by domain, fetched at most once per domain
+	GetFavicon(ctx context.Context, domain string) (*Favicon, error) // nil, nil if never fetched
+	UpsertFavicon(ctx context.Context, fav Favicon) error
 }

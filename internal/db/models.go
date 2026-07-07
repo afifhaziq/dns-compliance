@@ -139,6 +139,19 @@ type IPInfo struct {
 	FetchError string    `json:"fetch_error,omitempty"`
 }
 
+// Favicon caches a domain's icon so the browser never has to fetch it
+// directly — this app tracks domains under active enforcement, so a
+// client-side favicon request would reveal an analyst's presence to the
+// target's server logs. Fetched at most once per domain, ever (no periodic
+// refresh; favicons rarely change).
+type Favicon struct {
+	Domain      string    `gorm:"primaryKey" json:"domain"`
+	ContentType string    `json:"content_type"`
+	Data        []byte    `json:"-"`
+	FetchedAt   time.Time `json:"fetched_at"`
+	FetchError  string    `json:"fetch_error,omitempty"`
+}
+
 type ProgressEntry struct {
 	DNSServerID uint   `json:"dns_server_id"`
 	Name        string `json:"name"`

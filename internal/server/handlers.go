@@ -14,19 +14,21 @@ import (
 	"time"
 
 	"github.com/afif/dns-tracking/internal/db"
+	"github.com/afif/dns-tracking/internal/favicon"
 	"github.com/afif/dns-tracking/internal/whois"
 	"github.com/go-chi/chi/v5"
 )
 
 type Handlers struct {
-	store       db.Store
-	scanner     *Scanner
-	broadcaster *Broadcaster
-	whoisFetch  whois.Fetcher // nil disables the lazy on-add fetch (e.g. in tests)
+	store        db.Store
+	scanner      *Scanner
+	broadcaster  *Broadcaster
+	whoisFetch   whois.Fetcher   // nil disables the lazy on-add fetch (e.g. in tests)
+	faviconFetch favicon.Fetcher // nil disables on-demand favicon fetching (e.g. in tests)
 }
 
-func NewHandlers(store db.Store, scanner *Scanner, broadcaster *Broadcaster, whoisFetch whois.Fetcher) *Handlers {
-	return &Handlers{store: store, scanner: scanner, broadcaster: broadcaster, whoisFetch: whoisFetch}
+func NewHandlers(store db.Store, scanner *Scanner, broadcaster *Broadcaster, whoisFetch whois.Fetcher, faviconFetch favicon.Fetcher) *Handlers {
+	return &Handlers{store: store, scanner: scanner, broadcaster: broadcaster, whoisFetch: whoisFetch, faviconFetch: faviconFetch}
 }
 
 func buildProgressPayload(ctx context.Context, store db.Store) ([]byte, error) {
@@ -591,6 +593,59 @@ func (h *Handlers) DNSRecordsByURL(w http.ResponseWriter, r *http.Request) {
 		ResolverIP: capture.host(),
 		Records:    &records,
 	})
+}
+
+// FaviconByURL serves a domain's favicon, fetching and caching it server-side
+// on first request so the browser never has to contact the domain (or
+// Google's favicon proxy) directly — see db.Favicon's comment for why that
+// matters for this app.
+func (h *Handlers) FaviconByURL(w http.ResponseWriter, r *http.Request) {
+	urlValue, err := url.PathUnescape(chi.URLParam(r, "*"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid url")
+		return
+	}
+
+	domain := urlValue
+	if parsed, parseErr := url.Parse(urlValue); parseErr == nil && parsed.Hostname() != "" {
+		domain = parsed.Hostname()
+	}
+
+	cached, err := h.store.GetFavicon(r.Context(), domain)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load favicon")
+		return
+	}
+
+	if cached == nil {
+		if h.faviconFetch == nil {
+			writeError(w, http.StatusServiceUnavailable, "favicon lookups are disabled")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		res, fetchErr := h.faviconFetch(ctx, domain)
+		fav := db.Favicon{Domain: domain, FetchedAt: time.Now()}
+		if fetchErr != nil {
+			fav.FetchError = fetchErr.Error()
+		} else {
+			fav.ContentType = res.ContentType
+			fav.Data = res.Data
+		}
+		if err := h.store.UpsertFavicon(r.Context(), fav); err != nil {
+			log.Printf("upsert favicon for %s: %v", domain, err)
+		}
+		cached = &fav
+	}
+
+	if cached.FetchError != "" || len(cached.Data) == 0 {
+		writeError(w, http.StatusNotFound, "no favicon available")
+		return
+	}
+
+	w.Header().Set("Content-Type", cached.ContentType)
+	w.Header().Set("Cache-Control", "public, max-age=604800") // favicons rarely change; server already caches forever
+	w.Write(cached.Data)
 }
 
 func lookupDNSRecordSet(ctx context.Context, resolver *net.Resolver, hostname string, addrs []string) dnsRecordSet {

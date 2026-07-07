@@ -919,3 +919,26 @@ func (s *postgresStore) UpsertIPInfo(ctx context.Context, info IPInfo) error {
 		Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "ip"}}, UpdateAll: true}).
 		Create(&info).Error
 }
+
+// GetFavicon looks up the cached favicon for domain. Returns nil, nil (not
+// an error) when the domain has never been fetched.
+func (s *postgresStore) GetFavicon(ctx context.Context, domain string) (*Favicon, error) {
+	var fav Favicon
+	err := s.db.WithContext(ctx).Where("domain = ?", domain).First(&fav).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &fav, nil
+}
+
+// UpsertFavicon inserts or replaces the cached row for a domain — there's
+// only ever one row per domain (its primary key), so a re-fetch just
+// overwrites it.
+func (s *postgresStore) UpsertFavicon(ctx context.Context, fav Favicon) error {
+	return s.db.WithContext(ctx).
+		Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "domain"}}, UpdateAll: true}).
+		Create(&fav).Error
+}

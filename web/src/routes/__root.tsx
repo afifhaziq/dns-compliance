@@ -40,7 +40,7 @@ import {
 
 /* ─── URL normalization (mirrors urlnorm.Normalize on the server) ──────────── */
 
-function normalizeForClient(raw: string): string {
+export function normalizeForClient(raw: string): string {
   let s = raw.trim().toLowerCase()
   s = s.replace(/^https?:\/\//, '')     // strip scheme
   s = s.replace(/^[^@]+@/, '')          // strip userinfo

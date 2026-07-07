@@ -31,6 +31,7 @@ type fullMockStore struct {
 	departmentURLs []db.DepartmentURL
 	domainWhois    []db.DomainWhois
 	ipInfo         []db.IPInfo
+	favicons       []db.Favicon
 }
 
 func (m *fullMockStore) ListURLs(_ context.Context) ([]db.URL, error) { return m.urls, nil }
@@ -482,13 +483,34 @@ func (m *fullMockStore) UpsertIPInfo(_ context.Context, info db.IPInfo) error {
 	return nil
 }
 
+func (m *fullMockStore) GetFavicon(_ context.Context, domain string) (*db.Favicon, error) {
+	for _, fav := range m.favicons {
+		if fav.Domain == domain {
+			favCopy := fav
+			return &favCopy, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *fullMockStore) UpsertFavicon(_ context.Context, fav db.Favicon) error {
+	for i, existing := range m.favicons {
+		if existing.Domain == fav.Domain {
+			m.favicons[i] = fav
+			return nil
+		}
+	}
+	m.favicons = append(m.favicons, fav)
+	return nil
+}
+
 var _ db.Store = (*fullMockStore)(nil)
 
 func setupRouter(store db.Store, sc *server.Scanner) http.Handler {
 	r := chi.NewRouter()
 	// whoisFetch is nil — the lazy on-add fetch goroutine never runs in
 	// tests, so no test hits the network.
-	server.RegisterRoutes(r, store, sc, nil, false, nil)
+	server.RegisterRoutes(r, store, sc, nil, false, nil, nil)
 	return r
 }
 

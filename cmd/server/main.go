@@ -13,6 +13,7 @@ import (
 
 	"github.com/afif/dns-tracking/internal/db"
 	"github.com/afif/dns-tracking/internal/dnsconfig"
+	"github.com/afif/dns-tracking/internal/favicon"
 	"github.com/afif/dns-tracking/internal/ipinfo"
 	"github.com/afif/dns-tracking/internal/server"
 	"github.com/afif/dns-tracking/internal/storage"
@@ -128,7 +129,7 @@ func main() {
 
 	// HTTP server — REST API for the frontend.
 	r := chi.NewRouter()
-	server.RegisterRoutes(r, store, sc, broadcaster, *cookieSecure, whois.Fetch)
+	server.RegisterRoutes(r, store, sc, broadcaster, *cookieSecure, whois.Fetch, favicon.Fetch)
 
 	httpSrv := &http.Server{Addr: *httpAddr, Handler: r}
 	go func() {
