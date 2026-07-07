@@ -234,8 +234,9 @@ function URLGroupRow({
         <TableCell className="col-error" />
         <TableCell className="col-evidence text-center">
           <Link
-            to="/results/$url"
+            to="/domain/$url"
             params={{ url }}
+            search={{ tab: 'history' }}
             className="btn-row-history"
             aria-label={`View history for ${hostname}`}
             onClick={e => e.stopPropagation()}

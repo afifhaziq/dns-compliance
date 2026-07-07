@@ -17,9 +17,10 @@ import { Route as DnsServersRouteImport } from './routes/dns-servers'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResultsIndexRouteImport } from './routes/results.index'
+import { Route as DomainIndexRouteImport } from './routes/domain.index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
-import { Route as ResultsUrlRouteImport } from './routes/results.$url'
 import { Route as IspsIspRouteImport } from './routes/isps.$isp'
+import { Route as DomainUrlRouteImport } from './routes/domain.$url'
 
 const UrlsRoute = UrlsRouteImport.update({
   id: '/urls',
@@ -61,19 +62,24 @@ const ResultsIndexRoute = ResultsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ResultsRoute,
 } as any)
+const DomainIndexRoute = DomainIndexRouteImport.update({
+  id: '/domain/',
+  path: '/domain/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
-const ResultsUrlRoute = ResultsUrlRouteImport.update({
-  id: '/$url',
-  path: '/$url',
-  getParentRoute: () => ResultsRoute,
-} as any)
 const IspsIspRoute = IspsIspRouteImport.update({
   id: '/isps/$isp',
   path: '/isps/$isp',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DomainUrlRoute = DomainUrlRouteImport.update({
+  id: '/domain/$url',
+  path: '/domain/$url',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -85,9 +91,10 @@ export interface FileRoutesByFullPath {
   '/results': typeof ResultsRouteWithChildren
   '/scan-results': typeof ScanResultsRoute
   '/urls': typeof UrlsRoute
+  '/domain/$url': typeof DomainUrlRoute
   '/isps/$isp': typeof IspsIspRoute
-  '/results/$url': typeof ResultsUrlRoute
   '/admin/': typeof AdminIndexRoute
+  '/domain/': typeof DomainIndexRoute
   '/results/': typeof ResultsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -96,9 +103,10 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/scan-results': typeof ScanResultsRoute
   '/urls': typeof UrlsRoute
+  '/domain/$url': typeof DomainUrlRoute
   '/isps/$isp': typeof IspsIspRoute
-  '/results/$url': typeof ResultsUrlRoute
   '/admin': typeof AdminIndexRoute
+  '/domain': typeof DomainIndexRoute
   '/results': typeof ResultsIndexRoute
 }
 export interface FileRoutesById {
@@ -110,9 +118,10 @@ export interface FileRoutesById {
   '/results': typeof ResultsRouteWithChildren
   '/scan-results': typeof ScanResultsRoute
   '/urls': typeof UrlsRoute
+  '/domain/$url': typeof DomainUrlRoute
   '/isps/$isp': typeof IspsIspRoute
-  '/results/$url': typeof ResultsUrlRoute
   '/admin/': typeof AdminIndexRoute
+  '/domain/': typeof DomainIndexRoute
   '/results/': typeof ResultsIndexRoute
 }
 export interface FileRouteTypes {
@@ -125,9 +134,10 @@ export interface FileRouteTypes {
     | '/results'
     | '/scan-results'
     | '/urls'
+    | '/domain/$url'
     | '/isps/$isp'
-    | '/results/$url'
     | '/admin/'
+    | '/domain/'
     | '/results/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -136,9 +146,10 @@ export interface FileRouteTypes {
     | '/login'
     | '/scan-results'
     | '/urls'
+    | '/domain/$url'
     | '/isps/$isp'
-    | '/results/$url'
     | '/admin'
+    | '/domain'
     | '/results'
   id:
     | '__root__'
@@ -149,9 +160,10 @@ export interface FileRouteTypes {
     | '/results'
     | '/scan-results'
     | '/urls'
+    | '/domain/$url'
     | '/isps/$isp'
-    | '/results/$url'
     | '/admin/'
+    | '/domain/'
     | '/results/'
   fileRoutesById: FileRoutesById
 }
@@ -163,7 +175,9 @@ export interface RootRouteChildren {
   ResultsRoute: typeof ResultsRouteWithChildren
   ScanResultsRoute: typeof ScanResultsRoute
   UrlsRoute: typeof UrlsRoute
+  DomainUrlRoute: typeof DomainUrlRoute
   IspsIspRoute: typeof IspsIspRoute
+  DomainIndexRoute: typeof DomainIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -224,6 +238,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResultsIndexRouteImport
       parentRoute: typeof ResultsRoute
     }
+    '/domain/': {
+      id: '/domain/'
+      path: '/domain'
+      fullPath: '/domain/'
+      preLoaderRoute: typeof DomainIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/': {
       id: '/admin/'
       path: '/'
@@ -231,18 +252,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
     }
-    '/results/$url': {
-      id: '/results/$url'
-      path: '/$url'
-      fullPath: '/results/$url'
-      preLoaderRoute: typeof ResultsUrlRouteImport
-      parentRoute: typeof ResultsRoute
-    }
     '/isps/$isp': {
       id: '/isps/$isp'
       path: '/isps/$isp'
       fullPath: '/isps/$isp'
       preLoaderRoute: typeof IspsIspRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/domain/$url': {
+      id: '/domain/$url'
+      path: '/domain/$url'
+      fullPath: '/domain/$url'
+      preLoaderRoute: typeof DomainUrlRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -259,12 +280,10 @@ const AdminRouteChildren: AdminRouteChildren = {
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 interface ResultsRouteChildren {
-  ResultsUrlRoute: typeof ResultsUrlRoute
   ResultsIndexRoute: typeof ResultsIndexRoute
 }
 
 const ResultsRouteChildren: ResultsRouteChildren = {
-  ResultsUrlRoute: ResultsUrlRoute,
   ResultsIndexRoute: ResultsIndexRoute,
 }
 
@@ -279,7 +298,9 @@ const rootRouteChildren: RootRouteChildren = {
   ResultsRoute: ResultsRouteWithChildren,
   ScanResultsRoute: ScanResultsRoute,
   UrlsRoute: UrlsRoute,
+  DomainUrlRoute: DomainUrlRoute,
   IspsIspRoute: IspsIspRoute,
+  DomainIndexRoute: DomainIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
