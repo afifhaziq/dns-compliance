@@ -7,7 +7,7 @@ function DomainPickerPage() {
   const navigate = useNavigate()
 
   return (
-    <div className="mx-60 mb-10">
+    <div className="mx-60 mt-10 mb-10">
       <div className="page-header px-0">
         <h1 className="page-title mb-2">Domain Lookup</h1>
         <p className="page-subtitle">Search for a domain to view its compliance history.</p>
