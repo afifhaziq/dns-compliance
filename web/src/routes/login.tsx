@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { login } from '../api/auth'
 import { useAuth } from './__root'
+import { AuroraBars } from '@/components/unlumen-ui/aurora-bars'
 
 export const Route = createFileRoute('/login')({ component: LoginPage })
 
@@ -27,8 +28,11 @@ function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div style={{ width: 360 }}>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden">
+      <div className="fixed inset-0 -z-10">
+        <AuroraBars />
+      </div>
+      <div className="relative z-10 bg-card text-card-foreground rounded-xl shadow-2xl p-8" style={{ width: 360 }}>
         <div className="page-header" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
           <h1 className="page-title">DNS Compliance</h1>
           <p className="page-subtitle">Sign in to continue</p>
