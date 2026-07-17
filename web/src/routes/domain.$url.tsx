@@ -866,7 +866,7 @@ function URLHistoryPage() {
         )}
       </div>
 
-      <div className="results-wrap">
+      <div className="results-wrap -mx-30 mt-5">
         {error ? (
           <div className="error-state">
             <p className="error-message">{error}</p>
