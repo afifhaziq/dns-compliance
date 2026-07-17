@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { fetchNationalTrend, fetchResults, groupResults, lastScanTime } from '../api/results'
-import { fetchUrlCount } from '../api/urls'
+import { fetchUrlCount, fetchUrlsRequestedThisMonth } from '../api/urls'
 import type { ISPTrendStat, ScanResult } from '../api/types'
 import { useScan } from './__root'
 import { ThinkingIndicator } from '@/components/ui/thinking-indicator'
@@ -21,6 +21,7 @@ function DashboardPage() {
 
   const [results, setResults] = useState<ScanResult[]>([])
   const [urlCount, setUrlCount] = useState<number | null>(null)
+  const [requestedThisMonth, setRequestedThisMonth] = useState<number | null>(null)
   const [trend, setTrend] = useState<ISPTrendStat[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -28,13 +29,15 @@ function DashboardPage() {
   const load = useCallback(async () => {
     try {
       setError(null)
-      const [raw, urls, trendData] = await Promise.all([
+      const [raw, urls, requested, trendData] = await Promise.all([
         fetchResults(),
         fetchUrlCount(),
+        fetchUrlsRequestedThisMonth(),
         fetchNationalTrend(30),
       ])
       setResults(raw)
       setUrlCount(urls)
+      setRequestedThisMonth(requested)
       setTrend(trendData)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load')
@@ -104,6 +107,10 @@ function DashboardPage() {
                 <div>
                   <p className="server-count" style={{ color: 'var(--ink)' }}>{nationalCompliant} / {nationalTotal}</p>
                   <p className="dash-label">Checks compliant</p>
+                </div>
+                <div>
+                  <p className="server-count" style={{ color: 'var(--ink)' }}>{requestedThisMonth ?? 0}</p>
+                  <p className="dash-label">URLs requested this month</p>
                 </div>
               </div>
               {trendChartData.length >= 2 && (

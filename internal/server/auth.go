@@ -84,11 +84,27 @@ func requireAuth(store db.Store) func(http.Handler) http.Handler {
 	}
 }
 
-// requireAdmin must run after requireAuth in the middleware chain.
+// requireAdmin must run after requireAuth in the middleware chain. Super
+// admin only — for routes that are inherently cross-department.
 func requireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, ok := userFromContext(r.Context())
 		if !ok || !user.IsAdmin {
+			writeError(w, http.StatusForbidden, "admin access required")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// requireAnyAdmin must run after requireAuth. Allows a super admin or a
+// department admin through; handlers behind it that need to restrict a
+// department admin to their own department do so themselves via
+// userFromContext.
+func requireAnyAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, ok := userFromContext(r.Context())
+		if !ok || (!user.IsAdmin && !user.IsDeptAdmin) {
 			writeError(w, http.StatusForbidden, "admin access required")
 			return
 		}

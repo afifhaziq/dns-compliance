@@ -24,6 +24,23 @@ export function refreshDomainInfo(url: string): Promise<DomainInfo> {
   return api.post<DomainInfo>(`/domain/${encodeURIComponent(url)}`, undefined)
 }
 
+// Mirrors internal/server/handlers.go's RefreshHostingInfo response — the
+// flattened db.IPInfo row it just (re)fetched and cached for this IP,
+// bypassing IPInfo's normal fetch-once-ever cache.
+export type HostingRefreshResult = {
+  ip: string
+  asn: number
+  org: string
+  netname: string
+  abuse_email: string
+  fetched_at: string
+  fetch_error?: string
+}
+
+export function refreshHostingInfo(ip: string): Promise<HostingRefreshResult> {
+  return api.post<HostingRefreshResult>(`/hosting/${encodeURIComponent(ip)}`, undefined)
+}
+
 // Server-cached favicon endpoint (GET /api/favicon/*url) — for use directly
 // as an <img src>, not via api.get, since the response is raw image bytes.
 // Fetches and caches the domain's favicon server-side on first request, so

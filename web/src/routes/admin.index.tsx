@@ -9,6 +9,8 @@ import {
   fetchCompliantIPs,
   createCompliantIP,
   deleteCompliantIP,
+  fetchScanInterval,
+  setScanInterval,
 } from '../api/admin'
 import type { CompliantIP, Department, User } from '../api/types'
 import {
@@ -106,36 +108,44 @@ function AddUserDialog({
   onClose,
   onAdded,
   departments,
+  callerIsSuperAdmin,
 }: {
   open: boolean
   onClose: () => void
   onAdded: () => void
   departments: Department[]
+  callerIsSuperAdmin: boolean
 }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [role, setRole] = useState<'member' | 'dept_admin' | 'admin'>('member')
   const [departmentId, setDepartmentId] = useState<number | ''>('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
+  // A department admin always creates a plain member of their own
+  // department — the server forces this regardless of what's sent, so
+  // there's nothing for a department-admin caller to pick here.
+  const showDepartmentPicker = callerIsSuperAdmin && role !== 'admin'
+
   const reset = () => {
-    setUsername(''); setPassword(''); setIsAdmin(false); setDepartmentId(''); setError(null)
+    setUsername(''); setPassword(''); setRole('member'); setDepartmentId(''); setError(null)
   }
   const handleClose = () => { reset(); onClose() }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!username.trim() || !password) { setError('Username and password are required'); return }
-    if (!isAdmin && departmentId === '') { setError('Department is required for non-admin users'); return }
+    if (showDepartmentPicker && departmentId === '') { setError('Department is required'); return }
     setLoading(true)
     setError(null)
     try {
       await createUser({
         username: username.trim(),
         password,
-        is_admin: isAdmin,
-        department_id: isAdmin ? undefined : Number(departmentId),
+        is_admin: callerIsSuperAdmin && role === 'admin',
+        is_dept_admin: callerIsSuperAdmin && role === 'dept_admin',
+        department_id: showDepartmentPicker ? Number(departmentId) : undefined,
       })
       reset()
       onAdded()
@@ -180,35 +190,37 @@ function AddUserDialog({
               disabled={loading}
             />
           </div>
-          <div className="form-field">
-            <label className="form-label" htmlFor="user-is-admin-checkbox">
-              <input
-                id="user-is-admin-checkbox"
-                type="checkbox"
-                checked={isAdmin}
-                onChange={e => setIsAdmin(e.target.checked)}
+          {callerIsSuperAdmin && (
+            <div className="form-field">
+              <label className="form-label" id="user-role-label">Role</label>
+              <Select value={role} onValueChange={v => setRole(v as typeof role)} disabled={loading}>
+                <SelectTrigger aria-labelledby="user-role-label" className="w-full" />
+                <SelectContent>
+                  <SelectItem index={0} value="member">Member</SelectItem>
+                  <SelectItem index={1} value="dept_admin">Department Admin</SelectItem>
+                  <SelectItem index={2} value="admin">Admin (cross-cutting access, no department of its own)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {showDepartmentPicker && (
+            <div className="form-field">
+              <label className="form-label" id="user-department-label">Department</label>
+              <Select
+                value={String(departmentId)}
+                onValueChange={v => setDepartmentId(v === '' ? '' : Number(v))}
                 disabled={loading}
-                style={{ marginRight: 6 }}
-              />
-              Admin (cross-cutting access, no department of its own)
-            </label>
-          </div>
-          <div className="form-field">
-            <label className="form-label" id="user-department-label">Department</label>
-            <Select
-              value={String(departmentId)}
-              onValueChange={v => setDepartmentId(v === '' ? '' : Number(v))}
-              disabled={loading || isAdmin}
-            >
-              <SelectTrigger aria-labelledby="user-department-label" placeholder="Select a department…" className="w-full" />
-              <SelectContent>
-                <SelectItem index={0} value="">Select a department…</SelectItem>
-                {departments.map((d, i) => (
-                  <SelectItem key={d.id} index={i + 1} value={String(d.id)}>{d.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              >
+                <SelectTrigger aria-labelledby="user-department-label" placeholder="Select a department…" className="w-full" />
+                <SelectContent>
+                  <SelectItem index={0} value="">Select a department…</SelectItem>
+                  {departments.map((d, i) => (
+                    <SelectItem key={d.id} index={i + 1} value={String(d.id)}>{d.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           {error && <p className="form-error">{error}</p>}
           <DialogFooter>
             <button type="button" className="btn-ghost" onClick={handleClose} disabled={loading}>
@@ -312,6 +324,54 @@ function AddCompliantIPDialog({
   )
 }
 
+/* ─── Scan Interval Settings ─────────────────────────────────────────────── */
+
+function ScanIntervalSection({ value, onSaved }: { value: number; onSaved: (minutes: number) => void }) {
+  const [minutes, setMinutes] = useState(value)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => { setMinutes(value) }, [value])
+
+  const handleSave = async () => {
+    if (minutes < 1) { setError('Interval must be at least 1 minute'); return }
+    setSaving(true)
+    setError(null)
+    try {
+      await setScanInterval(minutes)
+      onSaved(minutes)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className='mb-4'>
+      <div className="page-header" style={{ marginBottom: 12 }}>
+        <h2 className="section-title">Scan Schedule</h2>
+        <p className="page-subtitle" style={{ marginLeft: 8 }}>How often the automated cron sweep runs, in minutes</p>
+      </div>
+      <div className="form-field" style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 320 }}>
+        <input
+          className="form-input"
+          type="number"
+          min={1}
+          value={minutes}
+          onChange={e => setMinutes(Number(e.target.value))}
+          disabled={saving}
+          aria-label="Scan interval in minutes"
+        />
+        <button className="btn-primary" onClick={handleSave} disabled={saving || minutes === value}>
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+      {error && <p className="form-error">{error}</p>}
+    </div>
+  )
+}
+
 /* ─── Admin Page ─────────────────────────────────────────────────────────── */
 
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -321,6 +381,7 @@ function AdminPage() {
   const [departments, setDepartments] = useState<Department[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [compliantIPs, setCompliantIPs] = useState<CompliantIP[]>([])
+  const [scanInterval, setScanIntervalState] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addDeptOpen, setAddDeptOpen] = useState(false)
@@ -333,22 +394,31 @@ function AdminPage() {
     setLoading(true)
     try {
       setError(null)
-      const [d, u, ips] = await Promise.all([fetchDepartments(), fetchUsers(), fetchCompliantIPs()])
-      setDepartments(d)
-      setUsers(u)
-      setCompliantIPs(ips)
+      if (me?.is_admin) {
+        // Departments/Compliant-IPs/scan interval stay super-admin-only
+        // server-side — a department admin would just get a 403 fetching them.
+        const [d, u, ips, interval] = await Promise.all([
+          fetchDepartments(), fetchUsers(), fetchCompliantIPs(), fetchScanInterval(),
+        ])
+        setDepartments(d)
+        setUsers(u)
+        setCompliantIPs(ips)
+        setScanIntervalState(interval)
+      } else {
+        setUsers(await fetchUsers())
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load admin data')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [me])
 
   useEffect(() => {
-    if (me?.is_admin) load()
+    if (me?.is_admin || me?.is_dept_admin) load()
   }, [me, load])
 
-  if (!me?.is_admin) {
+  if (!me?.is_admin && !me?.is_dept_admin) {
     return (
       <div className="mx-20">
         <div className="error-state">
@@ -376,7 +446,9 @@ function AdminPage() {
     <div className="mx-20 mt-10">
       <div className="page-header">
         <h1 className="page-title">Admin</h1>
-        <p className="page-subtitle">{!loading && `${departments.length} departments, ${users.length} users`}</p>
+        <p className="page-subtitle">
+          {!loading && (me?.is_admin ? `${departments.length} departments, ${users.length} users` : `${users.length} users`)}
+        </p>
       </div>
 
       {error && (
@@ -387,6 +459,8 @@ function AdminPage() {
       )}
 
       <div className="results-wrap" style={{ marginBottom: 32 }}>
+        {me?.is_admin && (
+        <>
         <div className='mb-4'>
         <div className="page-header" style={{ marginBottom: 12 }}>
           <h2 className="section-title">Departments</h2>
@@ -411,6 +485,11 @@ function AdminPage() {
           </TableBody>
         </Table>
         </div>
+        {scanInterval !== null && (
+          <ScanIntervalSection value={scanInterval} onSaved={setScanIntervalState} />
+        )}
+        </>
+        )}
         <div className='mb-4'>
         <div className="page-header" style={{ marginBottom: 12 }}>
           <h2 className="section-title">Users</h2>
@@ -431,7 +510,9 @@ function AdminPage() {
             {users.map(u => (
               <TableRow key={u.id} className="admin-row">
                 <TableCell className="col-domain">{u.username}</TableCell>
-                <TableCell className="col-status">{u.is_admin ? 'Admin' : u.department?.name ?? '—'}</TableCell>
+                <TableCell className="col-status">
+                  {u.is_admin ? 'Admin' : u.is_dept_admin ? `${u.department?.name ?? '—'} (Admin)` : u.department?.name ?? '—'}
+                </TableCell>
                 <TableCell className="col-status">{DATE_FMT.format(new Date(u.created_at))}</TableCell>
                 <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
                   <button
@@ -447,6 +528,7 @@ function AdminPage() {
           </TableBody>
         </Table>
         </div>
+        {me?.is_admin && (
         <div className='mb-4'>
         <div className="page-header" style={{ marginBottom: 12 }}>
           <h2 className="section-title">Compliant IPs</h2>
@@ -491,6 +573,7 @@ function AdminPage() {
           </TableBody>
         </Table>
         </div>
+        )}
       </div>
 
       <AddDepartmentDialog open={addDeptOpen} onClose={() => setAddDeptOpen(false)} onAdded={load} />
@@ -499,6 +582,7 @@ function AdminPage() {
         onClose={() => setAddUserOpen(false)}
         onAdded={load}
         departments={departments}
+        callerIsSuperAdmin={!!me?.is_admin}
       />
       <AddCompliantIPDialog open={addIPOpen} onClose={() => setAddIPOpen(false)} onAdded={load} />
       <DeleteConfirmDialog

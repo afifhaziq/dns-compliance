@@ -13,6 +13,7 @@ import {
 } from '@/components/animate-ui/components/radix/dialog'
 import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
+import { useAuth } from './__root'
 
 export const Route = createFileRoute('/dns-servers')({ component: DNSServersPage })
 
@@ -189,6 +190,8 @@ function serverLabel(s: DNSServer): string {
 }
 
 function DNSServersPage() {
+  const { me } = useAuth()
+  const canManage = me?.is_admin || me?.is_dept_admin
   const [servers, setServers] = useState<DNSServer[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -221,13 +224,15 @@ function DNSServersPage() {
       <div className="page-header">
         <h1 className="page-title mb-4">DNS Servers</h1>
         <p className="page-subtitle">{!loading && `${servers.length} configured`}</p>
-        <button
-          className="btn-primary"
-          style={{ marginLeft: 'auto' }}
-          onClick={() => setAddOpen(true)}
-        >
-          + Add Server
-        </button>
+        {canManage && (
+          <button
+            className="btn-primary"
+            style={{ marginLeft: 'auto' }}
+            onClick={() => setAddOpen(true)}
+          >
+            + Add Server
+          </button>
+        )}
       </div>
 
       <div className="results-wrap">
@@ -241,7 +246,7 @@ function DNSServersPage() {
             <EmptyIcon />
             <p className="empty-heading">No DNS servers yet</p>
             <p className="empty-body">Add a DNS server to begin scanning.</p>
-            <button className="btn-primary" onClick={() => setAddOpen(true)}>Add Server</button>
+            {canManage && <button className="btn-primary" onClick={() => setAddOpen(true)}>Add Server</button>}
           </div>
         ) : (
           <div>
@@ -269,15 +274,17 @@ function DNSServersPage() {
                         </div>
                         {s.name && <span className="dns-server-addr">{s.address}</span>}
                       </div>
-                      <div className="dns-server-meta">
-                        <button
-                          className="btn-row-delete"
-                          onClick={() => setDeleteTarget(s)}
-                          aria-label={`Delete ${serverLabel(s)}`}
-                        >
-                          Delete
-                        </button>
-                      </div>
+                      {canManage && (
+                        <div className="dns-server-meta">
+                          <button
+                            className="btn-row-delete"
+                            onClick={() => setDeleteTarget(s)}
+                            aria-label={`Delete ${serverLabel(s)}`}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

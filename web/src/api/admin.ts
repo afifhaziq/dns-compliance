@@ -19,6 +19,7 @@ export async function createUser(input: {
   username: string
   password: string
   is_admin: boolean
+  is_dept_admin: boolean
   department_id?: number
 }): Promise<User> {
   return api.post<User>('/admin/users', input)
@@ -50,4 +51,13 @@ export async function createCompliantIP(address: string, note: string): Promise<
 
 export async function deleteCompliantIP(id: number): Promise<void> {
   await api.delete<void>(`/admin/compliant-ips/${id}`)
+}
+
+export async function fetchScanInterval(): Promise<number> {
+  const data = await api.get<{ interval_minutes: number }>('/admin/scan-interval')
+  return data.interval_minutes
+}
+
+export async function setScanInterval(minutes: number): Promise<void> {
+  await api.patch<void>('/admin/scan-interval', { interval_minutes: minutes })
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/afif/dns-tracking/internal/ipinfo"
 	"github.com/afif/dns-tracking/internal/server"
 	"github.com/afif/dns-tracking/internal/storage"
+	"github.com/afif/dns-tracking/internal/subfinder"
 	"github.com/afif/dns-tracking/internal/whois"
 	pb "github.com/afif/dns-tracking/proto"
 	"github.com/go-chi/chi/v5"
@@ -41,6 +42,7 @@ func main() {
 	ipinfoToken := flag.String("ipinfo-token", envOr("IPINFO_TOKEN", ""), "ipinfo.io API token for ASN/org lookups; empty uses the unauthenticated (lower rate limit) tier")
 	whoisRefreshIntervalMin := flag.Int("whois-refresh-interval", 1440, "WHOIS/RDAP refresh sweep interval in minutes")
 	whoisStaleDays := flag.Int("whois-stale-days", 30, "re-fetch a domain's WHOIS/RDAP data once its cached copy is older than this many days")
+	subfinderPath := flag.String("subfinder-path", envOr("SUBFINDER_PATH", "subfinder"), "path to subfinder binary; empty to disable subdomain enumeration")
 	flag.Parse()
 
 	// Connect to PostgreSQL and run AutoMigrate.
@@ -62,6 +64,10 @@ func main() {
 
 	if err := db.MigrateAdminDepartments(gormDB); err != nil {
 		log.Fatalf("migrate admin departments: %v", err)
+	}
+
+	if err := db.SeedScanInterval(gormDB, *intervalMin); err != nil {
+		log.Printf("seed scan interval: %v", err)
 	}
 
 	store := db.NewStore(gormDB)
@@ -120,16 +126,22 @@ func main() {
 		}
 	}()
 
-	// Start the hourly scan scheduler.
-	server.StartScheduler(ctx, sc, time.Duration(*intervalMin)*time.Minute)
+	// Start the scan scheduler — cadence is admin-configurable via the
+	// admin panel (db.ScanSettings); *intervalMin only seeds its initial
+	// value and serves as a fallback if the setting can't be read.
+	server.StartScheduler(ctx, sc, store, time.Duration(*intervalMin)*time.Minute)
 
 	// Start the WHOIS/RDAP refresher — re-fetches stale DomainWhois rows on
 	// a much slower cadence than the scan scheduler.
 	server.StartWhoisRefresher(ctx, store, whois.Fetch, time.Duration(*whoisRefreshIntervalMin)*time.Minute, *whoisStaleDays)
 
 	// HTTP server — REST API for the frontend.
+	var subfinderFetch subfinder.Fetcher
+	if *subfinderPath != "" {
+		subfinderFetch = subfinder.NewFetcher(*subfinderPath)
+	}
 	r := chi.NewRouter()
-	server.RegisterRoutes(r, store, sc, broadcaster, *cookieSecure, whois.Fetch, favicon.Fetch)
+	server.RegisterRoutes(r, store, sc, broadcaster, *cookieSecure, whois.Fetch, favicon.Fetch, subfinderFetch, ipFetch, whois.FetchIP)
 
 	httpSrv := &http.Server{Addr: *httpAddr, Handler: r}
 	go func() {

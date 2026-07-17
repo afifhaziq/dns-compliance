@@ -45,7 +45,7 @@ export function GlassNavbar({ actions }: GlassNavbarProps) {
   const location = useLocation()
   const { me } = useAuth()
   const isActive = (path: string) => location.pathname === path
-  const navItems = me?.is_admin ? [...BASE_NAV_ITEMS, ADMIN_NAV_ITEM] : BASE_NAV_ITEMS
+  const navItems = (me?.is_admin || me?.is_dept_admin) ? [...BASE_NAV_ITEMS, ADMIN_NAV_ITEM] : BASE_NAV_ITEMS
 
   return (
     <div className="sticky top-0 z-50 px-4 pt-3 pb-1" >

@@ -48,6 +48,7 @@ stream_prefixed server go run ./cmd/server/ \
   --http-addr :8080 \
   --grpc-addr :50051 \
   --crawler-path ./crawler \
+  --subfinder-path "$(go env GOPATH)/bin/subfinder" \
   --cookie-secure=false \
   --bootstrap-admin-username admin \
   --bootstrap-admin-password admin \

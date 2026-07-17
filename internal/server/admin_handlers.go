@@ -39,23 +39,55 @@ func (h *Handlers) CreateDepartment(w http.ResponseWriter, r *http.Request) {
 // Users
 
 func (h *Handlers) ListUsers(w http.ResponseWriter, r *http.Request) {
+	caller, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
 	users, err := h.store.ListUsers(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if !caller.IsAdmin {
+		// department admin: only their own department's users
+		var scoped []db.User
+		for _, u := range users {
+			if u.DepartmentID != nil && caller.DepartmentID != nil && *u.DepartmentID == *caller.DepartmentID {
+				scoped = append(scoped, u)
+			}
+		}
+		users = scoped
+	}
 	writeJSON(w, http.StatusOK, users)
 }
 
 func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request) {
+	caller, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
 	var body struct {
 		Username     string `json:"username"`
 		Password     string `json:"password"`
 		IsAdmin      bool   `json:"is_admin"`
+		IsDeptAdmin  bool   `json:"is_dept_admin"`
 		DepartmentID *uint  `json:"department_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Username == "" || body.Password == "" {
 		writeError(w, http.StatusBadRequest, "username and password are required")
+		return
+	}
+	if !caller.IsAdmin {
+		// department admin: can only create a plain member of their own
+		// department — granting admin/dept-admin is a super-admin-only act.
+		body.IsAdmin = false
+		body.IsDeptAdmin = false
+		body.DepartmentID = caller.DepartmentID
+	}
+	if body.IsAdmin && body.IsDeptAdmin {
+		writeError(w, http.StatusBadRequest, "user cannot be both is_admin and is_dept_admin")
 		return
 	}
 	if !body.IsAdmin && body.DepartmentID == nil {
@@ -74,6 +106,7 @@ func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request) {
 		Username:     body.Username,
 		PasswordHash: hash,
 		IsAdmin:      body.IsAdmin,
+		IsDeptAdmin:  body.IsDeptAdmin,
 		DepartmentID: body.DepartmentID,
 	})
 	if err != nil {
@@ -84,10 +117,29 @@ func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	caller, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
 	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
+	}
+	if !caller.IsAdmin {
+		// department admin: only a plain member of their own department
+		target, err := h.store.GetUserByID(r.Context(), uint(id))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if target == nil || target.IsAdmin || target.IsDeptAdmin ||
+			target.DepartmentID == nil || caller.DepartmentID == nil ||
+			*target.DepartmentID != *caller.DepartmentID {
+			writeError(w, http.StatusForbidden, "cannot delete this user")
+			return
+		}
 	}
 	if err := h.store.DeleteUser(r.Context(), uint(id)); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -158,6 +210,32 @@ func (h *Handlers) DeleteCompliantIP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.store.DeleteCompliantIP(r.Context(), uint(id)); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Scan schedule
+
+func (h *Handlers) GetScanInterval(w http.ResponseWriter, r *http.Request) {
+	minutes, err := h.store.GetScanInterval(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"interval_minutes": minutes})
+}
+
+func (h *Handlers) SetScanInterval(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IntervalMinutes int `json:"interval_minutes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.IntervalMinutes < 1 {
+		writeError(w, http.StatusBadRequest, "interval_minutes must be a positive integer")
+		return
+	}
+	if err := h.store.SetScanInterval(r.Context(), body.IntervalMinutes); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

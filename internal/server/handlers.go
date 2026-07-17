@@ -15,20 +15,25 @@ import (
 
 	"github.com/afif/dns-tracking/internal/db"
 	"github.com/afif/dns-tracking/internal/favicon"
+	"github.com/afif/dns-tracking/internal/ipinfo"
+	"github.com/afif/dns-tracking/internal/subfinder"
 	"github.com/afif/dns-tracking/internal/whois"
 	"github.com/go-chi/chi/v5"
 )
 
 type Handlers struct {
-	store        db.Store
-	scanner      *Scanner
-	broadcaster  *Broadcaster
-	whoisFetch   whois.Fetcher   // nil disables the lazy on-add fetch (e.g. in tests)
-	faviconFetch favicon.Fetcher // nil disables on-demand favicon fetching (e.g. in tests)
+	store          db.Store
+	scanner        *Scanner
+	broadcaster    *Broadcaster
+	whoisFetch     whois.Fetcher     // nil disables the lazy on-add fetch (e.g. in tests)
+	faviconFetch   favicon.Fetcher   // nil disables on-demand favicon fetching (e.g. in tests)
+	subfinderFetch subfinder.Fetcher // nil disables the lazy on-add + refresh subdomain enumeration (e.g. in tests)
+	ipFetch        ipinfo.Fetcher    // nil disables the on-demand hosting-info refresh (e.g. in tests)
+	netnameFetch   whois.IPFetcher   // nil disables the NetName/abuse-email half of a hosting-info refresh
 }
 
-func NewHandlers(store db.Store, scanner *Scanner, broadcaster *Broadcaster, whoisFetch whois.Fetcher, faviconFetch favicon.Fetcher) *Handlers {
-	return &Handlers{store: store, scanner: scanner, broadcaster: broadcaster, whoisFetch: whoisFetch, faviconFetch: faviconFetch}
+func NewHandlers(store db.Store, scanner *Scanner, broadcaster *Broadcaster, whoisFetch whois.Fetcher, faviconFetch favicon.Fetcher, subfinderFetch subfinder.Fetcher, ipFetch ipinfo.Fetcher, netnameFetch whois.IPFetcher) *Handlers {
+	return &Handlers{store: store, scanner: scanner, broadcaster: broadcaster, whoisFetch: whoisFetch, faviconFetch: faviconFetch, subfinderFetch: subfinderFetch, ipFetch: ipFetch, netnameFetch: netnameFetch}
 }
 
 func buildProgressPayload(ctx context.Context, store db.Store) ([]byte, error) {
@@ -115,6 +120,13 @@ func (h *Handlers) AddToWatchlist(w http.ResponseWriter, r *http.Request) {
 		go fetchAndStoreWhois(h.store, h.whoisFetch, u.ID, u.URL)
 	}
 
+	// Lazy subdomain enumeration — same detached-goroutine shape as WHOIS
+	// above; subfinder can take much longer than an RDAP lookup, so it gets
+	// its own (longer) timeout in fetchAndStoreSubdomains.
+	if h.subfinderFetch != nil {
+		go fetchAndStoreSubdomains(h.store, h.subfinderFetch, u.ID, u.URL)
+	}
+
 	writeJSON(w, http.StatusCreated, db.URLEntry{ID: u.ID, URL: u.URL, Enabled: true, CreatedAt: u.CreatedAt})
 }
 
@@ -138,6 +150,29 @@ func fetchAndStoreWhois(store db.Store, fetch whois.Fetcher, urlID uint, domain 
 	defer dbCancel()
 	if err := store.UpsertDomainWhois(dbCtx, w); err != nil {
 		log.Printf("whois: upsert for %s: %v", domain, err)
+	}
+}
+
+// fetchAndStoreSubdomains runs subfinder and caches the result (or the
+// failure) in SubdomainScan. Called from a detached goroutine on
+// watchlist-add and from RefreshSubdomains — there is no periodic sweep, so
+// this is the only place a cached row ever gets (re)written.
+func fetchAndStoreSubdomains(store db.Store, fetch subfinder.Fetcher, urlID uint, domain string) {
+	fetchCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	subs, err := fetch(fetchCtx, domain)
+	cancel()
+
+	scan := db.SubdomainScan{URLID: urlID, FetchedAt: time.Now()}
+	if err != nil {
+		scan.FetchError = err.Error()
+	} else {
+		scan.Subdomains = subs
+	}
+
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer dbCancel()
+	if err := store.UpsertSubdomainScan(dbCtx, scan); err != nil {
+		log.Printf("subfinder: upsert for %s: %v", domain, err)
 	}
 }
 
@@ -352,6 +387,32 @@ func (h *Handlers) LatestResults(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, results)
 }
 
+// URLsRequestedThisMonth counts watchlist additions since the start of the
+// current calendar month (not a rolling 30-day window).
+func (h *Handlers) URLsRequestedThisMonth(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	now := time.Now().UTC()
+	since := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+
+	var count int
+	var err error
+	switch {
+	case user.IsAdmin:
+		count, err = h.store.CountDepartmentURLsSince(r.Context(), since)
+	case user.DepartmentID != nil:
+		count, err = h.store.CountDepartmentURLsSinceForDepartment(r.Context(), since, *user.DepartmentID)
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"count": count})
+}
+
 // requireDomainOwnership 404s non-admins who request a domain not on their
 // own department's watchlist — a 404 rather than 403 so the response
 // doesn't confirm the domain even exists to a department that shouldn't
@@ -513,6 +574,95 @@ func (h *Handlers) RefreshDomainInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, domainInfoResponse{Fetched: true, DomainWhois: info})
+}
+
+type subdomainScanResponse struct {
+	Fetched bool `json:"fetched"`
+	*db.SubdomainScan
+}
+
+// SubdomainsByURL returns the cached subfinder result for a domain, scoped
+// the same way as /api/results (404 rather than 403 for a non-owning
+// department). Returns {"fetched":false} — not a 404 — when the domain is
+// owned but has no cached row yet (never fetched, or subfinder is disabled).
+func (h *Handlers) SubdomainsByURL(w http.ResponseWriter, r *http.Request) {
+	urlValue, err := url.PathUnescape(chi.URLParam(r, "*"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid url")
+		return
+	}
+	if !requireDomainOwnership(h, w, r, urlValue) {
+		return
+	}
+
+	scan, err := h.store.GetSubdomainScan(r.Context(), urlValue)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if scan == nil {
+		writeJSON(w, http.StatusOK, subdomainScanResponse{Fetched: false})
+		return
+	}
+	writeJSON(w, http.StatusOK, subdomainScanResponse{Fetched: true, SubdomainScan: scan})
+}
+
+// RefreshSubdomains triggers an on-demand subfinder re-run for a domain —
+// the only way a cached row is ever updated after the initial on-add fetch,
+// since there's no periodic sweep. Scoped like SubdomainsByURL; blocks
+// until the run completes so the response reflects the fresh result (or
+// fetch error) immediately.
+func (h *Handlers) RefreshSubdomains(w http.ResponseWriter, r *http.Request) {
+	urlValue, err := url.PathUnescape(chi.URLParam(r, "*"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid url")
+		return
+	}
+	if !requireDomainOwnership(h, w, r, urlValue) {
+		return
+	}
+	if h.subfinderFetch == nil {
+		writeError(w, http.StatusServiceUnavailable, "subdomain enumeration is disabled")
+		return
+	}
+
+	u, err := h.store.GetURLByValue(r.Context(), urlValue)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if u == nil {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	fetchAndStoreSubdomains(h.store, h.subfinderFetch, u.ID, u.URL)
+
+	scan, err := h.store.GetSubdomainScan(r.Context(), urlValue)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, subdomainScanResponse{Fetched: true, SubdomainScan: scan})
+}
+
+// RefreshHostingInfo triggers an on-demand ASN/org/NetName/abuse-email
+// re-fetch for a resolved IP, bypassing IPInfo's fetch-once-ever cache —
+// the only way an already-cached IP's row is ever updated. Unscoped for any
+// authenticated role: IPInfo is keyed by IP, not department-owned watchlist
+// data, same rationale as DNSRecordsByURL/FaviconByURL.
+func (h *Handlers) RefreshHostingInfo(w http.ResponseWriter, r *http.Request) {
+	ip := chi.URLParam(r, "ip")
+	if ip == "" {
+		writeError(w, http.StatusBadRequest, "ip is required")
+		return
+	}
+	if h.ipFetch == nil {
+		writeError(w, http.StatusServiceUnavailable, "hosting lookups are disabled")
+		return
+	}
+	info := fetchAndCacheIPInfo(h.store, h.ipFetch, h.netnameFetch, ip)
+	writeJSON(w, http.StatusOK, info)
 }
 
 // DNS Records (live lookup, independent of the compliance-scan pipeline)

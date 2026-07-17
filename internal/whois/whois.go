@@ -93,7 +93,8 @@ func parseDomain(d *rdap.Domain) Result {
 
 // IPResult is the per-IP RDAP data worth caching.
 type IPResult struct {
-	NetName string
+	NetName    string
+	AbuseEmail string
 }
 
 // IPFetcher looks up RDAP data for an IP's allocation block. Exposed as a
@@ -118,5 +119,24 @@ func FetchIP(ctx context.Context, ip string) (IPResult, error) {
 	if !ok {
 		return IPResult{}, fmt.Errorf("whois: unexpected RDAP response for %s", ip)
 	}
-	return IPResult{NetName: n.Name}, nil
+	return IPResult{NetName: n.Name, AbuseEmail: parseIPAbuseEmail(n.Entities)}, nil
+}
+
+// parseIPAbuseEmail looks for a role="abuse" entity in an IP network's
+// entity list — unlike domain RDAP (where abuse sits nested under the
+// registrar entity, see parseDomain), IP-network abuse contacts are
+// typically either a top-level entity or one level of nesting down, so both
+// are checked here.
+func parseIPAbuseEmail(entities []rdap.Entity) string {
+	for _, entity := range entities {
+		for _, role := range entity.Roles {
+			if role == "abuse" && entity.VCard != nil {
+				return strings.TrimPrefix(entity.VCard.Email(), "mailto:")
+			}
+		}
+		if email := parseIPAbuseEmail(entity.Entities); email != "" {
+			return email
+		}
+	}
+	return ""
 }

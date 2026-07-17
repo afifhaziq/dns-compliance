@@ -65,10 +65,19 @@ type Store interface {
 	ListUnassignedURLs(ctx context.Context) ([]URL, error)                                             // admin view: urls with 0 DepartmentURL rows
 	URLOwnedByDepartment(ctx context.Context, departmentID uint, urlValue string) (bool, error)
 
+	// Watchlist activity — counts DepartmentURL rows (watchlist "requests")
+	// created since a given time; used for the "requested this month" stat.
+	CountDepartmentURLsSince(ctx context.Context, since time.Time) (int, error)
+	CountDepartmentURLsSinceForDepartment(ctx context.Context, since time.Time, departmentID uint) (int, error)
+
 	// Compliant IPs — IPs that count as compliant even when DNS resolves
 	ListCompliantIPs(ctx context.Context) ([]CompliantIP, error)
 	CreateCompliantIP(ctx context.Context, address, note string) (CompliantIP, error)
 	DeleteCompliantIP(ctx context.Context, id uint) error
+
+	// Scan schedule — admin-configurable cron interval (see ScanSettings)
+	GetScanInterval(ctx context.Context) (int, error)
+	SetScanInterval(ctx context.Context, minutes int) error
 
 	// Domain WHOIS — per-domain RDAP cache, not per-scan
 	GetURLByValue(ctx context.Context, urlValue string) (*URL, error) // nil, nil if urlValue is unknown
@@ -83,4 +92,9 @@ type Store interface {
 	// Favicon cache — keyed by domain, fetched at most once per domain
 	GetFavicon(ctx context.Context, domain string) (*Favicon, error) // nil, nil if never fetched
 	UpsertFavicon(ctx context.Context, fav Favicon) error
+
+	// Subdomain scan cache — populated on watchlist-add, re-run only via
+	// explicit refresh (no periodic sweep, unlike DomainWhois)
+	GetSubdomainScan(ctx context.Context, urlValue string) (*SubdomainScan, error) // nil, nil if never fetched (or urlValue is unknown)
+	UpsertSubdomainScan(ctx context.Context, s SubdomainScan) error
 }

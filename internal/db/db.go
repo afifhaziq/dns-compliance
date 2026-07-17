@@ -25,7 +25,7 @@ func Connect(dialector gorm.Dialector) (*gorm.DB, error) {
 		return nil, fmt.Errorf("opening db: %w", err)
 	}
 	if err := database.AutoMigrate(
-		&Department{}, &User{}, &Session{}, &DNSServer{}, &URL{}, &DepartmentURL{}, &ScanRun{}, &ScanResult{}, &CompliantIP{}, &DomainWhois{}, &IPInfo{}, &Favicon{},
+		&Department{}, &User{}, &Session{}, &DNSServer{}, &URL{}, &DepartmentURL{}, &ScanRun{}, &ScanResult{}, &CompliantIP{}, &DomainWhois{}, &IPInfo{}, &Favicon{}, &ScanSettings{}, &SubdomainScan{},
 	); err != nil {
 		return nil, fmt.Errorf("migrating schema: %w", err)
 	}
@@ -52,6 +52,18 @@ func SeedDepartments(database *gorm.DB) error {
 		return nil
 	}
 	return database.Create(&[]Department{{Name: "CMOD"}, {Name: "CRD"}, {Name: "Admin"}}).Error
+}
+
+// SeedScanInterval creates the single ScanSettings row from the --interval
+// flag if it doesn't exist yet. After the first boot, the admin panel is
+// authoritative and this is a no-op.
+func SeedScanInterval(database *gorm.DB, minutes int) error {
+	var count int64
+	database.Model(&ScanSettings{}).Count(&count)
+	if count > 0 {
+		return nil
+	}
+	return database.Create(&ScanSettings{ID: 1, IntervalMinutes: minutes}).Error
 }
 
 // MigrateAdminDepartments ensures an "Admin" department exists and updates

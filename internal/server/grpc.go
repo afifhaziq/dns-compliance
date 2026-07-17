@@ -66,10 +66,10 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 			lookupIP = r.ResolvedIpv6
 		}
 		var asn uint
-		var org, netname string
+		var org, netname, abuseEmail string
 		if lookupIP != "" {
 			if cached, _ := s.store.GetIPInfo(ctx, lookupIP); cached != nil {
-				asn, org, netname = cached.ASN, cached.Org, cached.NetName
+				asn, org, netname, abuseEmail = cached.ASN, cached.Org, cached.NetName, cached.AbuseEmail
 			} else if s.ipFetch != nil {
 				// Cache miss — fetch is detached from this request so a
 				// slow/unreachable ipinfo.io/RDAP never delays result
@@ -81,19 +81,20 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 		}
 
 		result := db.ScanResult{
-			ScanRunID:       runID,
-			URLID:           urlID,
-			URLValue:        r.Url,
-			DNSServerID:     serverByName[r.DnsServer],
-			Compliant:       r.Compliant,
-			ResolvedIP:      r.ResolvedIp,
-			ResolvedIPv6:    r.ResolvedIpv6,
-			ResolvedASN:     asn,
-			ResolvedOrg:     org,
-			ResolvedNetName: netname,
-			Error:           r.Error,
-			LatencyMs:       r.GetLatencyMs(),
-			ScannedAt:       time.Unix(r.Timestamp, 0),
+			ScanRunID:          runID,
+			URLID:              urlID,
+			URLValue:           r.Url,
+			DNSServerID:        serverByName[r.DnsServer],
+			Compliant:          r.Compliant,
+			ResolvedIP:         r.ResolvedIp,
+			ResolvedIPv6:       r.ResolvedIpv6,
+			ResolvedASN:        asn,
+			ResolvedOrg:        org,
+			ResolvedNetName:    netname,
+			ResolvedAbuseEmail: abuseEmail,
+			Error:              r.Error,
+			LatencyMs:          r.GetLatencyMs(),
+			ScannedAt:          time.Unix(r.Timestamp, 0),
 		}
 
 		if err := s.store.InsertResult(ctx, result); err != nil {
@@ -130,8 +131,10 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 // it keyed by ip — UpsertIPInfo overwrites the whole row on conflict, so two
 // separate upserts here would let whichever finishes last wipe the other's
 // fields. Sequential, not parallel: this already runs in a detached goroutine
-// per cache-miss IP, so the extra worst-case latency doesn't block Submit.
-func fetchAndCacheIPInfo(store db.Store, fetch ipinfo.Fetcher, netnameFetch whois.IPFetcher, ip string) {
+// per cache-miss IP in Submit, so the extra worst-case latency doesn't block
+// ingestion there; RefreshHostingInfo calls it synchronously instead, since
+// that path needs the fresh result in the response.
+func fetchAndCacheIPInfo(store db.Store, fetch ipinfo.Fetcher, netnameFetch whois.IPFetcher, ip string) db.IPInfo {
 	fetchCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	res, err := fetch(fetchCtx, ip)
 	cancel()
@@ -152,6 +155,7 @@ func fetchAndCacheIPInfo(store db.Store, fetch ipinfo.Fetcher, netnameFetch whoi
 			errs = append(errs, nErr.Error())
 		} else {
 			info.NetName = nRes.NetName
+			info.AbuseEmail = nRes.AbuseEmail
 		}
 	}
 	if len(errs) > 0 {
@@ -163,4 +167,5 @@ func fetchAndCacheIPInfo(store db.Store, fetch ipinfo.Fetcher, netnameFetch whoi
 	if err := store.UpsertIPInfo(dbCtx, info); err != nil {
 		log.Printf("ipinfo: upsert for %s: %v", ip, err)
 	}
+	return info
 }

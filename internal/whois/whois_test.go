@@ -119,3 +119,42 @@ func TestParseDomainNoAbuseOrLinks(t *testing.T) {
 		t.Errorf("RegistrarAbusePhone = %q, want empty", res.RegistrarAbusePhone)
 	}
 }
+
+// TestParseIPAbuseEmail covers the two shapes RIRs actually use for an IP
+// network's abuse contact — a top-level role="abuse" entity, and one nested
+// a level down — plus the no-match case.
+func TestParseIPAbuseEmail(t *testing.T) {
+	abuseVCard, err := rdap.NewVCard([]byte(`["vcard",[["version",{},"text","4.0"],["email",{},"text","abuse@netops.example"]]]`))
+	if err != nil {
+		t.Fatalf("NewVCard: %v", err)
+	}
+
+	t.Run("top-level abuse entity", func(t *testing.T) {
+		entities := []rdap.Entity{
+			{Roles: []string{"administrative"}},
+			{Roles: []string{"abuse"}, VCard: abuseVCard},
+		}
+		if got := parseIPAbuseEmail(entities); got != "abuse@netops.example" {
+			t.Errorf("parseIPAbuseEmail = %q, want %q", got, "abuse@netops.example")
+		}
+	})
+
+	t.Run("nested abuse entity", func(t *testing.T) {
+		entities := []rdap.Entity{
+			{
+				Roles:    []string{"registrant"},
+				Entities: []rdap.Entity{{Roles: []string{"abuse"}, VCard: abuseVCard}},
+			},
+		}
+		if got := parseIPAbuseEmail(entities); got != "abuse@netops.example" {
+			t.Errorf("parseIPAbuseEmail = %q, want %q", got, "abuse@netops.example")
+		}
+	})
+
+	t.Run("no abuse entity", func(t *testing.T) {
+		entities := []rdap.Entity{{Roles: []string{"administrative"}}}
+		if got := parseIPAbuseEmail(entities); got != "" {
+			t.Errorf("parseIPAbuseEmail = %q, want empty", got)
+		}
+	})
+}

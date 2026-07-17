@@ -400,6 +400,20 @@ func (s *postgresStore) URLOwnedByDepartment(ctx context.Context, departmentID u
 	return count > 0, err
 }
 
+func (s *postgresStore) CountDepartmentURLsSince(ctx context.Context, since time.Time) (int, error) {
+	var count int64
+	err := s.db.WithContext(ctx).Model(&DepartmentURL{}).Where("created_at >= ?", since).Count(&count).Error
+	return int(count), err
+}
+
+func (s *postgresStore) CountDepartmentURLsSinceForDepartment(ctx context.Context, since time.Time, departmentID uint) (int, error) {
+	var count int64
+	err := s.db.WithContext(ctx).Model(&DepartmentURL{}).
+		Where("department_id = ? AND created_at >= ?", departmentID, since).
+		Count(&count).Error
+	return int(count), err
+}
+
 func (s *postgresStore) ListCompliantIPs(ctx context.Context) ([]CompliantIP, error) {
 	var ips []CompliantIP
 	return ips, s.db.WithContext(ctx).Order("created_at asc").Find(&ips).Error
@@ -412,6 +426,20 @@ func (s *postgresStore) CreateCompliantIP(ctx context.Context, address, note str
 
 func (s *postgresStore) DeleteCompliantIP(ctx context.Context, id uint) error {
 	return s.db.WithContext(ctx).Delete(&CompliantIP{}, id).Error
+}
+
+func (s *postgresStore) GetScanInterval(ctx context.Context) (int, error) {
+	var settings ScanSettings
+	if err := s.db.WithContext(ctx).First(&settings, 1).Error; err != nil {
+		return 0, err
+	}
+	return settings.IntervalMinutes, nil
+}
+
+func (s *postgresStore) SetScanInterval(ctx context.Context, minutes int) error {
+	return s.db.WithContext(ctx).
+		Model(&ScanSettings{ID: 1}).
+		Update("interval_minutes", minutes).Error
 }
 
 func (s *postgresStore) ISPStats(ctx context.Context, isp string) (ISPStatsResult, error) {
@@ -880,6 +908,37 @@ func (s *postgresStore) GetDomainWhois(ctx context.Context, urlValue string) (*D
 		return nil, err
 	}
 	return &w, nil
+}
+
+// GetSubdomainScan looks up the cached subfinder result for urlValue.
+// Returns nil, nil (not an error) both when the URL is unknown and when
+// it's known but never fetched — same semantics as GetDomainWhois.
+func (s *postgresStore) GetSubdomainScan(ctx context.Context, urlValue string) (*SubdomainScan, error) {
+	u, err := s.GetURLByValue(ctx, urlValue)
+	if err != nil {
+		return nil, err
+	}
+	if u == nil {
+		return nil, nil
+	}
+	var scan SubdomainScan
+	err = s.db.WithContext(ctx).Where("url_id = ?", u.ID).First(&scan).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &scan, nil
+}
+
+// UpsertSubdomainScan inserts or replaces the cached subfinder result for a
+// domain — one row per URLID (its primary key), so a re-fetch overwrites
+// the previous result.
+func (s *postgresStore) UpsertSubdomainScan(ctx context.Context, scan SubdomainScan) error {
+	return s.db.WithContext(ctx).
+		Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "url_id"}}, UpdateAll: true}).
+		Create(&scan).Error
 }
 
 // ListStaleDomains returns watched URLs (the same set ListWatchedURLs scans)

@@ -1,12 +1,14 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { ChevronLeftIcon, ChevronRightIcon, RefreshCwIcon } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, RefreshCwIcon, CopyIcon, CheckIcon } from 'lucide-react'
 import { Breadcrumbs } from '@/components/breadcrumbs'
 import { fetchDnsServers } from '../api/dns-servers'
 import { fetchDnsRecords } from '../api/dns-records'
 import type { DnsRecordSet, DnsRecordsResponse } from '../api/dns-records'
-import { fetchDomainInfo, refreshDomainInfo, faviconApiUrl } from '../api/domain'
+import { fetchDomainInfo, refreshDomainInfo, refreshHostingInfo, faviconApiUrl } from '../api/domain'
 import type { DomainInfo } from '../api/domain'
+import { fetchSubdomains, refreshSubdomains } from '../api/subdomains'
+import type { SubdomainScan } from '../api/subdomains'
 import { fetchHeatmapByUrlAndYear, fetchResultsByUrl } from '../api/results'
 import type { DailyComplianceStat, DNSServer, ScanResult } from '../api/types'
 import { getCachedDnsRecords, setCachedDnsRecords } from '@/lib/dns-records-cache'
@@ -48,6 +50,7 @@ type ScanGroup = {
 }
 
 const PAGE_SIZE = 25
+const SUBDOMAIN_PAGE_SIZE = 20
 
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric',
@@ -143,7 +146,7 @@ const DOMAIN_INFO_LABELS: ReadonlyArray<readonly [keyof DomainInfo, string]> = [
   ['last_fetched_at', 'Last refreshed'],
 ]
 
-type HostingInfo = { asn: number; org: string; netname: string }
+type HostingInfo = { ip: string; asn: number; org: string; netname: string; abuseEmail: string }
 
 function DomainInfoPanel({
   data,
@@ -176,6 +179,7 @@ function DomainInfoPanel({
         </p>
       ) : (
         <>
+          <p className="dash-label-subheading text-right">Domain Registrar</p>
           <div className="dns-records-grid">
             {DOMAIN_INFO_LABELS.map(([key, label]) => {
               const value = data[key]
@@ -202,18 +206,25 @@ function DomainInfoPanel({
       )}
 
       {hosting && (
-        <div className="dns-records-grid mt-3">
-          <div className="dns-record-block">
-            <span className="dns-record-type">Hosting Provider</span>
-            {hosting.org ? <span className="ip-value">{hosting.org}</span> : <span className="empty-cell">—</span>}
-          </div>
-          <div className="dns-record-block">
-            <span className="dns-record-type">ASN</span>
-            {hosting.asn > 0 ? <span className="ip-value">AS{hosting.asn}</span> : <span className="empty-cell">—</span>}
-          </div>
-          <div className="dns-record-block">
-            <span className="dns-record-type">NetName</span>
-            {hosting.netname ? <span className="ip-value">{hosting.netname}</span> : <span className="empty-cell">—</span>}
+        <div className="mt-4">
+          <p className="dash-label-subheading text-right">Domain Hosting</p>
+          <div className="dns-records-grid">
+            <div className="dns-record-block">
+              <span className="dns-record-type">Hosting Provider</span>
+              {hosting.org ? <span className="ip-value">{hosting.org}</span> : <span className="empty-cell">—</span>}
+            </div>
+            <div className="dns-record-block">
+              <span className="dns-record-type">ASN</span>
+              {hosting.asn > 0 ? <span className="ip-value">AS{hosting.asn}</span> : <span className="empty-cell">—</span>}
+            </div>
+            <div className="dns-record-block">
+              <span className="dns-record-type">NetName</span>
+              {hosting.netname ? <span className="ip-value">{hosting.netname}</span> : <span className="empty-cell">—</span>}
+            </div>
+            <div className="dns-record-block">
+              <span className="dns-record-type">Hosting Email</span>
+              {hosting.abuseEmail ? <span className="ip-value">{hosting.abuseEmail}</span> : <span className="empty-cell">—</span>}
+            </div>
           </div>
         </div>
       )}
@@ -318,6 +329,33 @@ function URLHistoryPage() {
     }
   }, [url])
 
+  const [subdomains, setSubdomains] = useState<SubdomainScan | null>(null)
+  const [subdomainsLoading, setSubdomainsLoading] = useState(true)
+  const [subdomainsRefreshing, setSubdomainsRefreshing] = useState(false)
+  const [subdomainPage, setSubdomainPage] = useState(1)
+  const [subdomainsCopied, setSubdomainsCopied] = useState(false)
+
+  const handleCopySubdomains = useCallback(async () => {
+    const list = subdomains?.subdomains ?? []
+    if (list.length === 0) return
+    await navigator.clipboard.writeText(list.join('\n'))
+    setSubdomainsCopied(true)
+    setTimeout(() => setSubdomainsCopied(false), 1500)
+  }, [subdomains])
+
+  const handleRefreshSubdomains = useCallback(async () => {
+    setSubdomainsRefreshing(true)
+    try {
+      setSubdomains(await refreshSubdomains(url))
+      setSubdomainPage(1)
+    } catch {
+      // ponytail: same as domain-info refresh — keep the stale cached list
+      // rather than clearing it on a failed refresh.
+    } finally {
+      setSubdomainsRefreshing(false)
+    }
+  }, [url])
+
   const loadYear = useCallback(async (year: number) => {
     try {
       setYearLoading(true)
@@ -377,8 +415,37 @@ function URLHistoryPage() {
       .filter(r => r.resolved_ip)
       .sort((a, b) => b.scanned_at.localeCompare(a.scanned_at))[0]
     if (!resolved) return null
-    return { asn: resolved.resolved_asn, org: resolved.resolved_org, netname: resolved.resolved_netname }
+    return {
+      ip: resolved.resolved_ip,
+      asn: resolved.resolved_asn,
+      org: resolved.resolved_org,
+      netname: resolved.resolved_netname,
+      abuseEmail: resolved.resolved_abuse_email,
+    }
   }, [results])
+
+  // Overrides `hosting` with a freshly re-fetched IPInfo row once the user
+  // clicks refresh — `hosting` itself is derived from ScanResult rows, which
+  // freeze ASN/org/netname/abuse-email at insert time and don't reflect a
+  // manual IPInfo cache refresh until a new scan happens.
+  const [hostingOverride, setHostingOverride] = useState<HostingInfo | null>(null)
+  const [hostingRefreshing, setHostingRefreshing] = useState(false)
+  const displayHosting = hostingOverride ?? hosting
+
+  const hostingIP = hosting?.ip
+  const handleRefreshHosting = useCallback(async () => {
+    if (!hostingIP) return
+    setHostingRefreshing(true)
+    try {
+      const res = await refreshHostingInfo(hostingIP)
+      setHostingOverride({ ip: res.ip, asn: res.asn, org: res.org, netname: res.netname, abuseEmail: res.abuse_email })
+    } catch {
+      // ponytail: same as domain-info refresh — keep the stale data rather
+      // than clearing it on a failed refresh.
+    } finally {
+      setHostingRefreshing(false)
+    }
+  }, [hostingIP])
 
   const overallStatsByDay = useMemo(() => aggregateStatsByDay(heatmapStats), [heatmapStats])
   const overallPct = useMemo(() => compliancePercentFromStats(heatmapStats), [heatmapStats])
@@ -412,6 +479,17 @@ function URLHistoryPage() {
       .finally(() => setDomainInfoLoading(false))
   }, [url])
 
+  // Reads whatever subfinder result is already cached (populated on
+  // watchlist-add) — never triggers a fresh run itself; only the refresh
+  // button does that.
+  useEffect(() => {
+    setSubdomainsLoading(true)
+    fetchSubdomains(url)
+      .then(setSubdomains)
+      .catch(() => setSubdomains({ fetched: false }))
+      .finally(() => setSubdomainsLoading(false))
+  }, [url])
+
   const filtered = useMemo(() => {
     return results.filter(r => {
       if (dnsFilter !== 'all' && r.dns_server.name !== dnsFilter) return false
@@ -439,6 +517,14 @@ function URLHistoryPage() {
   const paginatedGroups = useMemo(
     () => groups.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
     [groups, currentPage],
+  )
+
+  const subdomainList = useMemo(() => subdomains?.subdomains ?? [], [subdomains])
+  const subdomainTotalPages = Math.max(1, Math.ceil(subdomainList.length / SUBDOMAIN_PAGE_SIZE))
+  const subdomainCurrentPage = Math.min(subdomainPage, subdomainTotalPages)
+  const paginatedSubdomains = useMemo(
+    () => subdomainList.slice((subdomainCurrentPage - 1) * SUBDOMAIN_PAGE_SIZE, subdomainCurrentPage * SUBDOMAIN_PAGE_SIZE),
+    [subdomainList, subdomainCurrentPage],
   )
 
   const [expandedRuns, setExpandedRuns] = useState<Set<number>>(new Set())
@@ -480,9 +566,11 @@ function URLHistoryPage() {
 
       <div className="page-header">
         <div>
-        <h1 className="page-title flex justify-end items-end gap-3">
+        <h1 className="page-title flex-end items-end gap-3">
           <img src={faviconApiUrl(hostname)} alt="" width={16} height={16} className="shrink-0" onError={e => { e.currentTarget.style.visibility = 'hidden' }} />
+          <div>
           {hostname}
+          </div>
         </h1>
         </div>
         <div className="page-subtitle">{url} · Last 7 days</div>
@@ -646,16 +734,122 @@ function URLHistoryPage() {
             <button
               type="button"
               className="heatmap-year-nav-btn"
-              onClick={handleRefreshDomainInfo}
-              disabled={domainInfoLoading || domainInfoRefreshing}
+              onClick={() => { handleRefreshDomainInfo(); handleRefreshHosting() }}
+              disabled={domainInfoLoading || domainInfoRefreshing || hostingRefreshing}
               aria-label="Refresh domain info"
-              title="Refresh WHOIS data"
+              title="Refresh WHOIS and hosting data"
             >
-              <RefreshCwIcon className={cn('w-3.5 h-3.5', domainInfoRefreshing && 'animate-spin')} />
+              <RefreshCwIcon className={cn('w-3.5 h-3.5', (domainInfoRefreshing || hostingRefreshing) && 'animate-spin')} />
             </button>
             <p className="section-title">Domain info</p>
           </div>
-          <DomainInfoPanel data={domainInfo} loading={domainInfoLoading} hosting={hosting} />
+          <DomainInfoPanel data={domainInfo} loading={domainInfoLoading} hosting={displayHosting} />
+        </div>
+      </div>
+
+      <div className="dash-section mt-6">
+        <div className="flex items-start justify-between mb-3">
+          <div className="items-start gap-2">
+            <div className="flex flex-row">
+              <p className="section-title">Subdomains</p>
+              <div className="flex flex-col">
+              <button
+                type="button"
+                className="heatmap-year-nav-btn"
+                onClick={handleCopySubdomains}
+                disabled={!subdomains?.subdomains?.length}
+                aria-label="Copy all subdomains"
+                title="Copy all subdomains (newline-separated)"
+              >
+                {subdomainsCopied ? <CheckIcon className="w-3.5 h-3.5" /> : <CopyIcon className="w-3.5 h-3.5" />}
+              </button>
+              
+              
+              </div>
+              
+            </div>
+            {subdomains?.fetched && subdomains.subdomains && (
+                <span className="dash-label">{subdomains.subdomains.length} found</span>
+              )}
+            
+            
+          </div>
+          <button
+            type="button"
+            className="heatmap-year-nav-btn"
+            onClick={handleRefreshSubdomains}
+            disabled={subdomainsLoading || subdomainsRefreshing}
+            aria-label="Refresh subdomains"
+            title="Re-run subdomain enumeration"
+          >
+            <RefreshCwIcon className={cn('w-3.5 h-3.5', subdomainsRefreshing && 'animate-spin')} />
+          </button>
+        </div>
+
+        <div className="results-wrap">
+          {!subdomainsLoading && !subdomainsRefreshing && subdomainList.length === 0 ? (
+            <div className="empty-state">
+              <EmptyIcon />
+              <p className="empty-heading">
+                {subdomains?.fetch_error ? 'Enumeration failed' : 'No subdomains found yet'}
+              </p>
+              <p className="empty-body">
+                {subdomains?.fetch_error ?? 'Click refresh to run an enumeration.'}
+              </p>
+            </div>
+          ) : (
+            <>
+              <Table className="results-table" aria-label={`Subdomains for ${hostname}`}>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="col-domain th-left" scope="col">Subdomain</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {subdomainsLoading || subdomainsRefreshing ? (
+                    [180, 140, 220].map((w, i) => (
+                      <TableRow key={i} className="skeleton-row">
+                        <TableCell className="col-domain"><span className="skeleton" style={{ width: w, height: 14 }} /></TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    paginatedSubdomains.map(sub => (
+                      <TableRow key={sub}>
+                        <TableCell className="col-domain">
+                          <a href={`https://${sub}`} target="_blank" rel="noopener noreferrer" className="hostname">
+                            {sub}
+                          </a>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+              {!subdomainsLoading && subdomainTotalPages > 1 && (
+                <div className="pagination">
+                  <span className="pagination-label">Page {subdomainCurrentPage} of {subdomainTotalPages}</span>
+                  <button
+                    type="button"
+                    className="pagination-btn"
+                    onClick={() => setSubdomainPage(p => p - 1)}
+                    disabled={subdomainCurrentPage <= 1}
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeftIcon className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    className="pagination-btn"
+                    onClick={() => setSubdomainPage(p => p + 1)}
+                    disabled={subdomainCurrentPage >= subdomainTotalPages}
+                    aria-label="Next page"
+                  >
+                    <ChevronRightIcon className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
         </TabsContent>

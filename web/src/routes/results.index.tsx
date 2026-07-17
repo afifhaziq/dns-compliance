@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { HistoryIcon, Camera, Image as ImageIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { LayoutDashboardIcon, Camera, Image as ImageIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { fetchResults, groupResults, lastScanTime } from '../api/results'
 import { fetchScanStatus, isScanning, triggerScreenshot } from '../api/scan'
 import type { GroupedResult, ScanResult } from '../api/types'
@@ -236,12 +236,14 @@ function URLGroupRow({
           <Link
             to="/domain/$url"
             params={{ url }}
-            search={{ tab: 'history' }}
+            search={{ tab: 'overview' }}
+            target="_blank"
+            rel="noopener noreferrer"
             className="btn-row-history"
-            aria-label={`View history for ${hostname}`}
+            aria-label={`View overview for ${hostname}`}
             onClick={e => e.stopPropagation()}
           >
-            <HistoryIcon className="btn-row-history-icon" />
+            <LayoutDashboardIcon className="btn-row-history-icon" />
           </Link>
         </TableCell>
         <TableCell className="col-last-scanned">

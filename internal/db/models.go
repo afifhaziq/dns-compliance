@@ -27,13 +27,17 @@ type Department struct {
 }
 
 // User.DepartmentID is required for all users including admins. Admins are
-// assigned to the "Admin" department. is_admin is the authoritative admin
-// flag — DepartmentID being non-nil no longer implies non-admin.
+// assigned to the "Admin" department. is_admin is the authoritative super
+// admin flag (global, cross-department). is_dept_admin scopes the same kind
+// of management capability (users, DNS servers) to the user's own
+// DepartmentID — mutually exclusive with is_admin. Neither flag set means a
+// plain department member (watchlist-only).
 type User struct {
 	ID           uint        `gorm:"primaryKey" json:"id"`
 	Username     string      `gorm:"uniqueIndex;not null" json:"username"`
 	PasswordHash string      `gorm:"not null" json:"-"`
 	IsAdmin      bool        `gorm:"not null;default:false" json:"is_admin"`
+	IsDeptAdmin  bool        `gorm:"not null;default:false" json:"is_dept_admin"`
 	DepartmentID *uint       `gorm:"index" json:"department_id,omitempty"`
 	Department   *Department `gorm:"foreignKey:DepartmentID" json:"department,omitempty"`
 	CreatedAt    time.Time   `json:"created_at"`
@@ -70,6 +74,14 @@ type URLEntry struct {
 	CreatedAt time.Time  `json:"created_at"`
 }
 
+// ScanSettings is a single-row (ID 1) table holding the admin-configurable
+// scan schedule. SeedScanInterval creates the row from the --interval flag
+// on first boot; after that the admin panel is authoritative.
+type ScanSettings struct {
+	ID              uint `gorm:"primaryKey" json:"id"`
+	IntervalMinutes int  `gorm:"not null" json:"interval_minutes"`
+}
+
 // CompliantIP is an IP address that counts as compliant even when DNS
 // resolves — used to classify ISP block-pages (e.g. MCMC's redirect IP)
 // as compliant rather than as violations.
@@ -89,23 +101,24 @@ type ScanRun struct {
 }
 
 type ScanResult struct {
-	ID              uint      `gorm:"primaryKey" json:"id"`
-	ScanRunID       uint      `gorm:"not null;index" json:"scan_run_id"`
-	URLID           uint      `gorm:"not null;index" json:"url_id"`
-	URLRef          URL       `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
-	URLValue        string    `gorm:"not null" json:"url"`
-	DNSServerID     uint      `gorm:"not null" json:"dns_server_id"`
-	DNSServer       DNSServer `gorm:"foreignKey:DNSServerID" json:"dns_server"`
-	Compliant       bool      `gorm:"not null" json:"compliant"`
-	ResolvedIP      string    `json:"resolved_ip"`
-	ResolvedIPv6    string    `json:"resolved_ipv6"`
-	ResolvedASN     uint      `json:"resolved_asn"`
-	ResolvedOrg     string    `json:"resolved_org"`
-	ResolvedNetName string    `json:"resolved_netname"`
-	ScreenshotURL   string    `json:"screenshot_url"`
-	Error           string    `json:"error"`
-	LatencyMs       int64     `gorm:"default:0" json:"latency_ms"`
-	ScannedAt       time.Time `json:"scanned_at"`
+	ID                 uint      `gorm:"primaryKey" json:"id"`
+	ScanRunID          uint      `gorm:"not null;index" json:"scan_run_id"`
+	URLID              uint      `gorm:"not null;index" json:"url_id"`
+	URLRef             URL       `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
+	URLValue           string    `gorm:"not null" json:"url"`
+	DNSServerID        uint      `gorm:"not null" json:"dns_server_id"`
+	DNSServer          DNSServer `gorm:"foreignKey:DNSServerID" json:"dns_server"`
+	Compliant          bool      `gorm:"not null" json:"compliant"`
+	ResolvedIP         string    `json:"resolved_ip"`
+	ResolvedIPv6       string    `json:"resolved_ipv6"`
+	ResolvedASN        uint      `json:"resolved_asn"`
+	ResolvedOrg        string    `json:"resolved_org"`
+	ResolvedNetName    string    `json:"resolved_netname"`
+	ResolvedAbuseEmail string    `json:"resolved_abuse_email"`
+	ScreenshotURL      string    `json:"screenshot_url"`
+	Error              string    `json:"error"`
+	LatencyMs          int64     `gorm:"default:0" json:"latency_ms"`
+	ScannedAt          time.Time `json:"scanned_at"`
 }
 
 // DomainWhois caches RDAP registration metadata for a domain (not a scan —
@@ -125,6 +138,17 @@ type DomainWhois struct {
 	FetchError          string     `json:"fetch_error,omitempty"`
 }
 
+// SubdomainScan caches a subfinder enumeration result for a domain. Unlike
+// DomainWhois, it's never refreshed on a background schedule — populated
+// lazily on watchlist-add and only ever re-run after that via an explicit
+// refresh (see fetchAndStoreSubdomains). Absent row = never fetched.
+type SubdomainScan struct {
+	URLID      uint      `gorm:"primaryKey;autoIncrement:false" json:"url_id"`
+	Subdomains []string  `gorm:"serializer:json" json:"subdomains"`
+	FetchedAt  time.Time `json:"fetched_at"`
+	FetchError string    `json:"fetch_error,omitempty"`
+}
+
 // IPInfo caches ASN + network-operator lookups from ipinfo.io, keyed by
 // resolved IP rather than domain — an IP's ASN is stable regardless of which
 // domain currently resolves to it, so a distinct IP is looked up at most
@@ -135,6 +159,7 @@ type IPInfo struct {
 	ASN        uint      `json:"asn"`
 	Org        string    `json:"org"`
 	NetName    string    `json:"netname"`
+	AbuseEmail string    `json:"abuse_email"`
 	FetchedAt  time.Time `json:"fetched_at"`
 	FetchError string    `json:"fetch_error,omitempty"`
 }

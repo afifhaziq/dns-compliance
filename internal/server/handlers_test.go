@@ -32,6 +32,8 @@ type fullMockStore struct {
 	domainWhois    []db.DomainWhois
 	ipInfo         []db.IPInfo
 	favicons       []db.Favicon
+	subdomainScans []db.SubdomainScan
+	scanInterval   int
 }
 
 func (m *fullMockStore) ListURLs(_ context.Context) ([]db.URL, error) { return m.urls, nil }
@@ -354,6 +356,26 @@ func (m *fullMockStore) URLOwnedByDepartment(_ context.Context, departmentID uin
 	return false, nil
 }
 
+func (m *fullMockStore) CountDepartmentURLsSince(_ context.Context, since time.Time) (int, error) {
+	count := 0
+	for _, du := range m.departmentURLs {
+		if !du.CreatedAt.Before(since) {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (m *fullMockStore) CountDepartmentURLsSinceForDepartment(_ context.Context, since time.Time, departmentID uint) (int, error) {
+	count := 0
+	for _, du := range m.departmentURLs {
+		if du.DepartmentID == departmentID && !du.CreatedAt.Before(since) {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func (m *fullMockStore) ListCompliantIPs(_ context.Context) ([]db.CompliantIP, error) {
 	return nil, nil
 }
@@ -361,6 +383,12 @@ func (m *fullMockStore) CreateCompliantIP(_ context.Context, address, note strin
 	return db.CompliantIP{Address: address, Note: note}, nil
 }
 func (m *fullMockStore) DeleteCompliantIP(_ context.Context, _ uint) error { return nil }
+
+func (m *fullMockStore) GetScanInterval(_ context.Context) (int, error) { return m.scanInterval, nil }
+func (m *fullMockStore) SetScanInterval(_ context.Context, minutes int) error {
+	m.scanInterval = minutes
+	return nil
+}
 
 func (m *fullMockStore) ISPStats(_ context.Context, _ string) (db.ISPStatsResult, error) {
 	return db.ISPStatsResult{}, nil
@@ -504,13 +532,42 @@ func (m *fullMockStore) UpsertFavicon(_ context.Context, fav db.Favicon) error {
 	return nil
 }
 
+func (m *fullMockStore) GetSubdomainScan(ctx context.Context, urlValue string) (*db.SubdomainScan, error) {
+	u, err := m.GetURLByValue(ctx, urlValue)
+	if err != nil {
+		return nil, err
+	}
+	if u == nil {
+		return nil, nil
+	}
+	for _, s := range m.subdomainScans {
+		if s.URLID == u.ID {
+			sCopy := s
+			return &sCopy, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *fullMockStore) UpsertSubdomainScan(_ context.Context, s db.SubdomainScan) error {
+	for i, existing := range m.subdomainScans {
+		if existing.URLID == s.URLID {
+			m.subdomainScans[i] = s
+			return nil
+		}
+	}
+	m.subdomainScans = append(m.subdomainScans, s)
+	return nil
+}
+
 var _ db.Store = (*fullMockStore)(nil)
 
 func setupRouter(store db.Store, sc *server.Scanner) http.Handler {
 	r := chi.NewRouter()
-	// whoisFetch is nil — the lazy on-add fetch goroutine never runs in
-	// tests, so no test hits the network.
-	server.RegisterRoutes(r, store, sc, nil, false, nil, nil)
+	// whoisFetch/subfinderFetch/ipFetch/netnameFetch are nil — the lazy
+	// on-add fetch goroutines never run in tests, so no test hits the
+	// network or shells out.
+	server.RegisterRoutes(r, store, sc, nil, false, nil, nil, nil, nil, nil)
 	return r
 }
 
@@ -541,6 +598,15 @@ func deptCookie(store *fullMockStore, departmentID uint) *http.Cookie {
 	return loginAs(store, db.User{
 		Username:     fmt.Sprintf("dept-user-%d", departmentID),
 		PasswordHash: "x",
+		DepartmentID: &departmentID,
+	})
+}
+
+func deptAdminCookie(store *fullMockStore, departmentID uint) *http.Cookie {
+	return loginAs(store, db.User{
+		Username:     fmt.Sprintf("dept-admin-%d", departmentID),
+		PasswordHash: "x",
+		IsDeptAdmin:  true,
 		DepartmentID: &departmentID,
 	})
 }
@@ -755,6 +821,22 @@ func TestCreateDNSServer_ForbiddenForNonAdmin(t *testing.T) {
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateDNSServer_AllowedForDeptAdmin(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := deptAdminCookie(store, 1)
+	r := setupRouter(store, nil)
+	body, _ := json.Marshal(map[string]string{"isp": "Google", "name": "Google UDP", "address": "8.8.8.8:53", "protocol": "udp"})
+	req := httptest.NewRequest(http.MethodPost, "/api/dns-servers", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected a department admin to be able to add a DNS server (shared catalog), got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -1244,6 +1326,117 @@ func TestCreateUser_Success(t *testing.T) {
 	}
 }
 
+func TestListUsers_DeptAdminSeesOnlyOwnDepartment(t *testing.T) {
+	dept1, dept2 := uint(1), uint(2)
+	store := &fullMockStore{users: []db.User{
+		{ID: 1, Username: "alice", DepartmentID: &dept1},
+		{ID: 2, Username: "carol", DepartmentID: &dept2},
+	}}
+	cookie := deptAdminCookie(store, dept1) // becomes user ID 3
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/users", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var users []db.User
+	json.NewDecoder(w.Body).Decode(&users)
+	if len(users) != 2 {
+		t.Fatalf("expected 2 department-1 users (alice + the dept admin itself), got %d: %+v", len(users), users)
+	}
+	for _, u := range users {
+		if u.DepartmentID == nil || *u.DepartmentID != dept1 {
+			t.Fatalf("expected only department-1 users, got %+v", u)
+		}
+	}
+}
+
+func TestListUsers_SuperAdminSeesAll(t *testing.T) {
+	dept1, dept2 := uint(1), uint(2)
+	store := &fullMockStore{users: []db.User{
+		{ID: 1, Username: "alice", DepartmentID: &dept1},
+		{ID: 2, Username: "carol", DepartmentID: &dept2},
+	}}
+	cookie := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/users", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var users []db.User
+	json.NewDecoder(w.Body).Decode(&users)
+	if len(users) != 3 { // alice, carol, and the admin itself
+		t.Fatalf("expected a super admin to see every user, got %d: %+v", len(users), users)
+	}
+}
+
+func TestCreateUser_DeptAdminForcesOwnDepartmentAndPlainRole(t *testing.T) {
+	dept1, dept2 := uint(1), uint(2)
+	store := &fullMockStore{}
+	cookie := deptAdminCookie(store, dept1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]any{
+		"username": "eve", "password": "pw12345",
+		"is_admin": true, "is_dept_admin": true, "department_id": dept2,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/users", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var u db.User
+	json.NewDecoder(w.Body).Decode(&u)
+	if u.IsAdmin || u.IsDeptAdmin {
+		t.Fatalf("expected a department admin to never grant admin/dept-admin, got %+v", u)
+	}
+	if u.DepartmentID == nil || *u.DepartmentID != dept1 {
+		t.Fatalf("expected the created user pinned to the caller's own department (1), got %+v", u)
+	}
+}
+
+func TestDeleteUser_DeptAdminScoping(t *testing.T) {
+	dept1, dept2 := uint(1), uint(2)
+	store := &fullMockStore{users: []db.User{
+		{ID: 1, Username: "same-dept-member", DepartmentID: &dept1},
+		{ID: 2, Username: "other-dept-member", DepartmentID: &dept2},
+		{ID: 3, Username: "same-dept-admin", IsDeptAdmin: true, DepartmentID: &dept1},
+	}}
+	cookie := deptAdminCookie(store, dept1)
+	r := setupRouter(store, nil)
+
+	del := func(id uint) int {
+		req := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/admin/users/%d", id), nil)
+		req.AddCookie(cookie)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	if code := del(2); code != http.StatusForbidden {
+		t.Fatalf("expected 403 deleting a user in a different department, got %d", code)
+	}
+	if code := del(3); code != http.StatusForbidden {
+		t.Fatalf("expected 403 deleting another department admin, got %d", code)
+	}
+	if code := del(1); code != http.StatusNoContent {
+		t.Fatalf("expected 204 deleting a plain member of the caller's own department, got %d", code)
+	}
+}
+
 func TestToggleURL_DisableAndReenable(t *testing.T) {
 	deptID := uint(1)
 	store := &fullMockStore{
@@ -1380,5 +1573,201 @@ func TestDeleteUser_AdminOnly(t *testing.T) {
 	r.ServeHTTP(w2, req2)
 	if w2.Code != http.StatusNoContent {
 		t.Fatalf("expected 204 for admin, got %d: %s", w2.Code, w2.Body.String())
+	}
+}
+
+func TestURLsRequestedThisMonth_CountsOnlyThisCalendarMonth(t *testing.T) {
+	dept1, dept2 := uint(1), uint(2)
+	now := time.Now().UTC()
+	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	lastMonth := startOfMonth.AddDate(0, 0, -1) // last day of the previous month — outside the window even if within 30 days
+	store := &fullMockStore{departmentURLs: []db.DepartmentURL{
+		{DepartmentID: dept1, URLID: 1, CreatedAt: startOfMonth.Add(time.Hour)}, // this month, dept1
+		{DepartmentID: dept2, URLID: 2, CreatedAt: now},                         // this month, dept2
+		{DepartmentID: dept1, URLID: 3, CreatedAt: lastMonth},                   // previous month — must not count
+	}}
+	admin := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/urls/requested-count", nil)
+	req.AddCookie(admin)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var got map[string]int
+	json.NewDecoder(w.Body).Decode(&got)
+	if got["count"] != 2 {
+		t.Fatalf("expected admin to see 2 requests this calendar month (excluding last month's), got %+v", got)
+	}
+}
+
+func TestURLsRequestedThisMonth_ScopedForDepartment(t *testing.T) {
+	dept1, dept2 := uint(1), uint(2)
+	now := time.Now().UTC()
+	store := &fullMockStore{departmentURLs: []db.DepartmentURL{
+		{DepartmentID: dept1, URLID: 1, CreatedAt: now},
+		{DepartmentID: dept2, URLID: 2, CreatedAt: now},
+		{DepartmentID: dept2, URLID: 3, CreatedAt: now},
+	}}
+	cookie := deptCookie(store, dept1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/urls/requested-count", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var got map[string]int
+	json.NewDecoder(w.Body).Decode(&got)
+	if got["count"] != 1 {
+		t.Fatalf("expected department 1 to see only its own request, got %+v", got)
+	}
+}
+
+func TestScanInterval_GetAndSet_AdminOnly(t *testing.T) {
+	store := &fullMockStore{scanInterval: 60}
+	admin := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/scan-interval", nil)
+	req.AddCookie(admin)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var got map[string]int
+	json.NewDecoder(w.Body).Decode(&got)
+	if got["interval_minutes"] != 60 {
+		t.Fatalf("expected interval_minutes=60, got %+v", got)
+	}
+
+	body, _ := json.Marshal(map[string]int{"interval_minutes": 15})
+	req2 := httptest.NewRequest(http.MethodPatch, "/api/admin/scan-interval", bytes.NewReader(body))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.AddCookie(admin)
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w2.Code, w2.Body.String())
+	}
+	if store.scanInterval != 15 {
+		t.Fatalf("expected the stored interval to update to 15, got %d", store.scanInterval)
+	}
+}
+
+func TestScanInterval_ForbiddenForDeptAdmin(t *testing.T) {
+	store := &fullMockStore{scanInterval: 60}
+	cookie := deptAdminCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/scan-interval", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected scan interval to stay super-admin-only, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestScanInterval_RejectsNonPositive(t *testing.T) {
+	store := &fullMockStore{}
+	admin := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]int{"interval_minutes": 0})
+	req := httptest.NewRequest(http.MethodPatch, "/api/admin/scan-interval", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(admin)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for a non-positive interval, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSubdomainsByURL_FetchedFalseWhenNeverScanned(t *testing.T) {
+	store := &fullMockStore{
+		urls:           []db.URL{{ID: 1, URL: "example.com"}},
+		departmentURLs: []db.DepartmentURL{{DepartmentID: 1, URLID: 1, Enabled: true}},
+	}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/subdomains/example.com", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Fetched bool `json:"fetched"`
+	}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.Fetched {
+		t.Fatalf("expected fetched=false with no cached SubdomainScan row, got true")
+	}
+}
+
+func TestSubdomainsByURL_404ForUnownedDomain(t *testing.T) {
+	store := &fullMockStore{
+		urls:           []db.URL{{ID: 1, URL: "example.com"}, {ID: 2, URL: "other.com"}},
+		departmentURLs: []db.DepartmentURL{{DepartmentID: 1, URLID: 1, Enabled: true}},
+	}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/subdomains/other.com", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for a domain not on the caller's watchlist, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRefreshSubdomains_503WhenDisabled(t *testing.T) {
+	// setupRouter always wires a nil subfinderFetch — mirrors production
+	// running with --subfinder-path "" to disable enumeration entirely.
+	store := &fullMockStore{
+		urls:           []db.URL{{ID: 1, URL: "example.com"}},
+		departmentURLs: []db.DepartmentURL{{DepartmentID: 1, URLID: 1, Enabled: true}},
+	}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/subdomains/example.com", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when subfinderFetch is nil, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRefreshHostingInfo_503WhenDisabled(t *testing.T) {
+	// setupRouter always wires a nil ipFetch — mirrors production running
+	// with hosting lookups disabled.
+	store := &fullMockStore{}
+	cookie := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/hosting/1.2.3.4", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when ipFetch is nil, got %d: %s", w.Code, w.Body.String())
 	}
 }

@@ -10,6 +10,13 @@ export async function fetchUrlCount(): Promise<number> {
   return (await fetchUrls()).length
 }
 
+// Watchlist additions since the start of the current calendar month — not a
+// rolling 30-day window.
+export async function fetchUrlsRequestedThisMonth(): Promise<number> {
+  const data = await api.get<{ count: number }>('/urls/requested-count')
+  return data.count
+}
+
 export async function createUrl(url: string): Promise<URLEntry> {
   return api.post<URLEntry>('/urls', { url })
 }

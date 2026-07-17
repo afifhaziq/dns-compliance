@@ -6,6 +6,10 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/server ./cmd/server/
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/crawler ./cmd/crawler/
+# subfinder is shelled out to at runtime (internal/subfinder), not imported —
+# installed standalone so it's pinned independent of this module's go.mod.
+RUN CGO_ENABLED=0 GOOS=linux go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && \
+    mv "$(go env GOPATH)/bin/subfinder" /out/subfinder
 
 # Stage 2: Runtime with Chrome for screenshot support
 FROM debian:bookworm-slim
@@ -24,12 +28,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /out/server  /app/server
-COPY --from=builder /out/crawler /app/crawler
-COPY dns-server.yaml             /app/dns-server.yaml
+COPY --from=builder /out/server    /app/server
+COPY --from=builder /out/crawler   /app/crawler
+COPY --from=builder /out/subfinder /app/subfinder
+COPY dns-server.yaml               /app/dns-server.yaml
 
 WORKDIR /app
 ENV CRAWLER_PATH=/app/crawler
+ENV SUBFINDER_PATH=/app/subfinder
 
 EXPOSE 8080 50051
 ENTRYPOINT ["/app/server", "--seed-dns", "/app/dns-server.yaml"]

@@ -19,6 +19,7 @@ export type ScanResult = {
   resolved_asn: number
   resolved_org: string
   resolved_netname: string
+  resolved_abuse_email: string
   screenshot_url: string
   error: string
   latency_ms: number
@@ -52,6 +53,7 @@ export type User = {
   id: number
   username: string
   is_admin: boolean
+  is_dept_admin: boolean
   department_id?: number
   department?: Department
   created_at: string
