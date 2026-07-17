@@ -752,7 +752,7 @@ function URLHistoryPage() {
           <div className="items-start gap-2">
             <div className="flex flex-row">
               <p className="section-title">Subdomains</p>
-              <div className="flex flex-col">
+              <div className="flex flex-col ml-2">
               <button
                 type="button"
                 className="heatmap-year-nav-btn"
