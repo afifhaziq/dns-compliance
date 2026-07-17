@@ -872,7 +872,7 @@ th.th-left {
 }
 
 .dash-label-subheading {
-  @apply text-[14px] font-bold text-stone- mb-3;
+  @apply text-[14px] font-bold text-stone-text mb-3;
 }
 
 .section-title {
