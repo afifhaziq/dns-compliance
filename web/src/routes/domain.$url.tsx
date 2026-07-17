@@ -1,7 +1,9 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { ChevronLeftIcon, ChevronRightIcon, RefreshCwIcon, CopyIcon, CheckIcon } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, RefreshCwIcon, CopyIcon, CheckIcon, Image as ImageIcon } from 'lucide-react'
 import { Breadcrumbs } from '@/components/breadcrumbs'
+import { StatusDot, EmptyIcon } from '@/components/results-table-parts'
+import { relativeTime } from '@/lib/relative-time'
 import { fetchDnsServers } from '../api/dns-servers'
 import { fetchDnsRecords } from '../api/dns-records'
 import type { DnsRecordSet, DnsRecordsResponse } from '../api/dns-records'
@@ -59,17 +61,6 @@ const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
   hour: '2-digit',
   minute: '2-digit',
 })
-
-function EmptyIcon() {
-  return (
-    <svg className="empty-icon" width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-      <rect x="8" y="4" width="24" height="32" rx="2" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M32 4L40 12V36C40 37.1 39.1 38 38 38H32" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M40 12H32V4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M14 18H26M14 24H22" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  )
-}
 
 const DNS_RECORD_LABELS: ReadonlyArray<readonly [keyof DnsRecordSet, string]> = [
   ['a', 'A'],
@@ -232,16 +223,6 @@ function DomainInfoPanel({
   )
 }
 
-function StatusDot({ compliant }: { compliant: boolean }) {
-  return (
-    <span className="status-dot-label">
-      <span className={`status-dot ${compliant ? 'dot-compliant' : 'dot-violation'}`} aria-hidden="true" />
-      <span className={compliant ? 'label-compliant' : 'label-violation'}>
-        {compliant ? 'Compliant' : 'Violation'}
-      </span>
-    </span>
-  )
-}
 
 function HistorySkeletonRows() {
   return (
@@ -752,7 +733,7 @@ function URLHistoryPage() {
           <div className="items-start gap-2">
             <div className="flex flex-row">
               <p className="section-title">Subdomains</p>
-              <div className="flex flex-col ml-2">
+              <div className="flex ml-2">
               <button
                 type="button"
                 className="heatmap-year-nav-btn"
@@ -764,7 +745,16 @@ function URLHistoryPage() {
                 {subdomainsCopied ? <CheckIcon className="w-3.5 h-3.5" /> : <CopyIcon className="w-3.5 h-3.5" />}
               </button>
               
-              
+              <button
+              type="button"
+              className="heatmap-year-nav-btn"
+              onClick={handleRefreshSubdomains}
+              disabled={subdomainsLoading || subdomainsRefreshing}
+              aria-label="Refresh subdomains"
+              title="Re-run subdomain enumeration"
+              >
+              <RefreshCwIcon className={cn('w-3.5 h-3.5', subdomainsRefreshing && 'animate-spin')} />
+              </button>
               </div>
               
             </div>
@@ -774,16 +764,7 @@ function URLHistoryPage() {
             
             
           </div>
-          <button
-            type="button"
-            className="heatmap-year-nav-btn"
-            onClick={handleRefreshSubdomains}
-            disabled={subdomainsLoading || subdomainsRefreshing}
-            aria-label="Refresh subdomains"
-            title="Re-run subdomain enumeration"
-          >
-            <RefreshCwIcon className={cn('w-3.5 h-3.5', subdomainsRefreshing && 'animate-spin')} />
-          </button>
+          
         </div>
 
         <div className="results-wrap">
@@ -945,8 +926,8 @@ function URLHistoryPage() {
                           <TableCell className="col-scan-id">#{g.scanRunId}</TableCell>
                           <TableCell colSpan={6}>
                             <div className="scan-group-header">
-                              <span className="scan-group-time">
-                                {g.scannedAt ? DATE_FMT.format(new Date(g.scannedAt)) : '—'}
+                              <span className="scan-group-time" title={g.scannedAt ? new Date(g.scannedAt).toLocaleString() : undefined}>
+                                {g.scannedAt ? relativeTime(g.scannedAt) : '—'}
                               </span>
                               <span className="scan-group-summary">
                                 {violations > 0 && <span className="label-violation">{violations} {violations === 1 ? 'violation' : 'violations'}</span>}
@@ -957,7 +938,7 @@ function URLHistoryPage() {
                           </TableCell>
                         </TableRow>
                         {expanded && g.results.map(r => (
-                          <TableRow key={r.id} className={!r.compliant ? 'violation-row' : ''}>
+                          <TableRow key={r.id} className={`sub-row${!r.compliant ? ' violation-row' : ''}`}>
                             <TableCell className="col-expand" />
                             <TableCell className="col-scan-id" />
                             <TableCell className="col-domain"><span className="dns-name">{r.dns_server.name}</span></TableCell>
@@ -981,15 +962,26 @@ function URLHistoryPage() {
                                 <span className="empty-cell">—</span>
                               )}
                             </TableCell>
-                            <TableCell className="col-evidence">
+                            <TableCell className="col-evidence text-center">
                               {r.screenshot_url ? (
-                                <a href={r.screenshot_url} target="_blank" rel="noopener noreferrer" className="screenshot-link" aria-label={`View screenshot for ${r.dns_server.name}`}>
-                                  View screenshot
+                                <a
+                                  href={r.screenshot_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="screenshot-icon-btn"
+                                  aria-label={`View screenshot for ${r.dns_server.name}`}
+                                  title="View screenshot"
+                                >
+                                  <ImageIcon className="screenshot-icon" aria-hidden="true" />
                                 </a>
                               ) : <span className="empty-cell" aria-label="No screenshot">—</span>}
                             </TableCell>
                             <TableCell className="col-last-scanned">
-                              {r.scanned_at ? <span>{DATE_FMT.format(new Date(r.scanned_at))}</span> : <span className="empty-cell">—</span>}
+                              {r.scanned_at ? (
+                                <span title={new Date(r.scanned_at).toLocaleString()}>{relativeTime(r.scanned_at)}</span>
+                              ) : (
+                                <span className="empty-cell">—</span>
+                              )}
                             </TableCell>
                           </TableRow>
                         ))}

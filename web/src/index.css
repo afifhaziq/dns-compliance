@@ -705,7 +705,13 @@ th.th-left {
 /* ─── Scan Group Rows (collapsible, one header per scan_run_id) ─────────── */
 
 .scan-group-row {
-  @apply cursor-pointer bg-stone-panel hover:bg-stone-border/60 transition-colors duration-150 ease-snappy;
+  @apply cursor-pointer border-t border-stone-border first:border-t-0
+    transition-colors duration-150 ease-snappy hover:bg-stone-panel
+    aria-expanded:bg-ink-subtle aria-expanded:hover:bg-ink-subtle;
+}
+
+.scan-group-row td {
+  @apply py-[9px] px-4;
 }
 
 .scan-group-row:focus-visible {

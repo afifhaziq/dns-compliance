@@ -16,6 +16,8 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
 import { BrailleLoader } from '@/components/ui/braille-loader'
 import { ThinkingIndicator } from '@/components/ui/thinking-indicator'
+import { StatusDot, EmptyIcon } from '@/components/results-table-parts'
+import { relativeTime } from '@/lib/relative-time'
 
 export const Route = createFileRoute('/results/')({ component: ResultsPage })
 
@@ -24,17 +26,6 @@ export const Route = createFileRoute('/results/')({ component: ResultsPage })
 type StatusFilter = 'all' | 'violations' | 'compliant'
 
 const PAGE_SIZE = 25
-
-/* ─── Helpers ────────────────────────────────────────────────────────────── */
-
-function relativeTime(isoString: string): string {
-  const diff = (Date.now() - new Date(isoString).getTime()) / 1000
-  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
-  if (diff < 60) return rtf.format(-Math.round(diff), 'second')
-  if (diff < 3600) return rtf.format(-Math.round(diff / 60), 'minute')
-  if (diff < 86400) return rtf.format(-Math.round(diff / 3600), 'hour')
-  return rtf.format(-Math.round(diff / 86400), 'day')
-}
 
 /* ─── Chevron Icon ───────────────────────────────────────────────────────── */
 
@@ -50,32 +41,6 @@ function ChevronRight({ className }: { className?: string }) {
     >
       <path d="M4.5 2.5L7.5 6L4.5 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
-  )
-}
-
-/* ─── Empty Icon ─────────────────────────────────────────────────────────── */
-
-function EmptyIcon() {
-  return (
-    <svg className="empty-icon" width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-      <rect x="8" y="4" width="24" height="32" rx="2" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M32 4L40 12V36C40 37.1 39.1 38 38 38H32" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M40 12H32V4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M14 18H26M14 24H22" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-/* ─── Status Dot ─────────────────────────────────────────────────────────── */
-
-function StatusDot({ compliant }: { compliant: boolean }) {
-  return (
-    <span className="status-dot-label">
-      <span className={`status-dot ${compliant ? 'dot-compliant' : 'dot-violation'}`} aria-hidden="true" />
-      <span className={compliant ? 'label-compliant' : 'label-violation'}>
-        {compliant ? 'Compliant' : 'Violation'}
-      </span>
-    </span>
   )
 }
 
