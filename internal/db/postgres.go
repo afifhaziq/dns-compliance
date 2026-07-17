@@ -80,30 +80,27 @@ func (s *postgresStore) ActiveScanRun(ctx context.Context) (*ScanRun, error) {
 }
 
 func (s *postgresStore) LatestResults(ctx context.Context) ([]ScanResult, error) {
-	var results []ScanResult
-	// Subquery: latest scanned_at per (url_value, dns_server_id)
-	sub := s.db.Model(&ScanResult{}).
-		Select("url_value, dns_server_id, MAX(scanned_at) as max_scanned_at").
-		Group("url_value, dns_server_id")
-	err := s.db.WithContext(ctx).
-		Joins("JOIN (?) as latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at = latest.max_scanned_at", sub).
-		Preload("DNSServer").
-		Order("scan_results.url_value, scan_results.dns_server_id").
-		Find(&results).Error
-	return results, err
+	return s.latestResults(ctx, nil)
 }
 
 // LatestResultsForDepartment is the same query as LatestResults, scoped to
 // URLs on the given department's watchlist.
 func (s *postgresStore) LatestResultsForDepartment(ctx context.Context, departmentID uint) ([]ScanResult, error) {
+	return s.latestResults(ctx, &departmentID)
+}
+
+func (s *postgresStore) latestResults(ctx context.Context, departmentID *uint) ([]ScanResult, error) {
 	var results []ScanResult
+	// Subquery: latest scanned_at per (url_value, dns_server_id)
 	sub := s.db.Model(&ScanResult{}).
 		Select("url_value, dns_server_id, MAX(scanned_at) as max_scanned_at").
 		Group("url_value, dns_server_id")
-	err := s.db.WithContext(ctx).
-		Joins("JOIN (?) as latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at = latest.max_scanned_at", sub).
-		Joins("JOIN department_urls du ON du.url_id = scan_results.url_id AND du.department_id = ?", departmentID).
-		Preload("DNSServer").
+	q := s.db.WithContext(ctx).
+		Joins("JOIN (?) as latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at = latest.max_scanned_at", sub)
+	if departmentID != nil {
+		q = q.Joins("JOIN department_urls du ON du.url_id = scan_results.url_id AND du.department_id = ?", *departmentID)
+	}
+	err := q.Preload("DNSServer").
 		Order("scan_results.url_value, scan_results.dns_server_id").
 		Find(&results).Error
 	return results, err
@@ -401,16 +398,20 @@ func (s *postgresStore) URLOwnedByDepartment(ctx context.Context, departmentID u
 }
 
 func (s *postgresStore) CountDepartmentURLsSince(ctx context.Context, since time.Time) (int, error) {
-	var count int64
-	err := s.db.WithContext(ctx).Model(&DepartmentURL{}).Where("created_at >= ?", since).Count(&count).Error
-	return int(count), err
+	return s.countDepartmentURLsSince(ctx, since, nil)
 }
 
 func (s *postgresStore) CountDepartmentURLsSinceForDepartment(ctx context.Context, since time.Time, departmentID uint) (int, error) {
+	return s.countDepartmentURLsSince(ctx, since, &departmentID)
+}
+
+func (s *postgresStore) countDepartmentURLsSince(ctx context.Context, since time.Time, departmentID *uint) (int, error) {
 	var count int64
-	err := s.db.WithContext(ctx).Model(&DepartmentURL{}).
-		Where("department_id = ? AND created_at >= ?", departmentID, since).
-		Count(&count).Error
+	q := s.db.WithContext(ctx).Model(&DepartmentURL{}).Where("created_at >= ?", since)
+	if departmentID != nil {
+		q = q.Where("department_id = ?", *departmentID)
+	}
+	err := q.Count(&count).Error
 	return int(count), err
 }
 
@@ -443,6 +444,17 @@ func (s *postgresStore) SetScanInterval(ctx context.Context, minutes int) error 
 }
 
 func (s *postgresStore) ISPStats(ctx context.Context, isp string) (ISPStatsResult, error) {
+	return s.ispStats(ctx, isp, nil)
+}
+
+func (s *postgresStore) ISPStatsForDepartment(ctx context.Context, isp string, departmentID uint) (ISPStatsResult, error) {
+	return s.ispStats(ctx, isp, &departmentID)
+}
+
+// ispStats computes per-server compliance/latency stats plus the most
+// violated domain for one ISP, optionally scoped to one department's
+// enabled watchlist.
+func (s *postgresStore) ispStats(ctx context.Context, isp string, departmentID *uint) (ISPStatsResult, error) {
 	// Subquery: latest scan per (url_value, dns_server_id)
 	sub := s.db.Model(&ScanResult{}).
 		Select("url_value, dns_server_id, MAX(scanned_at) as max_scanned_at").
@@ -458,7 +470,7 @@ func (s *postgresStore) ISPStats(ctx context.Context, isp string) (ISPStatsResul
 		MaxLatencyMs int64
 	}
 	var rows []perServerRow
-	err := s.db.WithContext(ctx).
+	serverQ := s.db.WithContext(ctx).
 		Table("scan_results").
 		Select(`scan_results.dns_server_id,
             SUM(CASE WHEN scan_results.compliant = true THEN 1 ELSE 0 END) AS compliant,
@@ -466,7 +478,11 @@ func (s *postgresStore) ISPStats(ctx context.Context, isp string) (ISPStatsResul
             AVG(CASE WHEN scan_results.latency_ms > 0 THEN scan_results.latency_ms END) AS avg_latency_ms,
             MIN(CASE WHEN scan_results.latency_ms > 0 THEN scan_results.latency_ms END) AS min_latency_ms,
             MAX(CASE WHEN scan_results.latency_ms > 0 THEN scan_results.latency_ms END) AS max_latency_ms`).
-		Joins("JOIN (?) AS latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at = latest.max_scanned_at", sub).
+		Joins("JOIN (?) AS latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at = latest.max_scanned_at", sub)
+	if departmentID != nil {
+		serverQ = serverQ.Joins("JOIN department_urls ON department_urls.url_id = scan_results.url_id AND department_urls.department_id = ? AND department_urls.enabled = true", *departmentID)
+	}
+	err := serverQ.
 		Joins("JOIN dns_servers ON dns_servers.id = scan_results.dns_server_id").
 		Where("dns_servers.isp = ?", isp).
 		Group("scan_results.dns_server_id").
@@ -503,93 +519,14 @@ func (s *postgresStore) ISPStats(ctx context.Context, isp string) (ISPStatsResul
 		ViolationCount int
 	}
 	var vrow violationRow
-	if err := s.db.WithContext(ctx).
+	violationQ := s.db.WithContext(ctx).
 		Table("scan_results").
 		Select("scan_results.url_value, COUNT(*) AS violation_count").
-		Joins("JOIN (?) AS latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at = latest.max_scanned_at", sub).
-		Joins("JOIN dns_servers ON dns_servers.id = scan_results.dns_server_id").
-		Where("dns_servers.isp = ? AND scan_results.compliant = false", isp).
-		Group("scan_results.url_value").
-		Order("violation_count DESC").
-		Limit(1).
-		Scan(&vrow).Error; err != nil {
-		return ISPStatsResult{}, err
+		Joins("JOIN (?) AS latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at = latest.max_scanned_at", sub)
+	if departmentID != nil {
+		violationQ = violationQ.Joins("JOIN department_urls ON department_urls.url_id = scan_results.url_id AND department_urls.department_id = ? AND department_urls.enabled = true", *departmentID)
 	}
-
-	return ISPStatsResult{
-		ISP:                isp,
-		Servers:            serverStats,
-		MostViolatedDomain: vrow.URLValue,
-	}, nil
-}
-
-func (s *postgresStore) ISPStatsForDepartment(ctx context.Context, isp string, departmentID uint) (ISPStatsResult, error) {
-	// Subquery: latest scan per (url_value, dns_server_id)
-	sub := s.db.Model(&ScanResult{}).
-		Select("url_value, dns_server_id, MAX(scanned_at) as max_scanned_at").
-		Group("url_value, dns_server_id")
-
-	// Query 1: per-server compliance + latency stats, scoped to department's enabled watchlist
-	type perServerRow struct {
-		DNSServerID  uint
-		Compliant    int
-		Total        int
-		AvgLatencyMs float64
-		MinLatencyMs int64
-		MaxLatencyMs int64
-	}
-	var rows []perServerRow
-	err := s.db.WithContext(ctx).
-		Table("scan_results").
-		Select(`scan_results.dns_server_id,
-            SUM(CASE WHEN scan_results.compliant = true THEN 1 ELSE 0 END) AS compliant,
-            COUNT(*) AS total,
-            AVG(CASE WHEN scan_results.latency_ms > 0 THEN scan_results.latency_ms END) AS avg_latency_ms,
-            MIN(CASE WHEN scan_results.latency_ms > 0 THEN scan_results.latency_ms END) AS min_latency_ms,
-            MAX(CASE WHEN scan_results.latency_ms > 0 THEN scan_results.latency_ms END) AS max_latency_ms`).
-		Joins("JOIN (?) AS latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at = latest.max_scanned_at", sub).
-		Joins("JOIN department_urls ON department_urls.url_id = scan_results.url_id AND department_urls.department_id = ? AND department_urls.enabled = true", departmentID).
-		Joins("JOIN dns_servers ON dns_servers.id = scan_results.dns_server_id").
-		Where("dns_servers.isp = ?", isp).
-		Group("scan_results.dns_server_id").
-		Scan(&rows).Error
-	if err != nil {
-		return ISPStatsResult{}, err
-	}
-
-	// Build DNS server map to avoid N+1
-	allServers, err := s.ListDNSServers(ctx)
-	if err != nil {
-		return ISPStatsResult{}, err
-	}
-	serverByID := make(map[uint]DNSServer, len(allServers))
-	for _, srv := range allServers {
-		serverByID[srv.ID] = srv
-	}
-
-	serverStats := make([]ISPServerStat, 0, len(rows))
-	for _, row := range rows {
-		serverStats = append(serverStats, ISPServerStat{
-			DNSServer:    serverByID[row.DNSServerID],
-			Compliant:    row.Compliant,
-			Total:        row.Total,
-			AvgLatencyMs: row.AvgLatencyMs,
-			MinLatencyMs: row.MinLatencyMs,
-			MaxLatencyMs: row.MaxLatencyMs,
-		})
-	}
-
-	// Query 2: most violated domain, scoped to department's enabled watchlist
-	type violationRow struct {
-		URLValue       string
-		ViolationCount int
-	}
-	var vrow violationRow
-	if err := s.db.WithContext(ctx).
-		Table("scan_results").
-		Select("scan_results.url_value, COUNT(*) AS violation_count").
-		Joins("JOIN (?) AS latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at = latest.max_scanned_at", sub).
-		Joins("JOIN department_urls ON department_urls.url_id = scan_results.url_id AND department_urls.department_id = ? AND department_urls.enabled = true", departmentID).
+	if err := violationQ.
 		Joins("JOIN dns_servers ON dns_servers.id = scan_results.dns_server_id").
 		Where("dns_servers.isp = ? AND scan_results.compliant = false", isp).
 		Group("scan_results.url_value").
@@ -607,40 +544,58 @@ func (s *postgresStore) ISPStatsForDepartment(ctx context.Context, isp string, d
 }
 
 func (s *postgresStore) ISPTrend(ctx context.Context, isp string, since, until time.Time) ([]ISPTrendStat, error) {
-	var rows []ISPTrendStat
-	err := s.db.WithContext(ctx).
-		Table("scan_results").
-		Select(`TO_CHAR(scan_results.scanned_at, 'YYYY-MM-DD') AS day,
-            COUNT(*) AS total,
-            SUM(CASE WHEN scan_results.compliant = true THEN 1 ELSE 0 END) AS compliant`).
-		Joins("JOIN dns_servers ON dns_servers.id = scan_results.dns_server_id").
-		Where("dns_servers.isp = ? AND scan_results.scanned_at >= ? AND scan_results.scanned_at <= ?", isp, since, until).
-		Group("TO_CHAR(scan_results.scanned_at, 'YYYY-MM-DD')").
-		Order("day").
-		Scan(&rows).Error
-	if err != nil {
-		return nil, err
-	}
-	return rows, nil
+	return s.ispTrend(ctx, isp, since, until, nil)
 }
 
 func (s *postgresStore) ISPTrendForDepartment(ctx context.Context, isp string, since, until time.Time, departmentID uint) ([]ISPTrendStat, error) {
-	var rows []ISPTrendStat
-	err := s.db.WithContext(ctx).
+	return s.ispTrend(ctx, isp, since, until, &departmentID)
+}
+
+// ispTrend aggregates in Go rather than via SQL date-truncation (as
+// dailyTrend/DailyComplianceByURL do) — Postgres and the SQLite test backend
+// don't share a single portable function for it.
+func (s *postgresStore) ispTrend(ctx context.Context, isp string, since, until time.Time, departmentID *uint) ([]ISPTrendStat, error) {
+	type row struct {
+		ScannedAt time.Time
+		Compliant bool
+	}
+	q := s.db.WithContext(ctx).
 		Table("scan_results").
-		Select(`TO_CHAR(scan_results.scanned_at, 'YYYY-MM-DD') AS day,
-            COUNT(*) AS total,
-            SUM(CASE WHEN scan_results.compliant = true THEN 1 ELSE 0 END) AS compliant`).
+		Select("scan_results.scanned_at, scan_results.compliant").
 		Joins("JOIN dns_servers ON dns_servers.id = scan_results.dns_server_id").
-		Joins("JOIN department_urls ON department_urls.url_id = scan_results.url_id AND department_urls.department_id = ? AND department_urls.enabled = true", departmentID).
-		Where("dns_servers.isp = ? AND scan_results.scanned_at >= ? AND scan_results.scanned_at <= ?", isp, since, until).
-		Group("TO_CHAR(scan_results.scanned_at, 'YYYY-MM-DD')").
-		Order("day").
-		Scan(&rows).Error
-	if err != nil {
+		Where("dns_servers.isp = ? AND scan_results.scanned_at >= ? AND scan_results.scanned_at <= ?", isp, since, until)
+	if departmentID != nil {
+		q = q.Joins("JOIN department_urls ON department_urls.url_id = scan_results.url_id AND department_urls.department_id = ? AND department_urls.enabled = true", *departmentID)
+	}
+	var rows []row
+	if err := q.Scan(&rows).Error; err != nil {
 		return nil, err
 	}
-	return rows, nil
+
+	type bucket struct{ total, compliant int }
+	buckets := make(map[string]*bucket)
+	order := make([]string, 0)
+	for _, r := range rows {
+		day := r.ScannedAt.Format("2006-01-02")
+		b, ok := buckets[day]
+		if !ok {
+			b = &bucket{}
+			buckets[day] = b
+			order = append(order, day)
+		}
+		b.total++
+		if r.Compliant {
+			b.compliant++
+		}
+	}
+	sort.Strings(order)
+
+	stats := make([]ISPTrendStat, 0, len(order))
+	for _, day := range order {
+		b := buckets[day]
+		stats = append(stats, ISPTrendStat{Day: day, Total: b.total, Compliant: b.compliant})
+	}
+	return stats, nil
 }
 
 // dailyTrend aggregates compliance across all ISPs into one bucket per

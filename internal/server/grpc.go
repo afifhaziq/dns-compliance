@@ -134,7 +134,7 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 // per cache-miss IP in Submit, so the extra worst-case latency doesn't block
 // ingestion there; RefreshHostingInfo calls it synchronously instead, since
 // that path needs the fresh result in the response.
-func fetchAndCacheIPInfo(store db.Store, fetch ipinfo.Fetcher, netnameFetch whois.IPFetcher, ip string) db.IPInfo {
+func fetchAndCacheIPInfo(store db.EnrichmentStore, fetch ipinfo.Fetcher, netnameFetch whois.IPFetcher, ip string) db.IPInfo {
 	fetchCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	res, err := fetch(fetchCtx, ip)
 	cancel()

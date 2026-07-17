@@ -22,7 +22,7 @@ const whoisRefreshPause = 2 * time.Second
 // StartWhoisRefresher launches a background goroutine that re-fetches RDAP
 // data for domains whose DomainWhois row is missing or older than
 // staleDays. Mirrors StartScheduler but on its own, much slower cadence.
-func StartWhoisRefresher(ctx context.Context, store db.Store, fetch whois.Fetcher, interval time.Duration, staleDays int) {
+func StartWhoisRefresher(ctx context.Context, store db.EnrichmentStore, fetch whois.Fetcher, interval time.Duration, staleDays int) {
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
@@ -37,7 +37,7 @@ func StartWhoisRefresher(ctx context.Context, store db.Store, fetch whois.Fetche
 	}()
 }
 
-func refreshStaleDomains(ctx context.Context, store db.Store, fetch whois.Fetcher, staleDays int) {
+func refreshStaleDomains(ctx context.Context, store db.EnrichmentStore, fetch whois.Fetcher, staleDays int) {
 	olderThan := time.Now().AddDate(0, 0, -staleDays)
 	domains, err := store.ListStaleDomains(ctx, olderThan, whoisRefreshBatchSize)
 	if err != nil {

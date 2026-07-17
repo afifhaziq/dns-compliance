@@ -931,3 +931,173 @@ func TestListWatchedURLsEnabledByAnyDept(t *testing.T) {
 		t.Fatal("URL enabled by any department should still appear in ListWatchedURLs")
 	}
 }
+
+// The four tests below cover LatestResults, ISPStats, ISPTrend, and
+// CountDepartmentURLsSince after collapsing each *ForDepartment variant into
+// a shared private helper (see postgres.go) — asserting the department scope
+// actually still filters correctly, not just that the code compiles.
+
+func TestLatestResultsForDepartment_ScopesToWatchlist(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{Name: "G", Address: "8.8.8.8:53", Protocol: "udp"})
+	run, _ := s.CreateScanRun(ctx, "manual")
+	d1, _ := s.CreateDepartment(ctx, "ScopeD1")
+	d2, _ := s.CreateDepartment(ctx, "ScopeD2")
+	u, _ := s.AddURLToWatchlist(ctx, d1.ID, "scoped.com")
+
+	if err := s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
+		Compliant: false, ScannedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("InsertResult: %v", err)
+	}
+
+	d1Results, err := s.LatestResultsForDepartment(ctx, d1.ID)
+	if err != nil {
+		t.Fatalf("LatestResultsForDepartment(d1): %v", err)
+	}
+	if len(d1Results) != 1 {
+		t.Fatalf("expected 1 result for d1 (owns the watchlist entry), got %d", len(d1Results))
+	}
+
+	d2Results, err := s.LatestResultsForDepartment(ctx, d2.ID)
+	if err != nil {
+		t.Fatalf("LatestResultsForDepartment(d2): %v", err)
+	}
+	if len(d2Results) != 0 {
+		t.Fatalf("expected 0 results for d2 (no watchlist entry), got %d", len(d2Results))
+	}
+}
+
+func TestISPStats_ScopesToDepartmentWatchlist(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "ScopeISP", Name: "ScopeISP DNS", Address: "9.9.9.9:53", Protocol: "udp"})
+	run, _ := s.CreateScanRun(ctx, "manual")
+	owner, _ := s.CreateDepartment(ctx, "StatsOwner")
+	other, _ := s.CreateDepartment(ctx, "StatsOther")
+	u, _ := s.AddURLToWatchlist(ctx, owner.ID, "isp-scope.com")
+
+	if err := s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
+		Compliant: false, ScannedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("InsertResult: %v", err)
+	}
+
+	global, err := s.ISPStats(ctx, "ScopeISP")
+	if err != nil {
+		t.Fatalf("ISPStats: %v", err)
+	}
+	if len(global.Servers) != 1 || global.Servers[0].Total != 1 {
+		t.Fatalf("expected 1 server with 1 total scan globally, got %+v", global)
+	}
+
+	ownerStats, err := s.ISPStatsForDepartment(ctx, "ScopeISP", owner.ID)
+	if err != nil {
+		t.Fatalf("ISPStatsForDepartment(owner): %v", err)
+	}
+	if len(ownerStats.Servers) != 1 || ownerStats.Servers[0].Total != 1 {
+		t.Fatalf("expected owning department to see the scan, got %+v", ownerStats)
+	}
+
+	otherStats, err := s.ISPStatsForDepartment(ctx, "ScopeISP", other.ID)
+	if err != nil {
+		t.Fatalf("ISPStatsForDepartment(other): %v", err)
+	}
+	if len(otherStats.Servers) != 0 {
+		t.Fatalf("expected non-owning department to see no servers, got %+v", otherStats)
+	}
+}
+
+func TestISPTrend_ScopesToDepartmentWatchlist(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "TrendISP", Name: "TrendISP DNS", Address: "9.9.9.8:53", Protocol: "udp"})
+	run, _ := s.CreateScanRun(ctx, "manual")
+	owner, _ := s.CreateDepartment(ctx, "TrendOwner")
+	other, _ := s.CreateDepartment(ctx, "TrendOther")
+	u, _ := s.AddURLToWatchlist(ctx, owner.ID, "trend-scope.com")
+
+	scanTime := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	if err := s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
+		Compliant: true, ScannedAt: scanTime,
+	}); err != nil {
+		t.Fatalf("InsertResult: %v", err)
+	}
+
+	since := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	until := time.Date(2026, 6, 30, 23, 59, 59, 0, time.UTC)
+
+	global, err := s.ISPTrend(ctx, "TrendISP", since, until)
+	if err != nil {
+		t.Fatalf("ISPTrend: %v", err)
+	}
+	if len(global) != 1 || global[0].Total != 1 || global[0].Compliant != 1 {
+		t.Fatalf("expected 1 day bucket total=1 compliant=1 globally, got %+v", global)
+	}
+
+	ownerTrend, err := s.ISPTrendForDepartment(ctx, "TrendISP", since, until, owner.ID)
+	if err != nil {
+		t.Fatalf("ISPTrendForDepartment(owner): %v", err)
+	}
+	if len(ownerTrend) != 1 || ownerTrend[0].Total != 1 {
+		t.Fatalf("expected owning department to see the scan, got %+v", ownerTrend)
+	}
+
+	otherTrend, err := s.ISPTrendForDepartment(ctx, "TrendISP", since, until, other.ID)
+	if err != nil {
+		t.Fatalf("ISPTrendForDepartment(other): %v", err)
+	}
+	if len(otherTrend) != 0 {
+		t.Fatalf("expected non-owning department to see no trend data, got %+v", otherTrend)
+	}
+}
+
+func TestCountDepartmentURLsSince_ScopesToDepartment(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	d1, _ := s.CreateDepartment(ctx, "CountD1")
+	d2, _ := s.CreateDepartment(ctx, "CountD2")
+	if _, err := s.AddURLToWatchlist(ctx, d1.ID, "count-a.com"); err != nil {
+		t.Fatalf("AddURLToWatchlist: %v", err)
+	}
+	if _, err := s.AddURLToWatchlist(ctx, d1.ID, "count-b.com"); err != nil {
+		t.Fatalf("AddURLToWatchlist: %v", err)
+	}
+	if _, err := s.AddURLToWatchlist(ctx, d2.ID, "count-c.com"); err != nil {
+		t.Fatalf("AddURLToWatchlist: %v", err)
+	}
+
+	since := time.Now().Add(-1 * time.Hour)
+
+	total, err := s.CountDepartmentURLsSince(ctx, since)
+	if err != nil {
+		t.Fatalf("CountDepartmentURLsSince: %v", err)
+	}
+	if total != 3 {
+		t.Fatalf("expected 3 watchlist additions globally, got %d", total)
+	}
+
+	d1Count, err := s.CountDepartmentURLsSinceForDepartment(ctx, since, d1.ID)
+	if err != nil {
+		t.Fatalf("CountDepartmentURLsSinceForDepartment(d1): %v", err)
+	}
+	if d1Count != 2 {
+		t.Fatalf("expected 2 watchlist additions for d1, got %d", d1Count)
+	}
+
+	d2Count, err := s.CountDepartmentURLsSinceForDepartment(ctx, since, d2.ID)
+	if err != nil {
+		t.Fatalf("CountDepartmentURLsSinceForDepartment(d2): %v", err)
+	}
+	if d2Count != 1 {
+		t.Fatalf("expected 1 watchlist addition for d2, got %d", d2Count)
+	}
+}

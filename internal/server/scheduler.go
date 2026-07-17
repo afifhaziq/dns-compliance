@@ -13,7 +13,7 @@ import (
 // admin panel, re-checked before every wait so a change takes effect on the
 // next cycle. defaultInterval is used if the setting can't be read (e.g. a
 // transient DB error). It stops when ctx is cancelled.
-func StartScheduler(ctx context.Context, sc *Scanner, store db.Store, defaultInterval time.Duration) {
+func StartScheduler(ctx context.Context, sc *Scanner, store db.ScanSettingsStore, defaultInterval time.Duration) {
 	go func() {
 		for {
 			interval := defaultInterval

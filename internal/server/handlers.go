@@ -133,7 +133,7 @@ func (h *Handlers) AddToWatchlist(w http.ResponseWriter, r *http.Request) {
 // fetchAndStoreWhois runs a RDAP lookup and caches the result (or the
 // failure) in DomainWhois. Called from a detached goroutine on watchlist-add
 // and, with a paced caller loop, from the periodic refresher.
-func fetchAndStoreWhois(store db.Store, fetch whois.Fetcher, urlID uint, domain string) {
+func fetchAndStoreWhois(store db.EnrichmentStore, fetch whois.Fetcher, urlID uint, domain string) {
 	fetchCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	res, err := fetch(fetchCtx, domain)
 	cancel()
@@ -157,7 +157,7 @@ func fetchAndStoreWhois(store db.Store, fetch whois.Fetcher, urlID uint, domain 
 // failure) in SubdomainScan. Called from a detached goroutine on
 // watchlist-add and from RefreshSubdomains — there is no periodic sweep, so
 // this is the only place a cached row ever gets (re)written.
-func fetchAndStoreSubdomains(store db.Store, fetch subfinder.Fetcher, urlID uint, domain string) {
+func fetchAndStoreSubdomains(store db.EnrichmentStore, fetch subfinder.Fetcher, urlID uint, domain string) {
 	fetchCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	subs, err := fetch(fetchCtx, domain)
 	cancel()

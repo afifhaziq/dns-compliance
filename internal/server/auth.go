@@ -57,10 +57,17 @@ func userFromContext(ctx context.Context) (*db.User, bool) {
 	return u, ok
 }
 
+// authStore is the narrow slice of db.Store requireAuth actually needs —
+// session lookup plus the user it belongs to.
+type authStore interface {
+	db.SessionStore
+	db.UserStore
+}
+
 // requireAuth resolves the session cookie to a user and attaches it to the
 // request context, 401ing if the cookie is missing, the session doesn't
 // exist, or it has expired (GetSession already filters expired rows).
-func requireAuth(store db.Store) func(http.Handler) http.Handler {
+func requireAuth(store authStore) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cookie, err := r.Cookie(sessionCookieName)
