@@ -881,18 +881,6 @@ function URLHistoryPage() {
         ) : (
           <>
             <Table className="results-table" aria-label={`Scan history for ${hostname}`}>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="col-expand" scope="col" />
-                  <TableHead className="col-scan-id th-left" scope="col">Scan ID</TableHead>
-                  <TableHead className="col-domain th-left" scope="col">DNS Server</TableHead>
-                  <TableHead className="col-status th-left" scope="col">Status</TableHead>
-                  <TableHead className="col-ip th-left" scope="col">Resolved IP</TableHead>
-                  <TableHead className="col-error th-left" scope="col">Error</TableHead>
-                  <TableHead className="col-evidence th-left" scope="col">Evidence</TableHead>
-                  <TableHead className="col-last-scanned th-left" scope="col">Scanned At</TableHead>
-                </TableRow>
-              </TableHeader>
               <TableBody>
                 {loading ? (
                   <HistorySkeletonRows />
@@ -937,6 +925,18 @@ function URLHistoryPage() {
                             </div>
                           </TableCell>
                         </TableRow>
+                        {expanded && (
+                          <TableRow className="scan-group-subheader">
+                            <TableHead className="col-expand" scope="col" />
+                            <TableHead className="col-scan-id th-left" scope="col" />
+                            <TableHead className="col-domain th-left" scope="col">DNS Server</TableHead>
+                            <TableHead className="col-status th-left" scope="col">Status</TableHead>
+                            <TableHead className="col-ip th-left" scope="col">Resolved IP</TableHead>
+                            <TableHead className="col-error th-left" scope="col">Error</TableHead>
+                            <TableHead className="col-evidence th-left" scope="col">Evidence</TableHead>
+                            <TableHead className="col-last-scanned th-left" scope="col">Scanned At</TableHead>
+                          </TableRow>
+                        )}
                         {expanded && g.results.map(r => (
                           <TableRow key={r.id} className={`sub-row${!r.compliant ? ' violation-row' : ''}`}>
                             <TableCell className="col-expand" />
