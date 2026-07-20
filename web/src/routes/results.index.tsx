@@ -14,6 +14,8 @@ import {
 } from '@/components/animate-ui/components/base/preview-link-card'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogTitle } from '@/components/animate-ui/components/radix/dialog'
+import { Progress, ProgressTrack } from '@/components/animate-ui/components/base/progress'
+import { AnimatedNumber } from '@/components/ui/animated-number'
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
 import { BrailleLoader } from '@/components/ui/braille-loader'
 import { ThinkingIndicator } from '@/components/ui/thinking-indicator'
@@ -398,8 +400,20 @@ function ResultsPage() {
       </div>
 
       {scanning && (
-        <div className="scan-banner mt-2">
-          <ThinkingIndicator className="p-0" progress={scanProgress} />
+        <div className="scan-banner mt-2 flex items-center gap-4">
+          <ThinkingIndicator className="p-0" />
+          {scanProgress && (
+            <Progress
+              value={scanProgress.total > 0 ? (scanProgress.completed / scanProgress.total) * 100 : 0}
+              className="flex items-center gap-2 w-36"
+            >
+              <ProgressTrack className="flex-1" />
+              <span className="flex items-baseline gap-1 text-[13px] text-stone-muted [font-variant-numeric:tabular-nums] whitespace-nowrap">
+                <AnimatedNumber value={scanProgress.completed} />
+                <span>/ {scanProgress.total}</span>
+              </span>
+            </Progress>
+          )}
         </div>
       )}
 
