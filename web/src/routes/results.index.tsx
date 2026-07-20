@@ -262,7 +262,7 @@ function ResultsTableSkeleton() {
 /* ─── Results Page ───────────────────────────────────────────────────────── */
 
 function ResultsPage() {
-  const { scanning, refreshSignal } = useScan()
+  const { scanning, refreshSignal, progress } = useScan()
 
   const [results, setResults] = useState<ScanResult[]>([])
   const [loading, setLoading] = useState(true)
@@ -365,6 +365,18 @@ function ResultsPage() {
 
   useEffect(() => { setPage(1) }, [statusFilter, dnsFilter])
 
+  const scanProgress = useMemo(() => {
+    if (!progress) return undefined
+    const servers = progress.per_dns.length
+    // Average completed count across servers, not the max — a domain isn't
+    // "scanned" until every DNS server has checked it, and results now stream
+    // in per-server rather than all at once.
+    const completed = servers === 0
+      ? 0
+      : Math.floor(progress.per_dns.reduce((total, p) => total + p.completed, 0) / servers)
+    return { completed, total: progress.total_urls }
+  }, [progress])
+
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const currentPage = Math.min(page, totalPages)
   const paginated = useMemo(
@@ -382,8 +394,8 @@ function ResultsPage() {
       </div>
 
       {scanning && (
-        <div className="scan-banner">
-          <ThinkingIndicator className="p-0" />
+        <div className="scan-banner mt-2">
+          <ThinkingIndicator className="p-0" progress={scanProgress} />
         </div>
       )}
 

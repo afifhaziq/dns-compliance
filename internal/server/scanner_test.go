@@ -67,7 +67,7 @@ func waitUntil(t *testing.T, cond func() bool, timeout time.Duration) {
 func TestScannerTargetedURLs(t *testing.T) {
 	crawlerPath := writeFakeCrawler(t)
 	store := &completionCapture{}
-	sc := server.NewScanner(crawlerPath, "localhost:50051", store)
+	sc := server.NewScanner(crawlerPath, "localhost:50051", store, nil)
 
 	if err := sc.Trigger(context.Background(), "manual", []string{"example.com", "https://EXAMPLE.COM"}); err != nil {
 		t.Fatalf("Trigger: %v", err)
@@ -83,7 +83,7 @@ func TestScannerTargetedURLs(t *testing.T) {
 func TestScannerTriggerRunsAndCompletes(t *testing.T) {
 	crawlerPath := writeFakeCrawler(t)
 	store := &completionCapture{}
-	sc := server.NewScanner(crawlerPath, "localhost:50051", store)
+	sc := server.NewScanner(crawlerPath, "localhost:50051", store, nil)
 
 	if err := sc.Trigger(context.Background(), "manual", nil); err != nil {
 		t.Fatalf("Trigger: %v", err)
@@ -105,7 +105,7 @@ func TestScannerRejectsConcurrentRun(t *testing.T) {
 	os.Chmod(f.Name(), 0755)
 
 	store := &completionCapture{}
-	sc := server.NewScanner(f.Name(), "localhost:50051", store)
+	sc := server.NewScanner(f.Name(), "localhost:50051", store, nil)
 
 	_ = sc.Trigger(context.Background(), "manual", nil)
 	err := sc.Trigger(context.Background(), "manual", nil)

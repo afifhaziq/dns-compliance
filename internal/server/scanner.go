@@ -19,12 +19,13 @@ type Scanner struct {
 	crawlerPath string
 	grpcAddr    string
 	store       db.Store
+	broadcaster *Broadcaster
 	mu          sync.Mutex
 	running     bool
 }
 
-func NewScanner(crawlerPath, grpcAddr string, store db.Store) *Scanner {
-	return &Scanner{crawlerPath: crawlerPath, grpcAddr: grpcAddr, store: store}
+func NewScanner(crawlerPath, grpcAddr string, store db.Store, broadcaster *Broadcaster) *Scanner {
+	return &Scanner{crawlerPath: crawlerPath, grpcAddr: grpcAddr, store: store, broadcaster: broadcaster}
 }
 
 func (sc *Scanner) IsRunning() bool {
@@ -210,6 +211,15 @@ func (sc *Scanner) execCrawler(ctx context.Context, args []string, runID uint) {
 	}
 	now := time.Now()
 	_ = sc.store.CompleteScanRun(ctx, runID, status, now)
+
+	// Submit only publishes progress per streamed result; nothing announces
+	// the run flipping to completed/failed otherwise, so SSE subscribers
+	// would be stuck on the last "running" payload forever.
+	if sc.broadcaster != nil {
+		if data, err := buildProgressPayload(ctx, sc.store); err == nil && data != nil {
+			sc.broadcaster.Publish(data)
+		}
+	}
 }
 
 func (sc *Scanner) setRunning(v bool) {

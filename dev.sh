@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Job control: gives each backgrounded job (server, frontend) its own process
+# group, so cleanup's group-kill also reaches children go run/npm spawn under
+# them (go run's compiled binary, npm's vite/node) instead of orphaning them.
+set -m
 
 DB_URL="host=localhost user=postgres password=postgres dbname=dns_compliance port=5432 sslmode=disable"
 SERVER_PID=""
@@ -8,18 +12,11 @@ VITE_PID=""
 cleanup() {
   echo ""
   echo "Shutting down..."
-  [[ -n "$SERVER_PID" ]] && kill "$SERVER_PID" 2>/dev/null || true
-  [[ -n "$VITE_PID" ]]  && kill "$VITE_PID"  2>/dev/null || true
+  [[ -n "$SERVER_PID" ]] && { kill -- -"$SERVER_PID" 2>/dev/null || kill "$SERVER_PID" 2>/dev/null || true; }
+  [[ -n "$VITE_PID" ]]  && { kill -- -"$VITE_PID"  2>/dev/null || kill "$VITE_PID"  2>/dev/null || true; }
   docker compose -f docker-compose.yml -f docker-compose.dev.yml stop postgres minio
 }
 trap cleanup EXIT INT TERM
-
-# Stream a command's stdout+stderr with a [prefix] on each line.
-# Usage: stream_prefixed [prefix] cmd args...
-stream_prefixed() {
-  local prefix="$1"; shift
-  "$@" 2>&1 | sed -u "s/^/[$prefix] /"
-}
 
 echo "==> Building crawler..."
 go build -o crawler ./cmd/crawler/
@@ -43,7 +40,7 @@ done
 echo " ready"
 
 echo "==> Starting server on :8080..."
-stream_prefixed server go run ./cmd/server/ \
+go run ./cmd/server/ \
   --db-url "$DB_URL" \
   --http-addr :8080 \
   --grpc-addr :50051 \
@@ -52,11 +49,11 @@ stream_prefixed server go run ./cmd/server/ \
   --cookie-secure=false \
   --bootstrap-admin-username admin \
   --bootstrap-admin-password admin \
-  --seed-dns dns-server.yaml &
+  --seed-dns dns-server.yaml > >(sed -u 's/^/[server] /') 2>&1 &
 SERVER_PID=$!
 
 echo "==> Starting frontend on :5173..."
-stream_prefixed web npm --prefix web run dev &
+npm --prefix web run dev > >(sed -u 's/^/[web] /') 2>&1 &
 VITE_PID=$!
 
 echo ""

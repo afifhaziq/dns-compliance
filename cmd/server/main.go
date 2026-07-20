@@ -104,13 +104,13 @@ func main() {
 	// every scan.
 	ipFetch := ipinfo.NewFetcher(*ipinfoToken)
 
-	// Scanner manages crawler subprocess lifecycle.
-	sc := server.NewScanner(*crawlerPath, *grpcAddr, store)
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	broadcaster := server.NewBroadcaster()
+
+	// Scanner manages crawler subprocess lifecycle.
+	sc := server.NewScanner(*crawlerPath, *grpcAddr, store, broadcaster)
 
 	// gRPC server — receives scan results from the crawler.
 	grpcLis, err := net.Listen("tcp", *grpcAddr)

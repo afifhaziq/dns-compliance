@@ -4,6 +4,7 @@ import { forwardRef, useState, useEffect, type HTMLAttributes } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { fontWeights } from "@/lib/font-weight";
+import { AnimatedNumber } from "@/components/ui/animated-number";
 
 const circleA =
   "M 12 8 C 14.21 8 16 9.79 16 12 C 16 14.21 14.21 16 12 16 C 9.79 16 8 14.21 8 12 C 8 9.79 9.79 8 12 8 Z";
@@ -23,10 +24,12 @@ interface ThinkingIndicatorProps extends HTMLAttributes<HTMLDivElement> {
   /** Show the morphing circle⇄infinity glyph before the label. Set to `false`
    *  for a text-only indicator (e.g. inline before a streamed reply). */
   showIcon?: boolean;
+  /** Optional live count shown after the label, e.g. "12 / 45 domains". */
+  progress?: { completed: number; total: number; unit?: string };
 }
 
 const ThinkingIndicator = forwardRef<HTMLDivElement, ThinkingIndicatorProps>(
-  ({ className, showIcon = true, ...props }, ref) => {
+  ({ className, showIcon = true, progress, ...props }, ref) => {
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
@@ -94,6 +97,12 @@ const ThinkingIndicator = forwardRef<HTMLDivElement, ThinkingIndicatorProps>(
           </motion.span>
         </AnimatePresence>
       </span>
+      {progress && (
+        <span className="flex items-baseline gap-1 text-[13px] text-stone-muted [font-variant-numeric:tabular-nums]">
+          <AnimatedNumber value={progress.completed} />
+          <span>/ {progress.total} {progress.unit ?? "domains"}</span>
+        </span>
+      )}
     </div>
   );
 });

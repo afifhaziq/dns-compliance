@@ -181,6 +181,21 @@ func runSweep(
 				detail += " err=" + r.Error
 			}
 			log.Printf("[%d/%d] %s — %s%s", completed, total, r.URL, status, detail)
+
+			// Stream each DNS-only result as it completes so the server's scan
+			// progress (GET /api/scan/progress) advances live instead of
+			// jumping from 0 to total once the whole sweep finishes. Skipped
+			// when screenshots are enabled: that path attaches screenshot
+			// bytes to the same result after this loop, so it stays a single
+			// batched send below to avoid inserting the DNS-only row twice.
+			if conn != nil && !takeScreenshots {
+				r.DNSServer = serverLabel
+				sendCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+				if err := sender.Send(sendCtx, conn, buildReport([]pipeline.SiteResult{r})); err != nil {
+					log.Printf("gRPC stream send failed for %s (%s): %v", r.URL, serverLabel, err)
+				}
+				cancel()
+			}
 		}
 
 		results, err := pipeline.Run(ctx, urls, cfg)
@@ -217,7 +232,9 @@ func runSweep(
 
 	paths := saveScreenshots(allResults, start)
 
-	if conn != nil {
+	// DNS-only results were already streamed to the server one-by-one above;
+	// only screenshot-bearing results still need this final batched send.
+	if conn != nil && takeScreenshots {
 		report := buildReport(allResults)
 		sendCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()

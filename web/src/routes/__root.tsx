@@ -20,7 +20,7 @@ import {
   useNavigate,
 } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/router-devtools'
-import { fetchScanStatus, isScanning, triggerScan } from '../api/scan'
+import { triggerScan, type ScanProgressResponse } from '../api/scan'
 import { fetchMe, logout as apiLogout } from '../api/auth'
 import { fetchResults } from '../api/results'
 import { fetchUrls } from '../api/urls'
@@ -253,12 +253,14 @@ type ScanContextValue = {
   scanning: boolean
   refreshSignal: number
   handleScanClick: () => void
+  progress: ScanProgressResponse | null
 }
 
 const ScanContext = createContext<ScanContextValue>({
   scanning: false,
   refreshSignal: 0,
   handleScanClick: () => {},
+  progress: null,
 })
 
 export const useScan = () => useContext(ScanContext)
@@ -273,8 +275,9 @@ function RootLayout() {
 
   const [scanning, setScanning] = useState(false)
   const [refreshSignal, setRefreshSignal] = useState(0)
+  const [progress, setProgress] = useState<ScanProgressResponse | null>(null)
   const [scanSelectedOpen, setScanSelectedOpen] = useState(false)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const wasScanningRef = useRef(false)
 
   const refreshAuth = useCallback(async () => {
     const u = await fetchMe()
@@ -289,55 +292,40 @@ function RootLayout() {
     setMe(null)
   }, [])
 
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current)
-      pollRef.current = null
-    }
-  }, [])
-
-  const startPolling = useCallback(() => {
-    stopPolling()
-    pollRef.current = setInterval(async () => {
-      try {
-        const status = await fetchScanStatus()
-        if (!isScanning(status)) {
-          setScanning(false)
-          setRefreshSignal(s => s + 1)
-          stopPolling()
-        }
-      } catch {
-        // keep polling; transient errors during scan are expected
-      }
-    }, 3000)
-  }, [stopPolling])
-
-  // on mount (once authenticated): check if a scan is already running
+  // Live scan progress via SSE — the server pushes a fresh payload whenever the
+  // crawler submits a result, and one immediately on connect reflecting
+  // whatever the last/current scan run is (covers a page reload mid-scan too).
   useEffect(() => {
     if (!me) return
-    fetchScanStatus()
-      .then(status => {
-        if (isScanning(status)) {
-          setScanning(true)
-          startPolling()
-        }
-      })
-      .catch(() => {})
 
-    return stopPolling
-  }, [me, startPolling, stopPolling])
+    const source = new EventSource('/api/scan/progress/stream', { withCredentials: true })
+    source.onmessage = (event) => {
+      let data: ScanProgressResponse
+      try {
+        data = JSON.parse(event.data)
+      } catch {
+        return
+      }
+      const running = data.scan_run.status === 'running'
+      setProgress(data)
+      setScanning(running)
+      if (wasScanningRef.current && !running) setRefreshSignal(s => s + 1)
+      wasScanningRef.current = running
+    }
+
+    return () => source.close()
+  }, [me])
 
   const handleScanClick = useCallback(async () => {
     if (scanning) return
     try {
       await triggerScan()
       setScanning(true)
-      startPolling()
       navigate({ to: '/results' })
     } catch (err) {
       console.error('Scan trigger failed:', err)
     }
-  }, [scanning, startPolling, navigate])
+  }, [scanning, navigate])
 
   const handleScanSelected = useCallback(async (urls: string[]) => {
     if (scanning) return
@@ -349,13 +337,12 @@ function RootLayout() {
       sessionStorage.setItem(`scan-baseline-${triggeredAt}`, JSON.stringify(baseline))
       await triggerScan(normalizedUrls)
       setScanning(true)
-      startPolling()
       navigate({ to: '/results' })
     } catch (err) {
       console.error('Targeted scan trigger failed:', err)
       sessionStorage.removeItem(`scan-baseline-${triggeredAt}`)
     }
-  }, [scanning, startPolling, navigate])
+  }, [scanning, navigate])
 
   const authValue: AuthContextValue = { me, loading: authLoading, logout, refresh: refreshAuth }
   const isLoginRoute = location.pathname === '/login'
@@ -388,7 +375,7 @@ function RootLayout() {
 
   return (
     <AuthContext value={authValue}>
-      <ScanContext value={{ scanning, refreshSignal, handleScanClick }}>
+      <ScanContext value={{ scanning, refreshSignal, handleScanClick, progress }}>
         <a href="#main" className="skip-link">Skip to main content</a>
 
         <GlassNavbar
