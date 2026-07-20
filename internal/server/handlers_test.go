@@ -418,6 +418,12 @@ func (m *fullMockStore) NationalTrend(_ context.Context, _, _ time.Time) ([]db.I
 func (m *fullMockStore) NationalTrendForDepartment(_ context.Context, _, _ time.Time, _ uint) ([]db.ISPTrendStat, error) {
 	return nil, nil
 }
+func (m *fullMockStore) ResurfacedDomains(_ context.Context) ([]db.ResurfacedDomain, error) {
+	return nil, nil
+}
+func (m *fullMockStore) ResurfacedDomainsForDepartment(_ context.Context, _ uint) ([]db.ResurfacedDomain, error) {
+	return nil, nil
+}
 
 func (m *fullMockStore) UpsertDomainWhois(_ context.Context, w db.DomainWhois) error {
 	for i, existing := range m.domainWhois {

@@ -1,5 +1,3 @@
-import * as React from 'react';
-
 import {
   Progress as ProgressPrimitive,
   ProgressTrack as ProgressTrackPrimitive,

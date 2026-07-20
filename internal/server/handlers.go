@@ -1093,6 +1093,32 @@ func (h *Handlers) NationalTrend(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, stats)
 }
 
+// Resurfaced Domains
+
+func (h *Handlers) ResurfacedDomains(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	var domains []db.ResurfacedDomain
+	var err error
+	if user.IsAdmin {
+		domains, err = h.store.ResurfacedDomains(r.Context())
+	} else {
+		if user.DepartmentID == nil {
+			writeError(w, http.StatusForbidden, "user has no department")
+			return
+		}
+		domains, err = h.store.ResurfacedDomainsForDepartment(r.Context(), *user.DepartmentID)
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load resurfaced domains")
+		return
+	}
+	writeJSON(w, http.StatusOK, domains)
+}
+
 // Screenshot
 
 func (h *Handlers) TriggerScreenshot(w http.ResponseWriter, r *http.Request) {

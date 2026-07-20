@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { fetchNationalTrend, fetchResults, groupResults, lastScanTime } from '../api/results'
+import { fetchNationalTrend, fetchResults, fetchResurfacedDomains, groupResults, lastScanTime } from '../api/results'
 import { fetchUrlCount, fetchUrlsRequestedThisMonth } from '../api/urls'
-import type { ISPTrendStat, ScanResult } from '../api/types'
+import type { ISPTrendStat, ResurfacedDomain, ScanResult } from '../api/types'
 import { useScan } from './__root'
 import { ThinkingIndicator } from '@/components/ui/thinking-indicator'
 import { LineChart } from '@/components/charts/line-chart'
@@ -23,22 +23,25 @@ function DashboardPage() {
   const [urlCount, setUrlCount] = useState<number | null>(null)
   const [requestedThisMonth, setRequestedThisMonth] = useState<number | null>(null)
   const [trend, setTrend] = useState<ISPTrendStat[]>([])
+  const [resurfaced, setResurfaced] = useState<ResurfacedDomain[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
       setError(null)
-      const [raw, urls, requested, trendData] = await Promise.all([
+      const [raw, urls, requested, trendData, resurfacedData] = await Promise.all([
         fetchResults(),
         fetchUrlCount(),
         fetchUrlsRequestedThisMonth(),
         fetchNationalTrend(30),
+        fetchResurfacedDomains(),
       ])
       setResults(raw)
       setUrlCount(urls)
       setRequestedThisMonth(requested)
       setTrend(trendData)
+      setResurfaced(resurfacedData)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load')
     } finally {
@@ -112,6 +115,12 @@ function DashboardPage() {
                   <p className="server-count" style={{ color: 'var(--ink)' }}>{requestedThisMonth ?? 0}</p>
                   <p className="dash-label">URLs requested this month</p>
                 </div>
+                {resurfaced.length > 0 && (
+                  <div>
+                    <p className="server-count label-violation">{resurfaced.length}</p>
+                    <p className="dash-label">Resurfaced</p>
+                  </div>
+                )}
               </div>
               {trendChartData.length >= 2 && (
                 <div className="mt-4">

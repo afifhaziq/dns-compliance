@@ -1,4 +1,4 @@
-import type { DailyComplianceStat, GroupedResult, ISPTrendStat, ScanResult } from './types'
+import type { DailyComplianceStat, GroupedResult, ISPTrendStat, ResurfacedDomain, ScanResult } from './types'
 
 export async function fetchResults(): Promise<ScanResult[]> {
   const res = await fetch('/api/results')
@@ -10,6 +10,12 @@ export async function fetchNationalTrend(sinceDays = 30): Promise<ISPTrendStat[]
   const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString()
   const res = await fetch(`/api/trend?since=${encodeURIComponent(since)}`)
   if (!res.ok) throw new Error(`Failed to load trend: ${res.status}`)
+  return res.json()
+}
+
+export async function fetchResurfacedDomains(): Promise<ResurfacedDomain[]> {
+  const res = await fetch('/api/resurfaced')
+  if (!res.ok) throw new Error(`Failed to load resurfaced domains: ${res.status}`)
   return res.json()
 }
 

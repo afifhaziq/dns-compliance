@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Breadcrumbs } from '@/components/breadcrumbs'
 import { fetchISPStats, fetchISPTiming, fetchISPTrend } from '@/api/isps'
-import type { ISPStats, ISPTiming, ISPTrendStat } from '@/api/types'
+import { fetchResurfacedDomains } from '@/api/results'
+import type { ISPStats, ISPTiming, ISPTrendStat, ResurfacedDomain } from '@/api/types'
 import { Table, TableBody, TableRow, TableCell, TableHead, TableHeader } from '@/components/ui/table'
 import { LineChart } from '@/components/charts/line-chart'
 import { Line } from '@/components/charts/line'
@@ -19,25 +20,36 @@ function ISPDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [trend, setTrend] = useState<ISPTrendStat[]>([])
+  const [resurfaced, setResurfaced] = useState<ResurfacedDomain[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       setError(null)
-      const [statsData, trendData, timingData] = await Promise.all([
+      const [statsData, trendData, timingData, resurfacedData] = await Promise.all([
         fetchISPStats(isp),
         fetchISPTrend(isp, 30),
         fetchISPTiming(isp),
+        fetchResurfacedDomains(),
       ])
       setStats(statsData)
       setTrend(trendData)
       setTiming(timingData)
+      setResurfaced(resurfacedData)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load')
     } finally {
       setLoading(false)
     }
   }, [isp])
+
+  // A domain rolls up multiple servers; only the ones matching this ISP matter here.
+  const resurfacedForThisISP = useMemo(() =>
+    resurfaced
+      .map(d => ({ ...d, affected_servers: d.affected_servers.filter(s => s.isp === isp) }))
+      .filter(d => d.affected_servers.length > 0),
+    [resurfaced, isp]
+  )
 
   const trendChartData = useMemo(() =>
     trend.map(s => ({
@@ -74,6 +86,25 @@ function ISPDetailPage() {
             {stats.most_violated_domain}
           </Link>
           </div>
+        </div>
+      )}
+      {/* Resurfaced domains */}
+      {!loading && resurfacedForThisISP.length > 0 && (
+        <div className="dash-section">
+          <p className="section-title mb-3">Resurfaced Domains</p>
+          <ul>
+            {resurfacedForThisISP.map(d => (
+              <li key={d.url} className="mb-1">
+                <Link to="/domain/$url" params={{ url: d.url }} search={{ tab: 'overview' }} className="server-name">
+                  {d.url}
+                </Link>
+                <span className="dash-label">
+                  {' '}— resurfaced on {d.affected_servers.length} server{d.affected_servers.length > 1 ? 's' : ''}
+                  {' '}({d.affected_servers.map(s => s.dns_server_name).join(', ')})
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       {/* Time to compliance */}

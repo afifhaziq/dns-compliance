@@ -22,7 +22,6 @@ import {
 import { TanStackRouterDevtools } from '@tanstack/router-devtools'
 import { triggerScan, type ScanProgressResponse } from '../api/scan'
 import { fetchMe, logout as apiLogout } from '../api/auth'
-import { fetchResults } from '../api/results'
 import { fetchUrls } from '../api/urls'
 import type { User, URLEntry } from '../api/types'
 import { ThemeSwitch } from '../components/theme-switch'
@@ -329,18 +328,13 @@ function RootLayout() {
 
   const handleScanSelected = useCallback(async (urls: string[]) => {
     if (scanning) return
-    const triggeredAt = new Date().toISOString()
     const normalizedUrls = urls.map(normalizeForClient)
     try {
-      // Snapshot current results before this scan overwrites latest-per-(url,server).
-      const baseline = await fetchResults()
-      sessionStorage.setItem(`scan-baseline-${triggeredAt}`, JSON.stringify(baseline))
       await triggerScan(normalizedUrls)
       setScanning(true)
       navigate({ to: '/results' })
     } catch (err) {
       console.error('Targeted scan trigger failed:', err)
-      sessionStorage.removeItem(`scan-baseline-${triggeredAt}`)
     }
   }, [scanning, navigate])
 

@@ -653,6 +653,87 @@ func (s *postgresStore) NationalTrendForDepartment(ctx context.Context, since, u
 	return s.dailyTrend(ctx, since, until, &departmentID)
 }
 
+// resurfacedDomains finds domains whose latest scan flipped from compliant
+// to violating, per (url_value, dns_server_id), optionally scoped to one
+// department's enabled watchlist. Extends the "latest per group" subquery
+// idiom from ispStats one step further to also find the second-latest row
+// per group, rather than a window function (ROW_NUMBER/LAG) — this codebase
+// has previously avoided those for SQLite-test-driver portability reasons
+// (see ispComplianceTiming).
+func (s *postgresStore) resurfacedDomains(ctx context.Context, departmentID *uint) ([]ResurfacedDomain, error) {
+	latest := s.db.Model(&ScanResult{}).
+		Select("url_value, dns_server_id, MAX(scanned_at) as max_scanned_at").
+		Group("url_value, dns_server_id")
+
+	previous := s.db.Table("scan_results").
+		Select("scan_results.url_value, scan_results.dns_server_id, MAX(scan_results.scanned_at) as prev_scanned_at").
+		Joins("JOIN (?) AS latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at < latest.max_scanned_at", latest).
+		Group("scan_results.url_value, scan_results.dns_server_id")
+
+	type row struct {
+		URLValue        string
+		DNSServerID     uint
+		DNSServerName   string
+		ISP             string
+		LastCompliantAt time.Time
+		ResurfacedAt    time.Time
+	}
+	q := s.db.WithContext(ctx).
+		Table("scan_results AS latest_sr").
+		Select(`latest_sr.url_value,
+            latest_sr.dns_server_id,
+            dns_servers.name AS dns_server_name,
+            dns_servers.isp,
+            prev_sr.scanned_at AS last_compliant_at,
+            latest_sr.scanned_at AS resurfaced_at`).
+		Joins("JOIN (?) AS latest ON latest_sr.url_value = latest.url_value AND latest_sr.dns_server_id = latest.dns_server_id AND latest_sr.scanned_at = latest.max_scanned_at", latest).
+		Joins("JOIN (?) AS prev ON latest_sr.url_value = prev.url_value AND latest_sr.dns_server_id = prev.dns_server_id", previous).
+		Joins("JOIN scan_results AS prev_sr ON prev_sr.url_value = prev.url_value AND prev_sr.dns_server_id = prev.dns_server_id AND prev_sr.scanned_at = prev.prev_scanned_at").
+		Joins("JOIN dns_servers ON dns_servers.id = latest_sr.dns_server_id").
+		Where("latest_sr.compliant = false AND prev_sr.compliant = true")
+	if departmentID != nil {
+		q = q.Joins("JOIN department_urls ON department_urls.url_id = latest_sr.url_id AND department_urls.department_id = ? AND department_urls.enabled = true", *departmentID)
+	}
+
+	var rows []row
+	if err := q.Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	// Roll up per-server rows into one entry per domain.
+	byURL := make(map[string]*ResurfacedDomain)
+	order := make([]string, 0)
+	for _, r := range rows {
+		d, ok := byURL[r.URLValue]
+		if !ok {
+			d = &ResurfacedDomain{URLValue: r.URLValue}
+			byURL[r.URLValue] = d
+			order = append(order, r.URLValue)
+		}
+		d.AffectedServers = append(d.AffectedServers, ResurfacedServerEntry{
+			DNSServerID: r.DNSServerID, DNSServerName: r.DNSServerName, ISP: r.ISP,
+			LastCompliantAt: r.LastCompliantAt, ResurfacedAt: r.ResurfacedAt,
+		})
+		if r.ResurfacedAt.After(d.ResurfacedAt) {
+			d.ResurfacedAt = r.ResurfacedAt
+		}
+	}
+
+	out := make([]ResurfacedDomain, len(order))
+	for i, url := range order {
+		out[i] = *byURL[url]
+	}
+	return out, nil
+}
+
+func (s *postgresStore) ResurfacedDomains(ctx context.Context) ([]ResurfacedDomain, error) {
+	return s.resurfacedDomains(ctx, nil)
+}
+
+func (s *postgresStore) ResurfacedDomainsForDepartment(ctx context.Context, departmentID uint) ([]ResurfacedDomain, error) {
+	return s.resurfacedDomains(ctx, &departmentID)
+}
+
 // ispComplianceTiming computes time-to-block stats for one ISP, optionally
 // scoped to one department's watchlist. Aggregated in Go, following the same
 // SQLite-portability reasoning as dailyTrend/DailyComplianceByURL.

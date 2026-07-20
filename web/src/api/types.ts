@@ -107,3 +107,17 @@ export type ISPTiming = {
   total_domains: number
   slowest: DomainTiming[]
 }
+
+export type ResurfacedServerEntry = {
+  dns_server_id: number
+  dns_server_name: string
+  isp: string
+  last_compliant_at: string  // RFC3339
+  resurfaced_at: string      // RFC3339
+}
+
+export type ResurfacedDomain = {
+  url: string
+  resurfaced_at: string      // RFC3339, most recent across affected_servers
+  affected_servers: ResurfacedServerEntry[]
+}

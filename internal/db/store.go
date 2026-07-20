@@ -69,6 +69,8 @@ type ISPStatsStore interface {
 	ISPComplianceTimingForDepartment(ctx context.Context, isp string, departmentID uint) (ISPTimingResult, error)
 	NationalTrend(ctx context.Context, since, until time.Time) ([]ISPTrendStat, error)
 	NationalTrendForDepartment(ctx context.Context, since, until time.Time, departmentID uint) ([]ISPTrendStat, error)
+	ResurfacedDomains(ctx context.Context) ([]ResurfacedDomain, error)
+	ResurfacedDomainsForDepartment(ctx context.Context, departmentID uint) ([]ResurfacedDomain, error)
 }
 
 // DepartmentStore is the departments table — admin-only by nature (cross-

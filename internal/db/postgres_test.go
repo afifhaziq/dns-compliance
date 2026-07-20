@@ -1101,3 +1101,184 @@ func TestCountDepartmentURLsSince_ScopesToDepartment(t *testing.T) {
 		t.Fatalf("expected 1 watchlist addition for d2, got %d", d2Count)
 	}
 }
+
+func TestResurfacedDomains_DetectsComplianceToViolationFlip(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "ResurfaceISP", Name: "Resurface DNS", Address: "9.9.9.7:53", Protocol: "udp"})
+	run1, _ := s.CreateScanRun(ctx, "manual")
+	run2, _ := s.CreateScanRun(ctx, "manual")
+	dept, _ := s.CreateDepartment(ctx, "ResurfaceDept")
+	u, _ := s.AddURLToWatchlist(ctx, dept.ID, "resurface-flip.com")
+
+	t1 := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+
+	if err := s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run1.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
+		Compliant: true, ScannedAt: t1,
+	}); err != nil {
+		t.Fatalf("InsertResult (compliant): %v", err)
+	}
+	if err := s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run2.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
+		Compliant: false, ScannedAt: t2,
+	}); err != nil {
+		t.Fatalf("InsertResult (violation): %v", err)
+	}
+
+	domains, err := s.ResurfacedDomains(ctx)
+	if err != nil {
+		t.Fatalf("ResurfacedDomains: %v", err)
+	}
+	if len(domains) != 1 {
+		t.Fatalf("expected 1 resurfaced domain, got %d: %+v", len(domains), domains)
+	}
+	d := domains[0]
+	if d.URLValue != "resurface-flip.com" {
+		t.Fatalf("expected resurface-flip.com, got %q", d.URLValue)
+	}
+	if len(d.AffectedServers) != 1 || d.AffectedServers[0].DNSServerID != srv.ID {
+		t.Fatalf("expected 1 affected server matching srv.ID, got %+v", d.AffectedServers)
+	}
+	if !d.AffectedServers[0].LastCompliantAt.Equal(t1) {
+		t.Fatalf("expected last_compliant_at %v, got %v", t1, d.AffectedServers[0].LastCompliantAt)
+	}
+	if !d.AffectedServers[0].ResurfacedAt.Equal(t2) {
+		t.Fatalf("expected resurfaced_at %v, got %v", t2, d.AffectedServers[0].ResurfacedAt)
+	}
+}
+
+func TestResurfacedDomains_IgnoresNonRegressions(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "NonRegressISP", Name: "NonRegress DNS", Address: "9.9.9.6:53", Protocol: "udp"})
+	dept, _ := s.CreateDepartment(ctx, "NonRegressDept")
+
+	t1 := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+
+	insert := func(hostname string, c1, c2 bool) {
+		run1, _ := s.CreateScanRun(ctx, "manual")
+		run2, _ := s.CreateScanRun(ctx, "manual")
+		u, _ := s.AddURLToWatchlist(ctx, dept.ID, hostname)
+		if err := s.InsertResult(ctx, db.ScanResult{
+			ScanRunID: run1.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
+			Compliant: c1, ScannedAt: t1,
+		}); err != nil {
+			t.Fatalf("InsertResult 1 for %s: %v", hostname, err)
+		}
+		if err := s.InsertResult(ctx, db.ScanResult{
+			ScanRunID: run2.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
+			Compliant: c2, ScannedAt: t2,
+		}); err != nil {
+			t.Fatalf("InsertResult 2 for %s: %v", hostname, err)
+		}
+	}
+
+	insert("still-compliant.com", true, true)   // still blocked — not a regression
+	insert("still-violating.com", false, false) // already known-bad — not a new regression
+	insert("just-reblocked.com", false, true)   // got re-blocked — the opposite of resurfacing
+
+	domains, err := s.ResurfacedDomains(ctx)
+	if err != nil {
+		t.Fatalf("ResurfacedDomains: %v", err)
+	}
+	if len(domains) != 0 {
+		t.Fatalf("expected 0 resurfaced domains for non-regression cases, got %d: %+v", len(domains), domains)
+	}
+}
+
+func TestResurfacedDomains_RollsUpMultipleServersIntoOneDomainRow(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srvA, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "RollupISP", Name: "Rollup DNS A", Address: "9.9.9.5:53", Protocol: "udp"})
+	srvB, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "RollupISP", Name: "Rollup DNS B", Address: "9.9.9.4:53", Protocol: "udp"})
+	dept, _ := s.CreateDepartment(ctx, "RollupDept")
+	u, _ := s.AddURLToWatchlist(ctx, dept.ID, "rollup-multi.com")
+
+	t1 := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+
+	for _, srv := range []db.DNSServer{srvA, srvB} {
+		run1, _ := s.CreateScanRun(ctx, "manual")
+		run2, _ := s.CreateScanRun(ctx, "manual")
+		if err := s.InsertResult(ctx, db.ScanResult{
+			ScanRunID: run1.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
+			Compliant: true, ScannedAt: t1,
+		}); err != nil {
+			t.Fatalf("InsertResult 1 for server %d: %v", srv.ID, err)
+		}
+		if err := s.InsertResult(ctx, db.ScanResult{
+			ScanRunID: run2.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
+			Compliant: false, ScannedAt: t2,
+		}); err != nil {
+			t.Fatalf("InsertResult 2 for server %d: %v", srv.ID, err)
+		}
+	}
+
+	domains, err := s.ResurfacedDomains(ctx)
+	if err != nil {
+		t.Fatalf("ResurfacedDomains: %v", err)
+	}
+	if len(domains) != 1 {
+		t.Fatalf("expected 1 resurfaced domain row (rolled up), got %d: %+v", len(domains), domains)
+	}
+	if len(domains[0].AffectedServers) != 2 {
+		t.Fatalf("expected 2 affected servers on the rolled-up domain, got %d: %+v", len(domains[0].AffectedServers), domains[0].AffectedServers)
+	}
+}
+
+func TestResurfacedDomains_ScopesToDepartmentWatchlist(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "ScopeResurfaceISP", Name: "ScopeResurface DNS", Address: "9.9.9.3:53", Protocol: "udp"})
+	owner, _ := s.CreateDepartment(ctx, "ResurfaceOwner")
+	other, _ := s.CreateDepartment(ctx, "ResurfaceOther")
+	u, _ := s.AddURLToWatchlist(ctx, owner.ID, "resurface-scope.com")
+
+	t1 := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	run1, _ := s.CreateScanRun(ctx, "manual")
+	run2, _ := s.CreateScanRun(ctx, "manual")
+	if err := s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run1.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
+		Compliant: true, ScannedAt: t1,
+	}); err != nil {
+		t.Fatalf("InsertResult 1: %v", err)
+	}
+	if err := s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run2.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
+		Compliant: false, ScannedAt: t2,
+	}); err != nil {
+		t.Fatalf("InsertResult 2: %v", err)
+	}
+
+	global, err := s.ResurfacedDomains(ctx)
+	if err != nil {
+		t.Fatalf("ResurfacedDomains: %v", err)
+	}
+	if len(global) != 1 {
+		t.Fatalf("expected 1 resurfaced domain globally, got %d", len(global))
+	}
+
+	ownerDomains, err := s.ResurfacedDomainsForDepartment(ctx, owner.ID)
+	if err != nil {
+		t.Fatalf("ResurfacedDomainsForDepartment(owner): %v", err)
+	}
+	if len(ownerDomains) != 1 {
+		t.Fatalf("expected owning department to see the resurfaced domain, got %d", len(ownerDomains))
+	}
+
+	otherDomains, err := s.ResurfacedDomainsForDepartment(ctx, other.ID)
+	if err != nil {
+		t.Fatalf("ResurfacedDomainsForDepartment(other): %v", err)
+	}
+	if len(otherDomains) != 0 {
+		t.Fatalf("expected non-owning department to see no resurfaced domains, got %d", len(otherDomains))
+	}
+}

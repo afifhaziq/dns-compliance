@@ -245,6 +245,28 @@ type ISPTimingResult struct {
 	Slowest            []DomainTiming `json:"slowest"` // top 5 by days-to-block, blocked and still-open combined
 }
 
+// ResurfacedServerEntry is one DNS server on which a domain flipped from
+// compliant to violating — see ResurfacedDomain.
+type ResurfacedServerEntry struct {
+	DNSServerID     uint      `json:"dns_server_id"`
+	DNSServerName   string    `json:"dns_server_name"`
+	ISP             string    `json:"isp"`
+	LastCompliantAt time.Time `json:"last_compliant_at"`
+	ResurfacedAt    time.Time `json:"resurfaced_at"`
+}
+
+// ResurfacedDomain is a domain whose most recent scan flipped from compliant
+// (blocked) to violating (resolving again) on at least one DNS server —
+// the highest-signal regression this tool detects, since it means an
+// enforcement order that was working has stopped working. AffectedServers
+// holds the (possibly partial) set of servers where the flip happened; a
+// domain resurfacing on every server at once still gets one row here.
+type ResurfacedDomain struct {
+	URLValue        string                  `json:"url"`
+	ResurfacedAt    time.Time               `json:"resurfaced_at"` // most recent flip across affected servers
+	AffectedServers []ResurfacedServerEntry `json:"affected_servers"`
+}
+
 // DailyComplianceLevel buckets a day's results onto the heatmap's 5-level
 // scale: 0 = no scans, 1 = fully compliant, 2-4 = increasing violation
 // severity (share of that day's scans that failed).

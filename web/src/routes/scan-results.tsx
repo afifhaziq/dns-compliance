@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowLeftIcon } from 'lucide-react'
-import { fetchResults } from '@/api/results'
+import { fetchResults, fetchResurfacedDomains } from '@/api/results'
 import type { ScanResult } from '@/api/types'
 import { useScan } from '@/routes/__root'
 import { Table, TableBody, TableRow, TableCell, TableHead, TableHeader } from '@/components/ui/table'
@@ -45,7 +45,7 @@ function ScanResultsPage() {
   // resultsByUrl: url -> ScanResult[] (only fresh results for this scan)
   const [resultsByUrl, setResultsByUrl] = useState<Map<string, ScanResult[]>>(new Map())
   const [fetchError, setFetchError] = useState<string | null>(null)
-  const [newlyViolatingUrls, setNewlyViolatingUrls] = useState<Set<string>>(new Set())
+  const [resurfacedUrls, setResurfacedUrls] = useState<Set<string>>(new Set())
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const processFreshResults = useCallback((all: ScanResult[]) => {
@@ -88,40 +88,15 @@ function ScanResultsPage() {
     const finalFetch = async () => {
       try {
         setFetchError(null)
-        const all = await fetchResults()
+        const [all, resurfaced] = await Promise.all([fetchResults(), fetchResurfacedDomains()])
         processFreshResults(all)
-
-        // Compute newly violating: was compliant in baseline, is now a violation.
-        const key = `scan-baseline-${triggeredAt}`
-        const baselineJson = sessionStorage.getItem(key)
-        if (baselineJson) {
-          const baseline: ScanResult[] = JSON.parse(baselineJson)
-          const baselineMap = new Map<string, boolean>()
-          for (const r of baseline) {
-            baselineMap.set(`${r.url}:${r.dns_server_id}`, r.compliant)
-          }
-          const freshForScan = all.filter(
-            r => urls.includes(r.url) && new Date(r.scanned_at).getTime() >= triggerTime
-          )
-          const newViolating = new Set<string>()
-          for (const r of freshForScan) {
-            if (!r.compliant) {
-              const wasCompliant = baselineMap.get(`${r.url}:${r.dns_server_id}`)
-              // undefined means no prior result for that (url, server) pair → treat as newly seen
-              if (wasCompliant === true || wasCompliant === undefined) {
-                newViolating.add(r.url)
-              }
-            }
-          }
-          setNewlyViolatingUrls(newViolating)
-          sessionStorage.removeItem(key)
-        }
+        setResurfacedUrls(new Set(resurfaced.filter(d => urls.includes(d.url)).map(d => d.url)))
       } catch (err) {
         setFetchError(err instanceof Error ? err.message : 'Failed to load results')
       }
     }
     finalFetch()
-  }, [refreshSignal, scanning, processFreshResults, triggeredAt, urls, triggerTime])
+  }, [refreshSignal, scanning, processFreshResults, urls])
 
   const completedCount = resultsByUrl.size
   const totalViolations = useMemo(() => {
@@ -231,10 +206,10 @@ function ScanResultsPage() {
                 <p className="dash-label">Worst ISP ({worstISP.count} violations)</p>
               </div>
             )}
-            {newlyViolatingUrls.size > 0 && (
+            {resurfacedUrls.size > 0 && (
               <div>
-                <p className="server-count label-violation">{newlyViolatingUrls.size}</p>
-                <p className="dash-label">Newly violating</p>
+                <p className="server-count label-violation">{resurfacedUrls.size}</p>
+                <p className="dash-label">Resurfaced</p>
               </div>
             )}
           </div>
@@ -251,14 +226,14 @@ function ScanResultsPage() {
       {urls.map(url => {
         const results = resultsByUrl.get(url)
         const hasResults = results && results.length > 0
-        const isNewlyViolating = newlyViolatingUrls.has(url)
+        const isResurfaced = resurfacedUrls.has(url)
 
         return (
           <div key={url} className="dash-section mb-4">
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem' }}>
               <div className="section-title mb-2">{url}</div>
-              {isNewlyViolating && (
-                <span className="label-violation" style={{ fontSize: '0.7rem', fontWeight: 600 }}>NEW</span>
+              {isResurfaced && (
+                <span className="label-violation" style={{ fontSize: '0.7rem', fontWeight: 600 }}>RESURFACED</span>
               )}
               <Link to="/domain/$url" params={{ url }} search={{ tab: 'overview' }} className="text-xs" style={{ color: 'var(--ink)' }}>
                 Full history →

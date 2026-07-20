@@ -773,14 +773,6 @@ th.th-left {
   @apply bg-compliant;
 }
 
-.label-violation {
-  @apply text-violation-text;
-}
-
-.label-compliant {
-  @apply text-compliant-text;
-}
-
 /* ─── Loading Skeleton ───────────────────────────────────────────────────── */
 
 .skeleton-row td {
@@ -968,6 +960,17 @@ th.th-left {
 
 .server-count {
   @apply text-[13px] font-medium text-stone-muted [font-variant-numeric:tabular-nums] whitespace-nowrap min-w-[6ch];
+}
+
+/* Declared after .server-count so status-color modifiers win the cascade
+   when combined with it (e.g. className="server-count label-violation") —
+   same single-class specificity, so source order decides. */
+.label-violation {
+  @apply text-violation-text;
+}
+
+.label-compliant {
+  @apply text-compliant-text;
 }
 
 .server-status-cell {
