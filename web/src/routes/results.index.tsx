@@ -13,6 +13,7 @@ import {
   PreviewLinkCardImage,
 } from '@/components/animate-ui/components/base/preview-link-card'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { Dialog, DialogContent, DialogTitle } from '@/components/animate-ui/components/radix/dialog'
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
 import { BrailleLoader } from '@/components/ui/braille-loader'
 import { ThinkingIndicator } from '@/components/ui/thinking-indicator'
@@ -53,6 +54,7 @@ function SubRows({
   screenshotErrors,
   screenshotsBlocked,
   onRequestScreenshot,
+  onViewScreenshot,
 }: {
   results: ScanResult[]
   visible: boolean
@@ -60,6 +62,7 @@ function SubRows({
   screenshotErrors: Record<number, string>
   screenshotsBlocked: boolean
   onRequestScreenshot: (result: ScanResult) => void
+  onViewScreenshot: (result: ScanResult) => void
 }) {
   if (!visible) return null
   return (
@@ -98,16 +101,15 @@ function SubRows({
           </TableCell>
           <TableCell className="col-evidence text-center">
             {r.screenshot_url ? (
-              <a
-                href={r.screenshot_url}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
                 className="screenshot-icon-btn"
+                onClick={() => onViewScreenshot(r)}
                 aria-label={`View screenshot for ${r.dns_server.name}`}
                 title="View screenshot"
               >
                 <ImageIcon className="screenshot-icon" aria-hidden="true" />
-              </a>
+              </button>
             ) : pendingScreenshotId === r.id ? (
               <span className="screenshot-pending" aria-live="polite" aria-label="Requesting screenshot">
                 <BrailleLoader variant="typing" fontSize={13} />
@@ -150,6 +152,7 @@ function URLGroupRow({
   screenshotErrors,
   screenshotsBlocked,
   onRequestScreenshot,
+  onViewScreenshot,
 }: {
   group: GroupedResult
   expanded: boolean
@@ -158,6 +161,7 @@ function URLGroupRow({
   screenshotErrors: Record<number, string>
   screenshotsBlocked: boolean
   onRequestScreenshot: (result: ScanResult) => void
+  onViewScreenshot: (result: ScanResult) => void
 }) {
   const { violationCount, totalCount, hostname, url } = group
   const compliantCount = totalCount - violationCount
@@ -202,8 +206,6 @@ function URLGroupRow({
             to="/domain/$url"
             params={{ url }}
             search={{ tab: 'overview' }}
-            target="_blank"
-            rel="noopener noreferrer"
             className="btn-row-history"
             aria-label={`View overview for ${hostname}`}
             onClick={e => e.stopPropagation()}
@@ -228,6 +230,7 @@ function URLGroupRow({
         screenshotErrors={screenshotErrors}
         screenshotsBlocked={screenshotsBlocked}
         onRequestScreenshot={onRequestScreenshot}
+        onViewScreenshot={onViewScreenshot}
       />
     </>
   )
@@ -276,6 +279,7 @@ function ResultsPage() {
   const [pendingScreenshotId, setPendingScreenshotId] = useState<number | null>(null)
   const [screenshotErrors, setScreenshotErrors] = useState<Record<number, string>>({})
   const screenshotPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [previewScreenshot, setPreviewScreenshot] = useState<ScanResult | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -481,6 +485,7 @@ function ResultsPage() {
                         screenshotErrors={screenshotErrors}
                         screenshotsBlocked={scanning || pendingScreenshotId !== null}
                         onRequestScreenshot={requestScreenshot}
+                        onViewScreenshot={setPreviewScreenshot}
                       />
                     ))
                   )}
@@ -513,6 +518,21 @@ function ResultsPage() {
           </div>
         </div>
       )}
+
+      <Dialog open={!!previewScreenshot} onOpenChange={v => { if (!v) setPreviewScreenshot(null) }}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogTitle className="sr-only">
+            Screenshot evidence{previewScreenshot ? ` for ${previewScreenshot.dns_server.name}` : ''}
+          </DialogTitle>
+          {previewScreenshot?.screenshot_url && (
+            <img
+              src={previewScreenshot.screenshot_url}
+              alt={`Screenshot evidence for ${previewScreenshot.url} via ${previewScreenshot.dns_server.name}`}
+              className="w-full h-auto rounded"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
