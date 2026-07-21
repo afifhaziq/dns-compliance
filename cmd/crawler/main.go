@@ -60,26 +60,21 @@ func main() {
 		}
 		for _, s := range cfg.Servers {
 			var resolveFn func(context.Context, string) (string, int64, error)
-			var resolveIPv6Fn func(context.Context, string) (string, error)
 			switch s.Protocol {
 			case "dot":
 				resolveFn = dns.NewDoTResolver(s.Address)
-				resolveIPv6Fn = dns.NewDoTResolverIPv6(s.Address)
 			case "doh":
 				resolveFn = dns.NewDoHResolver(s.Address)
-				resolveIPv6Fn = dns.NewDoHResolverIPv6(s.Address)
 			default:
 				resolveFn = dns.NewResolver(s.Address)
-				resolveIPv6Fn = dns.NewResolverIPv6(s.Address)
 			}
 			servers = append(servers, serverEntry{
-				name:        s.Name,
-				resolve:     resolveFn,
-				resolveIPv6: resolveIPv6Fn,
+				name:    s.Name,
+				resolve: resolveFn,
 			})
 		}
 	} else {
-		servers = []serverEntry{{name: "", resolve: dns.Resolve, resolveIPv6: dns.ResolveIPv6}}
+		servers = []serverEntry{{name: "", resolve: dns.Resolve}}
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -134,9 +129,8 @@ func main() {
 }
 
 type serverEntry struct {
-	name        string
-	resolve     func(context.Context, string) (string, int64, error)
-	resolveIPv6 func(context.Context, string) (string, error)
+	name    string
+	resolve func(context.Context, string) (string, int64, error)
 }
 
 func runSweep(
@@ -161,7 +155,6 @@ func runSweep(
 	for _, srv := range servers {
 		cfg := baseCfg
 		cfg.Resolve = srv.resolve
-		cfg.ResolveIPv6 = srv.resolveIPv6
 		cfg.Capture = noop
 		cfg.OnResult = func(r pipeline.SiteResult) {
 			completed++

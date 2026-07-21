@@ -1,0 +1,25 @@
+servers:
+    - isp: Cloudflare
+      name: Cloudflare DoH
+      address: https://1.1.1.1/dns-query
+      protocol: doh
+    - isp: Cloudflare
+      name: Cloudflare DoT
+      address: 1.1.1.1:853
+      protocol: dot
+    - isp: Digi
+      name: Digi 1
+      address: 182.62.210.14:53
+      protocol: udp
+    - isp: Google
+      name: Google 1
+      address: 1.1.1.1:53
+      protocol: udp
+    - isp: Google
+      name: Google 2
+      address: 8.8.8.8:53
+      protocol: udp
+    - isp: Google
+      name: Google DoH 2
+      address: https://dns.google/dns-query
+      protocol: doh

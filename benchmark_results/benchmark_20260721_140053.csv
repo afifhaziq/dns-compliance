@@ -1,0 +1,1201 @@
+server,site,tool,status,ip,time_ms,verdict
+Cloudflare DoH,12bet.com,dig+https,resolved,104.18.41.158,217,VIOLATION
+Cloudflare DoH,1337x.to,dig+https,resolved,104.21.40.193,53,VIOLATION
+Cloudflare DoH,188bet.com,dig+https,nxdomain,,72,COMPLIANT
+Cloudflare DoH,96mmy.com,dig+https,resolved,172.67.185.169,233,VIOLATION
+Cloudflare DoH,abbfund.com,dig+https,nxdomain,,321,COMPLIANT
+Cloudflare DoH,abfund.us,dig+https,nxdomain,,1114,COMPLIANT
+Cloudflare DoH,ace333my.com,dig+https,nxdomain,,67,COMPLIANT
+Cloudflare DoH,adultfriendfinder.com,dig+https,resolved,69.165.107.69,56,VIOLATION
+Cloudflare DoH,beeg.com,dig+https,resolved,172.67.181.179,50,VIOLATION
+Cloudflare DoH,bersih.org,dig+https,resolved,172.67.200.67,106,VIOLATION
+Cloudflare DoH,binance.com,dig+https,resolved,16.76.176.234,82,VIOLATION
+Cloudflare DoH,bitget-my.com,dig+https,nxdomain,,58,COMPLIANT
+Cloudflare DoH,bk8my.com,dig+https,resolved,104.21.45.85,80,VIOLATION
+Cloudflare DoH,bmovies.co,dig+https,resolved,76.223.54.146,73,VIOLATION
+Cloudflare DoH,bonga-cams.com,dig+https,resolved,94.199.249.60,90,VIOLATION
+Cloudflare DoH,cam4.com,dig+https,resolved,185.94.239.88,54,VIOLATION
+Cloudflare DoH,cfdventure.com,dig+https,resolved,8.210.83.183,381,VIOLATION
+Cloudflare DoH,chaturbate.com,dig+https,resolved,104.18.207.112,311,VIOLATION
+Cloudflare DoH,cmd368.com,dig+https,resolved,104.26.1.67,63,VIOLATION
+Cloudflare DoH,copytrade-my.com,dig+https,nxdomain,,61,COMPLIANT
+Cloudflare DoH,dafabet.com,dig+https,resolved,42.99.140.176,59,VIOLATION
+Cloudflare DoH,dfm2u.tokyo,dig+https,nxdomain,,70,COMPLIANT
+Cloudflare DoH,dynamicgains-malaysia.com,dig+https,nxdomain,,67,COMPLIANT
+Cloudflare DoH,ecashfinance.com,dig+https,nxdomain,,62,COMPLIANT
+Cloudflare DoH,econsave88.com,dig+https,nxdomain,,55,COMPLIANT
+Cloudflare DoH,edisisiasatmy.blogspot.com,dig+https,resolved,142.251.223.33,64,VIOLATION
+Cloudflare DoH,efmf.com.pa,dig+https,nxdomain,,606,COMPLIANT
+Cloudflare DoH,esuissefund.com,dig+https,nxdomain,,88,COMPLIANT
+Cloudflare DoH,eztv.re,dig+https,resolved,104.21.69.174,54,VIOLATION
+Cloudflare DoH,fbs-malaysia.com,dig+https,nxdomain,,60,COMPLIANT
+Cloudflare DoH,financetwitter.com,dig+https,resolved,104.21.12.17,93,VIOLATION
+Cloudflare DoH,fmovies.to,dig+https,nxdomain,,67,COMPLIANT
+Cloudflare DoH,fun88.com,dig+https,resolved,172.65.179.66,78,VIOLATION
+Cloudflare DoH,gaystarnews.com,dig+https,resolved,104.21.88.251,69,VIOLATION
+Cloudflare DoH,gclub-casino.com,dig+https,resolved,104.21.50.60,69,VIOLATION
+Cloudflare DoH,gdriveplayer.to,dig+https,resolved,172.67.162.231,1069,VIOLATION
+Cloudflare DoH,genting777.com,dig+https,nxdomain,,140,COMPLIANT
+Cloudflare DoH,heavy-r.com,dig+https,resolved,104.26.2.85,71,VIOLATION
+Cloudflare DoH,ibcbet.com,dig+https,resolved,52.221.38.51,131,VIOLATION
+Cloudflare DoH,indoxxi.net,dig+https,resolved,66.29.132.189,83,VIOLATION
+Cloudflare DoH,iqoption-my.com,dig+https,nxdomain,,71,COMPLIANT
+Cloudflare DoH,judiking88.com,dig+https,resolved,212.92.104.9,433,VIOLATION
+Cloudflare DoH,kiss918my.com,dig+https,nxdomain,,74,COMPLIANT
+Cloudflare DoH,kumpulbagi.id,dig+https,resolved,172.67.222.248,375,VIOLATION
+Cloudflare DoH,layarkaca21.vip,dig+https,resolved,172.65.211.209,97,VIOLATION
+Cloudflare DoH,limetorrents.pro,dig+https,resolved,212.92.104.3,603,VIOLATION
+Cloudflare DoH,literotica.com,dig+https,resolved,216.150.65.190,58,VIOLATION
+Cloudflare DoH,livejasmin.com,dig+https,resolved,109.71.161.200,72,VIOLATION
+Cloudflare DoH,lk21.org,dig+https,resolved,172.67.201.1,76,VIOLATION
+Cloudflare DoH,lpe88.com,dig+https,nxdomain,,177,COMPLIANT
+Cloudflare DoH,lushstories.com,dig+https,resolved,104.18.25.132,54,VIOLATION
+Cloudflare DoH,m88.com,dig+https,resolved,104.18.37.125,66,VIOLATION
+Cloudflare DoH,malaysia-today.net,dig+https,resolved,104.21.2.73,75,VIOLATION
+Cloudflare DoH,malaysianow.com,dig+https,resolved,172.67.72.17,58,VIOLATION
+Cloudflare DoH,maxim88my.com,dig+https,resolved,172.67.130.68,69,VIOLATION
+Cloudflare DoH,me88my.com,dig+https,resolved,172.67.176.120,69,VIOLATION
+Cloudflare DoH,mega888tm.com,dig+https,resolved,172.67.137.122,64,VIOLATION
+Cloudflare DoH,monyetistana.com,dig+https,resolved,216.227.142.171,547,VIOLATION
+Cloudflare DoH,motherless.com,dig+https,nxdomain,,57,COMPLIANT
+Cloudflare DoH,mybet88.com,dig+https,resolved,3.170.229.121,171,VIOLATION
+Cloudflare DoH,nova88.com,dig+https,resolved,52.221.38.51,76,VIOLATION
+Cloudflare DoH,octafx.com,dig+https,resolved,104.18.11.220,70,VIOLATION
+Cloudflare DoH,olympiaadvisor.com,dig+https,nxdomain,,61,COMPLIANT
+Cloudflare DoH,pencuri-movie.cc,dig+https,nxdomain,,89,COMPLIANT
+Cloudflare DoH,planetromeo.com,dig+https,resolved,104.17.180.107,60,VIOLATION
+Cloudflare DoH,pornhub.com,dig+https,resolved,66.254.114.41,48,VIOLATION
+Cloudflare DoH,pornmd.com,dig+https,resolved,104.18.8.221,62,VIOLATION
+Cloudflare DoH,pussy888my.com,dig+https,resolved,172.67.192.173,71,VIOLATION
+Cloudflare DoH,putlocker.to,dig+https,resolved,172.67.169.58,67,VIOLATION
+Cloudflare DoH,rarbg.to,dig+https,resolved,157.90.33.74,467,VIOLATION
+Cloudflare DoH,redtube.com,dig+https,resolved,66.254.114.238,80,VIOLATION
+Cloudflare DoH,royal777.com,dig+https,resolved,208.98.43.36,2844,VIOLATION
+Cloudflare DoH,sbo-bet.com,dig+https,resolved,45.136.198.230,443,VIOLATION
+Cloudflare DoH,scr888top.com,dig+https,nxdomain,,61,COMPLIANT
+Cloudflare DoH,sky777my.com,dig+https,nxdomain,,63,COMPLIANT
+Cloudflare DoH,slotmvp88.com,dig+https,nxdomain,,83,COMPLIANT
+Cloudflare DoH,soap2day.to,dig+https,resolved,103.224.182.253,735,VIOLATION
+Cloudflare DoH,spankbang.com,dig+https,resolved,104.18.96.242,287,VIOLATION
+Cloudflare DoH,steadyaku47.com,dig+https,resolved,172.67.172.26,65,VIOLATION
+Cloudflare DoH,stripchat.com,dig+https,resolved,104.17.118.12,296,VIOLATION
+Cloudflare DoH,subscene.com,dig+https,resolved,172.67.179.155,90,VIOLATION
+Cloudflare DoH,thepiratebay.org,dig+https,resolved,162.159.137.6,74,VIOLATION
+Cloudflare DoH,thepiratebay.se,dig+https,resolved,194.9.94.86,291,VIOLATION
+Cloudflare DoH,tnaflix.com,dig+https,resolved,85.159.232.21,77,VIOLATION
+Cloudflare DoH,torrentz2.eu,dig+https,resolved,103.224.182.253,53,VIOLATION
+Cloudflare DoH,tube8.com,dig+https,resolved,66.254.114.239,72,VIOLATION
+Cloudflare DoH,uebond.com,dig+https,nxdomain,,84,COMPLIANT
+Cloudflare DoH,utopia-asia.com,dig+https,resolved,40.70.229.79,1068,VIOLATION
+Cloudflare DoH,utusantv.com,dig+https,resolved,172.67.208.168,71,VIOLATION
+Cloudflare DoH,voyeurweb.com,dig+https,resolved,65.108.75.120,99,VIOLATION
+Cloudflare DoH,w88.com,dig+https,resolved,45.121.147.7,185,VIOLATION
+Cloudflare DoH,weechookeong.com,dig+https,resolved,103.224.93.108,2108,VIOLATION
+Cloudflare DoH,winboxmy.com,dig+https,resolved,104.21.3.58,71,VIOLATION
+Cloudflare DoH,xe88malaysia.com,dig+https,nxdomain,,56,COMPLIANT
+Cloudflare DoH,xhamster.com,dig+https,resolved,104.16.4.81,58,VIOLATION
+Cloudflare DoH,xnxx.com,dig+https,resolved,152.233.100.12,51,VIOLATION
+Cloudflare DoH,xvideos.com,dig+https,resolved,89.222.127.5,46,VIOLATION
+Cloudflare DoH,youporn.com,dig+https,resolved,66.254.114.79,53,VIOLATION
+Cloudflare DoH,yts.am,dig+https,resolved,172.67.156.162,299,VIOLATION
+Cloudflare DoH,yts.mx,dig+https,nxdomain,,97,COMPLIANT
+Cloudflare DoH,12bet.com,curl(DoH),resolved,104.18.41.158,51,VIOLATION
+Cloudflare DoH,1337x.to,curl(DoH),resolved,172.67.188.67,46,VIOLATION
+Cloudflare DoH,188bet.com,curl(DoH),nxdomain,,44,COMPLIANT
+Cloudflare DoH,96mmy.com,curl(DoH),resolved,172.67.185.169,56,VIOLATION
+Cloudflare DoH,abbfund.com,curl(DoH),nxdomain,,61,COMPLIANT
+Cloudflare DoH,abfund.us,curl(DoH),nxdomain,,332,COMPLIANT
+Cloudflare DoH,ace333my.com,curl(DoH),nxdomain,,69,COMPLIANT
+Cloudflare DoH,adultfriendfinder.com,curl(DoH),resolved,69.165.107.69,77,VIOLATION
+Cloudflare DoH,beeg.com,curl(DoH),resolved,172.67.181.179,65,VIOLATION
+Cloudflare DoH,bersih.org,curl(DoH),resolved,172.67.200.67,52,VIOLATION
+Cloudflare DoH,binance.com,curl(DoH),resolved,52.195.95.228,47,VIOLATION
+Cloudflare DoH,bitget-my.com,curl(DoH),nxdomain,,41,COMPLIANT
+Cloudflare DoH,bk8my.com,curl(DoH),resolved,104.21.45.85,37,VIOLATION
+Cloudflare DoH,bmovies.co,curl(DoH),resolved,76.223.54.146,66,VIOLATION
+Cloudflare DoH,bonga-cams.com,curl(DoH),resolved,94.199.249.60,292,VIOLATION
+Cloudflare DoH,cam4.com,curl(DoH),resolved,185.94.239.88,56,VIOLATION
+Cloudflare DoH,cfdventure.com,curl(DoH),resolved,8.210.83.183,40,VIOLATION
+Cloudflare DoH,chaturbate.com,curl(DoH),resolved,104.18.207.112,43,VIOLATION
+Cloudflare DoH,cmd368.com,curl(DoH),resolved,104.26.0.67,272,VIOLATION
+Cloudflare DoH,copytrade-my.com,curl(DoH),nxdomain,,33,COMPLIANT
+Cloudflare DoH,dafabet.com,curl(DoH),resolved,42.99.140.176,69,VIOLATION
+Cloudflare DoH,dfm2u.tokyo,curl(DoH),nxdomain,,64,COMPLIANT
+Cloudflare DoH,dynamicgains-malaysia.com,curl(DoH),nxdomain,,51,COMPLIANT
+Cloudflare DoH,ecashfinance.com,curl(DoH),nxdomain,,43,COMPLIANT
+Cloudflare DoH,econsave88.com,curl(DoH),nxdomain,,51,COMPLIANT
+Cloudflare DoH,edisisiasatmy.blogspot.com,curl(DoH),resolved,142.251.223.33,40,VIOLATION
+Cloudflare DoH,efmf.com.pa,curl(DoH),nxdomain,,43,COMPLIANT
+Cloudflare DoH,esuissefund.com,curl(DoH),nxdomain,,56,COMPLIANT
+Cloudflare DoH,eztv.re,curl(DoH),resolved,172.67.210.176,53,VIOLATION
+Cloudflare DoH,fbs-malaysia.com,curl(DoH),nxdomain,,39,COMPLIANT
+Cloudflare DoH,financetwitter.com,curl(DoH),resolved,104.21.12.17,59,VIOLATION
+Cloudflare DoH,fmovies.to,curl(DoH),nxdomain,,313,COMPLIANT
+Cloudflare DoH,fun88.com,curl(DoH),resolved,172.65.179.66,70,VIOLATION
+Cloudflare DoH,gaystarnews.com,curl(DoH),resolved,104.21.88.251,49,VIOLATION
+Cloudflare DoH,gclub-casino.com,curl(DoH),resolved,172.67.157.137,37,VIOLATION
+Cloudflare DoH,gdriveplayer.to,curl(DoH),resolved,104.21.74.209,47,VIOLATION
+Cloudflare DoH,genting777.com,curl(DoH),nxdomain,,38,COMPLIANT
+Cloudflare DoH,heavy-r.com,curl(DoH),resolved,104.26.2.85,42,VIOLATION
+Cloudflare DoH,ibcbet.com,curl(DoH),resolved,52.221.38.51,40,VIOLATION
+Cloudflare DoH,indoxxi.net,curl(DoH),resolved,66.29.132.189,38,VIOLATION
+Cloudflare DoH,iqoption-my.com,curl(DoH),nxdomain,,40,COMPLIANT
+Cloudflare DoH,judiking88.com,curl(DoH),resolved,212.92.104.9,51,VIOLATION
+Cloudflare DoH,kiss918my.com,curl(DoH),nxdomain,,52,COMPLIANT
+Cloudflare DoH,kumpulbagi.id,curl(DoH),resolved,104.21.25.55,52,VIOLATION
+Cloudflare DoH,layarkaca21.vip,curl(DoH),resolved,172.65.211.209,46,VIOLATION
+Cloudflare DoH,limetorrents.pro,curl(DoH),resolved,212.92.104.3,53,VIOLATION
+Cloudflare DoH,literotica.com,curl(DoH),resolved,216.150.65.200,44,VIOLATION
+Cloudflare DoH,livejasmin.com,curl(DoH),resolved,109.71.161.200,44,VIOLATION
+Cloudflare DoH,lk21.org,curl(DoH),resolved,172.67.201.1,41,VIOLATION
+Cloudflare DoH,lpe88.com,curl(DoH),nxdomain,,135,COMPLIANT
+Cloudflare DoH,lushstories.com,curl(DoH),resolved,104.18.25.132,39,VIOLATION
+Cloudflare DoH,m88.com,curl(DoH),resolved,104.18.37.125,42,VIOLATION
+Cloudflare DoH,malaysia-today.net,curl(DoH),resolved,104.21.2.73,39,VIOLATION
+Cloudflare DoH,malaysianow.com,curl(DoH),resolved,104.26.15.112,40,VIOLATION
+Cloudflare DoH,maxim88my.com,curl(DoH),resolved,172.67.130.68,38,VIOLATION
+Cloudflare DoH,me88my.com,curl(DoH),resolved,172.67.176.120,40,VIOLATION
+Cloudflare DoH,mega888tm.com,curl(DoH),resolved,104.21.48.214,38,VIOLATION
+Cloudflare DoH,monyetistana.com,curl(DoH),resolved,216.227.142.171,41,VIOLATION
+Cloudflare DoH,motherless.com,curl(DoH),nxdomain,,50,COMPLIANT
+Cloudflare DoH,mybet88.com,curl(DoH),resolved,3.170.229.121,41,VIOLATION
+Cloudflare DoH,nova88.com,curl(DoH),resolved,13.215.29.135,62,VIOLATION
+Cloudflare DoH,octafx.com,curl(DoH),resolved,104.18.11.220,82,VIOLATION
+Cloudflare DoH,olympiaadvisor.com,curl(DoH),nxdomain,,282,COMPLIANT
+Cloudflare DoH,pencuri-movie.cc,curl(DoH),nxdomain,,1074,COMPLIANT
+Cloudflare DoH,planetromeo.com,curl(DoH),resolved,104.17.179.107,43,VIOLATION
+Cloudflare DoH,pornhub.com,curl(DoH),resolved,66.254.114.41,41,VIOLATION
+Cloudflare DoH,pornmd.com,curl(DoH),resolved,104.18.8.221,58,VIOLATION
+Cloudflare DoH,pussy888my.com,curl(DoH),resolved,172.67.192.173,43,VIOLATION
+Cloudflare DoH,putlocker.to,curl(DoH),resolved,104.21.79.74,37,VIOLATION
+Cloudflare DoH,rarbg.to,curl(DoH),resolved,157.90.33.73,37,VIOLATION
+Cloudflare DoH,redtube.com,curl(DoH),resolved,66.254.114.238,37,VIOLATION
+Cloudflare DoH,royal777.com,curl(DoH),resolved,208.98.43.36,42,VIOLATION
+Cloudflare DoH,sbo-bet.com,curl(DoH),resolved,45.136.198.230,449,VIOLATION
+Cloudflare DoH,scr888top.com,curl(DoH),nxdomain,,38,COMPLIANT
+Cloudflare DoH,sky777my.com,curl(DoH),nxdomain,,39,COMPLIANT
+Cloudflare DoH,slotmvp88.com,curl(DoH),nxdomain,,46,COMPLIANT
+Cloudflare DoH,soap2day.to,curl(DoH),resolved,103.224.182.253,48,VIOLATION
+Cloudflare DoH,spankbang.com,curl(DoH),resolved,104.18.96.242,69,VIOLATION
+Cloudflare DoH,steadyaku47.com,curl(DoH),resolved,172.67.172.26,292,VIOLATION
+Cloudflare DoH,stripchat.com,curl(DoH),resolved,104.17.118.12,58,VIOLATION
+Cloudflare DoH,subscene.com,curl(DoH),resolved,104.21.31.193,44,VIOLATION
+Cloudflare DoH,thepiratebay.org,curl(DoH),resolved,162.159.137.6,52,VIOLATION
+Cloudflare DoH,thepiratebay.se,curl(DoH),resolved,194.9.94.85,37,VIOLATION
+Cloudflare DoH,tnaflix.com,curl(DoH),resolved,85.159.232.21,46,VIOLATION
+Cloudflare DoH,torrentz2.eu,curl(DoH),resolved,103.224.182.253,51,VIOLATION
+Cloudflare DoH,tube8.com,curl(DoH),resolved,66.254.114.239,41,VIOLATION
+Cloudflare DoH,uebond.com,curl(DoH),nxdomain,,43,COMPLIANT
+Cloudflare DoH,utopia-asia.com,curl(DoH),resolved,40.70.229.79,40,VIOLATION
+Cloudflare DoH,utusantv.com,curl(DoH),resolved,172.67.208.168,69,VIOLATION
+Cloudflare DoH,voyeurweb.com,curl(DoH),resolved,65.108.75.120,42,VIOLATION
+Cloudflare DoH,w88.com,curl(DoH),resolved,45.121.147.7,40,VIOLATION
+Cloudflare DoH,weechookeong.com,curl(DoH),resolved,103.224.93.108,1286,VIOLATION
+Cloudflare DoH,winboxmy.com,curl(DoH),resolved,172.67.130.72,253,VIOLATION
+Cloudflare DoH,xe88malaysia.com,curl(DoH),nxdomain,,74,COMPLIANT
+Cloudflare DoH,xhamster.com,curl(DoH),resolved,104.16.3.81,40,VIOLATION
+Cloudflare DoH,xnxx.com,curl(DoH),resolved,152.233.100.2,43,VIOLATION
+Cloudflare DoH,xvideos.com,curl(DoH),resolved,89.222.127.10,222,VIOLATION
+Cloudflare DoH,youporn.com,curl(DoH),resolved,66.254.114.79,50,VIOLATION
+Cloudflare DoH,yts.am,curl(DoH),resolved,104.21.13.157,45,VIOLATION
+Cloudflare DoH,yts.mx,curl(DoH),nxdomain,,44,COMPLIANT
+Cloudflare DoT,12bet.com,dig,nxdomain,,5022,COMPLIANT
+Cloudflare DoT,1337x.to,dig,nxdomain,,5014,COMPLIANT
+Cloudflare DoT,188bet.com,dig,nxdomain,,4149,COMPLIANT
+Cloudflare DoT,96mmy.com,dig,nxdomain,,5032,COMPLIANT
+Cloudflare DoT,abbfund.com,dig,nxdomain,,5035,COMPLIANT
+Cloudflare DoT,abfund.us,dig,nxdomain,,5038,COMPLIANT
+Cloudflare DoT,ace333my.com,dig,nxdomain,,5053,COMPLIANT
+Cloudflare DoT,adultfriendfinder.com,dig,nxdomain,,5033,COMPLIANT
+Cloudflare DoT,beeg.com,dig,nxdomain,,4135,COMPLIANT
+Cloudflare DoT,bersih.org,dig,nxdomain,,5056,COMPLIANT
+Cloudflare DoT,binance.com,dig,nxdomain,,5039,COMPLIANT
+Cloudflare DoT,bitget-my.com,dig,nxdomain,,5030,COMPLIANT
+Cloudflare DoT,bk8my.com,dig,nxdomain,,5051,COMPLIANT
+Cloudflare DoT,bmovies.co,dig,nxdomain,,5027,COMPLIANT
+Cloudflare DoT,bonga-cams.com,dig,nxdomain,,4125,COMPLIANT
+Cloudflare DoT,cam4.com,dig,nxdomain,,5041,COMPLIANT
+Cloudflare DoT,cfdventure.com,dig,nxdomain,,5036,COMPLIANT
+Cloudflare DoT,chaturbate.com,dig,nxdomain,,5031,COMPLIANT
+Cloudflare DoT,cmd368.com,dig,nxdomain,,5028,COMPLIANT
+Cloudflare DoT,copytrade-my.com,dig,nxdomain,,5022,COMPLIANT
+Cloudflare DoT,dafabet.com,dig,nxdomain,,4090,COMPLIANT
+Cloudflare DoT,dfm2u.tokyo,dig,nxdomain,,5037,COMPLIANT
+Cloudflare DoT,dynamicgains-malaysia.com,dig,nxdomain,,5056,COMPLIANT
+Cloudflare DoT,ecashfinance.com,dig,nxdomain,,5025,COMPLIANT
+Cloudflare DoT,econsave88.com,dig,nxdomain,,5019,COMPLIANT
+Cloudflare DoT,edisisiasatmy.blogspot.com,dig,nxdomain,,5025,COMPLIANT
+Cloudflare DoT,efmf.com.pa,dig,nxdomain,,4043,COMPLIANT
+Cloudflare DoT,esuissefund.com,dig,nxdomain,,5036,COMPLIANT
+Cloudflare DoT,eztv.re,dig,nxdomain,,5022,COMPLIANT
+Cloudflare DoT,fbs-malaysia.com,dig,nxdomain,,5028,COMPLIANT
+Cloudflare DoT,financetwitter.com,dig,nxdomain,,5053,COMPLIANT
+Cloudflare DoT,fmovies.to,dig,nxdomain,,5045,COMPLIANT
+Cloudflare DoT,fun88.com,dig,nxdomain,,4093,COMPLIANT
+Cloudflare DoT,gaystarnews.com,dig,nxdomain,,5031,COMPLIANT
+Cloudflare DoT,gclub-casino.com,dig,nxdomain,,5020,COMPLIANT
+Cloudflare DoT,gdriveplayer.to,dig,nxdomain,,5035,COMPLIANT
+Cloudflare DoT,genting777.com,dig,nxdomain,,5032,COMPLIANT
+Cloudflare DoT,heavy-r.com,dig,nxdomain,,5018,COMPLIANT
+Cloudflare DoT,ibcbet.com,dig,nxdomain,,4092,COMPLIANT
+Cloudflare DoT,indoxxi.net,dig,nxdomain,,5036,COMPLIANT
+Cloudflare DoT,iqoption-my.com,dig,nxdomain,,5055,COMPLIANT
+Cloudflare DoT,judiking88.com,dig,nxdomain,,5052,COMPLIANT
+Cloudflare DoT,kiss918my.com,dig,nxdomain,,5037,COMPLIANT
+Cloudflare DoT,kumpulbagi.id,dig,nxdomain,,5049,COMPLIANT
+Cloudflare DoT,layarkaca21.vip,dig,nxdomain,,3958,COMPLIANT
+Cloudflare DoT,limetorrents.pro,dig,nxdomain,,5015,COMPLIANT
+Cloudflare DoT,literotica.com,dig,nxdomain,,5023,COMPLIANT
+Cloudflare DoT,livejasmin.com,dig,nxdomain,,5026,COMPLIANT
+Cloudflare DoT,lk21.org,dig,nxdomain,,5039,COMPLIANT
+Cloudflare DoT,lpe88.com,dig,nxdomain,,5034,COMPLIANT
+Cloudflare DoT,lushstories.com,dig,nxdomain,,4093,COMPLIANT
+Cloudflare DoT,m88.com,dig,nxdomain,,5054,COMPLIANT
+Cloudflare DoT,malaysia-today.net,dig,nxdomain,,5028,COMPLIANT
+Cloudflare DoT,malaysianow.com,dig,nxdomain,,5019,COMPLIANT
+Cloudflare DoT,maxim88my.com,dig,nxdomain,,5032,COMPLIANT
+Cloudflare DoT,me88my.com,dig,nxdomain,,5032,COMPLIANT
+Cloudflare DoT,mega888tm.com,dig,nxdomain,,4017,COMPLIANT
+Cloudflare DoT,monyetistana.com,dig,nxdomain,,5028,COMPLIANT
+Cloudflare DoT,motherless.com,dig,nxdomain,,5031,COMPLIANT
+Cloudflare DoT,mybet88.com,dig,nxdomain,,5022,COMPLIANT
+Cloudflare DoT,nova88.com,dig,nxdomain,,5064,COMPLIANT
+Cloudflare DoT,octafx.com,dig,nxdomain,,5013,COMPLIANT
+Cloudflare DoT,olympiaadvisor.com,dig,nxdomain,,4080,COMPLIANT
+Cloudflare DoT,pencuri-movie.cc,dig,nxdomain,,5063,COMPLIANT
+Cloudflare DoT,planetromeo.com,dig,nxdomain,,5021,COMPLIANT
+Cloudflare DoT,pornhub.com,dig,nxdomain,,5042,COMPLIANT
+Cloudflare DoT,pornmd.com,dig,nxdomain,,5064,COMPLIANT
+Cloudflare DoT,pussy888my.com,dig,nxdomain,,4691,COMPLIANT
+Cloudflare DoT,putlocker.to,dig,nxdomain,,4351,COMPLIANT
+Cloudflare DoT,rarbg.to,dig,nxdomain,,5015,COMPLIANT
+Cloudflare DoT,redtube.com,dig,nxdomain,,5020,COMPLIANT
+Cloudflare DoT,royal777.com,dig,nxdomain,,5031,COMPLIANT
+Cloudflare DoT,sbo-bet.com,dig,nxdomain,,5031,COMPLIANT
+Cloudflare DoT,scr888top.com,dig,nxdomain,,4053,COMPLIANT
+Cloudflare DoT,sky777my.com,dig,nxdomain,,5021,COMPLIANT
+Cloudflare DoT,slotmvp88.com,dig,nxdomain,,5023,COMPLIANT
+Cloudflare DoT,soap2day.to,dig,nxdomain,,5030,COMPLIANT
+Cloudflare DoT,spankbang.com,dig,nxdomain,,5018,COMPLIANT
+Cloudflare DoT,steadyaku47.com,dig,nxdomain,,5016,COMPLIANT
+Cloudflare DoT,stripchat.com,dig,nxdomain,,4741,COMPLIANT
+Cloudflare DoT,subscene.com,dig,nxdomain,,5043,COMPLIANT
+Cloudflare DoT,thepiratebay.org,dig,nxdomain,,5016,COMPLIANT
+Cloudflare DoT,thepiratebay.se,dig,nxdomain,,3855,COMPLIANT
+Cloudflare DoT,tnaflix.com,dig,nxdomain,,5015,COMPLIANT
+Cloudflare DoT,torrentz2.eu,dig,nxdomain,,5040,COMPLIANT
+Cloudflare DoT,tube8.com,dig,nxdomain,,4561,COMPLIANT
+Cloudflare DoT,uebond.com,dig,nxdomain,,5037,COMPLIANT
+Cloudflare DoT,utopia-asia.com,dig,nxdomain,,5051,COMPLIANT
+Cloudflare DoT,utusantv.com,dig,nxdomain,,5022,COMPLIANT
+Cloudflare DoT,voyeurweb.com,dig,nxdomain,,5042,COMPLIANT
+Cloudflare DoT,w88.com,dig,nxdomain,,5033,COMPLIANT
+Cloudflare DoT,weechookeong.com,dig,nxdomain,,4076,COMPLIANT
+Cloudflare DoT,winboxmy.com,dig,nxdomain,,5043,COMPLIANT
+Cloudflare DoT,xe88malaysia.com,dig,nxdomain,,5028,COMPLIANT
+Cloudflare DoT,xhamster.com,dig,nxdomain,,5032,COMPLIANT
+Cloudflare DoT,xnxx.com,dig,nxdomain,,5035,COMPLIANT
+Cloudflare DoT,xvideos.com,dig,nxdomain,,5034,COMPLIANT
+Cloudflare DoT,youporn.com,dig,nxdomain,,4700,COMPLIANT
+Cloudflare DoT,yts.am,dig,nxdomain,,5021,COMPLIANT
+Cloudflare DoT,yts.mx,dig,nxdomain,,5043,COMPLIANT
+Cloudflare DoT,12bet.com,nslookup,resolved,104.18.41.158,144,VIOLATION
+Cloudflare DoT,1337x.to,nslookup,resolved,104.21.40.193,43,VIOLATION
+Cloudflare DoT,188bet.com,nslookup,nxdomain,,30,COMPLIANT
+Cloudflare DoT,96mmy.com,nslookup,resolved,104.21.19.80,43,VIOLATION
+Cloudflare DoT,abbfund.com,nslookup,nxdomain,,47,COMPLIANT
+Cloudflare DoT,abfund.us,nslookup,nxdomain,,28,COMPLIANT
+Cloudflare DoT,ace333my.com,nslookup,nxdomain,,33,COMPLIANT
+Cloudflare DoT,adultfriendfinder.com,nslookup,resolved,69.165.107.69,39,VIOLATION
+Cloudflare DoT,beeg.com,nslookup,resolved,104.21.56.86,46,VIOLATION
+Cloudflare DoT,bersih.org,nslookup,resolved,172.67.200.67,44,VIOLATION
+Cloudflare DoT,binance.com,nslookup,resolved,52.195.95.228,31,VIOLATION
+Cloudflare DoT,bitget-my.com,nslookup,nxdomain,,26,COMPLIANT
+Cloudflare DoT,bk8my.com,nslookup,resolved,104.21.45.85,33,VIOLATION
+Cloudflare DoT,bmovies.co,nslookup,resolved,13.248.169.48,41,VIOLATION
+Cloudflare DoT,bonga-cams.com,nslookup,resolved,94.199.249.60,39,VIOLATION
+Cloudflare DoT,cam4.com,nslookup,resolved,185.94.239.88,43,VIOLATION
+Cloudflare DoT,cfdventure.com,nslookup,nxdomain,,5016,COMPLIANT
+Cloudflare DoT,chaturbate.com,nslookup,resolved,104.18.207.112,42,VIOLATION
+Cloudflare DoT,cmd368.com,nslookup,resolved,172.67.73.235,44,VIOLATION
+Cloudflare DoT,copytrade-my.com,nslookup,nxdomain,,20,COMPLIANT
+Cloudflare DoT,dafabet.com,nslookup,resolved,42.99.140.179,65,VIOLATION
+Cloudflare DoT,dfm2u.tokyo,nslookup,nxdomain,,28,COMPLIANT
+Cloudflare DoT,dynamicgains-malaysia.com,nslookup,nxdomain,,31,COMPLIANT
+Cloudflare DoT,ecashfinance.com,nslookup,nxdomain,,37,COMPLIANT
+Cloudflare DoT,econsave88.com,nslookup,nxdomain,,27,COMPLIANT
+Cloudflare DoT,edisisiasatmy.blogspot.com,nslookup,resolved,172.217.25.65,58,VIOLATION
+Cloudflare DoT,efmf.com.pa,nslookup,nxdomain,,30,COMPLIANT
+Cloudflare DoT,esuissefund.com,nslookup,nxdomain,,5029,COMPLIANT
+Cloudflare DoT,eztv.re,nslookup,resolved,172.67.210.176,37,VIOLATION
+Cloudflare DoT,fbs-malaysia.com,nslookup,nxdomain,,31,COMPLIANT
+Cloudflare DoT,financetwitter.com,nslookup,resolved,104.21.12.17,48,VIOLATION
+Cloudflare DoT,fmovies.to,nslookup,nxdomain,,53,COMPLIANT
+Cloudflare DoT,fun88.com,nslookup,resolved,172.65.179.66,68,VIOLATION
+Cloudflare DoT,gaystarnews.com,nslookup,resolved,104.21.88.251,41,VIOLATION
+Cloudflare DoT,gclub-casino.com,nslookup,resolved,172.67.157.137,55,VIOLATION
+Cloudflare DoT,gdriveplayer.to,nslookup,resolved,104.21.74.209,41,VIOLATION
+Cloudflare DoT,genting777.com,nslookup,nxdomain,,108,COMPLIANT
+Cloudflare DoT,heavy-r.com,nslookup,resolved,104.26.3.85,38,VIOLATION
+Cloudflare DoT,ibcbet.com,nslookup,resolved,52.220.215.157,39,VIOLATION
+Cloudflare DoT,indoxxi.net,nslookup,resolved,66.29.132.189,59,VIOLATION
+Cloudflare DoT,iqoption-my.com,nslookup,nxdomain,,27,COMPLIANT
+Cloudflare DoT,judiking88.com,nslookup,resolved,212.92.104.9,210,VIOLATION
+Cloudflare DoT,kiss918my.com,nslookup,nxdomain,,32,COMPLIANT
+Cloudflare DoT,kumpulbagi.id,nslookup,resolved,172.67.222.248,31,VIOLATION
+Cloudflare DoT,layarkaca21.vip,nslookup,resolved,172.65.211.209,52,VIOLATION
+Cloudflare DoT,limetorrents.pro,nslookup,resolved,212.92.104.3,379,VIOLATION
+Cloudflare DoT,literotica.com,nslookup,resolved,216.150.65.200,46,VIOLATION
+Cloudflare DoT,livejasmin.com,nslookup,nxdomain,,5033,COMPLIANT
+Cloudflare DoT,lk21.org,nslookup,resolved,172.67.201.1,62,VIOLATION
+Cloudflare DoT,lpe88.com,nslookup,nxdomain,,112,COMPLIANT
+Cloudflare DoT,lushstories.com,nslookup,resolved,104.18.24.132,50,VIOLATION
+Cloudflare DoT,m88.com,nslookup,resolved,104.18.37.125,76,VIOLATION
+Cloudflare DoT,malaysia-today.net,nslookup,resolved,104.21.2.73,44,VIOLATION
+Cloudflare DoT,malaysianow.com,nslookup,resolved,104.26.15.112,32,VIOLATION
+Cloudflare DoT,maxim88my.com,nslookup,resolved,104.21.3.54,49,VIOLATION
+Cloudflare DoT,me88my.com,nslookup,resolved,104.21.40.55,34,VIOLATION
+Cloudflare DoT,mega888tm.com,nslookup,resolved,104.21.48.214,75,VIOLATION
+Cloudflare DoT,monyetistana.com,nslookup,resolved,216.227.142.171,-351,VIOLATION
+Cloudflare DoT,motherless.com,nslookup,nxdomain,,-638,COMPLIANT
+Cloudflare DoT,mybet88.com,nslookup,resolved,3.170.229.128,43,VIOLATION
+Cloudflare DoT,nova88.com,nslookup,resolved,13.215.29.135,46,VIOLATION
+Cloudflare DoT,octafx.com,nslookup,resolved,104.18.11.220,45,VIOLATION
+Cloudflare DoT,olympiaadvisor.com,nslookup,nxdomain,,33,COMPLIANT
+Cloudflare DoT,pencuri-movie.cc,nslookup,nxdomain,,37,COMPLIANT
+Cloudflare DoT,planetromeo.com,nslookup,resolved,104.17.179.107,40,VIOLATION
+Cloudflare DoT,pornhub.com,nslookup,resolved,66.254.114.41,38,VIOLATION
+Cloudflare DoT,pornmd.com,nslookup,resolved,104.18.8.221,43,VIOLATION
+Cloudflare DoT,pussy888my.com,nslookup,nxdomain,,5027,COMPLIANT
+Cloudflare DoT,putlocker.to,nslookup,resolved,104.21.79.74,45,VIOLATION
+Cloudflare DoT,rarbg.to,nslookup,resolved,157.90.33.74,203,VIOLATION
+Cloudflare DoT,redtube.com,nslookup,resolved,66.254.114.238,39,VIOLATION
+Cloudflare DoT,royal777.com,nslookup,resolved,208.98.40.228,675,VIOLATION
+Cloudflare DoT,sbo-bet.com,nslookup,resolved,45.136.198.230,1219,VIOLATION
+Cloudflare DoT,scr888top.com,nslookup,nxdomain,,38,COMPLIANT
+Cloudflare DoT,sky777my.com,nslookup,nxdomain,,35,COMPLIANT
+Cloudflare DoT,slotmvp88.com,nslookup,nxdomain,,34,COMPLIANT
+Cloudflare DoT,soap2day.to,nslookup,resolved,103.224.182.253,432,VIOLATION
+Cloudflare DoT,spankbang.com,nslookup,resolved,104.18.96.242,47,VIOLATION
+Cloudflare DoT,steadyaku47.com,nslookup,resolved,104.21.55.180,44,VIOLATION
+Cloudflare DoT,stripchat.com,nslookup,nxdomain,,5035,COMPLIANT
+Cloudflare DoT,subscene.com,nslookup,resolved,104.21.31.193,49,VIOLATION
+Cloudflare DoT,thepiratebay.org,nslookup,resolved,162.159.136.6,43,VIOLATION
+Cloudflare DoT,thepiratebay.se,nslookup,resolved,194.9.94.85,219,VIOLATION
+Cloudflare DoT,tnaflix.com,nslookup,resolved,85.159.232.21,404,VIOLATION
+Cloudflare DoT,torrentz2.eu,nslookup,resolved,103.224.182.253,428,VIOLATION
+Cloudflare DoT,tube8.com,nslookup,resolved,66.254.114.239,41,VIOLATION
+Cloudflare DoT,uebond.com,nslookup,nxdomain,,29,COMPLIANT
+Cloudflare DoT,utopia-asia.com,nslookup,resolved,40.70.229.79,1292,VIOLATION
+Cloudflare DoT,utusantv.com,nslookup,resolved,172.67.208.168,55,VIOLATION
+Cloudflare DoT,voyeurweb.com,nslookup,resolved,65.108.75.120,41,VIOLATION
+Cloudflare DoT,w88.com,nslookup,resolved,45.121.147.7,165,VIOLATION
+Cloudflare DoT,weechookeong.com,nslookup,resolved,103.224.93.108,45,VIOLATION
+Cloudflare DoT,winboxmy.com,nslookup,resolved,172.67.130.72,49,VIOLATION
+Cloudflare DoT,xe88malaysia.com,nslookup,nxdomain,,28,COMPLIANT
+Cloudflare DoT,xhamster.com,nslookup,resolved,104.16.3.81,27,VIOLATION
+Cloudflare DoT,xnxx.com,nslookup,resolved,152.233.100.7,31,VIOLATION
+Cloudflare DoT,xvideos.com,nslookup,resolved,89.222.127.15,36,VIOLATION
+Cloudflare DoT,youporn.com,nslookup,resolved,66.254.114.79,40,VIOLATION
+Cloudflare DoT,yts.am,nslookup,resolved,172.67.156.162,46,VIOLATION
+Cloudflare DoT,yts.mx,nslookup,nxdomain,,27,COMPLIANT
+Digi 1,12bet.com,dig,nxdomain,,32,COMPLIANT
+Digi 1,1337x.to,dig,nxdomain,,31,COMPLIANT
+Digi 1,188bet.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,96mmy.com,dig,nxdomain,,28,COMPLIANT
+Digi 1,abbfund.com,dig,nxdomain,,30,COMPLIANT
+Digi 1,abfund.us,dig,nxdomain,,30,COMPLIANT
+Digi 1,ace333my.com,dig,nxdomain,,30,COMPLIANT
+Digi 1,adultfriendfinder.com,dig,nxdomain,,30,COMPLIANT
+Digi 1,beeg.com,dig,nxdomain,,29,COMPLIANT
+Digi 1,bersih.org,dig,nxdomain,,28,COMPLIANT
+Digi 1,binance.com,dig,nxdomain,,25,COMPLIANT
+Digi 1,bitget-my.com,dig,nxdomain,,29,COMPLIANT
+Digi 1,bk8my.com,dig,nxdomain,,29,COMPLIANT
+Digi 1,bmovies.co,dig,nxdomain,,30,COMPLIANT
+Digi 1,bonga-cams.com,dig,nxdomain,,30,COMPLIANT
+Digi 1,cam4.com,dig,nxdomain,,28,COMPLIANT
+Digi 1,cfdventure.com,dig,nxdomain,,30,COMPLIANT
+Digi 1,chaturbate.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,cmd368.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,copytrade-my.com,dig,nxdomain,,29,COMPLIANT
+Digi 1,dafabet.com,dig,nxdomain,,33,COMPLIANT
+Digi 1,dfm2u.tokyo,dig,nxdomain,,30,COMPLIANT
+Digi 1,dynamicgains-malaysia.com,dig,nxdomain,,29,COMPLIANT
+Digi 1,ecashfinance.com,dig,nxdomain,,18,COMPLIANT
+Digi 1,econsave88.com,dig,nxdomain,,28,COMPLIANT
+Digi 1,edisisiasatmy.blogspot.com,dig,nxdomain,,29,COMPLIANT
+Digi 1,efmf.com.pa,dig,nxdomain,,30,COMPLIANT
+Digi 1,esuissefund.com,dig,nxdomain,,29,COMPLIANT
+Digi 1,eztv.re,dig,nxdomain,,33,COMPLIANT
+Digi 1,fbs-malaysia.com,dig,nxdomain,,28,COMPLIANT
+Digi 1,financetwitter.com,dig,nxdomain,,32,COMPLIANT
+Digi 1,fmovies.to,dig,nxdomain,,34,COMPLIANT
+Digi 1,fun88.com,dig,nxdomain,,29,COMPLIANT
+Digi 1,gaystarnews.com,dig,nxdomain,,32,COMPLIANT
+Digi 1,gclub-casino.com,dig,nxdomain,,32,COMPLIANT
+Digi 1,gdriveplayer.to,dig,nxdomain,,31,COMPLIANT
+Digi 1,genting777.com,dig,nxdomain,,30,COMPLIANT
+Digi 1,heavy-r.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,ibcbet.com,dig,nxdomain,,18,COMPLIANT
+Digi 1,indoxxi.net,dig,nxdomain,,28,COMPLIANT
+Digi 1,iqoption-my.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,judiking88.com,dig,nxdomain,,5028,COMPLIANT
+Digi 1,kiss918my.com,dig,nxdomain,,26,COMPLIANT
+Digi 1,kumpulbagi.id,dig,nxdomain,,32,COMPLIANT
+Digi 1,layarkaca21.vip,dig,nxdomain,,32,COMPLIANT
+Digi 1,limetorrents.pro,dig,nxdomain,,28,COMPLIANT
+Digi 1,literotica.com,dig,nxdomain,,29,COMPLIANT
+Digi 1,livejasmin.com,dig,nxdomain,,30,COMPLIANT
+Digi 1,lk21.org,dig,nxdomain,,30,COMPLIANT
+Digi 1,lpe88.com,dig,nxdomain,,19,COMPLIANT
+Digi 1,lushstories.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,m88.com,dig,nxdomain,,21,COMPLIANT
+Digi 1,malaysia-today.net,dig,nxdomain,,21,COMPLIANT
+Digi 1,malaysianow.com,dig,nxdomain,,34,COMPLIANT
+Digi 1,maxim88my.com,dig,nxdomain,,34,COMPLIANT
+Digi 1,me88my.com,dig,nxdomain,,28,COMPLIANT
+Digi 1,mega888tm.com,dig,nxdomain,,32,COMPLIANT
+Digi 1,monyetistana.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,motherless.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,mybet88.com,dig,nxdomain,,29,COMPLIANT
+Digi 1,nova88.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,octafx.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,olympiaadvisor.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,pencuri-movie.cc,dig,nxdomain,,30,COMPLIANT
+Digi 1,planetromeo.com,dig,nxdomain,,29,COMPLIANT
+Digi 1,pornhub.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,pornmd.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,pussy888my.com,dig,nxdomain,,5026,COMPLIANT
+Digi 1,putlocker.to,dig,nxdomain,,28,COMPLIANT
+Digi 1,rarbg.to,dig,nxdomain,,31,COMPLIANT
+Digi 1,redtube.com,dig,nxdomain,,4107,COMPLIANT
+Digi 1,royal777.com,dig,nxdomain,,22,COMPLIANT
+Digi 1,sbo-bet.com,dig,nxdomain,,32,COMPLIANT
+Digi 1,scr888top.com,dig,nxdomain,,34,COMPLIANT
+Digi 1,sky777my.com,dig,nxdomain,,28,COMPLIANT
+Digi 1,slotmvp88.com,dig,nxdomain,,33,COMPLIANT
+Digi 1,soap2day.to,dig,nxdomain,,30,COMPLIANT
+Digi 1,spankbang.com,dig,nxdomain,,30,COMPLIANT
+Digi 1,steadyaku47.com,dig,nxdomain,,30,COMPLIANT
+Digi 1,stripchat.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,subscene.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,thepiratebay.org,dig,nxdomain,,33,COMPLIANT
+Digi 1,thepiratebay.se,dig,nxdomain,,32,COMPLIANT
+Digi 1,tnaflix.com,dig,nxdomain,,28,COMPLIANT
+Digi 1,torrentz2.eu,dig,nxdomain,,32,COMPLIANT
+Digi 1,tube8.com,dig,nxdomain,,28,COMPLIANT
+Digi 1,uebond.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,utopia-asia.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,utusantv.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,voyeurweb.com,dig,nxdomain,,30,COMPLIANT
+Digi 1,w88.com,dig,nxdomain,,32,COMPLIANT
+Digi 1,weechookeong.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,winboxmy.com,dig,nxdomain,,30,COMPLIANT
+Digi 1,xe88malaysia.com,dig,nxdomain,,32,COMPLIANT
+Digi 1,xhamster.com,dig,nxdomain,,30,COMPLIANT
+Digi 1,xnxx.com,dig,nxdomain,,33,COMPLIANT
+Digi 1,xvideos.com,dig,nxdomain,,30,COMPLIANT
+Digi 1,youporn.com,dig,nxdomain,,31,COMPLIANT
+Digi 1,yts.am,dig,nxdomain,,30,COMPLIANT
+Digi 1,yts.mx,dig,nxdomain,,32,COMPLIANT
+Digi 1,12bet.com,nslookup,nxdomain,,32,COMPLIANT
+Digi 1,1337x.to,nslookup,nxdomain,,29,COMPLIANT
+Digi 1,188bet.com,nslookup,nxdomain,,29,COMPLIANT
+Digi 1,96mmy.com,nslookup,nxdomain,,45,COMPLIANT
+Digi 1,abbfund.com,nslookup,nxdomain,,33,COMPLIANT
+Digi 1,abfund.us,nslookup,nxdomain,,35,COMPLIANT
+Digi 1,ace333my.com,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,adultfriendfinder.com,nslookup,nxdomain,,28,COMPLIANT
+Digi 1,beeg.com,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,bersih.org,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,binance.com,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,bitget-my.com,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,bk8my.com,nslookup,nxdomain,,34,COMPLIANT
+Digi 1,bmovies.co,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,bonga-cams.com,nslookup,nxdomain,,27,COMPLIANT
+Digi 1,cam4.com,nslookup,nxdomain,,5022,COMPLIANT
+Digi 1,cfdventure.com,nslookup,nxdomain,,31,COMPLIANT
+Digi 1,chaturbate.com,nslookup,nxdomain,,31,COMPLIANT
+Digi 1,cmd368.com,nslookup,nxdomain,,33,COMPLIANT
+Digi 1,copytrade-my.com,nslookup,nxdomain,,32,COMPLIANT
+Digi 1,dafabet.com,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,dfm2u.tokyo,nslookup,nxdomain,,23,COMPLIANT
+Digi 1,dynamicgains-malaysia.com,nslookup,nxdomain,,29,COMPLIANT
+Digi 1,ecashfinance.com,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,econsave88.com,nslookup,nxdomain,,28,COMPLIANT
+Digi 1,edisisiasatmy.blogspot.com,nslookup,nxdomain,,31,COMPLIANT
+Digi 1,efmf.com.pa,nslookup,nxdomain,,28,COMPLIANT
+Digi 1,esuissefund.com,nslookup,nxdomain,,32,COMPLIANT
+Digi 1,eztv.re,nslookup,nxdomain,,31,COMPLIANT
+Digi 1,fbs-malaysia.com,nslookup,nxdomain,,32,COMPLIANT
+Digi 1,financetwitter.com,nslookup,nxdomain,,31,COMPLIANT
+Digi 1,fmovies.to,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,fun88.com,nslookup,nxdomain,,22,COMPLIANT
+Digi 1,gaystarnews.com,nslookup,nxdomain,,28,COMPLIANT
+Digi 1,gclub-casino.com,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,gdriveplayer.to,nslookup,nxdomain,,28,COMPLIANT
+Digi 1,genting777.com,nslookup,nxdomain,,32,COMPLIANT
+Digi 1,heavy-r.com,nslookup,nxdomain,,32,COMPLIANT
+Digi 1,ibcbet.com,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,indoxxi.net,nslookup,nxdomain,,31,COMPLIANT
+Digi 1,iqoption-my.com,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,judiking88.com,nslookup,nxdomain,,31,COMPLIANT
+Digi 1,kiss918my.com,nslookup,nxdomain,,33,COMPLIANT
+Digi 1,kumpulbagi.id,nslookup,nxdomain,,31,COMPLIANT
+Digi 1,layarkaca21.vip,nslookup,nxdomain,,29,COMPLIANT
+Digi 1,limetorrents.pro,nslookup,nxdomain,,22,COMPLIANT
+Digi 1,literotica.com,nslookup,nxdomain,,29,COMPLIANT
+Digi 1,livejasmin.com,nslookup,nxdomain,,31,COMPLIANT
+Digi 1,lk21.org,nslookup,nxdomain,,21,COMPLIANT
+Digi 1,lpe88.com,nslookup,nxdomain,,29,COMPLIANT
+Digi 1,lushstories.com,nslookup,nxdomain,,32,COMPLIANT
+Digi 1,m88.com,nslookup,nxdomain,,33,COMPLIANT
+Digi 1,malaysia-today.net,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,malaysianow.com,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,maxim88my.com,nslookup,nxdomain,,28,COMPLIANT
+Digi 1,me88my.com,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,mega888tm.com,nslookup,nxdomain,,29,COMPLIANT
+Digi 1,monyetistana.com,nslookup,nxdomain,,27,COMPLIANT
+Digi 1,motherless.com,nslookup,nxdomain,,28,COMPLIANT
+Digi 1,mybet88.com,nslookup,nxdomain,,31,COMPLIANT
+Digi 1,nova88.com,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,octafx.com,nslookup,nxdomain,,32,COMPLIANT
+Digi 1,olympiaadvisor.com,nslookup,nxdomain,,5025,COMPLIANT
+Digi 1,pencuri-movie.cc,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,planetromeo.com,nslookup,nxdomain,,34,COMPLIANT
+Digi 1,pornhub.com,nslookup,nxdomain,,34,COMPLIANT
+Digi 1,pornmd.com,nslookup,nxdomain,,19,COMPLIANT
+Digi 1,pussy888my.com,nslookup,nxdomain,,32,COMPLIANT
+Digi 1,putlocker.to,nslookup,nxdomain,,31,COMPLIANT
+Digi 1,rarbg.to,nslookup,nxdomain,,41,COMPLIANT
+Digi 1,redtube.com,nslookup,nxdomain,,28,COMPLIANT
+Digi 1,royal777.com,nslookup,nxdomain,,31,COMPLIANT
+Digi 1,sbo-bet.com,nslookup,nxdomain,,29,COMPLIANT
+Digi 1,scr888top.com,nslookup,nxdomain,,5020,COMPLIANT
+Digi 1,sky777my.com,nslookup,nxdomain,,21,COMPLIANT
+Digi 1,slotmvp88.com,nslookup,nxdomain,,28,COMPLIANT
+Digi 1,soap2day.to,nslookup,nxdomain,,31,COMPLIANT
+Digi 1,spankbang.com,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,steadyaku47.com,nslookup,nxdomain,,32,COMPLIANT
+Digi 1,stripchat.com,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,subscene.com,nslookup,nxdomain,,31,COMPLIANT
+Digi 1,thepiratebay.org,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,thepiratebay.se,nslookup,nxdomain,,34,COMPLIANT
+Digi 1,tnaflix.com,nslookup,nxdomain,,17,COMPLIANT
+Digi 1,torrentz2.eu,nslookup,nxdomain,,29,COMPLIANT
+Digi 1,tube8.com,nslookup,nxdomain,,31,COMPLIANT
+Digi 1,uebond.com,nslookup,nxdomain,,28,COMPLIANT
+Digi 1,utopia-asia.com,nslookup,nxdomain,,27,COMPLIANT
+Digi 1,utusantv.com,nslookup,nxdomain,,27,COMPLIANT
+Digi 1,voyeurweb.com,nslookup,nxdomain,,21,COMPLIANT
+Digi 1,w88.com,nslookup,nxdomain,,32,COMPLIANT
+Digi 1,weechookeong.com,nslookup,nxdomain,,33,COMPLIANT
+Digi 1,winboxmy.com,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,xe88malaysia.com,nslookup,nxdomain,,5017,COMPLIANT
+Digi 1,xhamster.com,nslookup,nxdomain,,29,COMPLIANT
+Digi 1,xnxx.com,nslookup,nxdomain,,32,COMPLIANT
+Digi 1,xvideos.com,nslookup,nxdomain,,29,COMPLIANT
+Digi 1,youporn.com,nslookup,nxdomain,,30,COMPLIANT
+Digi 1,yts.am,nslookup,nxdomain,,23,COMPLIANT
+Digi 1,yts.mx,nslookup,nxdomain,,29,COMPLIANT
+Google 1,12bet.com,dig,resolved,104.18.41.158,78,VIOLATION
+Google 1,1337x.to,dig,resolved,104.21.40.193,30,VIOLATION
+Google 1,188bet.com,dig,nxdomain,,29,COMPLIANT
+Google 1,96mmy.com,dig,resolved,104.21.19.80,30,VIOLATION
+Google 1,abbfund.com,dig,nxdomain,,30,COMPLIANT
+Google 1,abfund.us,dig,nxdomain,,18,COMPLIANT
+Google 1,ace333my.com,dig,nxdomain,,32,COMPLIANT
+Google 1,adultfriendfinder.com,dig,resolved,69.165.107.69,30,VIOLATION
+Google 1,beeg.com,dig,resolved,172.67.181.179,31,VIOLATION
+Google 1,bersih.org,dig,resolved,104.21.68.238,29,VIOLATION
+Google 1,binance.com,dig,resolved,52.195.95.228,33,VIOLATION
+Google 1,bitget-my.com,dig,nxdomain,,31,COMPLIANT
+Google 1,bk8my.com,dig,resolved,172.67.212.69,30,VIOLATION
+Google 1,bmovies.co,dig,resolved,13.248.169.48,31,VIOLATION
+Google 1,bonga-cams.com,dig,resolved,94.199.249.60,30,VIOLATION
+Google 1,cam4.com,dig,resolved,185.94.239.88,31,VIOLATION
+Google 1,cfdventure.com,dig,resolved,8.210.83.183,16,VIOLATION
+Google 1,chaturbate.com,dig,resolved,104.18.207.112,21,VIOLATION
+Google 1,cmd368.com,dig,resolved,104.26.1.67,22,VIOLATION
+Google 1,copytrade-my.com,dig,nxdomain,,32,COMPLIANT
+Google 1,dafabet.com,dig,resolved,42.99.140.176,30,VIOLATION
+Google 1,dfm2u.tokyo,dig,nxdomain,,32,COMPLIANT
+Google 1,dynamicgains-malaysia.com,dig,nxdomain,,27,COMPLIANT
+Google 1,ecashfinance.com,dig,nxdomain,,30,COMPLIANT
+Google 1,econsave88.com,dig,nxdomain,,31,COMPLIANT
+Google 1,edisisiasatmy.blogspot.com,dig,resolved,172.217.25.65,18,VIOLATION
+Google 1,efmf.com.pa,dig,nxdomain,,31,COMPLIANT
+Google 1,esuissefund.com,dig,nxdomain,,51,COMPLIANT
+Google 1,eztv.re,dig,resolved,172.67.210.176,18,VIOLATION
+Google 1,fbs-malaysia.com,dig,nxdomain,,21,COMPLIANT
+Google 1,financetwitter.com,dig,resolved,104.21.12.17,30,VIOLATION
+Google 1,fmovies.to,dig,nxdomain,,32,COMPLIANT
+Google 1,fun88.com,dig,resolved,172.65.179.66,27,VIOLATION
+Google 1,gaystarnews.com,dig,resolved,104.21.88.251,20,VIOLATION
+Google 1,gclub-casino.com,dig,resolved,104.21.50.60,27,VIOLATION
+Google 1,gdriveplayer.to,dig,resolved,172.67.162.231,27,VIOLATION
+Google 1,genting777.com,dig,nxdomain,,32,COMPLIANT
+Google 1,heavy-r.com,dig,resolved,104.26.2.85,31,VIOLATION
+Google 1,ibcbet.com,dig,resolved,52.220.215.157,37,VIOLATION
+Google 1,indoxxi.net,dig,nxdomain,,4082,COMPLIANT
+Google 1,iqoption-my.com,dig,nxdomain,,25,COMPLIANT
+Google 1,judiking88.com,dig,resolved,212.92.104.9,28,VIOLATION
+Google 1,kiss918my.com,dig,nxdomain,,29,COMPLIANT
+Google 1,kumpulbagi.id,dig,resolved,104.21.25.55,33,VIOLATION
+Google 1,layarkaca21.vip,dig,resolved,172.65.211.209,30,VIOLATION
+Google 1,limetorrents.pro,dig,resolved,212.92.104.3,32,VIOLATION
+Google 1,literotica.com,dig,resolved,216.150.65.200,35,VIOLATION
+Google 1,livejasmin.com,dig,resolved,109.71.161.200,29,VIOLATION
+Google 1,lk21.org,dig,resolved,104.21.92.248,33,VIOLATION
+Google 1,lpe88.com,dig,nxdomain,,104,COMPLIANT
+Google 1,lushstories.com,dig,resolved,104.18.25.132,31,VIOLATION
+Google 1,m88.com,dig,resolved,104.18.37.125,41,VIOLATION
+Google 1,malaysia-today.net,dig,resolved,172.67.128.225,30,VIOLATION
+Google 1,malaysianow.com,dig,resolved,172.67.72.17,18,VIOLATION
+Google 1,maxim88my.com,dig,resolved,104.21.3.54,28,VIOLATION
+Google 1,me88my.com,dig,resolved,172.67.176.120,31,VIOLATION
+Google 1,mega888tm.com,dig,resolved,172.67.137.122,29,VIOLATION
+Google 1,monyetistana.com,dig,resolved,216.227.142.171,267,VIOLATION
+Google 1,motherless.com,dig,nxdomain,,32,COMPLIANT
+Google 1,mybet88.com,dig,resolved,3.170.229.12,34,VIOLATION
+Google 1,nova88.com,dig,resolved,52.220.215.157,33,VIOLATION
+Google 1,octafx.com,dig,resolved,104.18.10.220,31,VIOLATION
+Google 1,olympiaadvisor.com,dig,nxdomain,,20,COMPLIANT
+Google 1,pencuri-movie.cc,dig,nxdomain,,30,COMPLIANT
+Google 1,planetromeo.com,dig,resolved,104.17.180.107,19,VIOLATION
+Google 1,pornhub.com,dig,resolved,66.254.114.41,31,VIOLATION
+Google 1,pornmd.com,dig,resolved,104.18.8.221,28,VIOLATION
+Google 1,pussy888my.com,dig,resolved,104.21.76.99,29,VIOLATION
+Google 1,putlocker.to,dig,resolved,104.21.79.74,20,VIOLATION
+Google 1,rarbg.to,dig,resolved,157.90.33.73,18,VIOLATION
+Google 1,redtube.com,dig,resolved,66.254.114.238,28,VIOLATION
+Google 1,royal777.com,dig,resolved,208.98.40.228,19,VIOLATION
+Google 1,sbo-bet.com,dig,resolved,45.136.198.230,30,VIOLATION
+Google 1,scr888top.com,dig,nxdomain,,31,COMPLIANT
+Google 1,sky777my.com,dig,nxdomain,,29,COMPLIANT
+Google 1,slotmvp88.com,dig,nxdomain,,33,COMPLIANT
+Google 1,soap2day.to,dig,resolved,103.224.182.253,31,VIOLATION
+Google 1,spankbang.com,dig,resolved,104.19.239.156,30,VIOLATION
+Google 1,steadyaku47.com,dig,resolved,172.67.172.26,31,VIOLATION
+Google 1,stripchat.com,dig,nxdomain,,5026,COMPLIANT
+Google 1,subscene.com,dig,resolved,104.21.31.193,36,VIOLATION
+Google 1,thepiratebay.org,dig,resolved,162.159.137.6,23,VIOLATION
+Google 1,thepiratebay.se,dig,nxdomain,,5026,COMPLIANT
+Google 1,tnaflix.com,dig,resolved,85.159.232.22,33,VIOLATION
+Google 1,torrentz2.eu,dig,resolved,103.224.182.253,33,VIOLATION
+Google 1,tube8.com,dig,resolved,66.254.114.239,24,VIOLATION
+Google 1,uebond.com,dig,nxdomain,,30,COMPLIANT
+Google 1,utopia-asia.com,dig,resolved,40.70.229.79,30,VIOLATION
+Google 1,utusantv.com,dig,resolved,172.67.208.168,17,VIOLATION
+Google 1,voyeurweb.com,dig,resolved,65.108.75.120,27,VIOLATION
+Google 1,w88.com,dig,resolved,45.121.147.7,32,VIOLATION
+Google 1,weechookeong.com,dig,resolved,103.224.93.108,30,VIOLATION
+Google 1,winboxmy.com,dig,resolved,172.67.130.72,18,VIOLATION
+Google 1,xe88malaysia.com,dig,nxdomain,,33,COMPLIANT
+Google 1,xhamster.com,dig,resolved,104.16.4.81,31,VIOLATION
+Google 1,xnxx.com,dig,resolved,152.233.100.4,29,VIOLATION
+Google 1,xvideos.com,dig,resolved,89.222.127.1,19,VIOLATION
+Google 1,youporn.com,dig,resolved,66.254.114.79,28,VIOLATION
+Google 1,yts.am,dig,resolved,104.21.13.157,17,VIOLATION
+Google 1,yts.mx,dig,nxdomain,,16,COMPLIANT
+Google 1,12bet.com,nslookup,resolved,104.18.41.158,43,VIOLATION
+Google 1,1337x.to,nslookup,resolved,172.67.188.67,36,VIOLATION
+Google 1,188bet.com,nslookup,nxdomain,,29,COMPLIANT
+Google 1,96mmy.com,nslookup,resolved,104.21.19.80,39,VIOLATION
+Google 1,abbfund.com,nslookup,nxdomain,,78,COMPLIANT
+Google 1,abfund.us,nslookup,nxdomain,,35,COMPLIANT
+Google 1,ace333my.com,nslookup,nxdomain,,5037,COMPLIANT
+Google 1,adultfriendfinder.com,nslookup,resolved,69.165.107.69,54,VIOLATION
+Google 1,beeg.com,nslookup,resolved,172.67.181.179,43,VIOLATION
+Google 1,bersih.org,nslookup,resolved,172.67.200.67,41,VIOLATION
+Google 1,binance.com,nslookup,resolved,13.158.153.135,45,VIOLATION
+Google 1,bitget-my.com,nslookup,nxdomain,,16,COMPLIANT
+Google 1,bk8my.com,nslookup,resolved,104.21.45.85,43,VIOLATION
+Google 1,bmovies.co,nslookup,resolved,13.248.169.48,40,VIOLATION
+Google 1,bonga-cams.com,nslookup,resolved,94.199.249.60,43,VIOLATION
+Google 1,cam4.com,nslookup,resolved,185.94.239.88,44,VIOLATION
+Google 1,cfdventure.com,nslookup,resolved,8.210.83.183,86,VIOLATION
+Google 1,chaturbate.com,nslookup,resolved,104.18.208.112,40,VIOLATION
+Google 1,cmd368.com,nslookup,resolved,172.67.73.235,42,VIOLATION
+Google 1,copytrade-my.com,nslookup,nxdomain,,29,COMPLIANT
+Google 1,dafabet.com,nslookup,resolved,42.99.140.176,62,VIOLATION
+Google 1,dfm2u.tokyo,nslookup,nxdomain,,30,COMPLIANT
+Google 1,dynamicgains-malaysia.com,nslookup,nxdomain,,28,COMPLIANT
+Google 1,ecashfinance.com,nslookup,nxdomain,,30,COMPLIANT
+Google 1,econsave88.com,nslookup,nxdomain,,32,COMPLIANT
+Google 1,edisisiasatmy.blogspot.com,nslookup,resolved,172.217.25.65,40,VIOLATION
+Google 1,efmf.com.pa,nslookup,nxdomain,,21,COMPLIANT
+Google 1,esuissefund.com,nslookup,nxdomain,,56,COMPLIANT
+Google 1,eztv.re,nslookup,resolved,104.21.69.174,47,VIOLATION
+Google 1,fbs-malaysia.com,nslookup,nxdomain,,27,COMPLIANT
+Google 1,financetwitter.com,nslookup,resolved,172.67.151.73,40,VIOLATION
+Google 1,fmovies.to,nslookup,nxdomain,,32,COMPLIANT
+Google 1,fun88.com,nslookup,resolved,172.65.179.66,35,VIOLATION
+Google 1,gaystarnews.com,nslookup,resolved,104.21.88.251,39,VIOLATION
+Google 1,gclub-casino.com,nslookup,resolved,104.21.50.60,39,VIOLATION
+Google 1,gdriveplayer.to,nslookup,resolved,104.21.74.209,30,VIOLATION
+Google 1,genting777.com,nslookup,nxdomain,,45,COMPLIANT
+Google 1,heavy-r.com,nslookup,resolved,104.26.3.85,30,VIOLATION
+Google 1,ibcbet.com,nslookup,resolved,13.215.29.135,46,VIOLATION
+Google 1,indoxxi.net,nslookup,resolved,66.29.132.189,31,VIOLATION
+Google 1,iqoption-my.com,nslookup,nxdomain,,29,COMPLIANT
+Google 1,judiking88.com,nslookup,resolved,212.92.104.9,221,VIOLATION
+Google 1,kiss918my.com,nslookup,nxdomain,,17,COMPLIANT
+Google 1,kumpulbagi.id,nslookup,resolved,104.21.25.55,28,VIOLATION
+Google 1,layarkaca21.vip,nslookup,resolved,172.65.211.209,56,VIOLATION
+Google 1,limetorrents.pro,nslookup,resolved,212.92.104.3,212,VIOLATION
+Google 1,literotica.com,nslookup,resolved,216.150.65.190,26,VIOLATION
+Google 1,livejasmin.com,nslookup,resolved,109.71.161.200,31,VIOLATION
+Google 1,lk21.org,nslookup,resolved,172.67.201.1,31,VIOLATION
+Google 1,lpe88.com,nslookup,nxdomain,,32,COMPLIANT
+Google 1,lushstories.com,nslookup,nxdomain,,5024,COMPLIANT
+Google 1,m88.com,nslookup,resolved,104.18.37.125,29,VIOLATION
+Google 1,malaysia-today.net,nslookup,resolved,104.21.2.73,29,VIOLATION
+Google 1,malaysianow.com,nslookup,resolved,172.67.72.17,31,VIOLATION
+Google 1,maxim88my.com,nslookup,resolved,172.67.130.68,38,VIOLATION
+Google 1,me88my.com,nslookup,resolved,104.21.40.55,41,VIOLATION
+Google 1,mega888tm.com,nslookup,resolved,104.21.48.214,30,VIOLATION
+Google 1,monyetistana.com,nslookup,resolved,216.227.142.171,37,VIOLATION
+Google 1,motherless.com,nslookup,nxdomain,,29,COMPLIANT
+Google 1,mybet88.com,nslookup,resolved,3.170.229.12,27,VIOLATION
+Google 1,nova88.com,nslookup,resolved,52.220.215.157,40,VIOLATION
+Google 1,octafx.com,nslookup,resolved,104.18.11.220,39,VIOLATION
+Google 1,olympiaadvisor.com,nslookup,nxdomain,,30,COMPLIANT
+Google 1,pencuri-movie.cc,nslookup,nxdomain,,28,COMPLIANT
+Google 1,planetromeo.com,nslookup,resolved,104.17.179.107,-240,VIOLATION
+Google 1,pornhub.com,nslookup,resolved,66.254.114.41,43,VIOLATION
+Google 1,pornmd.com,nslookup,resolved,104.18.9.221,40,VIOLATION
+Google 1,pussy888my.com,nslookup,resolved,172.67.192.173,38,VIOLATION
+Google 1,putlocker.to,nslookup,resolved,172.67.169.58,32,VIOLATION
+Google 1,rarbg.to,nslookup,resolved,157.90.33.74,-471,VIOLATION
+Google 1,redtube.com,nslookup,resolved,66.254.114.238,37,VIOLATION
+Google 1,royal777.com,nslookup,nxdomain,,5025,COMPLIANT
+Google 1,sbo-bet.com,nslookup,resolved,45.136.198.230,42,VIOLATION
+Google 1,scr888top.com,nslookup,nxdomain,,28,COMPLIANT
+Google 1,sky777my.com,nslookup,nxdomain,,28,COMPLIANT
+Google 1,slotmvp88.com,nslookup,nxdomain,,29,COMPLIANT
+Google 1,soap2day.to,nslookup,resolved,103.224.182.253,446,VIOLATION
+Google 1,spankbang.com,nslookup,resolved,104.18.96.242,35,VIOLATION
+Google 1,steadyaku47.com,nslookup,resolved,172.67.172.26,37,VIOLATION
+Google 1,stripchat.com,nslookup,resolved,104.17.117.12,25,VIOLATION
+Google 1,subscene.com,nslookup,resolved,104.21.31.193,29,VIOLATION
+Google 1,thepiratebay.org,nslookup,resolved,162.159.136.6,39,VIOLATION
+Google 1,thepiratebay.se,nslookup,resolved,194.9.94.85,44,VIOLATION
+Google 1,tnaflix.com,nslookup,resolved,85.159.232.21,37,VIOLATION
+Google 1,torrentz2.eu,nslookup,resolved,103.224.182.253,409,VIOLATION
+Google 1,tube8.com,nslookup,resolved,66.254.114.239,28,VIOLATION
+Google 1,uebond.com,nslookup,nxdomain,,28,COMPLIANT
+Google 1,utopia-asia.com,nslookup,resolved,40.70.229.79,37,VIOLATION
+Google 1,utusantv.com,nslookup,resolved,104.21.93.101,40,VIOLATION
+Google 1,voyeurweb.com,nslookup,resolved,65.108.75.120,25,VIOLATION
+Google 1,w88.com,nslookup,resolved,45.121.147.7,37,VIOLATION
+Google 1,weechookeong.com,nslookup,nxdomain,,5049,COMPLIANT
+Google 1,winboxmy.com,nslookup,resolved,104.21.3.58,48,VIOLATION
+Google 1,xe88malaysia.com,nslookup,nxdomain,,31,COMPLIANT
+Google 1,xhamster.com,nslookup,resolved,104.16.4.81,42,VIOLATION
+Google 1,xnxx.com,nslookup,resolved,152.233.100.6,41,VIOLATION
+Google 1,xvideos.com,nslookup,resolved,89.222.127.6,45,VIOLATION
+Google 1,youporn.com,nslookup,resolved,66.254.114.79,43,VIOLATION
+Google 1,yts.am,nslookup,resolved,172.67.156.162,41,VIOLATION
+Google 1,yts.mx,nslookup,nxdomain,,27,COMPLIANT
+Google 2,12bet.com,dig,resolved,104.18.41.158,107,VIOLATION
+Google 2,1337x.to,dig,resolved,172.67.188.67,108,VIOLATION
+Google 2,188bet.com,dig,nxdomain,,87,COMPLIANT
+Google 2,96mmy.com,dig,resolved,104.21.19.80,163,VIOLATION
+Google 2,abbfund.com,dig,nxdomain,,209,COMPLIANT
+Google 2,abfund.us,dig,nxdomain,,90,COMPLIANT
+Google 2,ace333my.com,dig,nxdomain,,43,COMPLIANT
+Google 2,adultfriendfinder.com,dig,resolved,69.165.107.69,31,VIOLATION
+Google 2,beeg.com,dig,resolved,104.21.56.86,95,VIOLATION
+Google 2,bersih.org,dig,resolved,104.21.68.238,99,VIOLATION
+Google 2,binance.com,dig,resolved,13.158.153.135,36,VIOLATION
+Google 2,bitget-my.com,dig,nxdomain,,104,COMPLIANT
+Google 2,bk8my.com,dig,nxdomain,,5026,COMPLIANT
+Google 2,bmovies.co,dig,nxdomain,,5016,COMPLIANT
+Google 2,bonga-cams.com,dig,resolved,94.199.249.60,82,VIOLATION
+Google 2,cam4.com,dig,resolved,185.94.239.88,36,VIOLATION
+Google 2,cfdventure.com,dig,resolved,8.210.83.183,184,VIOLATION
+Google 2,chaturbate.com,dig,resolved,104.18.207.112,82,VIOLATION
+Google 2,cmd368.com,dig,resolved,172.67.73.235,331,VIOLATION
+Google 2,copytrade-my.com,dig,nxdomain,,47,COMPLIANT
+Google 2,dafabet.com,dig,resolved,23.54.81.89,94,VIOLATION
+Google 2,dfm2u.tokyo,dig,nxdomain,,41,COMPLIANT
+Google 2,dynamicgains-malaysia.com,dig,nxdomain,,5022,COMPLIANT
+Google 2,ecashfinance.com,dig,nxdomain,,344,COMPLIANT
+Google 2,econsave88.com,dig,nxdomain,,-205,COMPLIANT
+Google 2,edisisiasatmy.blogspot.com,dig,resolved,142.251.223.33,40,VIOLATION
+Google 2,efmf.com.pa,dig,nxdomain,,-458,COMPLIANT
+Google 2,esuissefund.com,dig,nxdomain,,157,COMPLIANT
+Google 2,eztv.re,dig,resolved,172.67.210.176,159,VIOLATION
+Google 2,fbs-malaysia.com,dig,nxdomain,,147,COMPLIANT
+Google 2,financetwitter.com,dig,resolved,172.67.151.73,42,VIOLATION
+Google 2,fmovies.to,dig,nxdomain,,88,COMPLIANT
+Google 2,fun88.com,dig,resolved,172.65.179.66,41,VIOLATION
+Google 2,gaystarnews.com,dig,resolved,172.67.155.48,49,VIOLATION
+Google 2,gclub-casino.com,dig,resolved,172.67.157.137,106,VIOLATION
+Google 2,gdriveplayer.to,dig,resolved,172.67.162.231,84,VIOLATION
+Google 2,genting777.com,dig,nxdomain,,5035,COMPLIANT
+Google 2,heavy-r.com,dig,nxdomain,,5030,COMPLIANT
+Google 2,ibcbet.com,dig,resolved,52.220.215.157,47,VIOLATION
+Google 2,indoxxi.net,dig,resolved,66.29.132.189,38,VIOLATION
+Google 2,iqoption-my.com,dig,nxdomain,,100,COMPLIANT
+Google 2,judiking88.com,dig,resolved,212.92.104.114,367,VIOLATION
+Google 2,kiss918my.com,dig,nxdomain,,36,COMPLIANT
+Google 2,kumpulbagi.id,dig,resolved,172.67.222.248,108,VIOLATION
+Google 2,layarkaca21.vip,dig,resolved,172.65.211.209,172,VIOLATION
+Google 2,limetorrents.pro,dig,resolved,64.31.3.234,257,VIOLATION
+Google 2,literotica.com,dig,resolved,216.150.65.200,35,VIOLATION
+Google 2,livejasmin.com,dig,resolved,109.71.161.200,95,VIOLATION
+Google 2,lk21.org,dig,resolved,172.67.201.1,94,VIOLATION
+Google 2,lpe88.com,dig,nxdomain,,119,COMPLIANT
+Google 2,lushstories.com,dig,resolved,104.18.24.132,30,VIOLATION
+Google 2,m88.com,dig,resolved,172.64.150.131,333,VIOLATION
+Google 2,malaysia-today.net,dig,resolved,172.67.128.225,90,VIOLATION
+Google 2,malaysianow.com,dig,resolved,172.67.72.17,114,VIOLATION
+Google 2,maxim88my.com,dig,resolved,104.21.3.54,47,VIOLATION
+Google 2,me88my.com,dig,resolved,172.67.176.120,52,VIOLATION
+Google 2,mega888tm.com,dig,resolved,172.67.137.122,46,VIOLATION
+Google 2,monyetistana.com,dig,resolved,216.227.142.171,264,VIOLATION
+Google 2,motherless.com,dig,nxdomain,,109,COMPLIANT
+Google 2,mybet88.com,dig,resolved,18.65.135.101,330,VIOLATION
+Google 2,nova88.com,dig,resolved,52.221.38.51,39,VIOLATION
+Google 2,octafx.com,dig,resolved,104.18.11.220,164,VIOLATION
+Google 2,olympiaadvisor.com,dig,nxdomain,,91,COMPLIANT
+Google 2,pencuri-movie.cc,dig,nxdomain,,154,COMPLIANT
+Google 2,planetromeo.com,dig,resolved,104.17.179.107,42,VIOLATION
+Google 2,pornhub.com,dig,resolved,66.254.114.41,30,VIOLATION
+Google 2,pornmd.com,dig,resolved,104.18.8.221,87,VIOLATION
+Google 2,pussy888my.com,dig,resolved,172.67.192.173,325,VIOLATION
+Google 2,putlocker.to,dig,resolved,104.21.79.74,44,VIOLATION
+Google 2,rarbg.to,dig,resolved,157.90.33.73,383,VIOLATION
+Google 2,redtube.com,dig,resolved,66.254.114.238,92,VIOLATION
+Google 2,royal777.com,dig,resolved,208.98.40.31,397,VIOLATION
+Google 2,sbo-bet.com,dig,resolved,45.136.198.230,510,VIOLATION
+Google 2,scr888top.com,dig,nxdomain,,151,COMPLIANT
+Google 2,sky777my.com,dig,nxdomain,,150,COMPLIANT
+Google 2,slotmvp88.com,dig,nxdomain,,97,COMPLIANT
+Google 2,soap2day.to,dig,resolved,103.224.182.253,37,VIOLATION
+Google 2,spankbang.com,dig,resolved,104.19.239.156,101,VIOLATION
+Google 2,steadyaku47.com,dig,resolved,104.21.55.180,100,VIOLATION
+Google 2,stripchat.com,dig,resolved,104.17.117.12,96,VIOLATION
+Google 2,subscene.com,dig,resolved,172.67.179.155,93,VIOLATION
+Google 2,thepiratebay.org,dig,resolved,162.159.137.6,79,VIOLATION
+Google 2,thepiratebay.se,dig,resolved,194.9.94.86,95,VIOLATION
+Google 2,tnaflix.com,dig,resolved,85.159.232.22,38,VIOLATION
+Google 2,torrentz2.eu,dig,resolved,103.224.182.253,26,VIOLATION
+Google 2,tube8.com,dig,resolved,66.254.114.239,33,VIOLATION
+Google 2,uebond.com,dig,nxdomain,,99,COMPLIANT
+Google 2,utopia-asia.com,dig,resolved,40.70.229.79,653,VIOLATION
+Google 2,utusantv.com,dig,resolved,104.21.93.101,57,VIOLATION
+Google 2,voyeurweb.com,dig,resolved,65.108.75.120,41,VIOLATION
+Google 2,w88.com,dig,nxdomain,,5030,COMPLIANT
+Google 2,weechookeong.com,dig,nxdomain,,5016,COMPLIANT
+Google 2,winboxmy.com,dig,resolved,104.21.3.58,104,VIOLATION
+Google 2,xe88malaysia.com,dig,nxdomain,,98,COMPLIANT
+Google 2,xhamster.com,dig,resolved,104.16.4.81,82,VIOLATION
+Google 2,xnxx.com,dig,resolved,152.233.100.14,16,VIOLATION
+Google 2,xvideos.com,dig,resolved,89.222.127.13,69,VIOLATION
+Google 2,youporn.com,dig,resolved,66.254.114.79,42,VIOLATION
+Google 2,yts.am,dig,resolved,172.67.156.162,82,VIOLATION
+Google 2,yts.mx,dig,nxdomain,,89,COMPLIANT
+Google 2,12bet.com,nslookup,resolved,104.18.41.158,172,VIOLATION
+Google 2,1337x.to,nslookup,resolved,172.67.188.67,172,VIOLATION
+Google 2,188bet.com,nslookup,nxdomain,,235,COMPLIANT
+Google 2,96mmy.com,nslookup,resolved,104.21.19.80,-75,VIOLATION
+Google 2,abbfund.com,nslookup,nxdomain,,-300,COMPLIANT
+Google 2,abfund.us,nslookup,nxdomain,,84,COMPLIANT
+Google 2,ace333my.com,nslookup,nxdomain,,97,COMPLIANT
+Google 2,adultfriendfinder.com,nslookup,resolved,69.165.107.69,54,VIOLATION
+Google 2,beeg.com,nslookup,resolved,104.21.56.86,183,VIOLATION
+Google 2,bersih.org,nslookup,resolved,172.67.200.67,189,VIOLATION
+Google 2,binance.com,nslookup,resolved,13.158.153.135,147,VIOLATION
+Google 2,bitget-my.com,nslookup,nxdomain,,35,COMPLIANT
+Google 2,bk8my.com,nslookup,resolved,104.21.45.85,194,VIOLATION
+Google 2,bmovies.co,nslookup,resolved,13.248.169.48,5090,VIOLATION
+Google 2,bonga-cams.com,nslookup,resolved,94.199.249.60,237,VIOLATION
+Google 2,cam4.com,nslookup,resolved,185.94.239.88,166,VIOLATION
+Google 2,cfdventure.com,nslookup,resolved,8.210.83.183,359,VIOLATION
+Google 2,chaturbate.com,nslookup,resolved,104.18.207.112,181,VIOLATION
+Google 2,cmd368.com,nslookup,resolved,104.26.1.67,116,VIOLATION
+Google 2,copytrade-my.com,nslookup,nxdomain,,84,COMPLIANT
+Google 2,dafabet.com,nslookup,nxdomain,,5016,COMPLIANT
+Google 2,dfm2u.tokyo,nslookup,nxdomain,,99,COMPLIANT
+Google 2,dynamicgains-malaysia.com,nslookup,nxdomain,,83,COMPLIANT
+Google 2,ecashfinance.com,nslookup,nxdomain,,29,COMPLIANT
+Google 2,econsave88.com,nslookup,nxdomain,,324,COMPLIANT
+Google 2,edisisiasatmy.blogspot.com,nslookup,resolved,142.251.223.33,175,VIOLATION
+Google 2,efmf.com.pa,nslookup,nxdomain,,392,COMPLIANT
+Google 2,esuissefund.com,nslookup,nxdomain,,134,COMPLIANT
+Google 2,eztv.re,nslookup,resolved,104.21.69.174,318,VIOLATION
+Google 2,fbs-malaysia.com,nslookup,nxdomain,,321,COMPLIANT
+Google 2,financetwitter.com,nslookup,resolved,172.67.151.73,201,VIOLATION
+Google 2,fmovies.to,nslookup,nxdomain,,5014,COMPLIANT
+Google 2,fun88.com,nslookup,nxdomain,,5045,COMPLIANT
+Google 2,gaystarnews.com,nslookup,resolved,172.67.155.48,254,VIOLATION
+Google 2,gclub-casino.com,nslookup,resolved,104.21.50.60,180,VIOLATION
+Google 2,gdriveplayer.to,nslookup,resolved,172.67.162.231,178,VIOLATION
+Google 2,genting777.com,nslookup,nxdomain,,199,COMPLIANT
+Google 2,heavy-r.com,nslookup,nxdomain,,3986,COMPLIANT
+Google 2,ibcbet.com,nslookup,nxdomain,,5026,COMPLIANT
+Google 2,indoxxi.net,nslookup,resolved,66.29.132.189,241,VIOLATION
+Google 2,iqoption-my.com,nslookup,nxdomain,,92,COMPLIANT
+Google 2,judiking88.com,nslookup,resolved,172.241.213.99,794,VIOLATION
+Google 2,kiss918my.com,nslookup,nxdomain,,161,COMPLIANT
+Google 2,kumpulbagi.id,nslookup,resolved,172.67.222.248,244,VIOLATION
+Google 2,layarkaca21.vip,nslookup,resolved,172.65.211.209,234,VIOLATION
+Google 2,limetorrents.pro,nslookup,resolved,208.115.249.238,169,VIOLATION
+Google 2,literotica.com,nslookup,resolved,216.150.65.200,99,VIOLATION
+Google 2,livejasmin.com,nslookup,resolved,109.71.161.200,151,VIOLATION
+Google 2,lk21.org,nslookup,resolved,172.67.201.1,245,VIOLATION
+Google 2,lpe88.com,nslookup,nxdomain,,229,COMPLIANT
+Google 2,lushstories.com,nslookup,resolved,104.18.25.132,479,VIOLATION
+Google 2,m88.com,nslookup,resolved,104.18.37.125,175,VIOLATION
+Google 2,malaysia-today.net,nslookup,resolved,172.67.128.225,162,VIOLATION
+Google 2,malaysianow.com,nslookup,resolved,172.67.72.17,169,VIOLATION
+Google 2,maxim88my.com,nslookup,resolved,172.67.130.68,182,VIOLATION
+Google 2,me88my.com,nslookup,resolved,104.21.40.55,208,VIOLATION
+Google 2,mega888tm.com,nslookup,resolved,172.67.137.122,188,VIOLATION
+Google 2,monyetistana.com,nslookup,resolved,216.227.142.171,749,VIOLATION
+Google 2,motherless.com,nslookup,nxdomain,,92,COMPLIANT
+Google 2,mybet88.com,nslookup,resolved,18.65.135.101,136,VIOLATION
+Google 2,nova88.com,nslookup,resolved,13.215.29.135,159,VIOLATION
+Google 2,octafx.com,nslookup,nxdomain,,5031,COMPLIANT
+Google 2,olympiaadvisor.com,nslookup,nxdomain,,88,COMPLIANT
+Google 2,pencuri-movie.cc,nslookup,nxdomain,,333,COMPLIANT
+Google 2,planetromeo.com,nslookup,resolved,104.17.180.107,168,VIOLATION
+Google 2,pornhub.com,nslookup,resolved,66.254.114.41,109,VIOLATION
+Google 2,pornmd.com,nslookup,resolved,104.18.9.221,143,VIOLATION
+Google 2,pussy888my.com,nslookup,resolved,104.21.76.99,179,VIOLATION
+Google 2,putlocker.to,nslookup,resolved,104.21.79.74,168,VIOLATION
+Google 2,rarbg.to,nslookup,resolved,157.90.33.73,171,VIOLATION
+Google 2,redtube.com,nslookup,resolved,66.254.114.238,5100,VIOLATION
+Google 2,royal777.com,nslookup,resolved,208.98.40.228,979,VIOLATION
+Google 2,sbo-bet.com,nslookup,nxdomain,,5037,COMPLIANT
+Google 2,scr888top.com,nslookup,nxdomain,,107,COMPLIANT
+Google 2,sky777my.com,nslookup,nxdomain,,104,COMPLIANT
+Google 2,slotmvp88.com,nslookup,nxdomain,,96,COMPLIANT
+Google 2,soap2day.to,nslookup,resolved,103.224.182.253,402,VIOLATION
+Google 2,spankbang.com,nslookup,resolved,104.19.239.156,166,VIOLATION
+Google 2,steadyaku47.com,nslookup,resolved,104.21.55.180,-62,VIOLATION
+Google 2,stripchat.com,nslookup,resolved,104.17.118.12,166,VIOLATION
+Google 2,subscene.com,nslookup,resolved,104.21.31.193,169,VIOLATION
+Google 2,thepiratebay.org,nslookup,resolved,162.159.136.6,187,VIOLATION
+Google 2,thepiratebay.se,nslookup,resolved,194.9.94.86,189,VIOLATION
+Google 2,tnaflix.com,nslookup,resolved,85.159.232.22,165,VIOLATION
+Google 2,torrentz2.eu,nslookup,resolved,103.224.182.253,394,VIOLATION
+Google 2,tube8.com,nslookup,resolved,66.254.114.239,164,VIOLATION
+Google 2,uebond.com,nslookup,nxdomain,,100,COMPLIANT
+Google 2,utopia-asia.com,nslookup,resolved,40.70.229.79,1226,VIOLATION
+Google 2,utusantv.com,nslookup,resolved,172.67.208.168,5140,VIOLATION
+Google 2,voyeurweb.com,nslookup,resolved,65.108.75.120,190,VIOLATION
+Google 2,w88.com,nslookup,resolved,45.121.147.7,184,VIOLATION
+Google 2,weechookeong.com,nslookup,resolved,103.224.93.108,314,VIOLATION
+Google 2,winboxmy.com,nslookup,resolved,104.21.3.58,491,VIOLATION
+Google 2,xe88malaysia.com,nslookup,nxdomain,,127,COMPLIANT
+Google 2,xhamster.com,nslookup,resolved,104.16.4.81,135,VIOLATION
+Google 2,xnxx.com,nslookup,resolved,152.233.100.11,105,VIOLATION
+Google 2,xvideos.com,nslookup,resolved,89.222.127.5,29,VIOLATION
+Google 2,youporn.com,nslookup,resolved,66.254.114.79,122,VIOLATION
+Google 2,yts.am,nslookup,nxdomain,,5020,COMPLIANT
+Google 2,yts.mx,nslookup,nxdomain,,77,COMPLIANT
+Google DoH 2,12bet.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,1337x.to,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,188bet.com,dig+https,nxdomain,,12,COMPLIANT
+Google DoH 2,96mmy.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,abbfund.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,abfund.us,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,ace333my.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,adultfriendfinder.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,beeg.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,bersih.org,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,binance.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,bitget-my.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,bk8my.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,bmovies.co,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,bonga-cams.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,cam4.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,cfdventure.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,chaturbate.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,cmd368.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,copytrade-my.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,dafabet.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,dfm2u.tokyo,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,dynamicgains-malaysia.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,ecashfinance.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,econsave88.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,edisisiasatmy.blogspot.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,efmf.com.pa,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,esuissefund.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,eztv.re,dig+https,nxdomain,,8,COMPLIANT
+Google DoH 2,fbs-malaysia.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,financetwitter.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,fmovies.to,dig+https,nxdomain,,8,COMPLIANT
+Google DoH 2,fun88.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,gaystarnews.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,gclub-casino.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,gdriveplayer.to,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,genting777.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,heavy-r.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,ibcbet.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,indoxxi.net,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,iqoption-my.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,judiking88.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,kiss918my.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,kumpulbagi.id,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,layarkaca21.vip,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,limetorrents.pro,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,literotica.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,livejasmin.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,lk21.org,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,lpe88.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,lushstories.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,m88.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,malaysia-today.net,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,malaysianow.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,maxim88my.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,me88my.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,mega888tm.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,monyetistana.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,motherless.com,dig+https,nxdomain,,12,COMPLIANT
+Google DoH 2,mybet88.com,dig+https,nxdomain,,8,COMPLIANT
+Google DoH 2,nova88.com,dig+https,nxdomain,,8,COMPLIANT
+Google DoH 2,octafx.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,olympiaadvisor.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,pencuri-movie.cc,dig+https,nxdomain,,8,COMPLIANT
+Google DoH 2,planetromeo.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,pornhub.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,pornmd.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,pussy888my.com,dig+https,nxdomain,,12,COMPLIANT
+Google DoH 2,putlocker.to,dig+https,nxdomain,,8,COMPLIANT
+Google DoH 2,rarbg.to,dig+https,nxdomain,,8,COMPLIANT
+Google DoH 2,redtube.com,dig+https,nxdomain,,13,COMPLIANT
+Google DoH 2,royal777.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,sbo-bet.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,scr888top.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,sky777my.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,slotmvp88.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,soap2day.to,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,spankbang.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,steadyaku47.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,stripchat.com,dig+https,nxdomain,,8,COMPLIANT
+Google DoH 2,subscene.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,thepiratebay.org,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,thepiratebay.se,dig+https,nxdomain,,8,COMPLIANT
+Google DoH 2,tnaflix.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,torrentz2.eu,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,tube8.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,uebond.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,utopia-asia.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,utusantv.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,voyeurweb.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,w88.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,weechookeong.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,winboxmy.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,xe88malaysia.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,xhamster.com,dig+https,nxdomain,,6,COMPLIANT
+Google DoH 2,xnxx.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,xvideos.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,youporn.com,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,yts.am,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,yts.mx,dig+https,nxdomain,,7,COMPLIANT
+Google DoH 2,12bet.com,curl(DoH),resolved,104.18.41.158,134,VIOLATION
+Google DoH 2,1337x.to,curl(DoH),resolved,172.67.188.67,150,VIOLATION
+Google DoH 2,188bet.com,curl(DoH),nxdomain,,1223,COMPLIANT
+Google DoH 2,96mmy.com,curl(DoH),resolved,172.67.185.169,88,VIOLATION
+Google DoH 2,abbfund.com,curl(DoH),nxdomain,,195,COMPLIANT
+Google DoH 2,abfund.us,curl(DoH),nxdomain,,145,COMPLIANT
+Google DoH 2,ace333my.com,curl(DoH),nxdomain,,141,COMPLIANT
+Google DoH 2,adultfriendfinder.com,curl(DoH),resolved,69.165.107.69,78,VIOLATION
+Google DoH 2,beeg.com,curl(DoH),resolved,172.67.181.179,130,VIOLATION
+Google DoH 2,bersih.org,curl(DoH),resolved,104.21.68.238,414,VIOLATION
+Google DoH 2,binance.com,curl(DoH),resolved,52.195.95.228,162,VIOLATION
+Google DoH 2,bitget-my.com,curl(DoH),nxdomain,,242,COMPLIANT
+Google DoH 2,bk8my.com,curl(DoH),resolved,104.21.45.85,179,VIOLATION
+Google DoH 2,bmovies.co,curl(DoH),resolved,13.248.169.48,156,VIOLATION
+Google DoH 2,bonga-cams.com,curl(DoH),resolved,94.199.249.60,209,VIOLATION
+Google DoH 2,cam4.com,curl(DoH),resolved,185.94.239.88,94,VIOLATION
+Google DoH 2,cfdventure.com,curl(DoH),resolved,8.210.83.183,283,VIOLATION
+Google DoH 2,chaturbate.com,curl(DoH),resolved,104.18.208.112,134,VIOLATION
+Google DoH 2,cmd368.com,curl(DoH),resolved,104.26.1.67,207,VIOLATION
+Google DoH 2,copytrade-my.com,curl(DoH),nxdomain,,138,COMPLIANT
+Google DoH 2,dafabet.com,curl(DoH),resolved,23.54.81.89,141,VIOLATION
+Google DoH 2,dfm2u.tokyo,curl(DoH),nxdomain,,123,COMPLIANT
+Google DoH 2,dynamicgains-malaysia.com,curl(DoH),nxdomain,,197,COMPLIANT
+Google DoH 2,ecashfinance.com,curl(DoH),nxdomain,,149,COMPLIANT
+Google DoH 2,econsave88.com,curl(DoH),nxdomain,,143,COMPLIANT
+Google DoH 2,edisisiasatmy.blogspot.com,curl(DoH),resolved,142.251.223.33,143,VIOLATION
+Google DoH 2,efmf.com.pa,curl(DoH),nxdomain,,845,COMPLIANT
+Google DoH 2,esuissefund.com,curl(DoH),nxdomain,,146,COMPLIANT
+Google DoH 2,eztv.re,curl(DoH),resolved,104.21.69.174,138,VIOLATION
+Google DoH 2,fbs-malaysia.com,curl(DoH),nxdomain,,374,COMPLIANT
+Google DoH 2,financetwitter.com,curl(DoH),resolved,104.21.12.17,219,VIOLATION
+Google DoH 2,fmovies.to,curl(DoH),nxdomain,,141,COMPLIANT
+Google DoH 2,fun88.com,curl(DoH),resolved,172.65.179.66,70,VIOLATION
+Google DoH 2,gaystarnews.com,curl(DoH),resolved,104.21.88.251,152,VIOLATION
+Google DoH 2,gclub-casino.com,curl(DoH),resolved,172.67.157.137,151,VIOLATION
+Google DoH 2,gdriveplayer.to,curl(DoH),resolved,104.21.74.209,132,VIOLATION
+Google DoH 2,genting777.com,curl(DoH),nxdomain,,127,COMPLIANT
+Google DoH 2,heavy-r.com,curl(DoH),resolved,104.26.2.85,157,VIOLATION
+Google DoH 2,ibcbet.com,curl(DoH),resolved,52.221.38.51,383,VIOLATION
+Google DoH 2,indoxxi.net,curl(DoH),resolved,66.29.132.189,377,VIOLATION
+Google DoH 2,iqoption-my.com,curl(DoH),nxdomain,,185,COMPLIANT
+Google DoH 2,judiking88.com,curl(DoH),resolved,37.48.77.82,472,VIOLATION
+Google DoH 2,kiss918my.com,curl(DoH),nxdomain,,156,COMPLIANT
+Google DoH 2,kumpulbagi.id,curl(DoH),resolved,172.67.222.248,146,VIOLATION
+Google DoH 2,layarkaca21.vip,curl(DoH),resolved,172.65.211.209,209,VIOLATION
+Google DoH 2,limetorrents.pro,curl(DoH),resolved,212.92.104.3,188,VIOLATION
+Google DoH 2,literotica.com,curl(DoH),resolved,216.150.65.200,71,VIOLATION
+Google DoH 2,livejasmin.com,curl(DoH),resolved,109.71.161.200,365,VIOLATION
+Google DoH 2,lk21.org,curl(DoH),resolved,104.21.92.248,612,VIOLATION
+Google DoH 2,lpe88.com,curl(DoH),nxdomain,,229,COMPLIANT
+Google DoH 2,lushstories.com,curl(DoH),resolved,104.18.25.132,124,VIOLATION
+Google DoH 2,m88.com,curl(DoH),resolved,104.18.37.125,133,VIOLATION
+Google DoH 2,malaysia-today.net,curl(DoH),resolved,104.21.2.73,130,VIOLATION
+Google DoH 2,malaysianow.com,curl(DoH),resolved,104.26.14.112,143,VIOLATION
+Google DoH 2,maxim88my.com,curl(DoH),resolved,172.67.130.68,124,VIOLATION
+Google DoH 2,me88my.com,curl(DoH),resolved,104.21.40.55,377,VIOLATION
+Google DoH 2,mega888tm.com,curl(DoH),resolved,172.67.137.122,155,VIOLATION
+Google DoH 2,monyetistana.com,curl(DoH),resolved,216.227.142.171,419,VIOLATION
+Google DoH 2,motherless.com,curl(DoH),nxdomain,,165,COMPLIANT
+Google DoH 2,mybet88.com,curl(DoH),resolved,18.65.135.101,-116,VIOLATION
+Google DoH 2,nova88.com,curl(DoH),resolved,13.215.29.135,152,VIOLATION
+Google DoH 2,octafx.com,curl(DoH),resolved,104.18.11.220,71,VIOLATION
+Google DoH 2,olympiaadvisor.com,curl(DoH),nxdomain,,-583,COMPLIANT
+Google DoH 2,pencuri-movie.cc,curl(DoH),nxdomain,,191,COMPLIANT
+Google DoH 2,planetromeo.com,curl(DoH),resolved,104.17.179.107,130,VIOLATION
+Google DoH 2,pornhub.com,curl(DoH),resolved,66.254.114.41,63,VIOLATION
+Google DoH 2,pornmd.com,curl(DoH),resolved,104.18.9.221,80,VIOLATION
+Google DoH 2,pussy888my.com,curl(DoH),resolved,172.67.192.173,137,VIOLATION
+Google DoH 2,putlocker.to,curl(DoH),resolved,172.67.169.58,82,VIOLATION
+Google DoH 2,rarbg.to,curl(DoH),resolved,157.90.33.73,110,VIOLATION
+Google DoH 2,redtube.com,curl(DoH),resolved,66.254.114.238,72,VIOLATION
+Google DoH 2,royal777.com,curl(DoH),resolved,208.98.40.228,463,VIOLATION
+Google DoH 2,sbo-bet.com,curl(DoH),resolved,45.136.198.230,1221,VIOLATION
+Google DoH 2,scr888top.com,curl(DoH),nxdomain,,142,COMPLIANT
+Google DoH 2,sky777my.com,curl(DoH),nxdomain,,186,COMPLIANT
+Google DoH 2,slotmvp88.com,curl(DoH),nxdomain,,170,COMPLIANT
+Google DoH 2,soap2day.to,curl(DoH),resolved,103.224.182.253,266,VIOLATION
+Google DoH 2,spankbang.com,curl(DoH),resolved,104.19.239.156,175,VIOLATION
+Google DoH 2,steadyaku47.com,curl(DoH),resolved,104.21.55.180,1223,VIOLATION
+Google DoH 2,stripchat.com,curl(DoH),resolved,104.17.118.12,146,VIOLATION
+Google DoH 2,subscene.com,curl(DoH),resolved,172.67.179.155,169,VIOLATION
+Google DoH 2,thepiratebay.org,curl(DoH),resolved,162.159.136.6,144,VIOLATION
+Google DoH 2,thepiratebay.se,curl(DoH),resolved,194.9.94.85,128,VIOLATION
+Google DoH 2,tnaflix.com,curl(DoH),resolved,85.159.232.22,132,VIOLATION
+Google DoH 2,torrentz2.eu,curl(DoH),resolved,103.224.182.253,131,VIOLATION
+Google DoH 2,tube8.com,curl(DoH),resolved,66.254.114.239,64,VIOLATION
+Google DoH 2,uebond.com,curl(DoH),nxdomain,,3846,COMPLIANT
+Google DoH 2,utopia-asia.com,curl(DoH),resolved,40.70.229.79,3949,VIOLATION
+Google DoH 2,utusantv.com,curl(DoH),resolved,172.67.208.168,150,VIOLATION
+Google DoH 2,voyeurweb.com,curl(DoH),resolved,65.108.75.120,126,VIOLATION
+Google DoH 2,w88.com,curl(DoH),resolved,45.121.147.7,76,VIOLATION
+Google DoH 2,weechookeong.com,curl(DoH),resolved,103.224.93.108,210,VIOLATION
+Google DoH 2,winboxmy.com,curl(DoH),resolved,172.67.130.72,188,VIOLATION
+Google DoH 2,xe88malaysia.com,curl(DoH),nxdomain,,135,COMPLIANT
+Google DoH 2,xhamster.com,curl(DoH),resolved,104.16.3.81,308,VIOLATION
+Google DoH 2,xnxx.com,curl(DoH),resolved,152.233.100.11,141,VIOLATION
+Google DoH 2,xvideos.com,curl(DoH),resolved,89.222.127.8,69,VIOLATION
+Google DoH 2,youporn.com,curl(DoH),resolved,66.254.114.79,1212,VIOLATION
+Google DoH 2,yts.am,curl(DoH),resolved,104.21.13.157,69,VIOLATION
+Google DoH 2,yts.mx,curl(DoH),nxdomain,,61,COMPLIANT

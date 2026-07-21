@@ -81,7 +81,8 @@ idx=-1
 while IFS= read -r line; do
     trimmed="${line#"${line%%[![:space:]]*}"}"   # strip leading whitespace
     case "$trimmed" in
-        "- name: "*)   idx=$((idx+1)); SRV_NAME[$idx]="${trimmed#*name: }" ;;
+        "- isp: "*)    idx=$((idx+1)) ;;
+        "name: "*)     [[ $idx -ge 0 ]] && SRV_NAME[$idx]="${trimmed#*name: }" ;;
         "address: "*)  [[ $idx -ge 0 ]] && SRV_ADDR[$idx]="${trimmed#*address: }" ;;
         "protocol: "*) [[ $idx -ge 0 ]] && SRV_PROTO[$idx]="${trimmed#*protocol: }" ;;
     esac
