@@ -152,6 +152,34 @@ func TestInsertResultAndLatest(t *testing.T) {
 	}
 }
 
+func TestLatestResults_OnlyLatestScanRun(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{Name: "G", Address: "8.8.8.8:53", Protocol: "udp"})
+
+	firstRun, _ := s.CreateScanRun(ctx, "manual")
+	_ = s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: firstRun.ID, URLValue: "https://a.com", DNSServerID: srv.ID,
+		Compliant: false, ScannedAt: time.Now(),
+	})
+
+	time.Sleep(2 * time.Millisecond)
+	secondRun, _ := s.CreateScanRun(ctx, "manual")
+	_ = s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: secondRun.ID, URLValue: "https://b.com", DNSServerID: srv.ID,
+		Compliant: false, ScannedAt: time.Now(),
+	})
+
+	results, err := s.LatestResults(ctx)
+	if err != nil {
+		t.Fatalf("LatestResults: %v", err)
+	}
+	if len(results) != 1 || results[0].URLValue != "https://b.com" {
+		t.Fatalf("expected only https://b.com from the latest run, got %v", results)
+	}
+}
+
 func TestLastScanRun_None(t *testing.T) {
 	s := newTestStore(t)
 	run, err := s.LastScanRun(context.Background())

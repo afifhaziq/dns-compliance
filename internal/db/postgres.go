@@ -90,17 +90,16 @@ func (s *postgresStore) LatestResultsForDepartment(ctx context.Context, departme
 }
 
 func (s *postgresStore) latestResults(ctx context.Context, departmentID *uint) ([]ScanResult, error) {
+	run, err := s.LastScanRun(ctx)
+	if err != nil || run == nil {
+		return nil, err
+	}
 	var results []ScanResult
-	// Subquery: latest scanned_at per (url_value, dns_server_id)
-	sub := s.db.Model(&ScanResult{}).
-		Select("url_value, dns_server_id, MAX(scanned_at) as max_scanned_at").
-		Group("url_value, dns_server_id")
-	q := s.db.WithContext(ctx).
-		Joins("JOIN (?) as latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at = latest.max_scanned_at", sub)
+	q := s.db.WithContext(ctx).Where("scan_results.scan_run_id = ?", run.ID)
 	if departmentID != nil {
 		q = q.Joins("JOIN department_urls du ON du.url_id = scan_results.url_id AND du.department_id = ?", *departmentID)
 	}
-	err := q.Preload("DNSServer").
+	err = q.Preload("DNSServer").
 		Order("scan_results.url_value, scan_results.dns_server_id").
 		Find(&results).Error
 	return results, err

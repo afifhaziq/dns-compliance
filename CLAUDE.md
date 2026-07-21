@@ -160,7 +160,7 @@ The tool checks ISP takedown compliance. A site that **resolves DNS** is a **vio
   - `POST /api/scan`, `GET /api/scan/status` — trigger a DNS-only scan / poll status
   - `GET /api/scan/progress` — per-DNS-server result counts for the active scan run (polled by dashboard); `total_urls` reflects `ListWatchedURLs` (domains on at least one watchlist), not the global pool
   - `GET /api/scan/progress/stream` — SSE endpoint; server pushes the same `ScanProgressResponse` JSON whenever the `Broadcaster` publishes (crawler calls this implicitly via gRPC `Submit`)
-  - `GET /api/results` — admin: global `LatestResults`; non-admin: `LatestResultsForDepartment`
+  - `GET /api/results` — admin: global `LatestResults`; non-admin: `LatestResultsForDepartment`. Both return only rows from the most recent `ScanRun` (`store.LastScanRun`), not each URL/DNS-server pair's latest-ever result — a domain untouched by that run (e.g. disabled mid-sweep, or excluded from a targeted "Scan Selected" run) simply doesn't appear until a run that includes it completes, rather than lingering with a stale row.
   - `GET /api/results/*url`, `GET /api/heatmap/*url` — non-admin gets a 404 (not 403, to avoid confirming the domain exists) unless `URLOwnedByDepartment` passes; admin unscoped. `since`/`until` query params are RFC3339, defaulting to the last 7 days
   - `GET /api/dns-records/*url` — live DNS lookup, unscoped for any authenticated role (not watchlist data)
   - `GET /api/domain/*url` (`DomainInfoByURL`) — cached RDAP registrar/creation/expiry info for a domain, scoped like `/api/results` (404, not 403, for a non-owning department). Returns `{"fetched":false}` (not a 404) when the domain is owned but has no cached `DomainWhois` row yet
