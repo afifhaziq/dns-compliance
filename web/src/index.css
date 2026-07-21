@@ -1000,7 +1000,7 @@ th.th-left {
 /* ─── Modal Form Fields ──────────────────────────────────────────────────── */
 
 .form-field {
-  @apply flex flex-row gap-2 mb-4;
+  @apply flex flex-col gap-2 mb-4;
 }
 
 .form-label {
