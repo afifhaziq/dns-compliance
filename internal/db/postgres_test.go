@@ -180,6 +180,57 @@ func TestLatestResults_OnlyLatestScanRun(t *testing.T) {
 	}
 }
 
+func TestLatestResults_IgnoresScreenshotRun(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{Name: "G", Address: "8.8.8.8:53", Protocol: "udp"})
+
+	sweepRun, _ := s.CreateScanRun(ctx, "manual")
+	_ = s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: sweepRun.ID, URLValue: "https://a.com", DNSServerID: srv.ID,
+		Compliant: false, ScannedAt: time.Now(),
+	})
+	_ = s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: sweepRun.ID, URLValue: "https://b.com", DNSServerID: srv.ID,
+		Compliant: false, ScannedAt: time.Now(),
+	})
+
+	time.Sleep(2 * time.Millisecond)
+	screenshotRun, _ := s.CreateScanRun(ctx, "screenshot")
+	_ = s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: screenshotRun.ID, URLValue: "https://a.com", DNSServerID: srv.ID,
+		Compliant: false, ScannedAt: time.Now(),
+	})
+
+	results, err := s.LatestResults(ctx)
+	if err != nil {
+		t.Fatalf("LatestResults: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected both sweep results still visible after a screenshot run, got %v", results)
+	}
+}
+
+func TestLastScanRun_ExcludesScreenshotRuns(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	manual, _ := s.CreateScanRun(ctx, "manual")
+	_ = s.CompleteScanRun(ctx, manual.ID, "completed", time.Now())
+
+	time.Sleep(2 * time.Millisecond)
+	_, _ = s.CreateScanRun(ctx, "screenshot")
+
+	got, err := s.LastScanRun(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil || got.ID != manual.ID {
+		t.Fatalf("expected the manual run (id=%d), got %+v", manual.ID, got)
+	}
+}
+
 func TestLastScanRun_None(t *testing.T) {
 	s := newTestStore(t)
 	run, err := s.LastScanRun(context.Background())

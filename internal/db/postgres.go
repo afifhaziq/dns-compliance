@@ -190,9 +190,15 @@ func (s *postgresStore) UpdateScreenshot(ctx context.Context, resultID uint, scr
 		Update("screenshot_url", screenshotURL).Error
 }
 
+// LastScanRun returns the most recently started scan run, excluding
+// "screenshot" runs — those are narrow single-URL/single-DNS-server
+// background jobs triggered by the per-row screenshot button, not "the scan"
+// the progress bar and Results page should reflect. A caller that needs to
+// track a screenshot job specifically (the polling loop after clicking the
+// button) uses ActiveScanRun instead, which has no such filter.
 func (s *postgresStore) LastScanRun(ctx context.Context) (*ScanRun, error) {
 	var run ScanRun
-	err := s.db.WithContext(ctx).Order("started_at DESC").First(&run).Error
+	err := s.db.WithContext(ctx).Where("triggered_by != ?", "screenshot").Order("started_at DESC").First(&run).Error
 	if err == gorm.ErrRecordNotFound {
 		return nil, nil
 	}
