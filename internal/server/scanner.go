@@ -200,6 +200,16 @@ func (sc *Scanner) compliantIPsArg(ctx context.Context) string {
 }
 
 func (sc *Scanner) execCrawler(ctx context.Context, args []string, runID uint) {
+	// Publish the fresh (0-completed) run immediately, before the crawler
+	// produces any results — otherwise SSE subscribers keep showing the
+	// previous run's final tally until the first result streams in, which
+	// reads as the progress bar starting full and then resetting.
+	if sc.broadcaster != nil {
+		if data, err := buildProgressPayload(ctx, sc.store); err == nil && data != nil {
+			sc.broadcaster.Publish(data)
+		}
+	}
+
 	cmd := exec.CommandContext(ctx, sc.crawlerPath, args...)
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr

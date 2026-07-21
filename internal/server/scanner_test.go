@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 	"time"
@@ -51,6 +52,16 @@ func (c *completionCapture) ListDNSServers(_ context.Context) ([]db.DNSServer, e
 func (c *completionCapture) ListCompliantIPs(_ context.Context) ([]db.CompliantIP, error) {
 	return nil, nil
 }
+func (c *completionCapture) LastScanRun(_ context.Context) (*db.ScanRun, error) {
+	if len(c.created) == 0 {
+		return nil, nil
+	}
+	r := c.created[len(c.created)-1]
+	return &r, nil
+}
+func (c *completionCapture) ScanProgress(_ context.Context, _ uint) ([]db.ProgressEntry, error) {
+	return []db.ProgressEntry{{DNSServerID: 1, Name: "G", Completed: 0}}, nil
+}
 
 func waitUntil(t *testing.T, cond func() bool, timeout time.Duration) {
 	t.Helper()
@@ -94,6 +105,49 @@ func TestScannerTriggerRunsAndCompletes(t *testing.T) {
 	if len(store.completed) == 0 {
 		t.Fatal("expected CompleteScanRun to be called")
 	}
+}
+
+func TestScannerPublishesInitialProgressBeforeCrawlerRuns(t *testing.T) {
+	// Sleeps briefly so the test can observe the initial (pre-crawler) publish
+	// before the completion publish that fires once the process exits.
+	f, _ := os.CreateTemp(t.TempDir(), "slow-*.sh")
+	f.WriteString("#!/bin/sh\nsleep 0.2\nexit 0\n")
+	f.Close()
+	os.Chmod(f.Name(), 0755)
+
+	store := &completionCapture{}
+	broadcaster := server.NewBroadcaster()
+	ch := broadcaster.Subscribe()
+	sc := server.NewScanner(f.Name(), "localhost:50051", store, broadcaster)
+
+	if err := sc.Trigger(context.Background(), "manual", nil); err != nil {
+		t.Fatalf("Trigger: %v", err)
+	}
+
+	var payload struct {
+		ScanRun   db.ScanRun         `json:"scan_run"`
+		TotalURLs int                `json:"total_urls"`
+		PerDNS    []db.ProgressEntry `json:"per_dns"`
+	}
+	select {
+	case data := <-ch:
+		if err := json.Unmarshal(data, &payload); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("expected an initial progress publish before the crawler produced any results")
+	}
+
+	if payload.ScanRun.Status != "running" {
+		t.Fatalf("expected running status on initial publish, got %q", payload.ScanRun.Status)
+	}
+	for _, e := range payload.PerDNS {
+		if e.Completed != 0 {
+			t.Fatalf("expected 0 completed on initial publish, got %d for %s", e.Completed, e.Name)
+		}
+	}
+
+	waitUntil(t, func() bool { return !sc.IsRunning() }, 3*time.Second)
 }
 
 func TestScannerRejectsConcurrentRun(t *testing.T) {
