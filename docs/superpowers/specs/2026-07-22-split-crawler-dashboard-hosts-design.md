@@ -101,6 +101,15 @@ crawler:
 
 `server` service gains `--crawler-addr crawler:50052 --crawler-token ${CRAWLER_TOKEN}` (env `CRAWLER_ADDR`/`CRAWLER_TOKEN`). Both services read `CRAWLER_TOKEN` from the environment. Splitting to a genuinely separate host at that point is just pointing `CRAWLER_ADDR` at a different address — no further code change, which is the actual goal of this work.
 
+## Live Progress (SSE) — No Changes Needed
+
+Traced through to confirm the split doesn't break `GET /api/scan/progress/stream`:
+
+- Per-result live progress during a sweep comes from the crawler's existing `sender.Send` calls inside `runSweep`'s `OnResult` callback (one `Submit` RPC per DNS-only result as it completes) — this already goes over the network today via `--grpc-addr`, completely independent of how the sweep was *triggered*. Unchanged.
+- `grpcServer.Submit` (`internal/server/grpc.go`) calls `broadcaster.Publish` after every batch insert, regardless of which host sent the `Submit` call. Unchanged.
+- The two bracketing publishes in `Scanner.execCrawler` — an initial "fresh, 0-completed" publish before the sweep starts, and a final one once it's done, both needed because `Submit` itself only announces per-result progress, never a run flipping to `completed`/`failed` — are built from `store` queries (`buildProgressPayload`), not from crawler process state. They only need to bracket *some* blocking call; today that's `cmd.Run()`, after this change it's the blocking `StartSweep` RPC call. No logic change, just what they wrap.
+- Browsers subscribe to the dashboard's own SSE endpoint directly — they never talk to the crawler, so crawler placement is invisible to them either way.
+
 ## Testing
 
 - Rewrite `internal/server/scanner_test.go` against the new fake `crawlerClient` interface — same four existing cases (targeted URLs, trigger-and-complete, initial-progress-publish-before-completion, reject-concurrent-run), no more temp shell scripts.
