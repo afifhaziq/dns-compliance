@@ -161,6 +161,6 @@ The Postman collection has 6 requests; the server exposes 11. Undocumented endpo
 
 ## Additional Notes
 
-- **gRPC on `:50051`** uses `insecure.NewCredentials()` — no TLS. Ensure this port is firewalled and only reachable by the crawler subprocess on the same host.
+- **gRPC on `:50051`** uses `insecure.NewCredentials()` — no TLS, and `ComplianceService.Submit` on this port is unauthenticated. The crawler may now run on a separate host and reach this port over the network (see `docs/superpowers/specs/2026-07-22-split-crawler-dashboard-hosts-design.md`) — ensure it's firewalled to only the trusted crawler↔server link, not exposed publicly. The crawler's own `:50052` control port (`CrawlerControl.StartSweep`) is token-authenticated (`--auth-token`/`--crawler-token`), but `:50051` is not.
 - **MinIO** screenshots bucket is set to public policy — anyone with the URL can view screenshots. Scope access if screenshots contain sensitive content.
 - **No CORS headers** are configured. Add explicit `Access-Control-Allow-Origin` headers if a browser frontend will consume this API.

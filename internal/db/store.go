@@ -38,8 +38,8 @@ type DNSServerStore interface {
 	DeleteDNSServer(ctx context.Context, id uint) error
 }
 
-// ScanRunStore tracks the lifecycle of a scan sweep (crawler subprocess
-// invocation), independent of the ScanResult rows it produces.
+// ScanRunStore tracks the lifecycle of a scan sweep (one StartSweep call to
+// the crawler's control service), independent of the ScanResult rows it produces.
 type ScanRunStore interface {
 	CreateScanRun(ctx context.Context, triggeredBy string) (ScanRun, error)
 	CompleteScanRun(ctx context.Context, id uint, status string, completedAt time.Time) error
