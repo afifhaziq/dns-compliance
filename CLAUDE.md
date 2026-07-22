@@ -32,6 +32,8 @@ go run ./cmd/server/ --http-addr :8080 --grpc-addr :50051
 --grpc-addr localhost:50051  # send report via gRPC; omit to print table to stdout
 --dns-servers dns-server.yaml  # YAML file of DNS servers; omit to use system resolver
 --compliant-ips 1.2.3.4,5.6.7.8  # IPs treated as compliant even when DNS resolves (e.g. ISP block-page IP); server passes this automatically from the admin-managed list, see "Domain semantics" below
+--listen-addr :50052       # run as a persistent gRPC control service instead of a one-shot sweep; the dashboard triggers sweeps via CrawlerControl.StartSweep instead of exec'ing this binary — see Architecture below
+--auth-token ...           # shared secret required on incoming StartSweep RPCs when --listen-addr is set; must match the server's --crawler-token
 
 # Server key flags (all accept env-var fallbacks)
 --db-url "host=localhost user=postgres password=postgres dbname=dns_compliance port=5432 sslmode=disable"
@@ -39,7 +41,8 @@ go run ./cmd/server/ --http-addr :8080 --grpc-addr :50051
 --minio-access-key minioadmin     # env: MINIO_ACCESS_KEY
 --minio-secret-key minioadmin     # env: MINIO_SECRET_KEY
 --minio-bucket screenshots        # env: MINIO_BUCKET
---crawler-path ./crawler          # env: CRAWLER_PATH
+--crawler-addr localhost:50052    # env: CRAWLER_ADDR — gRPC address of the crawler's control service (see --listen-addr above)
+--crawler-token ...                # env: CRAWLER_TOKEN — shared secret sent with StartSweep RPCs; must match the crawler's --auth-token
 --seed-dns dns-server.yaml        # seeds dns_servers table on first run if empty
 --interval 60                     # scheduled scan interval in minutes (default 60)
 --cookie-secure                   # mark the session cookie Secure (default true); env: COOKIE_SECURE — set false for local plain-HTTP dev
@@ -129,7 +132,10 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 # only ever shelled out to, see internal/subfinder/); runtime
 # (debian:bookworm-slim) includes Chromium for screenshot support and ships
 # the subfinder binary at /app/subfinder (SUBFINDER_PATH).
-# ENTRYPOINT is /app/server; /app/crawler is the default CRAWLER_PATH.
+# ENTRYPOINT is /app/server. docker-compose.yml runs a second container from
+# the same image with an `entrypoint: ["/app/crawler"]` override, as the
+# `crawler` service — the two talk over gRPC (CrawlerControl.StartSweep to
+# trigger sweeps, ComplianceService.Submit to report results), not exec.
 ```
 
 ## Architecture
@@ -181,9 +187,9 @@ The tool checks ISP takedown compliance. A site that **resolves DNS** is a **vio
   - `GET/PATCH /api/admin/scan-interval` — **admin-only**; reads/writes the single-row `db.ScanSettings` (see "Scheduler" below) that controls the automated scan cadence
 - **gRPC** on `:50051` — receives `ComplianceReport` submissions from the crawler subprocess; uploads any screenshot bytes to MinIO, stores results in PostgreSQL, then calls `broadcaster.Publish` so all SSE subscribers receive the updated progress. Unauthenticated — runs on the trusted crawler↔server link, not the public API.
 - **Broadcaster** (`broadcaster.go`) — in-memory fan-out pub/sub for SSE. `Subscribe()` returns a buffered `chan []byte`; slow consumers are silently dropped via a non-blocking `select`. Wired into `Handlers` and called from `grpcServer.Submit` after each batch insert.
-- **Scanner** (`scanner.go`) — manages crawler subprocess lifecycle with a mutex-guarded `running` flag. `Trigger(ctx, reason, urls []string)` does a DNS-only crawl against the provided URL list, or against `store.ListWatchedURLs(ctx)` (enabled-only) when `urls` is `nil`. `TriggerScreenshot` adds `--screenshots` and targets a single URL + DNS server. Both write temp files for the URL list and DNS YAML then call `exec.CommandContext`. The crawler's stdout is wired to the server's stderr so its log output appears in server logs.
+- **Scanner** (`scanner.go`) — triggers sweeps on the crawler's persistent control service over gRPC (`CrawlerControl.StartSweep`, auth-gated by a shared `--crawler-token`/`--auth-token`), with a mutex-guarded `running` flag. `Trigger(ctx, reason, urls []string)` does a DNS-only crawl against the provided URL list, or against `store.ListWatchedURLs(ctx)` (enabled-only) when `urls` is `nil`. `TriggerScreenshot` sets `Screenshots: true` on the request and targets a single URL + DNS server. `StartSweep` is a blocking call — it returns only once the crawler has finished the sweep — so `Scanner` waits on it the same way it used to wait on the old `exec.Command` subprocess exiting, and `CompleteScanRun`/broadcaster bookkeeping is unchanged. This is what lets the crawler and dashboard run on separate hosts — see `docs/superpowers/specs/2026-07-22-split-crawler-dashboard-hosts-design.md`.
 - **Scheduler** (`scheduler.go`) — `StartScheduler(ctx, sc, store, defaultInterval)` calls `scanner.Trigger(ctx, "scheduled", nil)` (full sweep) on a cadence read fresh from `db.ScanSettings` (via `store.GetScanInterval`) before every wait, so an admin changing the interval takes effect on the next cycle without a restart; `defaultInterval` (from `--interval`, default 60) is only a fallback if the setting can't be read. `db.SeedScanInterval` creates the single `ScanSettings` row (ID 1) from `--interval` on first boot only — after that the admin panel (`GET/PATCH /api/admin/scan-interval`) is authoritative.
-- Server flags accept env-var fallbacks: `DB_URL`, `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET`, `CRAWLER_PATH`, `COOKIE_SECURE`, `BOOTSTRAP_ADMIN_USERNAME`, `BOOTSTRAP_ADMIN_PASSWORD`.
+- Server flags accept env-var fallbacks: `DB_URL`, `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET`, `CRAWLER_ADDR`, `CRAWLER_TOKEN`, `COOKIE_SECURE`, `BOOTSTRAP_ADMIN_USERNAME`, `BOOTSTRAP_ADMIN_PASSWORD`.
 
 ### Auth & RBAC (`internal/server/auth.go`, `auth_handlers.go`, `admin_handlers.go`, `internal/db/auth.go`)
 
@@ -274,15 +280,6 @@ When `--screenshots` is off (default), `Capture` is a no-op. When multiple DNS s
 
 - **Exportable compliance report**: per-ISP / per-period PDF or CSV bundling compliance %, time-to-compliance (`GET /api/isps/{isp}/timing`), regressions (domains that flip compliant → violation), and screenshot evidence over time — the artifact that leaves the building for an enforcement action, rather than something only viewable in-app. **Open questions requiring product/User-department sign-off before building:** which page/table hosts the export button (`/results`? the ISP detail page? Overview?), PDF vs CSV vs both, and the exact fields/evidence each export must legally contain.
 - **Domain status page**: `results.$url.tsx` splits into an Overview tab (heatmap, `DnsRecordsPanel`, `DomainInfoPanel` registrar/WHOIS) and a History tab (the paginated scan-by-scan table), but there's still no dedicated "current status at a glance" summary — e.g. latest verdict per DNS server condensed into one card — separate from the two existing tabs.
-- **Split crawler and dashboard onto separate hosts**: currently impossible without code changes. `Scanner.execCrawler` (`internal/server/scanner.go`) spawns the crawler as a **local subprocess** (`exec.Command`) and feeds it via **local temp files** (`writeTempLines`/`writeDNSYAML` write the site list and DNS-server YAML to disk, then pass the paths as `--sites`/`--dns-servers` CLI args) — this only works when both binaries run on the same host, since exec can't reach a binary on a different machine and the temp files aren't visible across hosts either. To actually split them:
-  - Add a new RPC to `proto/*.proto` (e.g. `StartSweep(SweepRequest)`) carrying the URL list and DNS server list as message fields instead of file paths.
-  - Turn `cmd/crawler/main.go` into a persistent gRPC server (new `--listen-addr`) instead of a one-shot CLI; on `StartSweep` it runs the same resolve/screenshot pipeline in-process.
-  - Keep pushing results back to the dashboard via the existing `Submit` RPC, same as today.
-  - Replace the `exec.Command` call in `Scanner.execCrawler` with a gRPC client call to the crawler's new endpoint.
-  - Add auth (shared token/mTLS) on the new trigger RPC — it's a new network-reachable "tell me what to scan" surface that didn't exist when this was local-only exec.
-
-  Until this lands, crawler and dashboard (`cmd/server`) must run on the same host; only Postgres/MinIO can be split off today (already network-configured via `--db-url`/`--minio-endpoint`).
-
 ## Product & Design
 
 [PRODUCT.md](./PRODUCT.md) defines the target users (regulatory auditors, not developers) and brand personality (neutral, evidence-first, no editorializing on violations). [DESIGN.md](./DESIGN.md) defines the visual system ("The Registry" — achromatic gray scale plus a single ledger-indigo accent reserved for actions/identity, never for compliance status). Read both before making UI changes — the anti-references (generic SaaS dashboards, security-product dark/neon aesthetics) are deliberate constraints, not omissions.
