@@ -62,8 +62,13 @@ func (sc *Scanner) Trigger(ctx context.Context, triggeredBy string, urls []strin
 	return nil
 }
 
-// TriggerScreenshot spawns a single-URL scan with screenshots enabled.
-func (sc *Scanner) TriggerScreenshot(ctx context.Context, rawURL string, dnsServerID uint) error {
+// TriggerScreenshot spawns a single-URL scan with screenshots enabled,
+// targeting the given DNS servers. The crawler resolves each server then
+// captures all resulting (url, IP) pairs concurrently through its own
+// screenshot worker pool — see captureResolved in cmd/crawler/main.go — so
+// one call with N servers is not N times slower than one with a single
+// server.
+func (sc *Scanner) TriggerScreenshot(ctx context.Context, rawURL string, dnsServerIDs []uint) error {
 	sc.mu.Lock()
 	if sc.running {
 		sc.mu.Unlock()
@@ -72,7 +77,7 @@ func (sc *Scanner) TriggerScreenshot(ctx context.Context, rawURL string, dnsServ
 	sc.running = true
 	sc.mu.Unlock()
 
-	go sc.runScreenshot(context.WithoutCancel(ctx), rawURL, dnsServerID)
+	go sc.runScreenshot(context.WithoutCancel(ctx), rawURL, dnsServerIDs)
 	return nil
 }
 
@@ -125,7 +130,7 @@ func (sc *Scanner) run(ctx context.Context, triggeredBy string, requestedURLs []
 	sc.runCrawler(ctx, req, run.ID)
 }
 
-func (sc *Scanner) runScreenshot(ctx context.Context, rawURL string, dnsServerID uint) {
+func (sc *Scanner) runScreenshot(ctx context.Context, rawURL string, dnsServerIDs []uint) {
 	defer sc.setRunning(false)
 
 	servers, err := sc.store.ListDNSServers(ctx)
@@ -134,15 +139,18 @@ func (sc *Scanner) runScreenshot(ctx context.Context, rawURL string, dnsServerID
 		return
 	}
 
+	wanted := make(map[uint]bool, len(dnsServerIDs))
+	for _, id := range dnsServerIDs {
+		wanted[id] = true
+	}
 	var target []db.DNSServer
 	for _, s := range servers {
-		if s.ID == dnsServerID {
-			target = []db.DNSServer{s}
-			break
+		if wanted[s.ID] {
+			target = append(target, s)
 		}
 	}
 	if len(target) == 0 {
-		log.Printf("scanner: DNS server ID %d not found", dnsServerID)
+		log.Printf("scanner: no matching DNS servers for IDs %v", dnsServerIDs)
 		return
 	}
 

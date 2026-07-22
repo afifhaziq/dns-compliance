@@ -1123,18 +1123,18 @@ func (h *Handlers) ResurfacedDomains(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) TriggerScreenshot(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		URL         string `json:"url"`
-		DNSServerID uint   `json:"dns_server_id"`
+		URL          string `json:"url"`
+		DNSServerIDs []uint `json:"dns_server_ids"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" {
-		writeError(w, http.StatusBadRequest, "url and dns_server_id are required")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" || len(body.DNSServerIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "url and dns_server_ids are required")
 		return
 	}
 	if h.scanner == nil {
 		writeError(w, http.StatusServiceUnavailable, "scanner not configured")
 		return
 	}
-	if err := h.scanner.TriggerScreenshot(r.Context(), body.URL, body.DNSServerID); err != nil {
+	if err := h.scanner.TriggerScreenshot(r.Context(), body.URL, body.DNSServerIDs); err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}

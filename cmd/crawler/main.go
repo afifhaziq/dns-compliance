@@ -381,25 +381,21 @@ func captureResolved(
 	return shots, errs
 }
 
-// assignScreenshots copies screenshot bytes into the first SiteResult for each
-// (URL, IP) pair; subsequent results for the same pair keep nil bytes and
-// display "(shared)" in the table. Capture errors are copied onto every
-// SiteResult sharing that pair, since each one otherwise shows an unexplained
-// missing screenshot.
+// assignScreenshots copies screenshot bytes into every SiteResult sharing a
+// (URL, IP) pair — one Chrome capture per pair, but each DNS server still
+// gets its own copy so the server uploads (and shows evidence for) every
+// row independently, rather than only the first DNS server to resolve that
+// pair. Capture errors are likewise copied onto every SiteResult sharing
+// that pair, since each one otherwise shows an unexplained missing
+// screenshot.
 func assignScreenshots(results []pipeline.SiteResult, shots map[string][]byte, errs map[string]string) {
-	assigned := make(map[string]bool)
 	for i, r := range results {
 		key := shotKey(r.URL, r.ResolvedIP)
 		if errMsg, ok := errs[key]; ok {
 			results[i].Error = errMsg
 		}
-		buf, ok := shots[key]
-		if !ok {
-			continue
-		}
-		if !assigned[key] {
+		if buf, ok := shots[key]; ok {
 			results[i].Screenshot = buf
-			assigned[key] = true
 		}
 	}
 }

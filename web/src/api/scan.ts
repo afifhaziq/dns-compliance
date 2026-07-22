@@ -34,6 +34,6 @@ export type ScanProgressResponse = {
   per_dns: ProgressEntry[]
 }
 
-export async function triggerScreenshot(url: string, dnsServerId: number): Promise<void> {
-  await api.post<void>('/screenshot', { url, dns_server_id: dnsServerId })
+export async function triggerScreenshot(url: string, dnsServerIds: number[]): Promise<void> {
+  await api.post<void>('/screenshot', { url, dns_server_ids: dnsServerIds })
 }

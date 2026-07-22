@@ -21,13 +21,15 @@ type fakeCrawlerClient struct {
 	rejected bool
 	err      error
 
-	mu    sync.Mutex
-	calls int
+	mu      sync.Mutex
+	calls   int
+	lastReq *pb.SweepRequest
 }
 
-func (f *fakeCrawlerClient) StartSweep(_ context.Context, _ *pb.SweepRequest, _ ...grpc.CallOption) (*pb.SweepAck, error) {
+func (f *fakeCrawlerClient) StartSweep(_ context.Context, req *pb.SweepRequest, _ ...grpc.CallOption) (*pb.SweepAck, error) {
 	f.mu.Lock()
 	f.calls++
+	f.lastReq = req
 	f.mu.Unlock()
 	if f.delay > 0 {
 		time.Sleep(f.delay)
@@ -44,8 +46,9 @@ func (f *fakeCrawlerClient) StartSweep(_ context.Context, _ *pb.SweepRequest, _ 
 // completionCapture records CreateScanRun and CompleteScanRun calls.
 type completionCapture struct {
 	db.Store
-	created   []db.ScanRun
-	completed []uint
+	created    []db.ScanRun
+	completed  []uint
+	dnsServers []db.DNSServer // overrides ListDNSServers' default single-server response when set
 }
 
 func (c *completionCapture) CreateScanRun(_ context.Context, by string) (db.ScanRun, error) {
@@ -62,6 +65,9 @@ func (c *completionCapture) ListWatchedURLs(_ context.Context) ([]db.URL, error)
 	return []db.URL{{ID: 1, URL: "https://example.com"}}, nil
 }
 func (c *completionCapture) ListDNSServers(_ context.Context) ([]db.DNSServer, error) {
+	if c.dnsServers != nil {
+		return c.dnsServers, nil
+	}
 	return []db.DNSServer{{ID: 1, Name: "G", ISP: "Google", Address: "8.8.8.8:53", Protocol: "udp"}}, nil
 }
 func (c *completionCapture) ListCompliantIPs(_ context.Context) ([]db.CompliantIP, error) {
@@ -160,6 +166,48 @@ func TestScannerPublishesInitialProgressBeforeCrawlerRuns(t *testing.T) {
 	}
 
 	waitUntil(t, func() bool { return !sc.IsRunning() }, 3*time.Second)
+}
+
+func TestScannerTriggerScreenshotTargetsMultipleServers(t *testing.T) {
+	crawler := &fakeCrawlerClient{}
+	store := &completionCapture{
+		dnsServers: []db.DNSServer{
+			{ID: 1, Name: "Google", ISP: "Google"},
+			{ID: 2, Name: "Cloudflare DoT", ISP: "Cloudflare"},
+			{ID: 3, Name: "Cloudflare DoH", ISP: "Cloudflare"},
+		},
+	}
+	sc := server.NewScanner(crawler, "test-token", store, nil)
+
+	if err := sc.TriggerScreenshot(context.Background(), "https://example.com", []uint{1, 3}); err != nil {
+		t.Fatalf("TriggerScreenshot: %v", err)
+	}
+
+	waitUntil(t, func() bool { return !sc.IsRunning() }, 3*time.Second)
+
+	crawler.mu.Lock()
+	req := crawler.lastReq
+	crawler.mu.Unlock()
+
+	if req == nil {
+		t.Fatal("expected StartSweep to be called")
+	}
+	if len(req.DnsServers) != 2 {
+		t.Fatalf("expected 2 targeted DNS servers, got %d: %v", len(req.DnsServers), req.DnsServers)
+	}
+	names := map[string]bool{}
+	for _, s := range req.DnsServers {
+		names[s.Name] = true
+	}
+	if !names["Google"] || !names["Cloudflare DoH"] {
+		t.Fatalf("expected Google and Cloudflare DoH targeted, got %v", names)
+	}
+	if names["Cloudflare DoT"] {
+		t.Fatal("Cloudflare DoT (id 2) was not requested but was included")
+	}
+	if !req.Screenshots {
+		t.Fatal("expected Screenshots to be true")
+	}
 }
 
 func TestScannerRejectsConcurrentRun(t *testing.T) {

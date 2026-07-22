@@ -103,7 +103,7 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 		}
 
 		if len(r.Screenshot) > 0 && s.storage != nil {
-			url, err := s.storage.Upload(ctx, r.Screenshot)
+			screenshotURL, err := s.storage.Upload(ctx, r.Screenshot)
 			if err != nil {
 				log.Printf("grpc: upload screenshot for %s: %v", r.Url, err)
 				continue
@@ -112,7 +112,22 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 			// time.Time{} = no lower bound; we just need the row inserted above.
 			results, err := s.store.ResultsByURL(ctx, r.Url, time.Time{}, time.Time{})
 			if err == nil && len(results) > 0 {
-				_ = s.store.UpdateScreenshot(ctx, results[0].ID, url)
+				_ = s.store.UpdateScreenshot(ctx, results[0].ID, screenshotURL)
+			}
+			// The row above belongs to *this* request's scan run, which is a
+			// "screenshot" run — LastScanRun (and therefore LatestResults,
+			// what the Results page actually renders) deliberately skips
+			// those, so that row is otherwise invisible until the next real
+			// sweep. Stamp the same URL directly onto the row LatestResults
+			// currently shows for this DNS server too, or the button spins
+			// and no picture ever appears there.
+			if lastRun, err := s.store.LastScanRun(ctx); err == nil && lastRun != nil {
+				for _, res := range results {
+					if res.DNSServerID == serverByName[r.DnsServer] && res.ScanRunID == lastRun.ID {
+						_ = s.store.UpdateScreenshot(ctx, res.ID, screenshotURL)
+						break
+					}
+				}
 			}
 		}
 	}

@@ -3,6 +3,7 @@ package server_test
 import (
 	"context"
 	"net"
+	"sort"
 	"testing"
 	"time"
 
@@ -20,18 +21,24 @@ const bufSize = 1024 * 1024
 // mockStore implements db.Store for gRPC tests.
 type mockStore struct {
 	db.Store
-	insertedResults []db.ScanResult
-	activeScanRun   *db.ScanRun
-	dnsServers      []db.DNSServer
-	ipInfo          *db.IPInfo // returned by GetIPInfo, nil = cache miss
+	insertedResults    []db.ScanResult
+	activeScanRun      *db.ScanRun
+	lastScanRun        *db.ScanRun
+	dnsServers         []db.DNSServer
+	ipInfo             *db.IPInfo // returned by GetIPInfo, nil = cache miss
+	updatedScreenshots map[uint]string
 }
 
 func (m *mockStore) InsertResult(_ context.Context, r db.ScanResult) error {
+	r.ID = uint(len(m.insertedResults) + 1)
 	m.insertedResults = append(m.insertedResults, r)
 	return nil
 }
 func (m *mockStore) ActiveScanRun(_ context.Context) (*db.ScanRun, error) {
 	return m.activeScanRun, nil
+}
+func (m *mockStore) LastScanRun(_ context.Context) (*db.ScanRun, error) {
+	return m.lastScanRun, nil
 }
 func (m *mockStore) ListDNSServers(_ context.Context) ([]db.DNSServer, error) {
 	return m.dnsServers, nil
@@ -42,12 +49,22 @@ func (m *mockStore) ListURLs(_ context.Context) ([]db.URL, error) {
 func (m *mockStore) ListWatchedURLs(_ context.Context) ([]db.URL, error) {
 	return nil, nil
 }
+// ResultsByURL mirrors postgresStore's "scanned_at desc" ordering — Submit
+// relies on results[0] being the most-recently-inserted row.
 func (m *mockStore) ResultsByURL(_ context.Context, _ string, _, _ time.Time) ([]db.ScanResult, error) {
-	return m.insertedResults, nil
+	out := append([]db.ScanResult(nil), m.insertedResults...)
+	sort.Slice(out, func(i, j int) bool { return out[i].ScannedAt.After(out[j].ScannedAt) })
+	return out, nil
 }
-func (m *mockStore) UpdateScreenshot(_ context.Context, _ uint, _ string) error { return nil }
-func (m *mockStore) GetIPInfo(_ context.Context, _ string) (*db.IPInfo, error)  { return m.ipInfo, nil }
-func (m *mockStore) UpsertIPInfo(_ context.Context, _ db.IPInfo) error          { return nil }
+func (m *mockStore) UpdateScreenshot(_ context.Context, id uint, url string) error {
+	if m.updatedScreenshots == nil {
+		m.updatedScreenshots = make(map[uint]string)
+	}
+	m.updatedScreenshots[id] = url
+	return nil
+}
+func (m *mockStore) GetIPInfo(_ context.Context, _ string) (*db.IPInfo, error) { return m.ipInfo, nil }
+func (m *mockStore) UpsertIPInfo(_ context.Context, _ db.IPInfo) error         { return nil }
 
 // mockStorage satisfies storage.Storage.
 type mockStorage struct{ uploadedCount int }
@@ -125,6 +142,54 @@ func TestSubmitUploadsScreenshot(t *testing.T) {
 	}
 	if stor.uploadedCount != 1 {
 		t.Fatalf("expected 1 upload, got %d", stor.uploadedCount)
+	}
+}
+
+// A screenshot request runs under its own "screenshot" ScanRun, which
+// LastScanRun (and therefore the Results page) deliberately excludes — so
+// the freshly-inserted row above is invisible there. Submit must also stamp
+// the screenshot URL onto the row LastScanRun currently considers "the
+// results", or the button spins with nothing to show for it.
+func TestSubmitScreenshotUpdatesVisibleRow(t *testing.T) {
+	visibleRow := db.ScanResult{
+		ID:          1,
+		ScanRunID:   100,
+		DNSServerID: 7,
+		URLValue:    "https://example.com",
+		ScannedAt:   time.Now().Add(-time.Hour),
+	}
+	store := &mockStore{
+		activeScanRun:   &db.ScanRun{ID: 200, Status: "running"},
+		lastScanRun:     &db.ScanRun{ID: 100},
+		dnsServers:      []db.DNSServer{{ID: 7, Name: "Cloudflare DoT"}},
+		insertedResults: []db.ScanResult{visibleRow},
+	}
+	stor := &mockStorage{}
+	client := newTestGRPCClient(t, store, stor)
+
+	_, err := client.Submit(context.Background(), &pb.ComplianceReport{
+		Results: []*pb.SiteResult{
+			{
+				Url:        "https://example.com",
+				DnsServer:  "Cloudflare DoT",
+				Screenshot: []byte("fake-png"),
+				Timestamp:  time.Now().Unix(),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	if len(store.insertedResults) != 2 {
+		t.Fatalf("expected 2 rows (pre-existing + new screenshot row), got %d", len(store.insertedResults))
+	}
+	newRowID := store.insertedResults[1].ID
+	wantURL := "http://minio/screenshots/test.png"
+	if got := store.updatedScreenshots[newRowID]; got != wantURL {
+		t.Errorf("new screenshot row (id %d): got %q, want %q", newRowID, got, wantURL)
+	}
+	if got := store.updatedScreenshots[visibleRow.ID]; got != wantURL {
+		t.Errorf("visible row (id %d) not updated: got %q, want %q", visibleRow.ID, got, wantURL)
 	}
 }
 

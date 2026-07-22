@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { LayoutDashboardIcon, Camera, Image as ImageIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { Camera, Image as ImageIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { GripIcon } from '@/components/ui/grip'
 import { fetchResults, groupResults, lastScanTime } from '../api/results'
 import { fetchScanStatus, isScanning, triggerScreenshot } from '../api/scan'
 import type { GroupedResult, ScanResult } from '../api/types'
@@ -52,7 +53,7 @@ function ChevronRight({ className }: { className?: string }) {
 function SubRows({
   results,
   visible,
-  pendingScreenshotId,
+  pendingScreenshotIds,
   screenshotErrors,
   screenshotsBlocked,
   onRequestScreenshot,
@@ -60,10 +61,10 @@ function SubRows({
 }: {
   results: ScanResult[]
   visible: boolean
-  pendingScreenshotId: number | null
+  pendingScreenshotIds: Set<number>
   screenshotErrors: Record<number, string>
   screenshotsBlocked: boolean
-  onRequestScreenshot: (result: ScanResult) => void
+  onRequestScreenshot: (results: ScanResult[]) => void
   onViewScreenshot: (result: ScanResult) => void
 }) {
   if (!visible) return null
@@ -112,7 +113,7 @@ function SubRows({
               >
                 <ImageIcon className="screenshot-icon" aria-hidden="true" />
               </button>
-            ) : pendingScreenshotId === r.id ? (
+            ) : pendingScreenshotIds.has(r.id) ? (
               <span className="screenshot-pending" aria-live="polite" aria-label="Requesting screenshot">
                 <BrailleLoader variant="typing" fontSize={13} />
               </span>
@@ -120,7 +121,7 @@ function SubRows({
               <button
                 type="button"
                 className="screenshot-icon-btn"
-                onClick={() => onRequestScreenshot(r)}
+                onClick={() => onRequestScreenshot([r])}
                 disabled={screenshotsBlocked}
                 title={screenshotErrors[r.id] ?? 'Take screenshot'}
                 aria-label={`Request screenshot for ${r.dns_server.name}`}
@@ -150,7 +151,7 @@ function URLGroupRow({
   group,
   expanded,
   onToggle,
-  pendingScreenshotId,
+  pendingScreenshotIds,
   screenshotErrors,
   screenshotsBlocked,
   onRequestScreenshot,
@@ -159,15 +160,18 @@ function URLGroupRow({
   group: GroupedResult
   expanded: boolean
   onToggle: () => void
-  pendingScreenshotId: number | null
+  pendingScreenshotIds: Set<number>
   screenshotErrors: Record<number, string>
   screenshotsBlocked: boolean
-  onRequestScreenshot: (result: ScanResult) => void
+  onRequestScreenshot: (results: ScanResult[]) => void
   onViewScreenshot: (result: ScanResult) => void
 }) {
   const { violationCount, totalCount, hostname, url } = group
   const compliantCount = totalCount - violationCount
   const pct = totalCount > 0 ? Math.round((compliantCount / totalCount) * 100) : 0
+  const needsScreenshot = group.results.filter(r => !r.compliant && !r.screenshot_url)
+  const groupPending = group.results.some(r => pendingScreenshotIds.has(r.id))
+  const bulkError = needsScreenshot.map(r => screenshotErrors[r.id]).find(Boolean)
 
   return (
     <>
@@ -204,16 +208,36 @@ function URLGroupRow({
         <TableCell className="col-ip" />
         <TableCell className="col-error" />
         <TableCell className="col-evidence text-center">
-          <Link
-            to="/domain/$url"
-            params={{ url }}
-            search={{ tab: 'overview' }}
-            className="btn-row-history"
-            aria-label={`View overview for ${hostname}`}
-            onClick={e => e.stopPropagation()}
-          >
-            <LayoutDashboardIcon className="btn-row-history-icon" />
-          </Link>
+          <div className="flex items-center justify-center gap-1">
+            {needsScreenshot.length > 0 && (
+              groupPending ? (
+                <span className="screenshot-pending" aria-live="polite" aria-label="Requesting screenshots">
+                  <BrailleLoader variant="typing" fontSize={13} />
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="screenshot-icon-btn"
+                  onClick={e => { e.stopPropagation(); onRequestScreenshot(needsScreenshot) }}
+                  disabled={screenshotsBlocked}
+                  title={bulkError ?? `Take screenshots for ${needsScreenshot.length} violating server${needsScreenshot.length > 1 ? 's' : ''}`}
+                  aria-label={`Request screenshots for all violating DNS servers for ${hostname}`}
+                >
+                  <Camera className="screenshot-icon" aria-hidden="true" />
+                </button>
+              )
+            )}
+            <Link
+              to="/domain/$url"
+              params={{ url }}
+              search={{ tab: 'overview' }}
+              className="btn-row-history"
+              aria-label={`View overview for ${hostname}`}
+              onClick={e => e.stopPropagation()}
+            >
+              <GripIcon className="btn-row-history-icon" size={16} />
+            </Link>
+          </div>
         </TableCell>
         <TableCell className="col-last-scanned">
           {group.latestScannedAt ? (
@@ -228,7 +252,7 @@ function URLGroupRow({
       <SubRows
         results={group.results}
         visible={expanded}
-        pendingScreenshotId={pendingScreenshotId}
+        pendingScreenshotIds={pendingScreenshotIds}
         screenshotErrors={screenshotErrors}
         screenshotsBlocked={screenshotsBlocked}
         onRequestScreenshot={onRequestScreenshot}
@@ -278,7 +302,7 @@ function ResultsPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [page, setPage] = useState(1)
 
-  const [pendingScreenshotId, setPendingScreenshotId] = useState<number | null>(null)
+  const [pendingScreenshotIds, setPendingScreenshotIds] = useState<Set<number>>(new Set())
   const [screenshotErrors, setScreenshotErrors] = useState<Record<number, string>>({})
   const screenshotPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [previewScreenshot, setPreviewScreenshot] = useState<ScanResult | null>(null)
@@ -302,22 +326,30 @@ function ResultsPage() {
     }
   }, [])
 
-  const requestScreenshot = useCallback(async (result: ScanResult) => {
+  const requestScreenshot = useCallback(async (results: ScanResult[]) => {
+    if (results.length === 0) return
+    const ids = results.map(r => r.id)
     setScreenshotErrors(prev => {
-      if (!(result.id in prev)) return prev
       const next = { ...prev }
-      delete next[result.id]
+      for (const id of ids) delete next[id]
       return next
     })
-    setPendingScreenshotId(result.id)
+    setPendingScreenshotIds(prev => new Set([...prev, ...ids]))
     try {
-      await triggerScreenshot(result.url, result.dns_server_id)
+      const dnsServerIds = [...new Set(results.map(r => r.dns_server_id))]
+      await triggerScreenshot(results[0].url, dnsServerIds)
     } catch (err) {
-      setPendingScreenshotId(null)
-      setScreenshotErrors(prev => ({
-        ...prev,
-        [result.id]: err instanceof Error ? err.message : 'Failed to request screenshot',
-      }))
+      setPendingScreenshotIds(prev => {
+        const next = new Set(prev)
+        for (const id of ids) next.delete(id)
+        return next
+      })
+      const message = err instanceof Error ? err.message : 'Failed to request screenshot'
+      setScreenshotErrors(prev => {
+        const next = { ...prev }
+        for (const id of ids) next[id] = message
+        return next
+      })
       return
     }
     screenshotPollRef.current = setInterval(async () => {
@@ -326,7 +358,7 @@ function ResultsPage() {
         if (!isScanning(status)) {
           if (screenshotPollRef.current) clearInterval(screenshotPollRef.current)
           screenshotPollRef.current = null
-          setPendingScreenshotId(null)
+          setPendingScreenshotIds(new Set())
           load()
         }
       } catch {
@@ -495,9 +527,9 @@ function ResultsPage() {
                         group={group}
                         expanded={expanded.has(group.url)}
                         onToggle={() => toggleExpanded(group.url)}
-                        pendingScreenshotId={pendingScreenshotId}
+                        pendingScreenshotIds={pendingScreenshotIds}
                         screenshotErrors={screenshotErrors}
-                        screenshotsBlocked={scanning || pendingScreenshotId !== null}
+                        screenshotsBlocked={scanning || pendingScreenshotIds.size > 0}
                         onRequestScreenshot={requestScreenshot}
                         onViewScreenshot={setPreviewScreenshot}
                       />
