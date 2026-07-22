@@ -22,6 +22,7 @@ import (
 	pb "github.com/afif/dns-tracking/proto"
 	"github.com/go-chi/chi/v5"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"gorm.io/driver/postgres"
 )
 
@@ -33,7 +34,8 @@ func main() {
 	minioKey := flag.String("minio-access-key", envOr("MINIO_ACCESS_KEY", "minioadmin"), "MinIO access key")
 	minioSecret := flag.String("minio-secret-key", envOr("MINIO_SECRET_KEY", "minioadmin"), "MinIO secret key")
 	minioBucket := flag.String("minio-bucket", envOr("MINIO_BUCKET", "screenshots"), "MinIO bucket name")
-	crawlerPath := flag.String("crawler-path", envOr("CRAWLER_PATH", "./crawler"), "path to crawler binary")
+	crawlerAddr := flag.String("crawler-addr", envOr("CRAWLER_ADDR", "localhost:50052"), "gRPC address of the crawler's control service")
+	crawlerToken := flag.String("crawler-token", envOr("CRAWLER_TOKEN", ""), "shared secret sent with StartSweep RPCs; must match the crawler's --auth-token")
 	seedFile := flag.String("seed-dns", "dns-server.yaml", "YAML file to seed DNS servers on first run; empty to skip")
 	intervalMin := flag.Int("interval", 60, "scan interval in minutes")
 	cookieSecure := flag.Bool("cookie-secure", envOr("COOKIE_SECURE", "true") == "true", "mark the session cookie Secure (disable for local plain-HTTP dev)")
@@ -109,8 +111,15 @@ func main() {
 
 	broadcaster := server.NewBroadcaster()
 
-	// Scanner manages crawler subprocess lifecycle.
-	sc := server.NewScanner(*crawlerPath, *grpcAddr, store, broadcaster)
+	// Scanner triggers sweeps on the crawler's persistent control service
+	// over gRPC instead of exec'ing a local subprocess — see
+	// docs/superpowers/specs/2026-07-22-split-crawler-dashboard-hosts-design.md.
+	crawlerConn, err := grpc.NewClient(*crawlerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("connecting to crawler: %v", err)
+	}
+	defer crawlerConn.Close()
+	sc := server.NewScanner(pb.NewCrawlerControlClient(crawlerConn), *crawlerToken, store, broadcaster)
 
 	// gRPC server — receives scan results from the crawler.
 	grpcLis, err := net.Listen("tcp", *grpcAddr)
