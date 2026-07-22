@@ -4,28 +4,40 @@ import (
 	"context"
 	"errors"
 	"log"
-	"os"
-	"os/exec"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/afif/dns-tracking/internal/db"
 	"github.com/afif/dns-tracking/internal/urlnorm"
-	"gopkg.in/yaml.v3"
+	pb "github.com/afif/dns-tracking/proto"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
-type Scanner struct {
-	crawlerPath string
-	grpcAddr    string
-	store       db.Store
-	broadcaster *Broadcaster
-	mu          sync.Mutex
-	running     bool
+// crawlerAuthMetadataKey carries the shared secret required by the
+// crawler's StartSweep RPC — must match authMetadataKey in cmd/crawler's
+// authInterceptor.
+const crawlerAuthMetadataKey = "x-auth-token"
+
+// crawlerClient is the subset of pb.CrawlerControlClient the Scanner needs,
+// narrowed to a small interface so tests can inject a fake instead of
+// standing up a real gRPC server — see
+// docs/superpowers/specs/2026-07-22-split-crawler-dashboard-hosts-design.md.
+type crawlerClient interface {
+	StartSweep(ctx context.Context, req *pb.SweepRequest, opts ...grpc.CallOption) (*pb.SweepAck, error)
 }
 
-func NewScanner(crawlerPath, grpcAddr string, store db.Store, broadcaster *Broadcaster) *Scanner {
-	return &Scanner{crawlerPath: crawlerPath, grpcAddr: grpcAddr, store: store, broadcaster: broadcaster}
+type Scanner struct {
+	crawler      crawlerClient
+	crawlerToken string
+	store        db.Store
+	broadcaster  *Broadcaster
+	mu           sync.Mutex
+	running      bool
+}
+
+func NewScanner(crawler crawlerClient, crawlerToken string, store db.Store, broadcaster *Broadcaster) *Scanner {
+	return &Scanner{crawler: crawler, crawlerToken: crawlerToken, store: store, broadcaster: broadcaster}
 }
 
 func (sc *Scanner) IsRunning() bool {
@@ -99,35 +111,18 @@ func (sc *Scanner) run(ctx context.Context, triggeredBy string, requestedURLs []
 		return
 	}
 
-	urlFile, err := writeTempLines(urlObjs)
-	if err != nil {
-		log.Printf("scanner: write url file: %v", err)
-		return
-	}
-	defer os.Remove(urlFile)
-
-	dnsFile, err := sc.writeDNSYAML(servers)
-	if err != nil {
-		log.Printf("scanner: write dns yaml: %v", err)
-		return
-	}
-	defer os.Remove(dnsFile)
-
 	run, err := sc.store.CreateScanRun(ctx, triggeredBy)
 	if err != nil {
 		log.Printf("scanner: create scan run: %v", err)
 		return
 	}
 
-	args := []string{
-		"--sites", urlFile,
-		"--dns-servers", dnsFile,
-		"--grpc-addr", sc.grpcAddr,
+	req := &pb.SweepRequest{
+		Urls:         urlValues(urlObjs),
+		DnsServers:   dnsServersToProto(servers),
+		CompliantIps: sc.compliantIPs(ctx),
 	}
-	if ipArg := sc.compliantIPsArg(ctx); ipArg != "" {
-		args = append(args, "--compliant-ips", ipArg)
-	}
-	sc.execCrawler(ctx, args, run.ID)
+	sc.runCrawler(ctx, req, run.ID)
 }
 
 func (sc *Scanner) runScreenshot(ctx context.Context, rawURL string, dnsServerID uint) {
@@ -151,55 +146,38 @@ func (sc *Scanner) runScreenshot(ctx context.Context, rawURL string, dnsServerID
 		return
 	}
 
-	dnsFile, err := sc.writeDNSYAML(target)
-	if err != nil {
-		log.Printf("scanner: write dns yaml: %v", err)
-		return
-	}
-	defer os.Remove(dnsFile)
-
-	urlFile, err := writeTempLines([]db.URL{{URL: rawURL}})
-	if err != nil {
-		log.Printf("scanner: write url file: %v", err)
-		return
-	}
-	defer os.Remove(urlFile)
-
 	run, err := sc.store.CreateScanRun(ctx, "screenshot")
 	if err != nil {
 		log.Printf("scanner: create scan run: %v", err)
 		return
 	}
 
-	args := []string{
-		"--sites", urlFile,
-		"--dns-servers", dnsFile,
-		"--grpc-addr", sc.grpcAddr,
-		"--screenshots",
+	req := &pb.SweepRequest{
+		Urls:         []string{rawURL},
+		DnsServers:   dnsServersToProto(target),
+		CompliantIps: sc.compliantIPs(ctx),
+		Screenshots:  true,
 	}
-	if ipArg := sc.compliantIPsArg(ctx); ipArg != "" {
-		args = append(args, "--compliant-ips", ipArg)
-	}
-	sc.execCrawler(ctx, args, run.ID)
+	sc.runCrawler(ctx, req, run.ID)
 }
 
-// compliantIPsArg fetches the compliant IPs from the store and returns them
-// as a comma-separated string suitable for --compliant-ips. Returns "" if
-// the list is empty or the fetch fails (non-fatal; scan proceeds without it).
-func (sc *Scanner) compliantIPsArg(ctx context.Context) string {
+// compliantIPs fetches the compliant IPs from the store as a string slice
+// for SweepRequest.CompliantIps. Returns nil if the list is empty or the
+// fetch fails (non-fatal; scan proceeds without it).
+func (sc *Scanner) compliantIPs(ctx context.Context) []string {
 	ips, err := sc.store.ListCompliantIPs(ctx)
 	if err != nil {
 		log.Printf("scanner: load compliant IPs: %v", err)
-		return ""
+		return nil
 	}
 	addrs := make([]string, len(ips))
 	for i, ip := range ips {
 		addrs[i] = ip.Address
 	}
-	return strings.Join(addrs, ",")
+	return addrs
 }
 
-func (sc *Scanner) execCrawler(ctx context.Context, args []string, runID uint) {
+func (sc *Scanner) runCrawler(ctx context.Context, req *pb.SweepRequest, runID uint) {
 	// Publish the fresh (0-completed) run immediately, before the crawler
 	// produces any results — otherwise SSE subscribers keep showing the
 	// previous run's final tally until the first result streams in, which
@@ -210,21 +188,23 @@ func (sc *Scanner) execCrawler(ctx context.Context, args []string, runID uint) {
 		}
 	}
 
-	cmd := exec.CommandContext(ctx, sc.crawlerPath, args...)
-	cmd.Stdout = os.Stderr
-	cmd.Stderr = os.Stderr
-
+	authedCtx := metadata.AppendToOutgoingContext(ctx, crawlerAuthMetadataKey, sc.crawlerToken)
 	status := "completed"
-	if err := cmd.Run(); err != nil {
-		log.Printf("scanner: crawler exited with error: %v", err)
+	ack, err := sc.crawler.StartSweep(authedCtx, req)
+	if err != nil {
+		log.Printf("scanner: crawler StartSweep failed: %v", err)
+		status = "failed"
+	} else if !ack.Accepted {
+		log.Printf("scanner: crawler rejected sweep: %s", ack.Error)
 		status = "failed"
 	}
 	now := time.Now()
 	_ = sc.store.CompleteScanRun(ctx, runID, status, now)
 
-	// Submit only publishes progress per streamed result; nothing announces
-	// the run flipping to completed/failed otherwise, so SSE subscribers
-	// would be stuck on the last "running" payload forever.
+	// StartSweep only returns once the crawler has finished streaming
+	// results via Submit; nothing else announces the run flipping to
+	// completed/failed, so SSE subscribers would be stuck on the last
+	// "running" payload forever without this.
 	if sc.broadcaster != nil {
 		if data, err := buildProgressPayload(ctx, sc.store); err == nil && data != nil {
 			sc.broadcaster.Publish(data)
@@ -238,42 +218,18 @@ func (sc *Scanner) setRunning(v bool) {
 	sc.mu.Unlock()
 }
 
-type dnsYAMLEntry struct {
-	ISP      string `yaml:"isp"`
-	Name     string `yaml:"name"`
-	Address  string `yaml:"address"`
-	Protocol string `yaml:"protocol"`
-}
-
-type dnsYAMLConfig struct {
-	Servers []dnsYAMLEntry `yaml:"servers"`
-}
-
-func (sc *Scanner) writeDNSYAML(servers []db.DNSServer) (string, error) {
-	f, err := os.CreateTemp("", "dns-*.yaml")
-	if err != nil {
-		return "", err
+func urlValues(urls []db.URL) []string {
+	vals := make([]string, len(urls))
+	for i, u := range urls {
+		vals[i] = u.URL
 	}
-	defer f.Close()
-	entries := make([]dnsYAMLEntry, len(servers))
+	return vals
+}
+
+func dnsServersToProto(servers []db.DNSServer) []*pb.DNSServerConfig {
+	out := make([]*pb.DNSServerConfig, len(servers))
 	for i, s := range servers {
-		entries[i] = dnsYAMLEntry{ISP: s.ISP, Name: s.Name, Address: s.Address, Protocol: s.Protocol}
+		out[i] = &pb.DNSServerConfig{Isp: s.ISP, Name: s.Name, Address: s.Address, Protocol: s.Protocol}
 	}
-	if err := yaml.NewEncoder(f).Encode(dnsYAMLConfig{Servers: entries}); err != nil {
-		os.Remove(f.Name())
-		return "", err
-	}
-	return f.Name(), nil
-}
-
-func writeTempLines(urls []db.URL) (string, error) {
-	f, err := os.CreateTemp("", "urls-*.txt")
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	for _, u := range urls {
-		f.WriteString(u.URL + "\n")
-	}
-	return f.Name(), nil
+	return out
 }

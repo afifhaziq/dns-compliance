@@ -3,27 +3,42 @@ package server_test
 import (
 	"context"
 	"encoding/json"
-	"os"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/afif/dns-tracking/internal/db"
 	"github.com/afif/dns-tracking/internal/server"
+	pb "github.com/afif/dns-tracking/proto"
+	"google.golang.org/grpc"
 )
 
-// fakeCrawlerScript exits 0 immediately, simulating a successful crawler run.
-const fakeCrawlerScript = "#!/bin/sh\nexit 0\n"
+// fakeCrawlerClient stands in for the crawler's StartSweep RPC without a
+// real network connection — see the crawlerClient interface in
+// internal/server/scanner.go.
+type fakeCrawlerClient struct {
+	delay    time.Duration
+	rejected bool
+	err      error
 
-func writeFakeCrawler(t *testing.T) string {
-	t.Helper()
-	f, err := os.CreateTemp(t.TempDir(), "crawler-*.sh")
-	if err != nil {
-		t.Fatalf("create temp: %v", err)
+	mu    sync.Mutex
+	calls int
+}
+
+func (f *fakeCrawlerClient) StartSweep(_ context.Context, _ *pb.SweepRequest, _ ...grpc.CallOption) (*pb.SweepAck, error) {
+	f.mu.Lock()
+	f.calls++
+	f.mu.Unlock()
+	if f.delay > 0 {
+		time.Sleep(f.delay)
 	}
-	f.WriteString(fakeCrawlerScript)
-	f.Close()
-	os.Chmod(f.Name(), 0755)
-	return f.Name()
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.rejected {
+		return &pb.SweepAck{Accepted: false, Error: "busy"}, nil
+	}
+	return &pb.SweepAck{Accepted: true}, nil
 }
 
 // completionCapture records CreateScanRun and CompleteScanRun calls.
@@ -47,7 +62,7 @@ func (c *completionCapture) ListWatchedURLs(_ context.Context) ([]db.URL, error)
 	return []db.URL{{ID: 1, URL: "https://example.com"}}, nil
 }
 func (c *completionCapture) ListDNSServers(_ context.Context) ([]db.DNSServer, error) {
-	return []db.DNSServer{{ID: 1, Name: "G", Address: "8.8.8.8:53", Protocol: "udp"}}, nil
+	return []db.DNSServer{{ID: 1, Name: "G", ISP: "Google", Address: "8.8.8.8:53", Protocol: "udp"}}, nil
 }
 func (c *completionCapture) ListCompliantIPs(_ context.Context) ([]db.CompliantIP, error) {
 	return nil, nil
@@ -76,9 +91,9 @@ func waitUntil(t *testing.T, cond func() bool, timeout time.Duration) {
 }
 
 func TestScannerTargetedURLs(t *testing.T) {
-	crawlerPath := writeFakeCrawler(t)
+	crawler := &fakeCrawlerClient{}
 	store := &completionCapture{}
-	sc := server.NewScanner(crawlerPath, "localhost:50051", store, nil)
+	sc := server.NewScanner(crawler, "test-token", store, nil)
 
 	if err := sc.Trigger(context.Background(), "manual", []string{"example.com", "https://EXAMPLE.COM"}); err != nil {
 		t.Fatalf("Trigger: %v", err)
@@ -92,9 +107,9 @@ func TestScannerTargetedURLs(t *testing.T) {
 }
 
 func TestScannerTriggerRunsAndCompletes(t *testing.T) {
-	crawlerPath := writeFakeCrawler(t)
+	crawler := &fakeCrawlerClient{}
 	store := &completionCapture{}
-	sc := server.NewScanner(crawlerPath, "localhost:50051", store, nil)
+	sc := server.NewScanner(crawler, "test-token", store, nil)
 
 	if err := sc.Trigger(context.Background(), "manual", nil); err != nil {
 		t.Fatalf("Trigger: %v", err)
@@ -108,17 +123,14 @@ func TestScannerTriggerRunsAndCompletes(t *testing.T) {
 }
 
 func TestScannerPublishesInitialProgressBeforeCrawlerRuns(t *testing.T) {
-	// Sleeps briefly so the test can observe the initial (pre-crawler) publish
-	// before the completion publish that fires once the process exits.
-	f, _ := os.CreateTemp(t.TempDir(), "slow-*.sh")
-	f.WriteString("#!/bin/sh\nsleep 0.2\nexit 0\n")
-	f.Close()
-	os.Chmod(f.Name(), 0755)
-
+	// The fake crawler sleeps briefly so the test can observe the initial
+	// (pre-sweep) publish before the completion publish that fires once
+	// StartSweep returns.
+	crawler := &fakeCrawlerClient{delay: 200 * time.Millisecond}
 	store := &completionCapture{}
 	broadcaster := server.NewBroadcaster()
 	ch := broadcaster.Subscribe()
-	sc := server.NewScanner(f.Name(), "localhost:50051", store, broadcaster)
+	sc := server.NewScanner(crawler, "test-token", store, broadcaster)
 
 	if err := sc.Trigger(context.Background(), "manual", nil); err != nil {
 		t.Fatalf("Trigger: %v", err)
@@ -151,15 +163,10 @@ func TestScannerPublishesInitialProgressBeforeCrawlerRuns(t *testing.T) {
 }
 
 func TestScannerRejectsConcurrentRun(t *testing.T) {
-	crawlerPath := writeFakeCrawler(t)
-	// Use a script that sleeps briefly so the second Trigger hits while running.
-	f, _ := os.CreateTemp(t.TempDir(), "slow-*.sh")
-	f.WriteString("#!/bin/sh\nsleep 0.3\nexit 0\n")
-	f.Close()
-	os.Chmod(f.Name(), 0755)
-
+	// Sleeps briefly so the second Trigger hits while the first is still running.
+	crawler := &fakeCrawlerClient{delay: 300 * time.Millisecond}
 	store := &completionCapture{}
-	sc := server.NewScanner(f.Name(), "localhost:50051", store, nil)
+	sc := server.NewScanner(crawler, "test-token", store, nil)
 
 	_ = sc.Trigger(context.Background(), "manual", nil)
 	err := sc.Trigger(context.Background(), "manual", nil)
@@ -169,5 +176,4 @@ func TestScannerRejectsConcurrentRun(t *testing.T) {
 
 	// Wait for first scan to finish.
 	waitUntil(t, func() bool { return !sc.IsRunning() }, 3*time.Second)
-	_ = crawlerPath
 }
