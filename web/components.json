@@ -28,6 +28,7 @@
     "@aicanvas": "https://aicanvas.me/r/{name}.json",
     "@iconiq": "https://iconiqui.com/r/{name}.json",
     "@beui": "https://beui.dev/r/{name}.json",
-    "@lucide-animated": "https://lucide-animated.com/r/{name}.json"
+    "@lucide-animated": "https://lucide-animated.com/r/{name}.json",
+    "@reui": "https://reui.io/r/{style}/{name}.json"
   }
 }

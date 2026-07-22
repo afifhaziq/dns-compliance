@@ -563,19 +563,19 @@ html.dark {
 }
 
 .col-status {
-  @apply w-1/4;
+  @apply w-1/6;
 }
 
 .col-ip {
-  @apply w-1/4;
+  @apply w-1/6;
 }
 
 .col-evidence {
-  @apply w-1/4;
+  @apply w-20;
 }
 
 .col-error {
-  @apply w-1/5 text-muted-foreground text-[0.8rem];
+  @apply w-1/4 text-muted-foreground text-[0.8rem];
 }
 
 .col-error-text {
@@ -583,7 +583,7 @@ html.dark {
 }
 
 .col-last-scanned {
-  @apply w-1/4 whitespace-nowrap text-muted-foreground text-[0.8rem];
+  @apply w-50 whitespace-nowrap text-muted-foreground text-[0.8rem];
 }
 
 /* Opt-in: put directly on a TableHead to left-align that one header cell
@@ -614,7 +614,7 @@ th.th-left {
 }
 
 .url-row .col-expand {
-  @apply pl-4;
+  @apply pl-4;   /* was pl-4 alone; pr-1 shrinks the right gutter */
 }
 
 /* Expand button */

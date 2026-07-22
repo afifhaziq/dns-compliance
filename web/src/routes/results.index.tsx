@@ -6,7 +6,6 @@ import { fetchResults, groupResults, lastScanTime } from '../api/results'
 import { fetchScanStatus, isScanning, triggerScreenshot } from '../api/scan'
 import type { GroupedResult, ScanResult } from '../api/types'
 import { useScan } from './__root'
-import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
 import {
   PreviewLinkCard,
   PreviewLinkCardTrigger,
@@ -17,7 +16,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Dialog, DialogContent, DialogTitle } from '@/components/animate-ui/components/radix/dialog'
 import { Progress, ProgressTrack } from '@/components/animate-ui/components/base/progress'
 import { AnimatedNumber } from '@/components/ui/animated-number'
-import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
+import { Filters, type Filter, type FilterFieldConfig } from '@/components/reui/filters'
 import { BrailleLoader } from '@/components/ui/braille-loader'
 import { ThinkingIndicator } from '@/components/ui/thinking-indicator'
 import { StatusDot, EmptyIcon } from '@/components/results-table-parts'
@@ -27,9 +26,24 @@ export const Route = createFileRoute('/results/')({ component: ResultsPage })
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
-type StatusFilter = 'all' | 'violations' | 'compliant'
+type StatusFilter = 'violations' | 'compliant'
 
 const PAGE_SIZE = 25
+
+// Single "is" operator only — these fields are single-value pickers, not
+// full is/is-not/empty builders, so there's nothing else to implement.
+const IS_ONLY = [{ value: 'is', label: 'is' }]
+
+const STATUS_FIELD: FilterFieldConfig<string> = {
+  key: 'status',
+  label: 'Status',
+  type: 'select',
+  operators: IS_ONLY,
+  options: [
+    { value: 'violations', label: 'Violations' },
+    { value: 'compliant', label: 'Compliant' },
+  ],
+}
 
 /* ─── Chevron Icon ───────────────────────────────────────────────────────── */
 
@@ -102,6 +116,13 @@ function SubRows({
               <span className="empty-cell">—</span>
             )}
           </TableCell>
+          <TableCell className="col-last-scanned">
+            {r.scanned_at ? (
+              <span title={new Date(r.scanned_at).toLocaleString()}>{relativeTime(r.scanned_at)}</span>
+            ) : (
+              <span className="empty-cell">—</span>
+            )}
+          </TableCell>
           <TableCell className="col-evidence text-center">
             {r.screenshot_url ? (
               <button
@@ -130,13 +151,6 @@ function SubRows({
               </button>
             ) : (
               <span className="empty-cell" aria-label="No screenshot">—</span>
-            )}
-          </TableCell>
-          <TableCell className="col-last-scanned">
-            {r.scanned_at ? (
-              <span title={new Date(r.scanned_at).toLocaleString()}>{relativeTime(r.scanned_at)}</span>
-            ) : (
-              <span className="empty-cell">—</span>
             )}
           </TableCell>
         </TableRow>
@@ -207,6 +221,15 @@ function URLGroupRow({
         </TableCell>
         <TableCell className="col-ip" />
         <TableCell className="col-error" />
+        <TableCell className="col-last-scanned">
+          {group.latestScannedAt ? (
+            <span title={new Date(group.latestScannedAt).toLocaleString()}>
+              {relativeTime(group.latestScannedAt)}
+            </span>
+          ) : (
+            <span className="empty-cell">—</span>
+          )}
+        </TableCell>
         <TableCell className="col-evidence text-center">
           <div className="flex items-center justify-center gap-1">
             {needsScreenshot.length > 0 && (
@@ -238,15 +261,6 @@ function URLGroupRow({
               <GripIcon className="btn-row-history-icon" size={16} />
             </Link>
           </div>
-        </TableCell>
-        <TableCell className="col-last-scanned">
-          {group.latestScannedAt ? (
-            <span title={new Date(group.latestScannedAt).toLocaleString()}>
-              {relativeTime(group.latestScannedAt)}
-            </span>
-          ) : (
-            <span className="empty-cell">—</span>
-          )}
         </TableCell>
       </TableRow>
       <SubRows
@@ -280,8 +294,8 @@ function ResultsTableSkeleton() {
           </TableCell>
           <TableCell className="col-ip" />
           <TableCell className="col-error" />
-          <TableCell className="col-evidence" />
           <TableCell className="col-last-scanned" />
+          <TableCell className="col-evidence" />
         </TableRow>
       ))}
     </>
@@ -297,8 +311,7 @@ function ResultsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-  const [dnsFilter, setDnsFilter] = useState<string>('all')
+  const [filters, setFilters] = useState<Filter[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [page, setPage] = useState(1)
 
@@ -387,11 +400,28 @@ function ResultsPage() {
     return Array.from(seen.values()).sort()
   }, [groups])
 
+  const filterFields = useMemo(() => {
+    const fields: FilterFieldConfig<string>[] = [STATUS_FIELD]
+    if (dnsServers.length > 1) {
+      fields.push({
+        key: 'dns_server',
+        label: 'DNS Server',
+        type: 'select',
+        operators: IS_ONLY,
+        options: dnsServers.map(name => ({ value: name, label: name })),
+      })
+    }
+    return fields
+  }, [dnsServers])
+
+  const statusFilter = filters.find(f => f.field === 'status')?.values[0] as StatusFilter | undefined
+  const dnsFilter = filters.find(f => f.field === 'dns_server')?.values[0] as string | undefined
+
   const filtered = useMemo(() => {
     return groups
       .map(g => {
         let res = g.results
-        if (dnsFilter !== 'all') res = res.filter(r => r.dns_server.name === dnsFilter)
+        if (dnsFilter) res = res.filter(r => r.dns_server.name === dnsFilter)
         if (statusFilter === 'violations') res = res.filter(r => !r.compliant)
         else if (statusFilter === 'compliant') res = res.filter(r => r.compliant)
         if (res.length === 0) return null
@@ -457,34 +487,7 @@ function ResultsPage() {
       ) : (
         <div className="flex flex-col items-stretch w-full gap-4 mt-4">
           <div className="filter-bar flex flex-row items-center justify-start gap-4 w-full">
-            <span className="filter-label" id="status-label">Status</span>
-            <ToggleGroup
-              type="single"
-              value={statusFilter}
-              size="sm"
-              onValueChange={v => { if (v) setStatusFilter(v as StatusFilter) }}
-              variant="outline"
-              aria-labelledby="status-label"
-            >
-              <ToggleGroupItem value="all">All</ToggleGroupItem>
-              <ToggleGroupItem value="violations">Violations</ToggleGroupItem>
-              <ToggleGroupItem value="compliant">Compliant</ToggleGroupItem>
-            </ToggleGroup>
-
-            {dnsServers.length > 1 && (
-              <>
-                <span className="filter-label" id="dns-label">DNS Server</span>
-                <Select value={dnsFilter} onValueChange={setDnsFilter}>
-                  <SelectTrigger aria-labelledby="dns-label" />
-                  <SelectContent>
-                    <SelectItem index={0} value="all">All servers</SelectItem>
-                    {dnsServers.map((name, i) => (
-                      <SelectItem key={name} index={i + 1} value={name}>{name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </>
-            )}
+            <Filters filters={filters} fields={filterFields} onChange={setFilters} />
           </div>
 
           <div className="results-wrap w-full">
@@ -505,8 +508,8 @@ function ResultsPage() {
                     <TableHead className="col-status th-left" scope= "col">Status</TableHead>
                     <TableHead className="col-ip th-left" scope="col">Resolved IP</TableHead>
                     <TableHead className="col-error th-left" scope="col">Error</TableHead>
-                    <TableHead className="col-evidence th-center" scope="col">Evidence</TableHead>
                     <TableHead className="col-last-scanned th-left" scope="col">Last scanned</TableHead>
+                    <TableHead className="col-evidence th-center" scope="col"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
