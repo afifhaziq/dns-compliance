@@ -455,6 +455,20 @@ func (s *postgresStore) SetScanInterval(ctx context.Context, minutes int) error 
 		Update("interval_minutes", minutes).Error
 }
 
+func (s *postgresStore) GetScanEnabled(ctx context.Context) (bool, error) {
+	var settings ScanSettings
+	if err := s.db.WithContext(ctx).First(&settings, 1).Error; err != nil {
+		return false, err
+	}
+	return settings.Enabled, nil
+}
+
+func (s *postgresStore) SetScanEnabled(ctx context.Context, enabled bool) error {
+	return s.db.WithContext(ctx).
+		Model(&ScanSettings{ID: 1}).
+		Update("enabled", enabled).Error
+}
+
 func (s *postgresStore) ISPStats(ctx context.Context, isp string) (ISPStatsResult, error) {
 	return s.ispStats(ctx, isp, nil)
 }

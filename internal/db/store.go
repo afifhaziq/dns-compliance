@@ -110,6 +110,8 @@ type CompliantIPStore interface {
 type ScanSettingsStore interface {
 	GetScanInterval(ctx context.Context) (int, error)
 	SetScanInterval(ctx context.Context, minutes int) error
+	GetScanEnabled(ctx context.Context) (bool, error)
+	SetScanEnabled(ctx context.Context, enabled bool) error
 }
 
 // EnrichmentStore covers the fetch-once (or fetch-rarely) caches keyed by

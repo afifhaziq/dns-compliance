@@ -224,18 +224,28 @@ func (h *Handlers) GetScanInterval(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]int{"interval_minutes": minutes})
+	enabled, err := h.store.GetScanEnabled(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"interval_minutes": minutes, "enabled": enabled})
 }
 
 func (h *Handlers) SetScanInterval(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		IntervalMinutes int `json:"interval_minutes"`
+		IntervalMinutes int  `json:"interval_minutes"`
+		Enabled         bool `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.IntervalMinutes < 1 {
 		writeError(w, http.StatusBadRequest, "interval_minutes must be a positive integer")
 		return
 	}
 	if err := h.store.SetScanInterval(r.Context(), body.IntervalMinutes); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := h.store.SetScanEnabled(r.Context(), body.Enabled); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

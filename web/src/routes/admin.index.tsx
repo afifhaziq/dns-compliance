@@ -11,6 +11,7 @@ import {
   deleteCompliantIP,
   fetchScanInterval,
   setScanInterval,
+  type ScanSchedule,
 } from '../api/admin'
 import type { CompliantIP, Department, User } from '../api/types'
 import {
@@ -24,6 +25,7 @@ import {
 import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
+import { Switch } from '@/components/ui/r-switch'
 import { useAuth } from './__root'
 
 export const Route = createFileRoute('/admin/')({ component: AdminPage })
@@ -335,19 +337,22 @@ const SCAN_INTERVAL_OPTIONS = [
   { minutes: 1440, label: '1 day' },
 ]
 
-function ScanIntervalSection({ value, onSaved }: { value: number; onSaved: (minutes: number) => void }) {
-  const [minutes, setMinutes] = useState(value)
+function ScanIntervalSection({ value, onSaved }: { value: ScanSchedule; onSaved: (schedule: ScanSchedule) => void }) {
+  const [minutes, setMinutes] = useState(value.interval_minutes)
+  const [enabled, setEnabled] = useState(value.enabled)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => { setMinutes(value) }, [value])
+  useEffect(() => { setMinutes(value.interval_minutes); setEnabled(value.enabled) }, [value])
+
+  const dirty = minutes !== value.interval_minutes || enabled !== value.enabled
 
   const handleSave = async () => {
     setSaving(true)
     setError(null)
     try {
-      await setScanInterval(minutes)
-      onSaved(minutes)
+      await setScanInterval(minutes, enabled)
+      onSaved({ interval_minutes: minutes, enabled })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save')
     } finally {
@@ -361,7 +366,7 @@ function ScanIntervalSection({ value, onSaved }: { value: number; onSaved: (minu
         <h2 className="section-title">Scan Schedule</h2>
         <p className="page-subtitle" style={{ marginLeft: 8 }}>How often the automated cron sweep runs</p>
       </div>
-      <div className="flex flex-row" style={{ gap: 8, maxWidth: 320 }}>
+      <div className="flex flex-row items-center" style={{ gap: 8, maxWidth: 320 }}>
         <Select value={String(minutes)} onValueChange={v => setMinutes(Number(v))} disabled={saving}>
           <SelectTrigger aria-label="Scan interval" className="w-full" />
           <SelectContent>
@@ -370,7 +375,13 @@ function ScanIntervalSection({ value, onSaved }: { value: number; onSaved: (minu
             ))}
           </SelectContent>
         </Select>
-        <button className="btn-primary" onClick={handleSave} disabled={saving || minutes === value}>
+        <Switch
+          checked={enabled}
+          onCheckedChange={setEnabled}
+          disabled={saving}
+          aria-label={`${enabled ? 'Disable' : 'Enable'} the automated cron sweep`}
+        />
+        <button className="btn-primary" onClick={handleSave} disabled={saving || !dirty}>
           {saving ? 'Saving…' : 'Save'}
         </button>
       </div>
@@ -388,7 +399,7 @@ function AdminPage() {
   const [departments, setDepartments] = useState<Department[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [compliantIPs, setCompliantIPs] = useState<CompliantIP[]>([])
-  const [scanInterval, setScanIntervalState] = useState<number | null>(null)
+  const [scanSchedule, setScanSchedule] = useState<ScanSchedule | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addDeptOpen, setAddDeptOpen] = useState(false)
@@ -404,13 +415,13 @@ function AdminPage() {
       if (me?.is_admin) {
         // Departments/Compliant-IPs/scan interval stay super-admin-only
         // server-side — a department admin would just get a 403 fetching them.
-        const [d, u, ips, interval] = await Promise.all([
+        const [d, u, ips, schedule] = await Promise.all([
           fetchDepartments(), fetchUsers(), fetchCompliantIPs(), fetchScanInterval(),
         ])
         setDepartments(d)
         setUsers(u)
         setCompliantIPs(ips)
-        setScanIntervalState(interval)
+        setScanSchedule(schedule)
       } else {
         setUsers(await fetchUsers())
       }
@@ -492,8 +503,8 @@ function AdminPage() {
           </TableBody>
         </Table>
         </div>
-        {scanInterval !== null && (
-          <ScanIntervalSection value={scanInterval} onSaved={setScanIntervalState} />
+        {scanSchedule !== null && (
+          <ScanIntervalSection value={scanSchedule} onSaved={setScanSchedule} />
         )}
         </>
         )}

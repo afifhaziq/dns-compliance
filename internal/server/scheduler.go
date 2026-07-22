@@ -12,7 +12,11 @@ import (
 // cadence read from db.Store.GetScanInterval — admin-configurable via the
 // admin panel, re-checked before every wait so a change takes effect on the
 // next cycle. defaultInterval is used if the setting can't be read (e.g. a
-// transient DB error). It stops when ctx is cancelled.
+// transient DB error). GetScanEnabled is checked right before each trigger —
+// disabling the schedule skips that sweep without stopping the loop, so
+// re-enabling takes effect on the next cycle same as an interval change. On
+// a read error it fails open (treated as enabled), consistent with the
+// interval fallback above. It stops when ctx is cancelled.
 func StartScheduler(ctx context.Context, sc *Scanner, store db.ScanSettingsStore, defaultInterval time.Duration) {
 	go func() {
 		for {
@@ -22,6 +26,9 @@ func StartScheduler(ctx context.Context, sc *Scanner, store db.ScanSettingsStore
 			}
 			select {
 			case <-time.After(interval):
+				if enabled, err := store.GetScanEnabled(ctx); err == nil && !enabled {
+					continue
+				}
 				if err := sc.Trigger(ctx, "scheduled", nil); err != nil {
 					log.Printf("scheduler: %v", err)
 				}

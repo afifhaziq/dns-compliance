@@ -53,11 +53,15 @@ export async function deleteCompliantIP(id: number): Promise<void> {
   await api.delete<void>(`/admin/compliant-ips/${id}`)
 }
 
-export async function fetchScanInterval(): Promise<number> {
-  const data = await api.get<{ interval_minutes: number }>('/admin/scan-interval')
-  return data.interval_minutes
+export interface ScanSchedule {
+  interval_minutes: number
+  enabled: boolean
 }
 
-export async function setScanInterval(minutes: number): Promise<void> {
-  await api.patch<void>('/admin/scan-interval', { interval_minutes: minutes })
+export async function fetchScanInterval(): Promise<ScanSchedule> {
+  return api.get<ScanSchedule>('/admin/scan-interval')
+}
+
+export async function setScanInterval(minutes: number, enabled: boolean): Promise<void> {
+  await api.patch<void>('/admin/scan-interval', { interval_minutes: minutes, enabled })
 }

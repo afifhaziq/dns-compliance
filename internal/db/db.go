@@ -63,7 +63,7 @@ func SeedScanInterval(database *gorm.DB, minutes int) error {
 	if count > 0 {
 		return nil
 	}
-	return database.Create(&ScanSettings{ID: 1, IntervalMinutes: minutes}).Error
+	return database.Create(&ScanSettings{ID: 1, IntervalMinutes: minutes, Enabled: true}).Error
 }
 
 // MigrateAdminDepartments ensures an "Admin" department exists and updates

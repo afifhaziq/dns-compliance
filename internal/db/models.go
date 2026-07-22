@@ -76,10 +76,12 @@ type URLEntry struct {
 
 // ScanSettings is a single-row (ID 1) table holding the admin-configurable
 // scan schedule. SeedScanInterval creates the row from the --interval flag
-// on first boot; after that the admin panel is authoritative.
+// on first boot; after that the admin panel is authoritative. Enabled gates
+// whether the scheduler's cron sweep actually fires — see StartScheduler.
 type ScanSettings struct {
 	ID              uint `gorm:"primaryKey" json:"id"`
 	IntervalMinutes int  `gorm:"not null" json:"interval_minutes"`
+	Enabled         bool `gorm:"not null;default:true" json:"enabled"`
 }
 
 // CompliantIP is an IP address that counts as compliant even when DNS

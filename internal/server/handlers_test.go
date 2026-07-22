@@ -34,6 +34,7 @@ type fullMockStore struct {
 	favicons       []db.Favicon
 	subdomainScans []db.SubdomainScan
 	scanInterval   int
+	scanEnabled    bool
 }
 
 func (m *fullMockStore) ListURLs(_ context.Context) ([]db.URL, error) { return m.urls, nil }
@@ -397,6 +398,11 @@ func (m *fullMockStore) DeleteCompliantIP(_ context.Context, _ uint) error { ret
 func (m *fullMockStore) GetScanInterval(_ context.Context) (int, error) { return m.scanInterval, nil }
 func (m *fullMockStore) SetScanInterval(_ context.Context, minutes int) error {
 	m.scanInterval = minutes
+	return nil
+}
+func (m *fullMockStore) GetScanEnabled(_ context.Context) (bool, error) { return m.scanEnabled, nil }
+func (m *fullMockStore) SetScanEnabled(_ context.Context, enabled bool) error {
+	m.scanEnabled = enabled
 	return nil
 }
 
@@ -1698,7 +1704,7 @@ func TestURLsRequestedThisMonth_ScopedForDepartment(t *testing.T) {
 }
 
 func TestScanInterval_GetAndSet_AdminOnly(t *testing.T) {
-	store := &fullMockStore{scanInterval: 60}
+	store := &fullMockStore{scanInterval: 60, scanEnabled: true}
 	admin := adminCookie(store)
 	r := setupRouter(store, nil)
 
@@ -1709,13 +1715,16 @@ func TestScanInterval_GetAndSet_AdminOnly(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	var got map[string]int
+	var got struct {
+		IntervalMinutes int  `json:"interval_minutes"`
+		Enabled         bool `json:"enabled"`
+	}
 	json.NewDecoder(w.Body).Decode(&got)
-	if got["interval_minutes"] != 60 {
-		t.Fatalf("expected interval_minutes=60, got %+v", got)
+	if got.IntervalMinutes != 60 || !got.Enabled {
+		t.Fatalf("expected interval_minutes=60 enabled=true, got %+v", got)
 	}
 
-	body, _ := json.Marshal(map[string]int{"interval_minutes": 15})
+	body, _ := json.Marshal(map[string]any{"interval_minutes": 15, "enabled": false})
 	req2 := httptest.NewRequest(http.MethodPatch, "/api/admin/scan-interval", bytes.NewReader(body))
 	req2.Header.Set("Content-Type", "application/json")
 	req2.AddCookie(admin)
@@ -1726,6 +1735,33 @@ func TestScanInterval_GetAndSet_AdminOnly(t *testing.T) {
 	}
 	if store.scanInterval != 15 {
 		t.Fatalf("expected the stored interval to update to 15, got %d", store.scanInterval)
+	}
+	if store.scanEnabled {
+		t.Fatalf("expected the stored enabled flag to update to false")
+	}
+}
+
+func TestStartScheduler_SkipsTriggerWhenDisabled(t *testing.T) {
+	// A watched URL is required so sc.run would actually reach the crawler
+	// (and hold sc.running true behind the fake's delay) if Trigger fired —
+	// otherwise it short-circuits at "no URLs to scan" regardless of the
+	// enabled check, making the assertion below pass for the wrong reason.
+	store := &fullMockStore{
+		// scanInterval: 0 is non-positive, so StartScheduler falls back to
+		// the short defaultInterval below instead of waiting a real minute.
+		scanInterval:   0,
+		scanEnabled:    false,
+		urls:           []db.URL{{ID: 1, URL: "example.com"}},
+		departmentURLs: []db.DepartmentURL{{DepartmentID: 1, URLID: 1, Enabled: true}},
+	}
+	crawler := &fakeCrawlerClient{delay: 200 * time.Millisecond}
+	sc := server.NewScanner(crawler, "", store, server.NewBroadcaster())
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	defer cancel()
+	server.StartScheduler(ctx, sc, store, 10*time.Millisecond)
+	<-ctx.Done()
+	if sc.IsRunning() {
+		t.Fatal("expected Trigger to be skipped while the scan schedule is disabled")
 	}
 }
 
