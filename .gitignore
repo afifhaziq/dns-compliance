@@ -1,2 +1,10 @@
 .worktrees/
 web/.tanstack/
+
+# Crawler screenshot output, saved locally as <dns_label>/<hostname>/*.png
+# when running the crawler standalone (see CLAUDE.md). Named after whatever
+# DNS servers are configured, so add new labels here as they show up.
+Cloudflare_DoH/
+Cloudflare_DoT/
+Google_2/
+Google_DoH_2/
