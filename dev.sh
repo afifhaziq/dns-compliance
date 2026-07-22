@@ -6,14 +6,17 @@ set -euo pipefail
 set -m
 
 DB_URL="host=localhost user=postgres password=postgres dbname=dns_compliance port=5432 sslmode=disable"
+CRAWLER_TOKEN="dev-secret"
 SERVER_PID=""
 VITE_PID=""
+CRAWLER_PID=""
 
 cleanup() {
   echo ""
   echo "Shutting down..."
-  [[ -n "$SERVER_PID" ]] && { kill -- -"$SERVER_PID" 2>/dev/null || kill "$SERVER_PID" 2>/dev/null || true; }
-  [[ -n "$VITE_PID" ]]  && { kill -- -"$VITE_PID"  2>/dev/null || kill "$VITE_PID"  2>/dev/null || true; }
+  [[ -n "$SERVER_PID" ]]  && { kill -- -"$SERVER_PID"  2>/dev/null || kill "$SERVER_PID"  2>/dev/null || true; }
+  [[ -n "$VITE_PID" ]]    && { kill -- -"$VITE_PID"    2>/dev/null || kill "$VITE_PID"    2>/dev/null || true; }
+  [[ -n "$CRAWLER_PID" ]] && { kill -- -"$CRAWLER_PID" 2>/dev/null || kill "$CRAWLER_PID" 2>/dev/null || true; }
   docker compose -f docker-compose.yml -f docker-compose.dev.yml stop postgres minio
 }
 trap cleanup EXIT INT TERM
@@ -39,12 +42,17 @@ until curl -sf -o /dev/null http://localhost:9000/minio/health/live 2>/dev/null;
 done
 echo " ready"
 
+echo "==> Starting crawler control service on :50052..."
+./crawler --listen-addr :50052 --grpc-addr :50051 --auth-token "$CRAWLER_TOKEN" > >(sed -u 's/^/[crawler] /') 2>&1 &
+CRAWLER_PID=$!
+
 echo "==> Starting server on :8080..."
 go run ./cmd/server/ \
   --db-url "$DB_URL" \
   --http-addr :8080 \
   --grpc-addr :50051 \
-  --crawler-path ./crawler \
+  --crawler-addr localhost:50052 \
+  --crawler-token "$CRAWLER_TOKEN" \
   --subfinder-path "$(go env GOPATH)/bin/subfinder" \
   --cookie-secure=false \
   --bootstrap-admin-username admin \
@@ -63,4 +71,4 @@ echo "  API       http://localhost:8080"
 echo ""
 echo "Press Ctrl+C to stop."
 
-wait "$SERVER_PID" "$VITE_PID"
+wait "$SERVER_PID" "$VITE_PID" "$CRAWLER_PID"
