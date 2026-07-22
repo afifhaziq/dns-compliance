@@ -27,3 +27,26 @@ message Acknowledgement {
 service ComplianceService {
   rpc Submit(ComplianceReport) returns (Acknowledgement);
 }
+
+message DNSServerConfig {
+  string isp      = 1;
+  string name     = 2;
+  string address  = 3;
+  string protocol = 4;
+}
+
+message SweepRequest {
+  repeated string          urls          = 1;
+  repeated DNSServerConfig dns_servers   = 2;
+  repeated string          compliant_ips = 3;
+  bool                     screenshots   = 4;
+}
+
+message SweepAck {
+  bool   accepted = 1;
+  string error    = 2;
+}
+
+service CrawlerControl {
+  rpc StartSweep(SweepRequest) returns (SweepAck);
+}

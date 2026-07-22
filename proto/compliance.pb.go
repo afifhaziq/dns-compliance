@@ -217,6 +217,194 @@ func (x *Acknowledgement) GetOk() bool {
 	return false
 }
 
+type DNSServerConfig struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Isp           string                 `protobuf:"bytes,1,opt,name=isp,proto3" json:"isp,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Address       string                 `protobuf:"bytes,3,opt,name=address,proto3" json:"address,omitempty"`
+	Protocol      string                 `protobuf:"bytes,4,opt,name=protocol,proto3" json:"protocol,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DNSServerConfig) Reset() {
+	*x = DNSServerConfig{}
+	mi := &file_proto_compliance_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DNSServerConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DNSServerConfig) ProtoMessage() {}
+
+func (x *DNSServerConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_compliance_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DNSServerConfig.ProtoReflect.Descriptor instead.
+func (*DNSServerConfig) Descriptor() ([]byte, []int) {
+	return file_proto_compliance_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *DNSServerConfig) GetIsp() string {
+	if x != nil {
+		return x.Isp
+	}
+	return ""
+}
+
+func (x *DNSServerConfig) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *DNSServerConfig) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+func (x *DNSServerConfig) GetProtocol() string {
+	if x != nil {
+		return x.Protocol
+	}
+	return ""
+}
+
+type SweepRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Urls          []string               `protobuf:"bytes,1,rep,name=urls,proto3" json:"urls,omitempty"`
+	DnsServers    []*DNSServerConfig     `protobuf:"bytes,2,rep,name=dns_servers,json=dnsServers,proto3" json:"dns_servers,omitempty"`
+	CompliantIps  []string               `protobuf:"bytes,3,rep,name=compliant_ips,json=compliantIps,proto3" json:"compliant_ips,omitempty"`
+	Screenshots   bool                   `protobuf:"varint,4,opt,name=screenshots,proto3" json:"screenshots,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SweepRequest) Reset() {
+	*x = SweepRequest{}
+	mi := &file_proto_compliance_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SweepRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SweepRequest) ProtoMessage() {}
+
+func (x *SweepRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_compliance_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SweepRequest.ProtoReflect.Descriptor instead.
+func (*SweepRequest) Descriptor() ([]byte, []int) {
+	return file_proto_compliance_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *SweepRequest) GetUrls() []string {
+	if x != nil {
+		return x.Urls
+	}
+	return nil
+}
+
+func (x *SweepRequest) GetDnsServers() []*DNSServerConfig {
+	if x != nil {
+		return x.DnsServers
+	}
+	return nil
+}
+
+func (x *SweepRequest) GetCompliantIps() []string {
+	if x != nil {
+		return x.CompliantIps
+	}
+	return nil
+}
+
+func (x *SweepRequest) GetScreenshots() bool {
+	if x != nil {
+		return x.Screenshots
+	}
+	return false
+}
+
+type SweepAck struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Accepted      bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SweepAck) Reset() {
+	*x = SweepAck{}
+	mi := &file_proto_compliance_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SweepAck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SweepAck) ProtoMessage() {}
+
+func (x *SweepAck) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_compliance_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SweepAck.ProtoReflect.Descriptor instead.
+func (*SweepAck) Descriptor() ([]byte, []int) {
+	return file_proto_compliance_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *SweepAck) GetAccepted() bool {
+	if x != nil {
+		return x.Accepted
+	}
+	return false
+}
+
+func (x *SweepAck) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_proto_compliance_proto protoreflect.FileDescriptor
 
 const file_proto_compliance_proto_rawDesc = "" +
@@ -242,9 +430,26 @@ const file_proto_compliance_proto_rawDesc = "" +
 	"\x10ComplianceReport\x120\n" +
 	"\aresults\x18\x01 \x03(\v2\x16.compliance.SiteResultR\aresults\"!\n" +
 	"\x0fAcknowledgement\x12\x0e\n" +
-	"\x02ok\x18\x01 \x01(\bR\x02ok2X\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\"m\n" +
+	"\x0fDNSServerConfig\x12\x10\n" +
+	"\x03isp\x18\x01 \x01(\tR\x03isp\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x18\n" +
+	"\aaddress\x18\x03 \x01(\tR\aaddress\x12\x1a\n" +
+	"\bprotocol\x18\x04 \x01(\tR\bprotocol\"\xa7\x01\n" +
+	"\fSweepRequest\x12\x12\n" +
+	"\x04urls\x18\x01 \x03(\tR\x04urls\x12<\n" +
+	"\vdns_servers\x18\x02 \x03(\v2\x1b.compliance.DNSServerConfigR\n" +
+	"dnsServers\x12#\n" +
+	"\rcompliant_ips\x18\x03 \x03(\tR\fcompliantIps\x12 \n" +
+	"\vscreenshots\x18\x04 \x01(\bR\vscreenshots\"<\n" +
+	"\bSweepAck\x12\x1a\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error2X\n" +
 	"\x11ComplianceService\x12C\n" +
-	"\x06Submit\x12\x1c.compliance.ComplianceReport\x1a\x1b.compliance.AcknowledgementB$Z\"github.com/afif/dns-tracking/protob\x06proto3"
+	"\x06Submit\x12\x1c.compliance.ComplianceReport\x1a\x1b.compliance.Acknowledgement2N\n" +
+	"\x0eCrawlerControl\x12<\n" +
+	"\n" +
+	"StartSweep\x12\x18.compliance.SweepRequest\x1a\x14.compliance.SweepAckB$Z\"github.com/afif/dns-tracking/protob\x06proto3"
 
 var (
 	file_proto_compliance_proto_rawDescOnce sync.Once
@@ -258,21 +463,27 @@ func file_proto_compliance_proto_rawDescGZIP() []byte {
 	return file_proto_compliance_proto_rawDescData
 }
 
-var file_proto_compliance_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_proto_compliance_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_proto_compliance_proto_goTypes = []any{
 	(*SiteResult)(nil),       // 0: compliance.SiteResult
 	(*ComplianceReport)(nil), // 1: compliance.ComplianceReport
 	(*Acknowledgement)(nil),  // 2: compliance.Acknowledgement
+	(*DNSServerConfig)(nil),  // 3: compliance.DNSServerConfig
+	(*SweepRequest)(nil),     // 4: compliance.SweepRequest
+	(*SweepAck)(nil),         // 5: compliance.SweepAck
 }
 var file_proto_compliance_proto_depIdxs = []int32{
 	0, // 0: compliance.ComplianceReport.results:type_name -> compliance.SiteResult
-	1, // 1: compliance.ComplianceService.Submit:input_type -> compliance.ComplianceReport
-	2, // 2: compliance.ComplianceService.Submit:output_type -> compliance.Acknowledgement
-	2, // [2:3] is the sub-list for method output_type
-	1, // [1:2] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	3, // 1: compliance.SweepRequest.dns_servers:type_name -> compliance.DNSServerConfig
+	1, // 2: compliance.ComplianceService.Submit:input_type -> compliance.ComplianceReport
+	4, // 3: compliance.CrawlerControl.StartSweep:input_type -> compliance.SweepRequest
+	2, // 4: compliance.ComplianceService.Submit:output_type -> compliance.Acknowledgement
+	5, // 5: compliance.CrawlerControl.StartSweep:output_type -> compliance.SweepAck
+	4, // [4:6] is the sub-list for method output_type
+	2, // [2:4] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_proto_compliance_proto_init() }
@@ -286,9 +497,9 @@ func file_proto_compliance_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_compliance_proto_rawDesc), len(file_proto_compliance_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   6,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_proto_compliance_proto_goTypes,
 		DependencyIndexes: file_proto_compliance_proto_depIdxs,

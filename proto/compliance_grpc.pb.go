@@ -119,3 +119,105 @@ var ComplianceService_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "proto/compliance.proto",
 }
+
+const (
+	CrawlerControl_StartSweep_FullMethodName = "/compliance.CrawlerControl/StartSweep"
+)
+
+// CrawlerControlClient is the client API for CrawlerControl service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type CrawlerControlClient interface {
+	StartSweep(ctx context.Context, in *SweepRequest, opts ...grpc.CallOption) (*SweepAck, error)
+}
+
+type crawlerControlClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewCrawlerControlClient(cc grpc.ClientConnInterface) CrawlerControlClient {
+	return &crawlerControlClient{cc}
+}
+
+func (c *crawlerControlClient) StartSweep(ctx context.Context, in *SweepRequest, opts ...grpc.CallOption) (*SweepAck, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SweepAck)
+	err := c.cc.Invoke(ctx, CrawlerControl_StartSweep_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// CrawlerControlServer is the server API for CrawlerControl service.
+// All implementations must embed UnimplementedCrawlerControlServer
+// for forward compatibility.
+type CrawlerControlServer interface {
+	StartSweep(context.Context, *SweepRequest) (*SweepAck, error)
+	mustEmbedUnimplementedCrawlerControlServer()
+}
+
+// UnimplementedCrawlerControlServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedCrawlerControlServer struct{}
+
+func (UnimplementedCrawlerControlServer) StartSweep(context.Context, *SweepRequest) (*SweepAck, error) {
+	return nil, status.Error(codes.Unimplemented, "method StartSweep not implemented")
+}
+func (UnimplementedCrawlerControlServer) mustEmbedUnimplementedCrawlerControlServer() {}
+func (UnimplementedCrawlerControlServer) testEmbeddedByValue()                        {}
+
+// UnsafeCrawlerControlServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to CrawlerControlServer will
+// result in compilation errors.
+type UnsafeCrawlerControlServer interface {
+	mustEmbedUnimplementedCrawlerControlServer()
+}
+
+func RegisterCrawlerControlServer(s grpc.ServiceRegistrar, srv CrawlerControlServer) {
+	// If the following call panics, it indicates UnimplementedCrawlerControlServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&CrawlerControl_ServiceDesc, srv)
+}
+
+func _CrawlerControl_StartSweep_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SweepRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CrawlerControlServer).StartSweep(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CrawlerControl_StartSweep_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CrawlerControlServer).StartSweep(ctx, req.(*SweepRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// CrawlerControl_ServiceDesc is the grpc.ServiceDesc for CrawlerControl service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var CrawlerControl_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "compliance.CrawlerControl",
+	HandlerType: (*CrawlerControlServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "StartSweep",
+			Handler:    _CrawlerControl_StartSweep_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "proto/compliance.proto",
+}
