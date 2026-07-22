@@ -41,7 +41,16 @@ func main() {
 	postIdleSleepMs := flag.Int("post-idle-sleep", 2000, "milliseconds to sleep after network idle before taking the screenshot")
 	takeScreenshots  := flag.Bool("screenshots", false, "capture screenshots for resolved sites (default: DNS-only)")
 	compliantIPsFlag := flag.String("compliant-ips", "", "comma-separated IPs treated as compliant even when DNS resolves (e.g. MCMC block-page IP)")
+	listenAddr := flag.String("listen-addr", "", "gRPC listen address for persistent trigger mode (e.g. :50052); when set, runs as a long-lived server instead of a one-shot sweep")
+	authToken := flag.String("auth-token", "", "shared secret required on incoming StartSweep RPCs when --listen-addr is set")
 	flag.Parse()
+
+	if *listenAddr != "" {
+		runListenMode(*listenAddr, *authToken, *grpcAddr, *dnsWorkers, *ssWorkers,
+			time.Duration(*dnsTimeoutSec)*time.Second, time.Duration(*ssTimeoutSec)*time.Second,
+			time.Duration(*waitIdleSec)*time.Second, time.Duration(*postIdleSleepMs)*time.Millisecond)
+		return
+	}
 
 	urls, err := input.Load(*sitesFile, flag.Args())
 	if err != nil {
