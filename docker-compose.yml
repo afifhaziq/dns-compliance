@@ -10,10 +10,22 @@ services:
       MINIO_ACCESS_KEY: "minioadmin"
       MINIO_SECRET_KEY: "minioadmin"
       MINIO_BUCKET: "screenshots"
-      CRAWLER_PATH: "/app/crawler"
+      CRAWLER_ADDR: "crawler:50052"
+      CRAWLER_TOKEN: "${CRAWLER_TOKEN}"
     depends_on:
       minio:
         condition: service_started
+      crawler:
+        condition: service_started
+    restart: unless-stopped
+
+  crawler:
+    build: .
+    entrypoint: ["/app/crawler"]
+    command:
+      - "--listen-addr=:50052"
+      - "--grpc-addr=server:50051"
+      - "--auth-token=${CRAWLER_TOKEN}"
     restart: unless-stopped
 
   minio:

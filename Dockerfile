@@ -34,8 +34,7 @@ COPY --from=builder /out/subfinder /app/subfinder
 COPY dns-server.yaml               /app/dns-server.yaml
 
 WORKDIR /app
-ENV CRAWLER_PATH=/app/crawler
 ENV SUBFINDER_PATH=/app/subfinder
 
-EXPOSE 8080 50051
+EXPOSE 8080 50051 50052
 ENTRYPOINT ["/app/server", "--seed-dns", "/app/dns-server.yaml"]
