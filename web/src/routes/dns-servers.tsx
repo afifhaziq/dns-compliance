@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { fetchDnsServers, createDnsServer, deleteDnsServer } from '../api/dns-servers'
+import { fetchDnsServers, createDnsServer, updateDnsServer, deleteDnsServer } from '../api/dns-servers'
 import type { DNSServer } from '../api/types'
 import { Badge } from '@/components/ui/badge'
+import { SquarePenIcon } from '@/components/ui/square-pen'
+import { XIcon } from '@/components/ui/x'
 import {
   Dialog,
   DialogContent,
@@ -19,16 +21,18 @@ export const Route = createFileRoute('/dns-servers')({ component: DNSServersPage
 
 type Protocol = DNSServer['protocol']
 
-/* ─── Add DNS Server Dialog ──────────────────────────────────────────────── */
+/* ─── Add / Edit DNS Server Dialog ───────────────────────────────────────── */
 
-function AddDnsServerDialog({
+function DnsServerFormDialog({
   open,
   onClose,
-  onAdded,
+  onSaved,
+  editing,
 }: {
   open: boolean
   onClose: () => void
-  onAdded: () => void
+  onSaved: () => void
+  editing: DNSServer | null
 }) {
   const [isp, setIsp] = useState('')
   const [name, setName] = useState('')
@@ -39,6 +43,19 @@ function AddDnsServerDialog({
 
   const reset = () => { setIsp(''); setName(''); setAddress(''); setProtocol('udp'); setError(null) }
 
+  useEffect(() => {
+    if (!open) return
+    if (editing) {
+      setIsp(editing.isp)
+      setName(editing.name)
+      setAddress(editing.address)
+      setProtocol(editing.protocol)
+      setError(null)
+    } else {
+      reset()
+    }
+  }, [open, editing])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!isp.trim()) { setError('ISP is required'); return }
@@ -46,12 +63,17 @@ function AddDnsServerDialog({
     setLoading(true)
     setError(null)
     try {
-      await createDnsServer({ isp: isp.trim(), name: name.trim(), address: address.trim(), protocol })
+      const payload = { isp: isp.trim(), name: name.trim(), address: address.trim(), protocol }
+      if (editing) {
+        await updateDnsServer(editing.id, payload)
+      } else {
+        await createDnsServer(payload)
+      }
       reset()
-      onAdded()
+      onSaved()
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add server')
+      setError(err instanceof Error ? err.message : `Failed to ${editing ? 'save' : 'add'} server`)
     } finally {
       setLoading(false)
     }
@@ -63,9 +85,9 @@ function AddDnsServerDialog({
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
       <DialogContent showCloseButton={false} style={{ maxWidth: 440 }}>
         <DialogHeader>
-          <DialogTitle>Add DNS Server</DialogTitle>
+          <DialogTitle>{editing ? 'Edit DNS Server' : 'Add DNS Server'}</DialogTitle>
           <DialogDescription>
-            Add a resolver to use for compliance checks.
+            {editing ? 'Update this resolver\'s details.' : 'Add a resolver to use for compliance checks.'}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -125,7 +147,7 @@ function AddDnsServerDialog({
               Cancel
             </button>
             <button type="submit" className="btn-primary" disabled={loading}>
-              {loading ? 'Adding…' : 'Add Server'}
+              {editing ? (loading ? 'Saving…' : 'Save Changes') : (loading ? 'Adding…' : 'Add Server')}
             </button>
           </DialogFooter>
         </form>
@@ -196,6 +218,7 @@ function DNSServersPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<DNSServer | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DNSServer | null>(null)
 
   const load = useCallback(async () => {
@@ -277,11 +300,22 @@ function DNSServersPage() {
                       {canManage && (
                         <div className="dns-server-meta">
                           <button
-                            className="btn-row-delete"
+                            type="button"
+                            className="screenshot-icon-btn"
+                            onClick={() => setEditTarget(s)}
+                            aria-label={`Edit ${serverLabel(s)}`}
+                            title="Edit"
+                          >
+                            <SquarePenIcon size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            className="screenshot-icon-btn"
                             onClick={() => setDeleteTarget(s)}
                             aria-label={`Delete ${serverLabel(s)}`}
+                            title="Delete"
                           >
-                            Delete
+                            <XIcon size={16} />
                           </button>
                         </div>
                       )}
@@ -294,10 +328,18 @@ function DNSServersPage() {
         )}
       </div>
 
-      <AddDnsServerDialog
+      <DnsServerFormDialog
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        onAdded={load}
+        onSaved={load}
+        editing={null}
+      />
+
+      <DnsServerFormDialog
+        open={editTarget !== null}
+        onClose={() => setEditTarget(null)}
+        onSaved={load}
+        editing={editTarget}
       />
 
       <DeleteConfirmDialog

@@ -71,6 +71,16 @@ func (m *fullMockStore) CreateDNSServer(_ context.Context, s db.DNSServer) (db.D
 	m.dnsServers = append(m.dnsServers, s)
 	return s, nil
 }
+func (m *fullMockStore) UpdateDNSServer(_ context.Context, id uint, s db.DNSServer) (db.DNSServer, error) {
+	for i, existing := range m.dnsServers {
+		if existing.ID == id {
+			s.ID = id
+			m.dnsServers[i] = s
+			return s, nil
+		}
+	}
+	return db.DNSServer{}, fmt.Errorf("dns server %d not found", id)
+}
 func (m *fullMockStore) DeleteDNSServer(_ context.Context, id uint) error {
 	for i, s := range m.dnsServers {
 		if s.ID == id {
@@ -843,6 +853,57 @@ func TestCreateDNSServer_AllowedForDeptAdmin(t *testing.T) {
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("expected a department admin to be able to add a DNS server (shared catalog), got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateDNSServer(t *testing.T) {
+	store := &fullMockStore{dnsServers: []db.DNSServer{{ID: 1, ISP: "Google", Name: "Google UDP", Address: "8.8.8.8:53", Protocol: "udp"}}}
+	cookie := adminCookie(store)
+	r := setupRouter(store, nil)
+	body, _ := json.Marshal(map[string]string{"isp": "Google", "name": "Google Secondary", "address": "8.8.4.4:53", "protocol": "udp"})
+	req := httptest.NewRequest(http.MethodPatch, "/api/dns-servers/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if store.dnsServers[0].Name != "Google Secondary" || store.dnsServers[0].Address != "8.8.4.4:53" {
+		t.Fatalf("expected server fields to be updated, got %+v", store.dnsServers[0])
+	}
+}
+
+func TestUpdateDNSServer_ForbiddenForNonAdmin(t *testing.T) {
+	store := &fullMockStore{dnsServers: []db.DNSServer{{ID: 1, ISP: "Google", Name: "Google UDP", Address: "8.8.8.8:53", Protocol: "udp"}}}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+	body, _ := json.Marshal(map[string]string{"isp": "Google", "name": "Google Secondary", "address": "8.8.4.4:53", "protocol": "udp"})
+	req := httptest.NewRequest(http.MethodPatch, "/api/dns-servers/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateDNSServer_AllowedForDeptAdmin(t *testing.T) {
+	store := &fullMockStore{dnsServers: []db.DNSServer{{ID: 1, ISP: "Google", Name: "Google UDP", Address: "8.8.8.8:53", Protocol: "udp"}}}
+	cookie := deptAdminCookie(store, 1)
+	r := setupRouter(store, nil)
+	body, _ := json.Marshal(map[string]string{"isp": "Google", "name": "Google Secondary", "address": "8.8.4.4:53", "protocol": "udp"})
+	req := httptest.NewRequest(http.MethodPatch, "/api/dns-servers/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected a department admin to be able to edit a DNS server (shared catalog), got %d: %s", w.Code, w.Body.String())
 	}
 }
 

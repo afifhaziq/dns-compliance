@@ -19,6 +19,15 @@ export async function createDnsServer(data: {
   return api.post<DNSServer>('/dns-servers', data)
 }
 
+export async function updateDnsServer(id: number, data: {
+  isp: string
+  name: string
+  address: string
+  protocol: DNSServer['protocol']
+}): Promise<DNSServer> {
+  return api.patch<DNSServer>(`/dns-servers/${id}`, data)
+}
+
 export async function deleteDnsServer(id: number): Promise<void> {
   await api.delete<void>(`/dns-servers/${id}`)
 }

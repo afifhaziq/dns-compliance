@@ -35,6 +35,7 @@ type URLStore interface {
 type DNSServerStore interface {
 	ListDNSServers(ctx context.Context) ([]DNSServer, error)
 	CreateDNSServer(ctx context.Context, s DNSServer) (DNSServer, error)
+	UpdateDNSServer(ctx context.Context, id uint, s DNSServer) (DNSServer, error)
 	DeleteDNSServer(ctx context.Context, id uint) error
 }
 

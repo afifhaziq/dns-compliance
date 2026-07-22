@@ -72,6 +72,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 				r.Use(requireAnyAdmin)
 
 				r.Post("/dns-servers", h.CreateDNSServer)
+				r.Patch("/dns-servers/{id}", h.UpdateDNSServer)
 				r.Delete("/dns-servers/{id}", h.DeleteDNSServer)
 
 				r.Get("/admin/users", h.ListUsers)

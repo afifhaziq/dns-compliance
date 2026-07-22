@@ -48,6 +48,13 @@ func (s *postgresStore) CreateDNSServer(ctx context.Context, srv DNSServer) (DNS
 	return srv, s.db.WithContext(ctx).Create(&srv).Error
 }
 
+func (s *postgresStore) UpdateDNSServer(ctx context.Context, id uint, srv DNSServer) (DNSServer, error) {
+	srv.ID = id
+	err := s.db.WithContext(ctx).Model(&DNSServer{}).Where("id = ?", id).
+		Updates(map[string]any{"isp": srv.ISP, "name": srv.Name, "address": srv.Address, "protocol": srv.Protocol}).Error
+	return srv, err
+}
+
 func (s *postgresStore) DeleteDNSServer(ctx context.Context, id uint) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("dns_server_id = ?", id).Delete(&ScanResult{}).Error; err != nil {

@@ -319,6 +319,46 @@ func (h *Handlers) CreateDNSServer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, s)
 }
 
+func (h *Handlers) UpdateDNSServer(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var body struct {
+		ISP      string `json:"isp"`
+		Name     string `json:"name"`
+		Address  string `json:"address"`
+		Protocol string `json:"protocol"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if body.ISP == "" {
+		writeError(w, http.StatusBadRequest, "isp is required")
+		return
+	}
+	if body.Address == "" {
+		writeError(w, http.StatusBadRequest, "address is required")
+		return
+	}
+	if body.Protocol == "" {
+		body.Protocol = "udp"
+	}
+	s, err := h.store.UpdateDNSServer(r.Context(), uint(id), db.DNSServer{
+		ISP:      body.ISP,
+		Name:     body.Name,
+		Address:  body.Address,
+		Protocol: body.Protocol,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, s)
+}
+
 func (h *Handlers) DeleteDNSServer(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
