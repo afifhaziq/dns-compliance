@@ -274,6 +274,14 @@ When `--screenshots` is off (default), `Capture` is a no-op. When multiple DNS s
 
 - **Exportable compliance report**: per-ISP / per-period PDF or CSV bundling compliance %, time-to-compliance (`GET /api/isps/{isp}/timing`), regressions (domains that flip compliant → violation), and screenshot evidence over time — the artifact that leaves the building for an enforcement action, rather than something only viewable in-app. **Open questions requiring product/User-department sign-off before building:** which page/table hosts the export button (`/results`? the ISP detail page? Overview?), PDF vs CSV vs both, and the exact fields/evidence each export must legally contain.
 - **Domain status page**: `results.$url.tsx` splits into an Overview tab (heatmap, `DnsRecordsPanel`, `DomainInfoPanel` registrar/WHOIS) and a History tab (the paginated scan-by-scan table), but there's still no dedicated "current status at a glance" summary — e.g. latest verdict per DNS server condensed into one card — separate from the two existing tabs.
+- **Split crawler and dashboard onto separate hosts**: currently impossible without code changes. `Scanner.execCrawler` (`internal/server/scanner.go`) spawns the crawler as a **local subprocess** (`exec.Command`) and feeds it via **local temp files** (`writeTempLines`/`writeDNSYAML` write the site list and DNS-server YAML to disk, then pass the paths as `--sites`/`--dns-servers` CLI args) — this only works when both binaries run on the same host, since exec can't reach a binary on a different machine and the temp files aren't visible across hosts either. To actually split them:
+  - Add a new RPC to `proto/*.proto` (e.g. `StartSweep(SweepRequest)`) carrying the URL list and DNS server list as message fields instead of file paths.
+  - Turn `cmd/crawler/main.go` into a persistent gRPC server (new `--listen-addr`) instead of a one-shot CLI; on `StartSweep` it runs the same resolve/screenshot pipeline in-process.
+  - Keep pushing results back to the dashboard via the existing `Submit` RPC, same as today.
+  - Replace the `exec.Command` call in `Scanner.execCrawler` with a gRPC client call to the crawler's new endpoint.
+  - Add auth (shared token/mTLS) on the new trigger RPC — it's a new network-reachable "tell me what to scan" surface that didn't exist when this was local-only exec.
+
+  Until this lands, crawler and dashboard (`cmd/server`) must run on the same host; only Postgres/MinIO can be split off today (already network-configured via `--db-url`/`--minio-endpoint`).
 
 ## Product & Design
 
