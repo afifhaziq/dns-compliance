@@ -58,21 +58,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("loading DNS servers: %v", err)
 		}
-		for _, s := range cfg.Servers {
-			var resolveFn func(context.Context, string) (string, int64, error)
-			switch s.Protocol {
-			case "dot":
-				resolveFn = dns.NewDoTResolver(s.Address)
-			case "doh":
-				resolveFn = dns.NewDoHResolver(s.Address)
-			default:
-				resolveFn = dns.NewResolver(s.Address)
-			}
-			servers = append(servers, serverEntry{
-				name:    s.Name,
-				resolve: resolveFn,
-			})
-		}
+		servers = buildServerEntries(cfg.Servers)
 	} else {
 		servers = []serverEntry{{name: "", resolve: dns.Resolve}}
 	}
@@ -131,6 +117,26 @@ func main() {
 type serverEntry struct {
 	name    string
 	resolve func(context.Context, string) (string, int64, error)
+}
+
+// buildServerEntries converts parsed DNS server configs into resolver
+// functions, used by both the --dns-servers YAML file path (CLI mode) and
+// the StartSweep RPC path (listen mode, see control.go).
+func buildServerEntries(servers []dnsconfig.Server) []serverEntry {
+	entries := make([]serverEntry, len(servers))
+	for i, s := range servers {
+		var resolveFn func(context.Context, string) (string, int64, error)
+		switch s.Protocol {
+		case "dot":
+			resolveFn = dns.NewDoTResolver(s.Address)
+		case "doh":
+			resolveFn = dns.NewDoHResolver(s.Address)
+		default:
+			resolveFn = dns.NewResolver(s.Address)
+		}
+		entries[i] = serverEntry{name: s.Name, resolve: resolveFn}
+	}
+	return entries
 }
 
 func runSweep(
