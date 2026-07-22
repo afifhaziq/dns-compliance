@@ -42,6 +42,7 @@ type dnsResult struct {
 	resolvedIPv6 string
 	timestamp    time.Time
 	latencyMs    int64
+	compliant    bool // from checkDNS's CompliantIPs match; must survive into takeScreenshot's result
 }
 
 // Run executes one full sweep over urls and returns one SiteResult per URL.
@@ -73,6 +74,7 @@ func Run(ctx context.Context, urls []string, cfg Config) ([]SiteResult, error) {
 						resolvedIPv6: result.ResolvedIPv6,
 						timestamp:    result.Timestamp,
 						latencyMs:    result.LatencyMs,
+						compliant:    result.Compliant,
 					}
 				} else {
 					resultCh <- result
@@ -171,7 +173,7 @@ func takeScreenshot(ctx context.Context, dr dnsResult, capture func(context.Cont
 			DNSResolved:  true,
 			ResolvedIP:   dr.resolvedIP,
 			ResolvedIPv6: dr.resolvedIPv6,
-			Compliant:    false,
+			Compliant:    dr.compliant,
 			Error:        err.Error(),
 			LatencyMs:    dr.latencyMs,
 		}
@@ -182,7 +184,7 @@ func takeScreenshot(ctx context.Context, dr dnsResult, capture func(context.Cont
 		DNSResolved:  true,
 		ResolvedIP:   dr.resolvedIP,
 		ResolvedIPv6: dr.resolvedIPv6,
-		Compliant:    false,
+		Compliant:    dr.compliant,
 		Screenshot:   buf,
 		LatencyMs:    dr.latencyMs,
 	}

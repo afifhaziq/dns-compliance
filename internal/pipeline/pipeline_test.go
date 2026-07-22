@@ -110,6 +110,39 @@ func TestScreenshotFailureIsStillNonCompliant(t *testing.T) {
 	}
 }
 
+// A resolved IP matching CompliantIPs (e.g. an ISP's block-page redirect)
+// must stay Compliant=true even though it still goes through the screenshot
+// stage — regression test for a bug where takeScreenshot hardcoded
+// Compliant=false for every resolved site, silently discarding checkDNS's
+// CompliantIPs match the moment a screenshot was attempted.
+func TestCompliantIPStaysCompliantThroughScreenshot(t *testing.T) {
+	fakePNG := []byte{0x89, 0x50, 0x4E, 0x47}
+	cfg := pipeline.Config{
+		DNSWorkers:        2,
+		ScreenshotWorkers: 2,
+		DNSTimeout:        5 * time.Second,
+		ScreenshotTimeout: 5 * time.Second,
+		Resolve:           mockResolve("175.139.142.25", nil),
+		Capture:           mockCapture(fakePNG, nil),
+		CompliantIPs:      []string{"175.139.142.25"},
+	}
+
+	results, err := pipeline.Run(context.Background(), []string{"https://blocked-site.com"}, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("want 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if !r.Compliant {
+		t.Error("site resolving to a CompliantIPs address should be Compliant=true, even after the screenshot stage")
+	}
+	if r.ResolvedIP != "175.139.142.25" {
+		t.Errorf("want resolved IP 175.139.142.25, got %s", r.ResolvedIP)
+	}
+}
+
 func TestMultipleSitesAllProcessed(t *testing.T) {
 	fakePNG := []byte{0x89, 0x50, 0x4E, 0x47}
 	cfg := pipeline.Config{
