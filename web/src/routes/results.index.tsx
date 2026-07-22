@@ -509,7 +509,7 @@ function ResultsPage() {
                     <TableHead className="col-ip th-left" scope="col">Resolved IP</TableHead>
                     <TableHead className="col-error th-left" scope="col">Error</TableHead>
                     <TableHead className="col-last-scanned th-left" scope="col">Last scanned</TableHead>
-                    <TableHead className="col-evidence th-center" scope="col"></TableHead>
+                    <TableHead className="col-evidence th-center" scope="col">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

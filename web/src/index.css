@@ -959,7 +959,7 @@ th.th-left {
 }
 
 .server-count {
-  @apply text-[13px] font-medium text-stone-muted [font-variant-numeric:tabular-nums] whitespace-nowrap min-w-[6ch];
+  @apply text-[13px] font-medium text-stone-muted [font-variant-numeric:tabular-nums] whitespace-nowrap;
 }
 
 /* Declared after .server-count so status-color modifiers win the cascade
