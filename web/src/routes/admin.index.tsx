@@ -326,6 +326,15 @@ function AddCompliantIPDialog({
 
 /* ─── Scan Interval Settings ─────────────────────────────────────────────── */
 
+const SCAN_INTERVAL_OPTIONS = [
+  { minutes: 15, label: '15 minutes' },
+  { minutes: 30, label: '30 minutes' },
+  { minutes: 60, label: '1 hour' },
+  { minutes: 360, label: '6 hours' },
+  { minutes: 720, label: '12 hours' },
+  { minutes: 1440, label: '1 day' },
+]
+
 function ScanIntervalSection({ value, onSaved }: { value: number; onSaved: (minutes: number) => void }) {
   const [minutes, setMinutes] = useState(value)
   const [saving, setSaving] = useState(false)
@@ -334,7 +343,6 @@ function ScanIntervalSection({ value, onSaved }: { value: number; onSaved: (minu
   useEffect(() => { setMinutes(value) }, [value])
 
   const handleSave = async () => {
-    if (minutes < 1) { setError('Interval must be at least 1 minute'); return }
     setSaving(true)
     setError(null)
     try {
@@ -351,18 +359,17 @@ function ScanIntervalSection({ value, onSaved }: { value: number; onSaved: (minu
     <div className='mb-4'>
       <div className="page-header" style={{ marginBottom: 12 }}>
         <h2 className="section-title">Scan Schedule</h2>
-        <p className="page-subtitle" style={{ marginLeft: 8 }}>How often the automated cron sweep runs, in minutes</p>
+        <p className="page-subtitle" style={{ marginLeft: 8 }}>How often the automated cron sweep runs</p>
       </div>
-      <div className="form-field" style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 320 }}>
-        <input
-          className="form-input"
-          type="number"
-          min={1}
-          value={minutes}
-          onChange={e => setMinutes(Number(e.target.value))}
-          disabled={saving}
-          aria-label="Scan interval in minutes"
-        />
+      <div className="flex flex-row" style={{ gap: 8, maxWidth: 320 }}>
+        <Select value={String(minutes)} onValueChange={v => setMinutes(Number(v))} disabled={saving}>
+          <SelectTrigger aria-label="Scan interval" className="w-full" />
+          <SelectContent>
+            {SCAN_INTERVAL_OPTIONS.map((opt, i) => (
+              <SelectItem key={opt.minutes} index={i} value={String(opt.minutes)}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <button className="btn-primary" onClick={handleSave} disabled={saving || minutes === value}>
           {saving ? 'Saving…' : 'Save'}
         </button>
