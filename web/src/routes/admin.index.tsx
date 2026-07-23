@@ -26,6 +26,7 @@ import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
 import { Switch } from '@/components/ui/r-switch'
+import { XIcon } from '@/components/ui/x'
 import { useAuth } from './__root'
 
 export const Route = createFileRoute('/admin/')({ component: AdminPage })
@@ -534,11 +535,13 @@ function AdminPage() {
                 <TableCell className="col-status">{DATE_FMT.format(new Date(u.created_at))}</TableCell>
                 <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
                   <button
-                    className="btn-row-delete"
+                    type="button"
+                    className="screenshot-icon-btn"
                     onClick={() => setDeleteTarget(u)}
                     aria-label={`Delete ${u.username}`}
+                    title="Delete"
                   >
-                    Delete
+                    <XIcon size={16} />
                   </button>
                 </TableCell>
               </TableRow>
@@ -572,11 +575,13 @@ function AdminPage() {
                 <TableCell className="col-status">{DATE_FMT.format(new Date(ip.created_at))}</TableCell>
                 <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
                   <button
-                    className="btn-row-delete"
+                    type="button"
+                    className="screenshot-icon-btn"
                     onClick={() => setDeleteIPTarget(ip)}
                     aria-label={`Delete ${ip.address}`}
+                    title="Delete"
                   >
-                    Delete
+                    <XIcon size={16} />
                   </button>
                 </TableCell>
               </TableRow>

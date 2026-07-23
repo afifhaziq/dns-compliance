@@ -1022,13 +1022,6 @@ th.th-left {
   @apply text-[13px] text-violation-text bg-violation-subtle rounded-lg py-2 px-3 -mt-2 mb-4;
 }
 
-.btn-row-delete {
-  @apply text-[13px] font-medium text-stone-muted bg-transparent border-none py-0.5 px-2 rounded-sm cursor-pointer
-    transition-colors duration-150 ease-snappy hover:text-foreground
-    dark:text-[oklch(0.48_0.02_290)] dark:hover:text-[oklch(0.82_0_0)]
-    focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink focus-visible:outline-offset-2;
-}
-
 .back-link {
   @apply inline-flex items-center gap-1 text-[13px] font-medium text-stone-muted no-underline mb-3
     transition-colors duration-150 ease-snappy hover:text-foreground;

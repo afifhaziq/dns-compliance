@@ -15,6 +15,7 @@ import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/r-switch'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { XIcon } from '@/components/ui/x'
 import { FaviconSearch } from '@/components/unlumen-ui/favicon-search'
 import { faviconApiUrl } from '../api/domain'
 import {
@@ -318,11 +319,13 @@ function URLsPage() {
                     </TableCell>
                     <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
                       <button
-                        className="btn-row-delete"
+                        type="button"
+                        className="screenshot-icon-btn"
                         onClick={() => setDeleteTarget(u)}
                         aria-label={`Delete ${u.url}`}
+                        title="Delete"
                       >
-                        Delete
+                        <XIcon size={16} />
                       </button>
                     </TableCell>
                   </TableRow>
