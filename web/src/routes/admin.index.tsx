@@ -567,7 +567,7 @@ function AdminPage() {
           <TableBody>
             {compliantIPs.map(ip => (
               <TableRow key={ip.id} className="admin-row">
-                <TableCell className="col-domain" style={{ fontFamily: 'monospace' }}>{ip.address}</TableCell>
+                <TableCell className="col-domain"><span className="ip-value">{ip.address}</span></TableCell>
                 <TableCell className="col-status">{ip.note || '—'}</TableCell>
                 <TableCell className="col-status">{DATE_FMT.format(new Date(ip.created_at))}</TableCell>
                 <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
