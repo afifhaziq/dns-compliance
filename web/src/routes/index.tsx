@@ -115,12 +115,10 @@ function DashboardPage() {
                   <p className="server-count" style={{ color: 'var(--ink)' }}>{requestedThisMonth ?? 0}</p>
                   <p className="dash-label">URLs requested this month</p>
                 </div>
-                {resurfaced.length > 0 && (
-                  <div>
-                    <p className="server-count label-violation">{resurfaced.length}</p>
-                    <p className="dash-label">Resurfaced</p>
-                  </div>
-                )}
+                <div>
+                  <p className={resurfaced.length > 0 ? 'server-count label-violation' : 'server-count'} style={resurfaced.length > 0 ? undefined : { color: 'var(--ink)' }}>{resurfaced.length}</p>
+                  <p className="dash-label">Resurfaced</p>
+                </div>
               </div>
               {trendChartData.length >= 2 && (
                 <div className="mt-4">

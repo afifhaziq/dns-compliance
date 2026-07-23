@@ -206,12 +206,10 @@ function ScanResultsPage() {
                 <p className="dash-label">Worst ISP ({worstISP.count} violations)</p>
               </div>
             )}
-            {resurfacedUrls.size > 0 && (
-              <div>
-                <p className="server-count label-violation">{resurfacedUrls.size}</p>
-                <p className="dash-label">Resurfaced</p>
-              </div>
-            )}
+            <div>
+              <p className={resurfacedUrls.size > 0 ? 'server-count label-violation' : 'server-count'} style={resurfacedUrls.size > 0 ? undefined : { color: 'var(--ink)' }}>{resurfacedUrls.size}</p>
+              <p className="dash-label">Resurfaced</p>
+            </div>
           </div>
         </div>
       )}
