@@ -14,12 +14,30 @@ import {
   DialogFooter,
 } from '@/components/animate-ui/components/radix/dialog'
 import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
+import { IPPortInput } from '@/components/ip-port-input'
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
+import { Separator } from '@/components/ui/separator'
 import { useAuth } from './__root'
 
 export const Route = createFileRoute('/dns-servers')({ component: DNSServersPage })
 
 type Protocol = DNSServer['protocol']
+
+const DEFAULT_PORTS: Partial<Record<Protocol, string>> = { udp: '53', dot: '853' }
+
+// Fills in the default port for udp/dot when the address has none, or still has
+// the other protocol's default — leaves a deliberately custom port untouched.
+// doh addresses are full URLs (e.g. https://1.1.1.1/dns-query), not host:port.
+function syncPort(address: string, protocol: Protocol): string {
+  const trimmed = address.trim()
+  const defaultPort = DEFAULT_PORTS[protocol]
+  if (!trimmed || !defaultPort) return address
+  const idx = trimmed.lastIndexOf(':')
+  const host = idx === -1 ? trimmed : trimmed.slice(0, idx)
+  const port = idx === -1 ? '' : trimmed.slice(idx + 1)
+  if (port && port !== '53' && port !== '853') return address
+  return `${host}:${defaultPort}`
+}
 
 /* ─── Add / Edit DNS Server Dialog ───────────────────────────────────────── */
 
@@ -60,10 +78,11 @@ function DnsServerFormDialog({
     e.preventDefault()
     if (!isp.trim()) { setError('ISP is required'); return }
     if (!address.trim()) { setError('Address is required'); return }
+    const normalizedAddress = syncPort(address, protocol)
     setLoading(true)
     setError(null)
     try {
-      const payload = { isp: isp.trim(), name: name.trim(), address: address.trim(), protocol }
+      const payload = { isp: isp.trim(), name: name.trim(), address: normalizedAddress, protocol }
       if (editing) {
         await updateDnsServer(editing.id, payload)
       } else {
@@ -119,12 +138,26 @@ function DnsServerFormDialog({
             />
           </div>
           <div className="form-field">
-            <label className="form-label" htmlFor="dns-address-input">Address</label>
+            <label className="form-label" id="dns-address-label">Address</label>
+            <IPPortInput
+              value={address}
+              onChange={setAddress}
+              onBlur={() => setAddress(a => syncPort(a, protocol))}
+              disabled={loading}
+              portPlaceholder={DEFAULT_PORTS[protocol]}
+            />
+            <div className="relative my-1 mt-5 mb-5">
+              <Separator />
+              <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-xs text-stone-muted">
+                or
+              </span>
+            </div>
             <input
-              id="dns-address-input"
+              id="dns-address-doh-input"
               className="form-input"
               type="text"
-              placeholder="1.1.1.1:853 or https://1.1.1.1/dns-query"
+              placeholder="https://1.1.1.1/dns-query (DoH URL)"
+              aria-label="DoH URL"
               value={address}
               onChange={e => setAddress(e.target.value)}
               disabled={loading}
@@ -132,7 +165,15 @@ function DnsServerFormDialog({
           </div>
           <div className="form-field">
             <label className="form-label" id="dns-protocol-label">Protocol</label>
-            <Select value={protocol} onValueChange={v => setProtocol(v as Protocol)} disabled={loading}>
+            <Select
+              value={protocol}
+              onValueChange={v => {
+                const next = v as Protocol
+                setProtocol(next)
+                setAddress(a => syncPort(a, next))
+              }}
+              disabled={loading}
+            >
               <SelectTrigger aria-labelledby="dns-protocol-label" className="w-full" />
               <SelectContent>
                 <SelectItem index={0} value="udp">udp — plain DNS</SelectItem>
