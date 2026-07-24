@@ -48,14 +48,15 @@ function DomainServerBreakdown({ domain }: { domain: string }) {
   }
 
   return (
-    <Table className="results-table m-4" aria-label={`Per-DNS-server history for ${domain}`}>
+    <Table className="results-table" aria-label={`Per-DNS-server history for ${domain}`}>
       <TableHeader>
         <TableRow>
           <TableHead className="th-left" scope="col">DNS Server</TableHead>
           <TableHead className="th-left" scope="col">ISP</TableHead>
+          <TableHead className="th-left" scope="col">Address</TableHead>
           <TableHead className="col-status th-left" scope="col">Compliance</TableHead>
           <TableHead className="col-scan-id th-left" scope="col">Total Scans</TableHead>
-          <TableHead className="col-last-scanned th-left" scope="col">Last Scanned</TableHead>
+          <TableHead className="col-last-scanned th-left w-2" scope="col">Last Scanned</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -65,6 +66,7 @@ function DomainServerBreakdown({ domain }: { domain: string }) {
             <TableRow key={s.dns_server_id} className="sub-row">
               <TableCell><span className="dns-name">{s.dns_server_name}</span></TableCell>
               <TableCell className="text-stone-muted text-[0.8rem]">{s.isp}</TableCell>
+              <TableCell><span className="dns-server-addr">{s.address}</span></TableCell>
               <TableCell className="col-status">
                 <div className="server-bar-wrap">
                   <div className="server-bar" role="presentation">

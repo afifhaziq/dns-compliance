@@ -275,6 +275,7 @@ func (s *postgresStore) DomainServerSummaries(ctx context.Context, urlValue stri
 		DNSServerID    uint
 		DNSServerName  string
 		ISP            string
+		Address        string
 		TotalScans     int
 		CompliantScans int
 		LastScannedAt  string
@@ -285,12 +286,13 @@ func (s *postgresStore) DomainServerSummaries(ctx context.Context, urlValue stri
 		Select(`scan_results.dns_server_id,
             dns_servers.name AS dns_server_name,
             dns_servers.isp,
+            dns_servers.address,
             COUNT(*) AS total_scans,
             SUM(CASE WHEN scan_results.compliant = true THEN 1 ELSE 0 END) AS compliant_scans,
             MAX(scan_results.scanned_at) AS last_scanned_at`).
 		Joins("JOIN dns_servers ON dns_servers.id = scan_results.dns_server_id").
 		Where("scan_results.url_value = ?", urlValue).
-		Group("scan_results.dns_server_id, dns_servers.name, dns_servers.isp").
+		Group("scan_results.dns_server_id, dns_servers.name, dns_servers.isp, dns_servers.address").
 		Order("last_scanned_at DESC").
 		Scan(&rows).Error
 	if err != nil {
@@ -303,6 +305,7 @@ func (s *postgresStore) DomainServerSummaries(ctx context.Context, urlValue stri
 			DNSServerID:    r.DNSServerID,
 			DNSServerName:  r.DNSServerName,
 			ISP:            r.ISP,
+			Address:        r.Address,
 			TotalScans:     r.TotalScans,
 			CompliantScans: r.CompliantScans,
 			LastScannedAt:  parseAggregateTimestamp(r.LastScannedAt),

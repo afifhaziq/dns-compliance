@@ -142,6 +142,7 @@ export type DomainServerSummary = {
   dns_server_id: number
   dns_server_name: string
   isp: string
+  address: string  // IP:port for udp/dot, full URL for doh
   total_scans: number
   compliant_scans: number
   last_scanned_at: string  // RFC3339

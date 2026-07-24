@@ -1502,7 +1502,7 @@ func TestDomainServerSummaries_AggregatesPerServer(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected a row for ServerA, got %+v", summaries)
 	}
-	if a.ISP != "ISP-A" || a.TotalScans != 2 || a.CompliantScans != 1 || !a.LastScannedAt.Equal(t2) {
+	if a.ISP != "ISP-A" || a.Address != "9.9.9.7:53" || a.TotalScans != 2 || a.CompliantScans != 1 || !a.LastScannedAt.Equal(t2) {
 		t.Fatalf("unexpected ServerA summary: %+v", a)
 	}
 
@@ -1510,7 +1510,7 @@ func TestDomainServerSummaries_AggregatesPerServer(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected a row for ServerB, got %+v", summaries)
 	}
-	if b.ISP != "ISP-B" || b.TotalScans != 1 || b.CompliantScans != 0 || !b.LastScannedAt.Equal(t1) {
+	if b.ISP != "ISP-B" || b.Address != "9.9.9.8:53" || b.TotalScans != 1 || b.CompliantScans != 0 || !b.LastScannedAt.Equal(t1) {
 		t.Fatalf("unexpected ServerB summary: %+v", b)
 	}
 }

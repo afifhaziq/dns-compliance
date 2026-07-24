@@ -286,6 +286,7 @@ type DomainServerSummary struct {
 	DNSServerID    uint      `json:"dns_server_id"`
 	DNSServerName  string    `json:"dns_server_name"`
 	ISP            string    `json:"isp"`
+	Address        string    `json:"address"` // IP:port for udp/dot, full URL for doh
 	TotalScans     int       `json:"total_scans"`
 	CompliantScans int       `json:"compliant_scans"`
 	LastScannedAt  time.Time `json:"last_scanned_at"`
