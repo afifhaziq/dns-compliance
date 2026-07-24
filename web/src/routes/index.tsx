@@ -10,7 +10,7 @@ import { Line } from '@/components/charts/line'
 import { Grid } from '@/components/charts/grid'
 import { XAxis } from '@/components/charts/x-axis'
 import { ChartTooltip } from '@/components/charts/tooltip'
-import { computeISPStats, ISPStatusSkeleton, ISPStatusTable } from '@/components/isp-status-table'
+import { getISPNames, ISPBentoGrid, ISPBentoSkeleton } from '@/components/isp-bento-grid'
 
 export const Route = createFileRoute('/')({ component: DashboardPage })
 
@@ -51,7 +51,7 @@ function DashboardPage() {
 
   useEffect(() => { load() }, [load, refreshSignal])
 
-  const ispStats = useMemo(() => computeISPStats(results), [results])
+  const isps = useMemo(() => getISPNames(results), [results])
   const lastScan = useMemo(() => lastScanTime(groupResults(results)), [results])
   const hasResults = results.length > 0
 
@@ -71,7 +71,7 @@ function DashboardPage() {
   if (!loading) {
     const u = urlCount ?? 0
     if (u > 0) subtitleParts.push(`${u} ${u === 1 ? 'domain' : 'domains'}`)
-    if (ispStats.length > 0) subtitleParts.push(`${ispStats.length} ${ispStats.length === 1 ? 'ISP' : 'ISPs'}`)
+    if (isps.length > 0) subtitleParts.push(`${isps.length} ${isps.length === 1 ? 'ISP' : 'ISPs'}`)
     if (lastScan) subtitleParts.push(`Last scan: ${lastScan}`)
   }
 
@@ -154,14 +154,14 @@ function DashboardPage() {
           <div className="dash-section mt-4">
             <p className="section-title mb-3">ISP Compliance Status</p>
             {loading ? (
-              <ISPStatusSkeleton count={3} />
+              <ISPBentoSkeleton count={4} />
             ) : !hasResults ? (
               <div className="dash-table-wrap dash-empty">
                 <p className="dash-empty-heading">No scan data yet</p>
                 <p className="dash-empty-body">Run a scan to see ISP compliance status.</p>
               </div>
             ) : (
-              <ISPStatusTable stats={ispStats} />
+              <ISPBentoGrid results={results} />
             )}
           </div>
         </div>
