@@ -3,6 +3,8 @@ import { Link } from '@tanstack/react-router'
 import { Minus, TrendingDown, TrendingUp } from 'lucide-react'
 import { fetchISPStats, fetchISPTiming, fetchISPTrend } from '@/api/isps'
 import type { ISPStats, ISPTiming, ScanResult } from '@/api/types'
+import { AnimateIcon } from '@/components/animate-ui/icons/icon'
+import { ChevronRightIcon } from '@/components/animate-ui/icons/chevron-right'
 import { useChart } from '@/components/charts/chart-context'
 import { Gauge } from '@/components/charts/gauge'
 import { LineChart } from '@/components/charts/line-chart'
@@ -89,7 +91,12 @@ function ISPCard({ data }: { data: ISPCardData }) {
   return (
     <div className="bento-card">
       <div className="bento-card-header">
-        <Link to="/isps/$isp" params={{ isp }} className="server-name">{isp}</Link>
+        <AnimateIcon animateOnHover asChild>
+          <Link to="/isps/$isp" params={{ isp }} className="server-name inline-flex items-center gap-1">
+            {isp}
+            <ChevronRightIcon size={14} />
+          </Link>
+        </AnimateIcon>
         <span className="dash-label mb-0">{serverCount} {serverCount === 1 ? 'server' : 'servers'}</span>
       </div>
 
