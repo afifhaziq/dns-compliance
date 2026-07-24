@@ -1159,6 +1159,69 @@ func (h *Handlers) ResurfacedDomains(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domains)
 }
 
+// Domain Summaries — GET /api/domains, backs the Domain page's browseable
+// "any domain with scan history" table (distinct from /api/results, which is
+// only the latest scan run).
+
+const (
+	defaultDomainSummaryPageSize = 25
+	maxDomainSummaryPageSize     = 100
+)
+
+func (h *Handlers) DomainSummaries(w http.ResponseWriter, r *http.Request) {
+	page := 1
+	if p, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && p > 0 {
+		page = p
+	}
+	pageSize := defaultDomainSummaryPageSize
+	if ps, err := strconv.Atoi(r.URL.Query().Get("page_size")); err == nil && ps > 0 && ps <= maxDomainSummaryPageSize {
+		pageSize = ps
+	}
+
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	var domains []db.DomainSummary
+	var total int
+	var err error
+	if user.IsAdmin {
+		domains, total, err = h.store.ListDomainSummaries(r.Context(), page, pageSize)
+	} else {
+		if user.DepartmentID == nil {
+			writeError(w, http.StatusForbidden, "user has no department")
+			return
+		}
+		domains, total, err = h.store.ListDomainSummariesForDepartment(r.Context(), page, pageSize, *user.DepartmentID)
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load domain summaries")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"domains": domains, "total": total})
+}
+
+// Domain Server Summaries — GET /api/domains/*url, the expanded-row detail
+// under the Domain page's history table: one lifetime aggregate row per DNS
+// server that has ever scanned this one domain.
+func (h *Handlers) DomainServerSummaries(w http.ResponseWriter, r *http.Request) {
+	urlValue, err := url.PathUnescape(chi.URLParam(r, "*"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid url")
+		return
+	}
+	if !requireDomainOwnership(h, w, r, urlValue) {
+		return
+	}
+	summaries, err := h.store.DomainServerSummaries(r.Context(), urlValue)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load domain server summaries")
+		return
+	}
+	writeJSON(w, http.StatusOK, summaries)
+}
+
 // Screenshot
 
 func (h *Handlers) TriggerScreenshot(w http.ResponseWriter, r *http.Request) {

@@ -121,3 +121,28 @@ export type ResurfacedDomain = {
   resurfaced_at: string      // RFC3339, most recent across affected_servers
   affected_servers: ResurfacedServerEntry[]
 }
+
+// One row of GET /api/domains — a lifetime (not just-latest-run) aggregate
+// per domain, used by the Domain page's browseable history table.
+export type DomainSummary = {
+  url: string
+  total_scans: number
+  compliant_scans: number
+  last_scanned_at: string  // RFC3339
+}
+
+export type DomainSummariesResponse = {
+  domains: DomainSummary[]
+  total: number
+}
+
+// One row of GET /api/domains/*url — a single DNS server's lifetime
+// aggregate for one domain, used by the Domain page's expanded-row breakdown.
+export type DomainServerSummary = {
+  dns_server_id: number
+  dns_server_name: string
+  isp: string
+  total_scans: number
+  compliant_scans: number
+  last_scanned_at: string  // RFC3339
+}

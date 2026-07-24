@@ -61,6 +61,8 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Get("/isps/{isp}/timing", h.ISPTiming)
 			r.Get("/trend", h.NationalTrend)
 			r.Get("/resurfaced", h.ResurfacedDomains)
+			r.Get("/domains", h.DomainSummaries)
+			r.Get("/domains/*", h.DomainServerSummaries)
 
 			r.Post("/screenshot", h.TriggerScreenshot)
 

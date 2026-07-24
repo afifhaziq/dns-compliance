@@ -269,6 +269,28 @@ type ResurfacedDomain struct {
 	AffectedServers []ResurfacedServerEntry `json:"affected_servers"`
 }
 
+// DomainSummary is one row of GET /api/domains — a lifetime aggregate over
+// every ScanResult ever recorded for a domain (not just the latest scan
+// run), used to browse/look up any domain with scan history.
+type DomainSummary struct {
+	URLValue       string    `json:"url"`
+	TotalScans     int       `json:"total_scans"`
+	CompliantScans int       `json:"compliant_scans"`
+	LastScannedAt  time.Time `json:"last_scanned_at"`
+}
+
+// DomainServerSummary is one DNS server's lifetime aggregate for a single
+// domain — the nested per-row breakdown under GET /api/domains/*url, same
+// shape as DomainSummary but scoped to one domain and split by server.
+type DomainServerSummary struct {
+	DNSServerID    uint      `json:"dns_server_id"`
+	DNSServerName  string    `json:"dns_server_name"`
+	ISP            string    `json:"isp"`
+	TotalScans     int       `json:"total_scans"`
+	CompliantScans int       `json:"compliant_scans"`
+	LastScannedAt  time.Time `json:"last_scanned_at"`
+}
+
 // DailyComplianceLevel buckets a day's results onto the heatmap's 5-level
 // scale: 0 = no scans, 1 = fully compliant, 2-4 = increasing violation
 // severity (share of that day's scans that failed).

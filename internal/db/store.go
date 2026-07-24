@@ -57,6 +57,19 @@ type ResultStore interface {
 	DailyComplianceByURL(ctx context.Context, urlValue string, since, until time.Time) ([]DailyComplianceStat, error)
 	InsertResult(ctx context.Context, r ScanResult) error
 	UpdateScreenshot(ctx context.Context, resultID uint, screenshotURL string) error
+
+	// ListDomainSummaries/ForDepartment back GET /api/domains — a paginated,
+	// lifetime (not just-latest-run) aggregate per domain, sorted by most
+	// recently scanned first. The department variant matches on
+	// department_urls.department_id only (no enabled filter), so a domain
+	// disabled from the watchlist is still findable by its history.
+	ListDomainSummaries(ctx context.Context, page, pageSize int) ([]DomainSummary, int, error)
+	ListDomainSummariesForDepartment(ctx context.Context, page, pageSize int, departmentID uint) ([]DomainSummary, int, error)
+
+	// DomainServerSummaries backs the Domain page's expanded-row breakdown —
+	// unscoped like ResultsByURL/DailyComplianceByURL; the handler enforces
+	// department ownership via requireDomainOwnership before calling it.
+	DomainServerSummaries(ctx context.Context, urlValue string) ([]DomainServerSummary, error)
 }
 
 // ISPStatsStore aggregates ScanResult rows into per-ISP compliance, trend,

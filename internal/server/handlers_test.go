@@ -440,6 +440,15 @@ func (m *fullMockStore) ResurfacedDomains(_ context.Context) ([]db.ResurfacedDom
 func (m *fullMockStore) ResurfacedDomainsForDepartment(_ context.Context, _ uint) ([]db.ResurfacedDomain, error) {
 	return nil, nil
 }
+func (m *fullMockStore) ListDomainSummaries(_ context.Context, _, _ int) ([]db.DomainSummary, int, error) {
+	return nil, 0, nil
+}
+func (m *fullMockStore) ListDomainSummariesForDepartment(_ context.Context, _, _ int, _ uint) ([]db.DomainSummary, int, error) {
+	return nil, 0, nil
+}
+func (m *fullMockStore) DomainServerSummaries(_ context.Context, _ string) ([]db.DomainServerSummary, error) {
+	return nil, nil
+}
 
 func (m *fullMockStore) UpsertDomainWhois(_ context.Context, w db.DomainWhois) error {
 	for i, existing := range m.domainWhois {
@@ -1096,6 +1105,24 @@ func TestResultsByURL_404ForUnownedDomain(t *testing.T) {
 	r := setupRouter(store, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/results/other.com", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for a domain not on the caller's watchlist, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDomainServerSummaries_404ForUnownedDomain(t *testing.T) {
+	store := &fullMockStore{
+		urls:           []db.URL{{ID: 1, URL: "example.com"}, {ID: 2, URL: "other.com"}},
+		departmentURLs: []db.DepartmentURL{{DepartmentID: 1, URLID: 1, Enabled: true}},
+	}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/domains/other.com", nil)
 	req.AddCookie(cookie)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)

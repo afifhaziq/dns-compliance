@@ -1361,3 +1361,156 @@ func TestResurfacedDomains_ScopesToDepartmentWatchlist(t *testing.T) {
 		t.Fatalf("expected non-owning department to see no resurfaced domains, got %d", len(otherDomains))
 	}
 }
+
+func TestListDomainSummaries_AggregatesLifetimeScans(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{Name: "SummarySrv", Address: "9.9.9.5:53", Protocol: "udp"})
+	d, _ := s.CreateDepartment(ctx, "SummaryDept")
+	u, _ := s.AddURLToWatchlist(ctx, d.ID, "summary.com")
+
+	t1 := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	run1, _ := s.CreateScanRun(ctx, "manual")
+	run2, _ := s.CreateScanRun(ctx, "manual")
+	if err := s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run1.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
+		Compliant: true, ScannedAt: t1,
+	}); err != nil {
+		t.Fatalf("InsertResult 1: %v", err)
+	}
+	if err := s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run2.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
+		Compliant: false, ScannedAt: t2,
+	}); err != nil {
+		t.Fatalf("InsertResult 2: %v", err)
+	}
+
+	summaries, total, err := s.ListDomainSummaries(ctx, 1, 25)
+	if err != nil {
+		t.Fatalf("ListDomainSummaries: %v", err)
+	}
+	if total != 1 || len(summaries) != 1 {
+		t.Fatalf("expected 1 domain, got total=%d len=%d", total, len(summaries))
+	}
+	got := summaries[0]
+	if got.URLValue != "summary.com" || got.TotalScans != 2 || got.CompliantScans != 1 {
+		t.Fatalf("unexpected summary: %+v", got)
+	}
+	if !got.LastScannedAt.Equal(t2) {
+		t.Fatalf("expected LastScannedAt %v, got %v", t2, got.LastScannedAt)
+	}
+}
+
+func TestListDomainSummariesForDepartment_IncludesDisabledDomain(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{Name: "DisabledSrv", Address: "9.9.9.6:53", Protocol: "udp"})
+	run, _ := s.CreateScanRun(ctx, "manual")
+	owner, _ := s.CreateDepartment(ctx, "DisabledOwner")
+	other, _ := s.CreateDepartment(ctx, "DisabledOther")
+	u, _ := s.AddURLToWatchlist(ctx, owner.ID, "disabled-history.com")
+
+	if err := s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
+		Compliant: false, ScannedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("InsertResult: %v", err)
+	}
+
+	// Disable the URL on the owning department's watchlist — it still has
+	// history, so it must remain visible in the lookup table (unlike
+	// ListWatchedURLs, which is enabled-only and feeds the scan sweep).
+	if ok, err := s.SetURLEnabled(ctx, owner.ID, u.ID, false); err != nil || !ok {
+		t.Fatalf("SetURLEnabled: ok=%v err=%v", ok, err)
+	}
+
+	ownerSummaries, total, err := s.ListDomainSummariesForDepartment(ctx, 1, 25, owner.ID)
+	if err != nil {
+		t.Fatalf("ListDomainSummariesForDepartment(owner): %v", err)
+	}
+	if total != 1 || len(ownerSummaries) != 1 {
+		t.Fatalf("expected disabled-but-historied domain to still be listed, got total=%d len=%d", total, len(ownerSummaries))
+	}
+
+	otherSummaries, total, err := s.ListDomainSummariesForDepartment(ctx, 1, 25, other.ID)
+	if err != nil {
+		t.Fatalf("ListDomainSummariesForDepartment(other): %v", err)
+	}
+	if total != 0 || len(otherSummaries) != 0 {
+		t.Fatalf("expected non-owning department to see nothing, got total=%d len=%d", total, len(otherSummaries))
+	}
+}
+
+func TestDomainServerSummaries_AggregatesPerServer(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srvA, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "ISP-A", Name: "ServerA", Address: "9.9.9.7:53", Protocol: "udp"})
+	srvB, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "ISP-B", Name: "ServerB", Address: "9.9.9.8:53", Protocol: "udp"})
+	d, _ := s.CreateDepartment(ctx, "PerServerDept")
+	u, _ := s.AddURLToWatchlist(ctx, d.ID, "per-server.com")
+	other, _ := s.AddURLToWatchlist(ctx, d.ID, "unrelated.com")
+
+	t1 := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	run1, _ := s.CreateScanRun(ctx, "manual")
+	run2, _ := s.CreateScanRun(ctx, "manual")
+
+	if err := s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run1.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srvA.ID,
+		Compliant: true, ScannedAt: t1,
+	}); err != nil {
+		t.Fatalf("InsertResult A1: %v", err)
+	}
+	if err := s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run2.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srvA.ID,
+		Compliant: false, ScannedAt: t2,
+	}); err != nil {
+		t.Fatalf("InsertResult A2: %v", err)
+	}
+	if err := s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run1.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srvB.ID,
+		Compliant: false, ScannedAt: t1,
+	}); err != nil {
+		t.Fatalf("InsertResult B1: %v", err)
+	}
+	// A result for a different domain must not leak into per-server rows.
+	if err := s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run1.ID, URLID: other.ID, URLValue: other.URL, DNSServerID: srvA.ID,
+		Compliant: true, ScannedAt: t1,
+	}); err != nil {
+		t.Fatalf("InsertResult other-domain: %v", err)
+	}
+
+	summaries, err := s.DomainServerSummaries(ctx, "per-server.com")
+	if err != nil {
+		t.Fatalf("DomainServerSummaries: %v", err)
+	}
+	if len(summaries) != 2 {
+		t.Fatalf("expected 2 servers, got %d: %+v", len(summaries), summaries)
+	}
+
+	byServer := make(map[uint]db.DomainServerSummary, len(summaries))
+	for _, sm := range summaries {
+		byServer[sm.DNSServerID] = sm
+	}
+
+	a, ok := byServer[srvA.ID]
+	if !ok {
+		t.Fatalf("expected a row for ServerA, got %+v", summaries)
+	}
+	if a.ISP != "ISP-A" || a.TotalScans != 2 || a.CompliantScans != 1 || !a.LastScannedAt.Equal(t2) {
+		t.Fatalf("unexpected ServerA summary: %+v", a)
+	}
+
+	b, ok := byServer[srvB.ID]
+	if !ok {
+		t.Fatalf("expected a row for ServerB, got %+v", summaries)
+	}
+	if b.ISP != "ISP-B" || b.TotalScans != 1 || b.CompliantScans != 0 || !b.LastScannedAt.Equal(t1) {
+		t.Fatalf("unexpected ServerB summary: %+v", b)
+	}
+}

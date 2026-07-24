@@ -197,6 +197,139 @@ func (s *postgresStore) UpdateScreenshot(ctx context.Context, resultID uint, scr
 		Update("screenshot_url", screenshotURL).Error
 }
 
+func (s *postgresStore) ListDomainSummaries(ctx context.Context, page, pageSize int) ([]DomainSummary, int, error) {
+	return s.listDomainSummaries(ctx, page, pageSize, nil)
+}
+
+// ListDomainSummariesForDepartment is the same aggregate as
+// ListDomainSummaries, scoped to domains the department's watchlist has ever
+// linked (department_urls.department_id match, regardless of Enabled) so a
+// domain disabled from the watchlist stays findable by its history.
+func (s *postgresStore) ListDomainSummariesForDepartment(ctx context.Context, page, pageSize int, departmentID uint) ([]DomainSummary, int, error) {
+	return s.listDomainSummaries(ctx, page, pageSize, &departmentID)
+}
+
+// domainSummaryQuery returns a fresh scan_results query (optionally
+// department-joined) each call, so the count query and the paginated select
+// below never share mutated clause state.
+func (s *postgresStore) domainSummaryQuery(ctx context.Context, departmentID *uint) *gorm.DB {
+	q := s.db.WithContext(ctx).Table("scan_results")
+	if departmentID != nil {
+		q = q.Joins("JOIN department_urls ON department_urls.url_id = scan_results.url_id AND department_urls.department_id = ?", *departmentID)
+	}
+	return q
+}
+
+func (s *postgresStore) listDomainSummaries(ctx context.Context, page, pageSize int, departmentID *uint) ([]DomainSummary, int, error) {
+	var total int64
+	if err := s.domainSummaryQuery(ctx, departmentID).
+		Select("COUNT(DISTINCT scan_results.url_value)").
+		Scan(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// LastScannedAt is scanned as a string, not time.Time: Postgres's driver
+	// happily hands back a MAX() of a timestamp column as a string too (via
+	// database/sql's time.Time->string fallback), but SQLite's driver (used
+	// in tests) can't scan a MAX() of a datetime column directly into
+	// time.Time — same portability issue noted on ispComplianceTiming.
+	type row struct {
+		URLValue       string
+		TotalScans     int
+		CompliantScans int
+		LastScannedAt  string
+	}
+	var rows []row
+	err := s.domainSummaryQuery(ctx, departmentID).
+		Select(`scan_results.url_value,
+            COUNT(*) AS total_scans,
+            SUM(CASE WHEN scan_results.compliant = true THEN 1 ELSE 0 END) AS compliant_scans,
+            MAX(scan_results.scanned_at) AS last_scanned_at`).
+		Group("scan_results.url_value").
+		Order("last_scanned_at DESC").
+		Limit(pageSize).
+		Offset((page - 1) * pageSize).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	summaries := make([]DomainSummary, len(rows))
+	for i, r := range rows {
+		summaries[i] = DomainSummary{
+			URLValue:       r.URLValue,
+			TotalScans:     r.TotalScans,
+			CompliantScans: r.CompliantScans,
+			LastScannedAt:  parseAggregateTimestamp(r.LastScannedAt),
+		}
+	}
+	return summaries, int(total), nil
+}
+
+// DomainServerSummaries aggregates one domain's lifetime scan history into
+// one row per DNS server that has ever checked it — the expanded-row detail
+// under GET /api/domains/*url. Not department-scoped itself (see the
+// ResultStore doc comment); the handler checks ownership before calling it.
+func (s *postgresStore) DomainServerSummaries(ctx context.Context, urlValue string) ([]DomainServerSummary, error) {
+	type row struct {
+		DNSServerID    uint
+		DNSServerName  string
+		ISP            string
+		TotalScans     int
+		CompliantScans int
+		LastScannedAt  string
+	}
+	var rows []row
+	err := s.db.WithContext(ctx).
+		Table("scan_results").
+		Select(`scan_results.dns_server_id,
+            dns_servers.name AS dns_server_name,
+            dns_servers.isp,
+            COUNT(*) AS total_scans,
+            SUM(CASE WHEN scan_results.compliant = true THEN 1 ELSE 0 END) AS compliant_scans,
+            MAX(scan_results.scanned_at) AS last_scanned_at`).
+		Joins("JOIN dns_servers ON dns_servers.id = scan_results.dns_server_id").
+		Where("scan_results.url_value = ?", urlValue).
+		Group("scan_results.dns_server_id, dns_servers.name, dns_servers.isp").
+		Order("last_scanned_at DESC").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	summaries := make([]DomainServerSummary, len(rows))
+	for i, r := range rows {
+		summaries[i] = DomainServerSummary{
+			DNSServerID:    r.DNSServerID,
+			DNSServerName:  r.DNSServerName,
+			ISP:            r.ISP,
+			TotalScans:     r.TotalScans,
+			CompliantScans: r.CompliantScans,
+			LastScannedAt:  parseAggregateTimestamp(r.LastScannedAt),
+		}
+	}
+	return summaries, nil
+}
+
+// parseAggregateTimestamp parses a MAX(timestamp)-style aggregate value
+// scanned as a string, trying Postgres's and SQLite's differing textual
+// formats in turn. Returns the zero time.Time if s is empty or unrecognized.
+func parseAggregateTimestamp(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05-07:00",
+	} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
 // LastScanRun returns the most recently started scan run, excluding
 // "screenshot" runs — those are narrow single-URL/single-DNS-server
 // background jobs triggered by the per-row screenshot button, not "the scan"
