@@ -37,8 +37,9 @@ import {
 } from '@/lib/heatmap-year'
 
 export const Route = createFileRoute('/domain/$url')({
-  validateSearch: (search: Record<string, unknown>) => ({
-    tab: search.tab === 'history' ? 'history' as const : 'overview' as const,
+  validateSearch: (search: Record<string, unknown>): { tab: 'history' | 'overview'; server?: string } => ({
+    tab: search.tab === 'history' ? 'history' : 'overview',
+    server: typeof search.server === 'string' ? search.server : undefined,
   }),
   component: URLHistoryPage,
 })
@@ -253,7 +254,7 @@ const heatmapTooltipDateFmt = new Intl.DateTimeFormat('en-US', {
 
 function URLHistoryPage() {
   const { url } = Route.useParams()
-  const { tab } = Route.useSearch()
+  const { tab, server } = Route.useSearch()
   const hostname = useMemo(() => { try { return new URL(url).hostname } catch { return url } }, [url])
 
   const [results, setResults] = useState<ScanResult[]>([])
@@ -261,7 +262,10 @@ function URLHistoryPage() {
   const [error, setError] = useState<string | null>(null)
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-  const [dnsFilter, setDnsFilter] = useState<string>('all')
+  // Deep-linked from e.g. the Domain page's per-server breakdown
+  // (?tab=history&server=<name>), which pre-selects this dropdown instead of
+  // defaulting to "all servers".
+  const [dnsFilter, setDnsFilter] = useState<string>(() => server ?? 'all')
   const [page, setPage] = useState(1)
 
   const load = useCallback(async () => {

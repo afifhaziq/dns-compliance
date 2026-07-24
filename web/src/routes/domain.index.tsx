@@ -22,6 +22,7 @@ const skeletonWidths = [180, 90, 60, 100]
 /* ─── Server breakdown (expanded nested table) ──────────────────────────── */
 
 function DomainServerBreakdown({ domain }: { domain: string }) {
+  const navigate = useNavigate()
   const [servers, setServers] = useState<DomainServerSummary[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -63,7 +64,15 @@ function DomainServerBreakdown({ domain }: { domain: string }) {
         {servers.map(s => {
           const pct = s.total_scans > 0 ? Math.round((s.compliant_scans / s.total_scans) * 100) : 0
           return (
-            <TableRow key={s.dns_server_id} className="sub-row">
+            <TableRow
+              key={s.dns_server_id}
+              className="sub-row cursor-pointer hover:bg-stone-panel transition-colors duration-150 ease-snappy"
+              onClick={() => navigate({
+                to: '/domain/$url',
+                params: { url: domain },
+                search: { tab: 'history', server: s.dns_server_name },
+              })}
+            >
               <TableCell><span className="dns-name">{s.dns_server_name}</span></TableCell>
               <TableCell className="text-stone-muted text-[0.8rem]">{s.isp}</TableCell>
               <TableCell><span className="dns-server-addr">{s.address}</span></TableCell>
