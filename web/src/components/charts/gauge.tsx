@@ -30,7 +30,7 @@ import { PieCenterShell } from "./pie-center-shell";
 
 const DEFAULT_NOTCH_ENTER_TRANSITION: Transition = {
   type: "spring",
-  stiffness: 300,
+  stiffness: 100,
   damping: 20,
 };
 

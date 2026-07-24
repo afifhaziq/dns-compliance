@@ -100,10 +100,11 @@ function ISPCard({ data }: { data: ISPCardData }) {
       <Gauge
         orientation="linear"
         value={pct}
-        totalNotches={24}
-        linearHeight={14}
+        totalNotches={100}
+        linearHeight={20}
         activeFill="var(--ink)"
         inactiveFill="var(--stone-border)"
+        enterStaggerScale={0.25}
       />
 
       <div className="bento-stat-row">
