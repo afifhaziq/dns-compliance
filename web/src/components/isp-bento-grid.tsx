@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { Minus, TrendingDown, TrendingUp } from 'lucide-react'
 import { fetchISPStats, fetchISPTiming, fetchISPTrend } from '@/api/isps'
 import type { ISPStats, ISPTiming, ScanResult } from '@/api/types'
+import { useChart } from '@/components/charts/chart-context'
 import { Gauge } from '@/components/charts/gauge'
 import { LineChart } from '@/components/charts/line-chart'
 import { Line } from '@/components/charts/line'
@@ -146,19 +147,34 @@ function ISPCard({ data }: { data: ISPCardData }) {
   )
 }
 
+type HoverPoint = { date: Date; compliance: number }
+
 function TrendSparkline({ trend }: { trend: TrendPoint[] }) {
   const delta = trend[trend.length - 1].compliance - trend[0].compliance
   const deltaClass = delta > 0 ? 'label-compliant' : delta < 0 ? 'label-violation' : ''
   const DeltaIcon = delta > 0 ? TrendingUp : delta < 0 ? TrendingDown : Minus
 
+  const [hover, setHover] = useState<HoverPoint | null>(null)
+
   return (
     <div className="bento-trend">
       <div className="bento-trend-header">
-        <span className="dash-label mb-0">30-day trend</span>
-        <span className={`server-count flex items-center gap-1 ${deltaClass}`}>
-          <DeltaIcon size={12} />
-          {Math.abs(delta)}%
-        </span>
+        {hover ? (
+          <>
+            <span className="dash-label mb-0">
+              {hover.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            </span>
+            <span className="server-count">{hover.compliance}%</span>
+          </>
+        ) : (
+          <>
+            <span className="dash-label mb-0">30-day trend</span>
+            <span className={`server-count flex items-center gap-1 ${deltaClass}`}>
+              <DeltaIcon size={12} />
+              {Math.abs(delta)}%
+            </span>
+          </>
+        )}
       </div>
       <LineChart
         data={trend}
@@ -166,8 +182,27 @@ function TrendSparkline({ trend }: { trend: TrendPoint[] }) {
         aspectRatio="4 / 1"
         margin={{ top: 4, right: 4, bottom: 4, left: 4 }}
       >
-        <Line dataKey="compliance" stroke="var(--ink)" strokeWidth={1.5} fadeEdges={false} />
+        <TrendHoverBridge onHoverChange={setHover} />
+        <Line dataKey="compliance" stroke="var(--ink)" strokeWidth={1.5} fadeEdges={false} showHighlight />
       </LineChart>
     </div>
   )
+}
+
+/** Headless: syncs the chart's hovered point into the card header above it. */
+function TrendHoverBridge({ onHoverChange }: { onHoverChange: (point: HoverPoint | null) => void }) {
+  const { tooltipData } = useChart()
+
+  useEffect(() => {
+    const point = tooltipData?.point
+    const date = point?.date
+    const compliance = point?.compliance
+    if (date instanceof Date && typeof compliance === 'number') {
+      onHoverChange({ date, compliance })
+    } else {
+      onHoverChange(null)
+    }
+  }, [tooltipData, onHoverChange])
+
+  return null
 }
