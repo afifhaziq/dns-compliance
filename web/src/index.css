@@ -980,7 +980,7 @@ th.th-left {
 /* ─── ISP Bento Grid ─────────────────────────────────────────────────────── */
 
 .bento-grid {
-  @apply grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4;
+  @apply grid grid-cols-4 gap-4;
 }
 
 .bento-card {
