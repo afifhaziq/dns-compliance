@@ -187,7 +187,7 @@ function TrendSparkline({ trend }: { trend: TrendPoint[] }) {
         data={trend}
         xDataKey="date"
         aspectRatio="4 / 1"
-        margin={{ top: 4, right: 4, bottom: 4, left: 4 }}
+        margin={{ top: 4, right: 4, left: 4 }}
       >
         <TrendHoverBridge onHoverChange={setHover} />
         <Line dataKey="compliance" stroke="var(--ink)" strokeWidth={1.5} fadeEdges={false} showHighlight />
