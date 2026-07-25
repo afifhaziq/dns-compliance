@@ -222,7 +222,7 @@ func (h *Handlers) DeleteCompliantIP(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ListISPLogos(w http.ResponseWriter, r *http.Request) {
 	logos, err := h.store.ListISPLogos(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, logos)
@@ -239,7 +239,7 @@ func (h *Handlers) UpsertISPLogo(w http.ResponseWriter, r *http.Request) {
 	}
 	logo, err := h.store.UpsertISPLogo(r.Context(), body.ISP, body.LogoURL)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, logo)
@@ -252,7 +252,7 @@ func (h *Handlers) DeleteISPLogo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.store.DeleteISPLogo(r.Context(), isp); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
