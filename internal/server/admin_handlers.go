@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/afif/dns-tracking/internal/db"
@@ -211,6 +212,47 @@ func (h *Handlers) DeleteCompliantIP(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.store.DeleteCompliantIP(r.Context(), uint(id)); err != nil {
 		writeInternalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ISP Logos
+
+func (h *Handlers) ListISPLogos(w http.ResponseWriter, r *http.Request) {
+	logos, err := h.store.ListISPLogos(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, logos)
+}
+
+func (h *Handlers) UpsertISPLogo(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ISP     string `json:"isp"`
+		LogoURL string `json:"logo_url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ISP == "" || body.LogoURL == "" {
+		writeError(w, http.StatusBadRequest, "isp and logo_url are required")
+		return
+	}
+	logo, err := h.store.UpsertISPLogo(r.Context(), body.ISP, body.LogoURL)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, logo)
+}
+
+func (h *Handlers) DeleteISPLogo(w http.ResponseWriter, r *http.Request) {
+	isp, err := url.PathUnescape(chi.URLParam(r, "*"))
+	if err != nil || isp == "" {
+		writeError(w, http.StatusBadRequest, "invalid isp")
+		return
+	}
+	if err := h.store.DeleteISPLogo(r.Context(), isp); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

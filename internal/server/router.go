@@ -76,6 +76,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Get("/resurfaced", h.ResurfacedDomains)
 			r.Get("/domains", h.DomainSummaries)
 			r.Get("/domains/*", h.DomainServerSummaries)
+			r.Get("/isp-logos", h.ListISPLogos)
 
 			r.With(scanLimit).Post("/screenshot", h.TriggerScreenshot)
 
@@ -89,6 +90,8 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 				r.Post("/dns-servers", h.CreateDNSServer)
 				r.Patch("/dns-servers/{id}", h.UpdateDNSServer)
 				r.Delete("/dns-servers/{id}", h.DeleteDNSServer)
+				r.Post("/admin/isp-logos", h.UpsertISPLogo)
+				r.Delete("/admin/isp-logos/*", h.DeleteISPLogo)
 
 				r.Get("/admin/users", h.ListUsers)
 				r.Post("/admin/users", h.CreateUser)

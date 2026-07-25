@@ -33,6 +33,7 @@ type fullMockStore struct {
 	ipInfo         []db.IPInfo
 	favicons       []db.Favicon
 	subdomainScans []db.SubdomainScan
+	ispLogos       []db.ISPLogo
 	scanInterval   int
 	scanEnabled    bool
 }
@@ -394,6 +395,32 @@ func (m *fullMockStore) CreateCompliantIP(_ context.Context, address, note strin
 	return db.CompliantIP{Address: address, Note: note}, nil
 }
 func (m *fullMockStore) DeleteCompliantIP(_ context.Context, _ uint) error { return nil }
+
+func (m *fullMockStore) ListISPLogos(_ context.Context) ([]db.ISPLogo, error) {
+	return m.ispLogos, nil
+}
+
+func (m *fullMockStore) UpsertISPLogo(_ context.Context, isp, logoURL string) (db.ISPLogo, error) {
+	for i, l := range m.ispLogos {
+		if l.ISP == isp {
+			m.ispLogos[i].LogoURL = logoURL
+			return m.ispLogos[i], nil
+		}
+	}
+	logo := db.ISPLogo{ISP: isp, LogoURL: logoURL, CreatedAt: time.Now()}
+	m.ispLogos = append(m.ispLogos, logo)
+	return logo, nil
+}
+
+func (m *fullMockStore) DeleteISPLogo(_ context.Context, isp string) error {
+	for i, l := range m.ispLogos {
+		if l.ISP == isp {
+			m.ispLogos = append(m.ispLogos[:i], m.ispLogos[i+1:]...)
+			return nil
+		}
+	}
+	return nil
+}
 
 func (m *fullMockStore) GetScanInterval(_ context.Context) (int, error) { return m.scanInterval, nil }
 func (m *fullMockStore) SetScanInterval(_ context.Context, minutes int) error {
@@ -1905,5 +1932,93 @@ func TestRefreshHostingInfo_503WhenDisabled(t *testing.T) {
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503 when ipFetch is nil, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestListISPLogos_AllowedForNonAdmin(t *testing.T) {
+	store := &fullMockStore{ispLogos: []db.ISPLogo{{ISP: "Cloudflare", LogoURL: "https://example.com/cf.svg"}}}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/isp-logos", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var logos []db.ISPLogo
+	if err := json.Unmarshal(w.Body.Bytes(), &logos); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(logos) != 1 || logos[0].ISP != "Cloudflare" {
+		t.Fatalf("unexpected logos: %+v", logos)
+	}
+}
+
+func TestUpsertISPLogo_ForbiddenForNonAdmin(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]string{"isp": "Cloudflare", "logo_url": "https://example.com/cf.svg"})
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/isp-logos", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpsertISPLogo_AllowedForDeptAdmin(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := deptAdminCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]string{"isp": "Cloudflare", "logo_url": "https://example.com/cf.svg"})
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/isp-logos", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpsertISPLogo_RequiresBothFields(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]string{"isp": "Cloudflare"})
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/isp-logos", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when logo_url is missing, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDeleteISPLogo_AllowedForDeptAdmin(t *testing.T) {
+	store := &fullMockStore{ispLogos: []db.ISPLogo{{ISP: "Cloudflare", LogoURL: "https://example.com/cf.svg"}}}
+	cookie := deptAdminCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/admin/isp-logos/Cloudflare", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
 	}
 }
