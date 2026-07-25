@@ -14,7 +14,7 @@ import (
 func (h *Handlers) ListDepartments(w http.ResponseWriter, r *http.Request) {
 	departments, err := h.store.ListDepartments(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, departments)
@@ -30,7 +30,7 @@ func (h *Handlers) CreateDepartment(w http.ResponseWriter, r *http.Request) {
 	}
 	d, err := h.store.CreateDepartment(r.Context(), body.Name)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, d)
@@ -46,7 +46,7 @@ func (h *Handlers) ListUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	users, err := h.store.ListUsers(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	if !caller.IsAdmin {
@@ -99,7 +99,7 @@ func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	hash, err := db.HashPassword(body.Password)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	u, err := h.store.CreateUser(r.Context(), db.User{
@@ -110,7 +110,7 @@ func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request) {
 		DepartmentID: body.DepartmentID,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, u)
@@ -131,7 +131,7 @@ func (h *Handlers) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		// department admin: only a plain member of their own department
 		target, err := h.store.GetUserByID(r.Context(), uint(id))
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeInternalError(w, err)
 			return
 		}
 		if target == nil || target.IsAdmin || target.IsDeptAdmin ||
@@ -142,7 +142,7 @@ func (h *Handlers) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := h.store.DeleteUser(r.Context(), uint(id)); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -153,7 +153,7 @@ func (h *Handlers) DeleteUser(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ListUnassignedURLs(w http.ResponseWriter, r *http.Request) {
 	urls, err := h.store.ListUnassignedURLs(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, urls)
@@ -169,7 +169,7 @@ func (h *Handlers) PurgeURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.store.DeleteURL(r.Context(), uint(id)); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -180,7 +180,7 @@ func (h *Handlers) PurgeURL(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ListCompliantIPs(w http.ResponseWriter, r *http.Request) {
 	ips, err := h.store.ListCompliantIPs(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, ips)
@@ -197,7 +197,7 @@ func (h *Handlers) CreateCompliantIP(w http.ResponseWriter, r *http.Request) {
 	}
 	ip, err := h.store.CreateCompliantIP(r.Context(), body.Address, body.Note)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, ip)
@@ -210,7 +210,7 @@ func (h *Handlers) DeleteCompliantIP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.store.DeleteCompliantIP(r.Context(), uint(id)); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -221,12 +221,12 @@ func (h *Handlers) DeleteCompliantIP(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) GetScanInterval(w http.ResponseWriter, r *http.Request) {
 	minutes, err := h.store.GetScanInterval(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	enabled, err := h.store.GetScanEnabled(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"interval_minutes": minutes, "enabled": enabled})
@@ -242,11 +242,11 @@ func (h *Handlers) SetScanInterval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.store.SetScanInterval(r.Context(), body.IntervalMinutes); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	if err := h.store.SetScanEnabled(r.Context(), body.Enabled); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

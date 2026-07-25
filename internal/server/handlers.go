@@ -66,6 +66,14 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
+// writeInternalError logs the real error server-side and returns a generic
+// 500 to the client — raw DB/driver errors (constraint names, SQLSTATE
+// codes) must never reach the response body.
+func writeInternalError(w http.ResponseWriter, err error) {
+	log.Printf("internal error: %v", err)
+	writeError(w, http.StatusInternalServerError, "internal error")
+}
+
 // URLs (department watchlist scope — every user including admin is scoped to
 // their own department's watchlist; admin's department is "Admin")
 
@@ -81,7 +89,7 @@ func (h *Handlers) ListURLs(w http.ResponseWriter, r *http.Request) {
 	}
 	urls, err := h.store.ListDepartmentURLs(r.Context(), *user.DepartmentID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, urls)
@@ -107,10 +115,14 @@ func (h *Handlers) AddToWatchlist(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "url is required")
 		return
 	}
+	if isPrivateHost(body.URL) {
+		writeError(w, http.StatusBadRequest, "url resolves to a private or reserved address")
+		return
+	}
 
 	u, err := h.store.AddURLToWatchlist(r.Context(), *user.DepartmentID, body.URL)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -198,7 +210,7 @@ func (h *Handlers) RemoveFromWatchlist(w http.ResponseWriter, r *http.Request) {
 
 	removed, err := h.store.RemoveURLFromWatchlist(r.Context(), *user.DepartmentID, uint(id))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	if !removed {
@@ -244,7 +256,7 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 	if body.Enabled != nil {
 		f, err := h.store.SetURLEnabled(r.Context(), *user.DepartmentID, uint(id), *body.Enabled)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeInternalError(w, err)
 			return
 		}
 		found = found || f
@@ -261,7 +273,7 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 		}
 		f, err := h.store.SetURLOrderedAt(r.Context(), *user.DepartmentID, uint(id), orderedAt)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeInternalError(w, err)
 			return
 		}
 		found = found || f
@@ -278,7 +290,7 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ListDNSServers(w http.ResponseWriter, r *http.Request) {
 	servers, err := h.store.ListDNSServers(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, servers)
@@ -313,7 +325,7 @@ func (h *Handlers) CreateDNSServer(w http.ResponseWriter, r *http.Request) {
 		Protocol: body.Protocol,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, s)
@@ -353,7 +365,7 @@ func (h *Handlers) UpdateDNSServer(w http.ResponseWriter, r *http.Request) {
 		Protocol: body.Protocol,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, s)
@@ -366,7 +378,7 @@ func (h *Handlers) DeleteDNSServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.store.DeleteDNSServer(r.Context(), uint(id)); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -393,7 +405,7 @@ func (h *Handlers) TriggerScan(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ScanStatus(w http.ResponseWriter, r *http.Request) {
 	run, err := h.store.ActiveScanRun(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	if run == nil {
@@ -421,7 +433,7 @@ func (h *Handlers) LatestResults(w http.ResponseWriter, r *http.Request) {
 		results, err = h.store.LatestResultsForDepartment(r.Context(), *user.DepartmentID)
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, results)
@@ -447,7 +459,7 @@ func (h *Handlers) URLsRequestedThisMonth(w http.ResponseWriter, r *http.Request
 		count, err = h.store.CountDepartmentURLsSinceForDepartment(r.Context(), since, *user.DepartmentID)
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]int{"count": count})
@@ -472,7 +484,7 @@ func requireDomainOwnership(h *Handlers, w http.ResponseWriter, r *http.Request,
 	}
 	owned, err := h.store.URLOwnedByDepartment(r.Context(), *user.DepartmentID, urlValue)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return false
 	}
 	if !owned {
@@ -508,7 +520,7 @@ func (h *Handlers) ResultsByURL(w http.ResponseWriter, r *http.Request) {
 
 	results, err := h.store.ResultsByURL(r.Context(), urlValue, since, until)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, results)
@@ -540,7 +552,7 @@ func (h *Handlers) HeatmapByURL(w http.ResponseWriter, r *http.Request) {
 
 	stats, err := h.store.DailyComplianceByURL(r.Context(), urlValue, since, until)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, stats)
@@ -568,7 +580,7 @@ func (h *Handlers) DomainInfoByURL(w http.ResponseWriter, r *http.Request) {
 
 	info, err := h.store.GetDomainWhois(r.Context(), urlValue)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	if info == nil {
@@ -598,7 +610,7 @@ func (h *Handlers) RefreshDomainInfo(w http.ResponseWriter, r *http.Request) {
 
 	u, err := h.store.GetURLByValue(r.Context(), urlValue)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	if u == nil {
@@ -610,7 +622,7 @@ func (h *Handlers) RefreshDomainInfo(w http.ResponseWriter, r *http.Request) {
 
 	info, err := h.store.GetDomainWhois(r.Context(), urlValue)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, domainInfoResponse{Fetched: true, DomainWhois: info})
@@ -637,7 +649,7 @@ func (h *Handlers) SubdomainsByURL(w http.ResponseWriter, r *http.Request) {
 
 	scan, err := h.store.GetSubdomainScan(r.Context(), urlValue)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	if scan == nil {
@@ -668,7 +680,7 @@ func (h *Handlers) RefreshSubdomains(w http.ResponseWriter, r *http.Request) {
 
 	u, err := h.store.GetURLByValue(r.Context(), urlValue)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	if u == nil {
@@ -680,7 +692,7 @@ func (h *Handlers) RefreshSubdomains(w http.ResponseWriter, r *http.Request) {
 
 	scan, err := h.store.GetSubdomainScan(r.Context(), urlValue)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, subdomainScanResponse{Fetched: true, SubdomainScan: scan})
@@ -928,7 +940,7 @@ type scanProgressResponse struct {
 func (h *Handlers) ScanProgress(w http.ResponseWriter, r *http.Request) {
 	run, err := h.store.LastScanRun(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	if run == nil {
@@ -937,12 +949,12 @@ func (h *Handlers) ScanProgress(w http.ResponseWriter, r *http.Request) {
 	}
 	progress, err := h.store.ScanProgress(r.Context(), run.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	urls, err := h.store.ListWatchedURLs(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, scanProgressResponse{
@@ -1231,6 +1243,10 @@ func (h *Handlers) TriggerScreenshot(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" || len(body.DNSServerIDs) == 0 {
 		writeError(w, http.StatusBadRequest, "url and dns_server_ids are required")
+		return
+	}
+	if isPrivateHost(body.URL) {
+		writeError(w, http.StatusBadRequest, "url resolves to a private or reserved address")
 		return
 	}
 	if h.scanner == nil {

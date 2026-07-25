@@ -1,6 +1,8 @@
 package server
 
 import (
+	"time"
+
 	"github.com/afif/dns-tracking/internal/db"
 	"github.com/afif/dns-tracking/internal/favicon"
 	"github.com/afif/dns-tracking/internal/ipinfo"
@@ -8,6 +10,7 @@ import (
 	"github.com/afif/dns-tracking/internal/whois"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"golang.org/x/time/rate"
 )
 
 // whoisFetch, faviconFetch, subfinderFetch, ipFetch, and netnameFetch may be
@@ -21,8 +24,18 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
+	// 5 attempts/min per IP — slows brute-force/enumeration against login
+	// without a noticeable effect on a real user occasionally mistyping.
+	loginLimit := rateLimitByIP(rate.Every(12*time.Second), 5)
+	// 1 trigger/2s (burst 3) per user — scan/screenshot are expensive
+	// (spawn the crawler / headless Chrome); this just stops accidental or
+	// scripted spam, not a real usage pattern.
+	scanLimit := rateLimitByUser(rate.Every(2*time.Second), 3)
+
 	r.Route("/api", func(r chi.Router) {
-		r.Post("/auth/login", ah.Login) // public
+		r.Use(requireFetchHeader)
+
+		r.With(loginLimit).Post("/auth/login", ah.Login) // public
 
 		r.Group(func(r chi.Router) {
 			r.Use(requireAuth(store))
@@ -41,7 +54,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			// set is admin-only, gated below.
 			r.Get("/dns-servers", h.ListDNSServers)
 
-			r.Post("/scan", h.TriggerScan)
+			r.With(scanLimit).Post("/scan", h.TriggerScan)
 			r.Get("/scan/status", h.ScanStatus)
 			r.Get("/scan/progress", h.ScanProgress)
 			r.Get("/scan/progress/stream", h.ScanProgressStream)
@@ -64,7 +77,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Get("/domains", h.DomainSummaries)
 			r.Get("/domains/*", h.DomainServerSummaries)
 
-			r.Post("/screenshot", h.TriggerScreenshot)
+			r.With(scanLimit).Post("/screenshot", h.TriggerScreenshot)
 
 			// Reachable by a super admin OR a department admin — DNS servers
 			// stay one shared/global catalog (no department scoping), while

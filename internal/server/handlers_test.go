@@ -599,7 +599,13 @@ func setupRouter(store db.Store, sc *server.Scanner) http.Handler {
 	// on-add fetch goroutines never run in tests, so no test hits the
 	// network or shells out.
 	server.RegisterRoutes(r, store, sc, nil, false, nil, nil, nil, nil, nil)
-	return r
+	// Handler tests exercise business logic, not the CSRF header check
+	// itself (client.ts is what's responsible for sending it in practice),
+	// so inject it here rather than at every httptest.NewRequest call site.
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		req.Header.Set("X-Requested-With", "fetch")
+		r.ServeHTTP(w, req)
+	})
 }
 
 // loginAs seeds a user + session directly into the mock store and returns

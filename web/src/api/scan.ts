@@ -6,7 +6,7 @@ export async function triggerScan(urls?: string[]): Promise<void> {
   const res = await fetch('/api/scan', {
     method: 'POST',
     credentials: 'same-origin',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: body ? { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' } : { 'X-Requested-With': 'fetch' },
     body,
   })
   if (!res.ok && res.status !== 409) throw new Error(`Failed to start scan: ${res.status}`)

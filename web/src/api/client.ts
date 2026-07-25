@@ -6,7 +6,7 @@ type RequestOptions = {
 
 async function request<T>(path: string, init?: RequestInit, opts?: RequestOptions): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', ...init?.headers },
     credentials: 'same-origin',
     ...init,
   })
