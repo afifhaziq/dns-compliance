@@ -61,6 +61,8 @@ export type User = {
 
 export type CompliantIP = { id: number; address: string; note: string; created_at: string }
 
+export type ISPLogo = { isp: string; logo_url: string; created_at: string }
+
 export type DailyComplianceStat = {
   dns_server_id: number
   dns_server_name: string
