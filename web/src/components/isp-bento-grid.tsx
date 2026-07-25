@@ -73,7 +73,7 @@ export function ISPBentoGrid({ results }: { results: ScanResult[] }) {
     setLoading(true)
     const [loaded, ispLogos] = await Promise.all([
       Promise.all(isps.map(loadISPCard)),
-      fetchISPLogos(),
+      fetchISPLogos().catch(() => []),
     ])
     setCards(loaded)
     setLogos(Object.fromEntries(ispLogos.map(l => [l.isp, l.logo_url])))

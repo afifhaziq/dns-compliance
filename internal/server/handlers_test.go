@@ -2022,3 +2022,21 @@ func TestDeleteISPLogo_AllowedForDeptAdmin(t *testing.T) {
 		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestDeleteISPLogo_HandlesEscapedName(t *testing.T) {
+	store := &fullMockStore{ispLogos: []db.ISPLogo{{ISP: "Time dotCom", LogoURL: "https://example.com/timedotcom.svg"}}}
+	cookie := deptAdminCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/admin/isp-logos/Time%20dotCom", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.ispLogos) != 0 {
+		t.Fatalf("expected the ISP logo to be deleted, got %d remaining: %+v", len(store.ispLogos), store.ispLogos)
+	}
+}
