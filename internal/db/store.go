@@ -119,6 +119,14 @@ type CompliantIPStore interface {
 	DeleteCompliantIP(ctx context.Context, id uint) error
 }
 
+// ISPLogoStore is the admin-managed ISP name → logo URL lookup, rendered on
+// the Overview page's ISPBentoGrid.
+type ISPLogoStore interface {
+	ListISPLogos(ctx context.Context) ([]ISPLogo, error)
+	UpsertISPLogo(ctx context.Context, isp, logoURL string) (ISPLogo, error)
+	DeleteISPLogo(ctx context.Context, isp string) error
+}
+
 // ScanSettingsStore holds the single admin-configurable scan cadence row.
 type ScanSettingsStore interface {
 	GetScanInterval(ctx context.Context) (int, error)
@@ -162,6 +170,7 @@ type Store interface {
 	UserStore
 	SessionStore
 	CompliantIPStore
+	ISPLogoStore
 	ScanSettingsStore
 	EnrichmentStore
 }

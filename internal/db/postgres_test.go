@@ -1514,3 +1514,73 @@ func TestDomainServerSummaries_AggregatesPerServer(t *testing.T) {
 		t.Fatalf("unexpected ServerB summary: %+v", b)
 	}
 }
+
+func TestListAndUpsertISPLogos(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := s.UpsertISPLogo(ctx, "Cloudflare", "https://example.com/cloudflare.svg"); err != nil {
+		t.Fatalf("UpsertISPLogo: %v", err)
+	}
+	if _, err := s.UpsertISPLogo(ctx, "Google", "https://example.com/google.svg"); err != nil {
+		t.Fatalf("UpsertISPLogo: %v", err)
+	}
+
+	logos, err := s.ListISPLogos(ctx)
+	if err != nil {
+		t.Fatalf("ListISPLogos: %v", err)
+	}
+	if len(logos) != 2 {
+		t.Fatalf("expected 2 logos, got %d", len(logos))
+	}
+	// Order is by ISP name ascending.
+	if logos[0].ISP != "Cloudflare" || logos[0].LogoURL != "https://example.com/cloudflare.svg" {
+		t.Fatalf("unexpected first logo: %+v", logos[0])
+	}
+	if logos[1].ISP != "Google" || logos[1].LogoURL != "https://example.com/google.svg" {
+		t.Fatalf("unexpected second logo: %+v", logos[1])
+	}
+}
+
+func TestUpsertISPLogo_OverwritesExisting(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := s.UpsertISPLogo(ctx, "Cloudflare", "https://example.com/old.svg"); err != nil {
+		t.Fatalf("UpsertISPLogo: %v", err)
+	}
+	if _, err := s.UpsertISPLogo(ctx, "Cloudflare", "https://example.com/new.svg"); err != nil {
+		t.Fatalf("UpsertISPLogo (overwrite): %v", err)
+	}
+
+	logos, err := s.ListISPLogos(ctx)
+	if err != nil {
+		t.Fatalf("ListISPLogos: %v", err)
+	}
+	if len(logos) != 1 {
+		t.Fatalf("expected 1 logo after overwrite, got %d", len(logos))
+	}
+	if logos[0].LogoURL != "https://example.com/new.svg" {
+		t.Fatalf("expected overwritten logo_url, got %q", logos[0].LogoURL)
+	}
+}
+
+func TestDeleteISPLogo(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := s.UpsertISPLogo(ctx, "Cloudflare", "https://example.com/cloudflare.svg"); err != nil {
+		t.Fatalf("UpsertISPLogo: %v", err)
+	}
+	if err := s.DeleteISPLogo(ctx, "Cloudflare"); err != nil {
+		t.Fatalf("DeleteISPLogo: %v", err)
+	}
+
+	logos, err := s.ListISPLogos(ctx)
+	if err != nil {
+		t.Fatalf("ListISPLogos: %v", err)
+	}
+	if len(logos) != 0 {
+		t.Fatalf("expected 0 logos after delete, got %d", len(logos))
+	}
+}

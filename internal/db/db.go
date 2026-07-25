@@ -25,7 +25,7 @@ func Connect(dialector gorm.Dialector) (*gorm.DB, error) {
 		return nil, fmt.Errorf("opening db: %w", err)
 	}
 	if err := database.AutoMigrate(
-		&Department{}, &User{}, &Session{}, &DNSServer{}, &URL{}, &DepartmentURL{}, &ScanRun{}, &ScanResult{}, &CompliantIP{}, &DomainWhois{}, &IPInfo{}, &Favicon{}, &ScanSettings{}, &SubdomainScan{},
+		&Department{}, &User{}, &Session{}, &DNSServer{}, &URL{}, &DepartmentURL{}, &ScanRun{}, &ScanResult{}, &CompliantIP{}, &DomainWhois{}, &IPInfo{}, &Favicon{}, &ScanSettings{}, &SubdomainScan{}, &ISPLogo{},
 	); err != nil {
 		return nil, fmt.Errorf("migrating schema: %w", err)
 	}
