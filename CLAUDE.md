@@ -38,7 +38,10 @@ go run ./cmd/server/ --http-addr :8080 --grpc-addr :50051
 --dns-servers dns-server.yaml  # YAML file of DNS servers; omit to use system resolver
 --compliant-ips 1.2.3.4,5.6.7.8  # IPs treated as compliant even when DNS resolves (e.g. ISP block-page IP); server passes this automatically from the admin-managed list, see "Domain semantics" below
 --listen-addr :50052       # run as a persistent gRPC control service instead of a one-shot sweep; the dashboard triggers sweeps via CrawlerControl.StartSweep instead of exec'ing this binary — see Architecture below
---auth-token ...           # shared secret required on incoming StartSweep RPCs when --listen-addr is set; must match the server's --crawler-token
+--auth-token ...           # shared secret for both gRPC directions: required on incoming StartSweep RPCs, and sent with outgoing Submit RPCs; must match the server's --crawler-token
+--tls-cert certs/crawler.crt   # env: TLS_CERT — enables mTLS when set with --tls-key and --tls-ca
+--tls-key certs/crawler.key    # env: TLS_KEY
+--tls-ca certs/ca.crt          # env: TLS_CA — CA that signed both binaries' certs
 
 # Server key flags (all accept env-var fallbacks)
 --db-url "host=localhost user=postgres password=postgres dbname=dns_compliance port=5432 sslmode=disable"
@@ -58,6 +61,9 @@ go run ./cmd/server/ --http-addr :8080 --grpc-addr :50051
 --whois-refresh-interval 1440      # minutes between WHOIS/RDAP refresh sweeps (default 1440 = 24h)
 --whois-stale-days 30              # re-fetch a domain's WHOIS/RDAP data once its cached copy is older than this many days (default 30)
 --subfinder-path subfinder          # env: SUBFINDER_PATH — path to the subfinder binary (github.com/projectdiscovery/subfinder); empty disables subdomain enumeration entirely
+--tls-cert certs/server.crt    # env: TLS_CERT — enables mTLS when set with --tls-key and --tls-ca
+--tls-key certs/server.key     # env: TLS_KEY
+--tls-ca certs/ca.crt          # env: TLS_CA — CA that signed both binaries' certs
 
 # Note: --db-url accepts a PostgreSQL DSN (key=value pairs), NOT a postgresql:// URL
 
@@ -201,7 +207,7 @@ The tool checks ISP takedown compliance. A site that **resolves DNS** is a **vio
 - **Broadcaster** (`broadcaster.go`) — in-memory fan-out pub/sub for SSE. `Subscribe()` returns a buffered `chan []byte`; slow consumers are silently dropped via a non-blocking `select`. Wired into `Handlers` and called from `grpcServer.Submit` after each batch insert.
 - **Scanner** (`scanner.go`) — triggers sweeps on the crawler's persistent control service over gRPC (`CrawlerControl.StartSweep`, auth-gated by a shared `--crawler-token`/`--auth-token`), with a mutex-guarded `running` flag. `Trigger(ctx, reason, urls []string)` does a DNS-only crawl against the provided URL list, or against `store.ListWatchedURLs(ctx)` (enabled-only) when `urls` is `nil`. `TriggerScreenshot` sets `Screenshots: true` on the request and targets a single URL + DNS server. `StartSweep` is a blocking call — it returns only once the crawler has finished the sweep — so `Scanner` waits on it the same way it used to wait on the old `exec.Command` subprocess exiting, and `CompleteScanRun`/broadcaster bookkeeping is unchanged. This is what lets the crawler and dashboard run on separate hosts — see `docs/superpowers/specs/2026-07-22-split-crawler-dashboard-hosts-design.md`.
 - **Scheduler** (`scheduler.go`) — `StartScheduler(ctx, sc, store, defaultInterval)` calls `scanner.Trigger(ctx, "scheduled", nil)` (full sweep) on a cadence read fresh from `db.ScanSettings` (via `store.GetScanInterval`) before every wait, so an admin changing the interval takes effect on the next cycle without a restart; `defaultInterval` (from `--interval`, default 60) is only a fallback if the setting can't be read. `store.GetScanEnabled` is checked right before each trigger — disabling the schedule (`ScanSettings.Enabled`, toggled via the admin UI's `Switch`) skips that sweep without stopping the loop, so re-enabling takes effect on the next cycle same as an interval change; a read error fails open (treated as enabled), consistent with the interval fallback. `db.SeedScanInterval` creates the single `ScanSettings` row (ID 1) from `--interval` on first boot only — after that the admin panel (`GET/PATCH /api/admin/scan-interval`) is authoritative.
-- Server flags accept env-var fallbacks: `DB_URL`, `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET`, `CRAWLER_ADDR`, `CRAWLER_TOKEN`, `COOKIE_SECURE`, `BOOTSTRAP_ADMIN_USERNAME`, `BOOTSTRAP_ADMIN_PASSWORD`.
+- Server flags accept env-var fallbacks: `DB_URL`, `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET`, `CRAWLER_ADDR`, `CRAWLER_TOKEN`, `COOKIE_SECURE`, `BOOTSTRAP_ADMIN_USERNAME`, `BOOTSTRAP_ADMIN_PASSWORD`, `TLS_CERT`, `TLS_KEY`, `TLS_CA`.
 
 ### Auth & RBAC (`internal/server/auth.go`, `auth_handlers.go`, `admin_handlers.go`, `internal/db/auth.go`)
 
@@ -283,7 +289,7 @@ When `--screenshots` is off (default), `Capture` is a no-op. When multiple DNS s
 - `proto/compliance.proto` defines `ComplianceService.Submit(ComplianceReport)`; generated Go files are committed in `proto/`.
 - Crawler-side: `sender.Send` submits a report; `printTable` always prints to stdout as well.
 - Server-side: `grpcServer.Submit` looks up the active `ScanRun`, matches DNS server names to IDs, calls `store.InsertResult` for each entry, and uploads any screenshot bytes to MinIO.
-- gRPC transport uses no TLS (`insecure.NewCredentials()`); both crawler and server must be on a trusted network.
+- gRPC transport is **plaintext by default**; setting `--tls-cert`/`--tls-key`/`--tls-ca` on **both** binaries turns on mutual TLS for both directions (`internal/grpcauth`). All three flags or none — a partial set is a startup error rather than a silent downgrade. Generate the private CA and leaf certs with `scripts/gen-mtls-certs.sh` (output in the gitignored `certs/`); this CA is unrelated to any public HTTPS certificate the dashboard's domain uses, and each leaf must carry both `serverAuth` and `clientAuth` EKU because each binary is both a TLS client and a TLS server. Both `CrawlerControl.StartSweep` and `ComplianceService.Submit` are authenticated by the same shared secret (`--auth-token`/`--crawler-token`); an empty secret disables the check and logs a startup warning rather than silently accepting everything.
 
 ### URL loading (`internal/input/`)
 

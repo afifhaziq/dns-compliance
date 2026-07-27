@@ -43,7 +43,9 @@ done
 echo " ready"
 
 echo "==> Starting crawler control service on :50052..."
-./crawler --listen-addr :50052 --grpc-addr :50051 --auth-token "$CRAWLER_TOKEN" > >(sed -u 's/^/[crawler] /') 2>&1 &
+# Host must be explicit, not a bare port: under mTLS the client verifies this
+# name against the certificate's SANs, and ":50051" supplies no name at all.
+./crawler --listen-addr :50052 --grpc-addr localhost:50051 --auth-token "$CRAWLER_TOKEN" > >(sed -u 's/^/[crawler] /') 2>&1 &
 CRAWLER_PID=$!
 
 echo "==> Starting server on :8080..."
