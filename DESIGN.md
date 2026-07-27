@@ -53,7 +53,7 @@ All backgrounds, surfaces, borders, muted text, and structural chrome. Zero chro
 
 **The Indigo-Is-Not-Status Rule.** Indigo means "you can act here" or "this is selected/yours" — never "this is the result." It never appears on a compliance status dot, chip, or badge. Near-black is no longer a separate action color — indigo fully owns the action/identity role.
 
-**The Status-Colors-Stay-Semantic Rule.** Compliant gray is prohibited outside status contexts. It does not appear on buttons, navigation, headings, decoration, or destructive actions like delete. Its rarity preserves its signal.
+**The Status-Colors-Stay-Semantic Rule.** Compliant gray and the violation-status red (`--violation`/`--violation-text`/etc.) are prohibited outside status contexts — they do not appear on buttons, navigation, headings, or decoration. Their rarity preserves their signal. The one exception: destructive actions (delete/remove buttons, `.btn-danger`) get their own dedicated `--danger` red, deliberately a separate token from `--violation` so a delete button is never literally the same color as a compliance-violation signal.
 
 ## 3. Typography
 

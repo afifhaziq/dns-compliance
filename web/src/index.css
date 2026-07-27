@@ -27,6 +27,12 @@
   --violation-row: oklch(0.975 0.012 27);
   --violation-text: oklch(0.45 0.20 27);
 
+  /* Danger — destructive actions (delete/remove buttons). Deliberately a
+     distinct token from --violation so a destructive button is never
+     literally the same color as a compliance-violation signal. */
+  --danger: oklch(0.55 0.22 25);
+  --danger-hover: oklch(0.48 0.22 25);
+
   /* Gray — compliant status only */
   --compliant: oklch(0.45 0 0);
   --compliant-subtle: oklch(0.95 0 0);
@@ -114,6 +120,8 @@
   --color-violation-subtle: var(--violation-subtle);
   --color-violation-row: var(--violation-row);
   --color-violation-text: var(--violation-text);
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
   --color-compliant: var(--compliant);
   --color-compliant-subtle: var(--compliant-subtle);
   --color-compliant-text: var(--compliant-text);
@@ -210,6 +218,9 @@ html.dark {
   --violation-subtle: oklch(0.25 0.02 27);
   --violation-row: oklch(0.245 0.015 27);
   --violation-text: oklch(0.75 0.15 27);
+
+  --danger: oklch(0.65 0.20 25);
+  --danger-hover: oklch(0.58 0.20 25);
 
   --compliant: oklch(0.60 0 0);
   --compliant-subtle: oklch(0.269 0 0);
@@ -443,11 +454,11 @@ html.dark {
 }
 
 .btn-danger {
-  @apply inline-flex items-center py-1.5 px-3.5 text-[13px] font-medium text-white bg-foreground rounded-lg whitespace-nowrap
-    transition-opacity duration-150 ease-snappy
-    hover:not-disabled:opacity-85
+  @apply inline-flex items-center py-1.5 px-3.5 text-[13px] font-medium text-white bg-danger rounded-lg whitespace-nowrap
+    transition-colors duration-150 ease-snappy
+    hover:not-disabled:bg-danger-hover
     disabled:opacity-60 disabled:cursor-not-allowed
-    focus-visible:outline focus-visible:outline-2 focus-visible:outline-foreground focus-visible:outline-offset-2;
+    focus-visible:outline focus-visible:outline-2 focus-visible:outline-danger focus-visible:outline-offset-2;
 }
 
 /* ─── Page Layout ────────────────────────────────────────────────────────── */
