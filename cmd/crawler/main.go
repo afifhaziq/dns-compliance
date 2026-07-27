@@ -199,7 +199,7 @@ func runSweep(
 			if conn != nil && !takeScreenshots {
 				r.DNSServer = serverLabel
 				sendCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-				if err := sender.Send(sendCtx, conn, buildReport([]pipeline.SiteResult{r})); err != nil {
+				if err := sender.Send(sendCtx, conn, "", buildReport([]pipeline.SiteResult{r})); err != nil {
 					log.Printf("gRPC stream send failed for %s (%s): %v", r.URL, serverLabel, err)
 				}
 				cancel()
@@ -246,7 +246,7 @@ func runSweep(
 		report := buildReport(allResults)
 		sendCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		if err := sender.Send(sendCtx, conn, report); err != nil {
+		if err := sender.Send(sendCtx, conn, "", report); err != nil {
 			log.Printf("gRPC send failed: %v", err)
 		} else {
 			log.Printf("Report sent to %s", conn.Target())
