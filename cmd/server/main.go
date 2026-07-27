@@ -36,7 +36,7 @@ func main() {
 	minioSecret := flag.String("minio-secret-key", envOr("MINIO_SECRET_KEY", "minioadmin"), "MinIO secret key")
 	minioBucket := flag.String("minio-bucket", envOr("MINIO_BUCKET", "screenshots"), "MinIO bucket name")
 	crawlerAddr := flag.String("crawler-addr", envOr("CRAWLER_ADDR", "localhost:50052"), "gRPC address of the crawler's control service")
-	crawlerToken := flag.String("crawler-token", envOr("CRAWLER_TOKEN", ""), "shared secret sent with StartSweep RPCs; must match the crawler's --auth-token")
+	crawlerToken := flag.String("crawler-token", envOr("CRAWLER_TOKEN", ""), "shared secret for both gRPC directions: sent with outgoing StartSweep RPCs, and required on incoming Submit RPCs; must match the crawler's --auth-token")
 	seedFile := flag.String("seed-dns", "dns-server.yaml", "YAML file to seed DNS servers on first run; empty to skip")
 	intervalMin := flag.Int("interval", 60, "scan interval in minutes")
 	cookieSecure := flag.Bool("cookie-secure", envOr("COOKIE_SECURE", "true") == "true", "mark the session cookie Secure (disable for local plain-HTTP dev)")
