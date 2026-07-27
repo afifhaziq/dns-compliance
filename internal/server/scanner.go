@@ -8,16 +8,11 @@ import (
 	"time"
 
 	"github.com/afif/dns-tracking/internal/db"
+	"github.com/afif/dns-tracking/internal/grpcauth"
 	"github.com/afif/dns-tracking/internal/urlnorm"
 	pb "github.com/afif/dns-tracking/proto"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
 )
-
-// crawlerAuthMetadataKey carries the shared secret required by the
-// crawler's StartSweep RPC — must match authMetadataKey in cmd/crawler's
-// authInterceptor.
-const crawlerAuthMetadataKey = "x-auth-token"
 
 // crawlerClient is the subset of pb.CrawlerControlClient the Scanner needs,
 // narrowed to a small interface so tests can inject a fake instead of
@@ -196,7 +191,7 @@ func (sc *Scanner) runCrawler(ctx context.Context, req *pb.SweepRequest, runID u
 		}
 	}
 
-	authedCtx := metadata.AppendToOutgoingContext(ctx, crawlerAuthMetadataKey, sc.crawlerToken)
+	authedCtx := grpcauth.AppendToken(ctx, sc.crawlerToken)
 	status := "completed"
 	ack, err := sc.crawler.StartSweep(authedCtx, req)
 	if err != nil {
