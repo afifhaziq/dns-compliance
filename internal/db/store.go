@@ -62,9 +62,10 @@ type ResultStore interface {
 	// lifetime (not just-latest-run) aggregate per domain, sorted by most
 	// recently scanned first. The department variant matches on
 	// department_urls.department_id only (no enabled filter), so a domain
-	// disabled from the watchlist is still findable by its history.
-	ListDomainSummaries(ctx context.Context, page, pageSize int) ([]DomainSummary, int, error)
-	ListDomainSummariesForDepartment(ctx context.Context, page, pageSize int, departmentID uint) ([]DomainSummary, int, error)
+	// disabled from the watchlist is still findable by its history. filter is
+	// a DomainSummaryFilter{} zero value for no filtering.
+	ListDomainSummaries(ctx context.Context, page, pageSize int, filter DomainSummaryFilter) ([]DomainSummary, int, error)
+	ListDomainSummariesForDepartment(ctx context.Context, page, pageSize int, departmentID uint, filter DomainSummaryFilter) ([]DomainSummary, int, error)
 
 	// DomainServerSummaries backs the Domain page's expanded-row breakdown —
 	// unscoped like ResultsByURL/DailyComplianceByURL; the handler enforces

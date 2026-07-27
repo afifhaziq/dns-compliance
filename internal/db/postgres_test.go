@@ -1387,7 +1387,7 @@ func TestListDomainSummaries_AggregatesLifetimeScans(t *testing.T) {
 		t.Fatalf("InsertResult 2: %v", err)
 	}
 
-	summaries, total, err := s.ListDomainSummaries(ctx, 1, 25)
+	summaries, total, err := s.ListDomainSummaries(ctx, 1, 25, db.DomainSummaryFilter{})
 	if err != nil {
 		t.Fatalf("ListDomainSummaries: %v", err)
 	}
@@ -1400,6 +1400,55 @@ func TestListDomainSummaries_AggregatesLifetimeScans(t *testing.T) {
 	}
 	if !got.LastScannedAt.Equal(t2) {
 		t.Fatalf("expected LastScannedAt %v, got %v", t2, got.LastScannedAt)
+	}
+
+	// Status filter: this domain has one violation, so it shows up under
+	// "violations" and is excluded under "compliant".
+	violating, _, err := s.ListDomainSummaries(ctx, 1, 25, db.DomainSummaryFilter{Status: "violations"})
+	if err != nil {
+		t.Fatalf("ListDomainSummaries(violations): %v", err)
+	}
+	if len(violating) != 1 {
+		t.Fatalf("expected domain to match status=violations, got %d", len(violating))
+	}
+	compliant, _, err := s.ListDomainSummaries(ctx, 1, 25, db.DomainSummaryFilter{Status: "compliant"})
+	if err != nil {
+		t.Fatalf("ListDomainSummaries(compliant): %v", err)
+	}
+	if len(compliant) != 0 {
+		t.Fatalf("expected domain to be excluded under status=compliant, got %d", len(compliant))
+	}
+
+	// Search filter: substring match on the domain name.
+	found, _, err := s.ListDomainSummaries(ctx, 1, 25, db.DomainSummaryFilter{Search: "summ"})
+	if err != nil {
+		t.Fatalf("ListDomainSummaries(search): %v", err)
+	}
+	if len(found) != 1 {
+		t.Fatalf("expected search=summ to match, got %d", len(found))
+	}
+	notFound, _, err := s.ListDomainSummaries(ctx, 1, 25, db.DomainSummaryFilter{Search: "nomatch"})
+	if err != nil {
+		t.Fatalf("ListDomainSummaries(no match): %v", err)
+	}
+	if len(notFound) != 0 {
+		t.Fatalf("expected search=nomatch to exclude the domain, got %d", len(notFound))
+	}
+
+	// DNS server filter: matching server ID includes it, a different ID excludes it.
+	byServer, _, err := s.ListDomainSummaries(ctx, 1, 25, db.DomainSummaryFilter{DNSServerID: srv.ID})
+	if err != nil {
+		t.Fatalf("ListDomainSummaries(dns_server_id): %v", err)
+	}
+	if len(byServer) != 1 {
+		t.Fatalf("expected dns_server_id=%d to match, got %d", srv.ID, len(byServer))
+	}
+	byOtherServer, _, err := s.ListDomainSummaries(ctx, 1, 25, db.DomainSummaryFilter{DNSServerID: srv.ID + 999})
+	if err != nil {
+		t.Fatalf("ListDomainSummaries(other dns_server_id): %v", err)
+	}
+	if len(byOtherServer) != 0 {
+		t.Fatalf("expected unrelated dns_server_id to exclude the domain, got %d", len(byOtherServer))
 	}
 }
 
@@ -1427,7 +1476,7 @@ func TestListDomainSummariesForDepartment_IncludesDisabledDomain(t *testing.T) {
 		t.Fatalf("SetURLEnabled: ok=%v err=%v", ok, err)
 	}
 
-	ownerSummaries, total, err := s.ListDomainSummariesForDepartment(ctx, 1, 25, owner.ID)
+	ownerSummaries, total, err := s.ListDomainSummariesForDepartment(ctx, 1, 25, owner.ID, db.DomainSummaryFilter{})
 	if err != nil {
 		t.Fatalf("ListDomainSummariesForDepartment(owner): %v", err)
 	}
@@ -1435,7 +1484,7 @@ func TestListDomainSummariesForDepartment_IncludesDisabledDomain(t *testing.T) {
 		t.Fatalf("expected disabled-but-historied domain to still be listed, got total=%d len=%d", total, len(ownerSummaries))
 	}
 
-	otherSummaries, total, err := s.ListDomainSummariesForDepartment(ctx, 1, 25, other.ID)
+	otherSummaries, total, err := s.ListDomainSummariesForDepartment(ctx, 1, 25, other.ID, db.DomainSummaryFilter{})
 	if err != nil {
 		t.Fatalf("ListDomainSummariesForDepartment(other): %v", err)
 	}

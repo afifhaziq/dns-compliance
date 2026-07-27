@@ -1190,6 +1190,14 @@ func (h *Handlers) DomainSummaries(w http.ResponseWriter, r *http.Request) {
 		pageSize = ps
 	}
 
+	filter := db.DomainSummaryFilter{Search: r.URL.Query().Get("q")}
+	if status := r.URL.Query().Get("status"); status == "compliant" || status == "violations" {
+		filter.Status = status
+	}
+	if id, err := strconv.Atoi(r.URL.Query().Get("dns_server_id")); err == nil && id > 0 {
+		filter.DNSServerID = uint(id)
+	}
+
 	user, ok := userFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "not authenticated")
@@ -1199,13 +1207,13 @@ func (h *Handlers) DomainSummaries(w http.ResponseWriter, r *http.Request) {
 	var total int
 	var err error
 	if user.IsAdmin {
-		domains, total, err = h.store.ListDomainSummaries(r.Context(), page, pageSize)
+		domains, total, err = h.store.ListDomainSummaries(r.Context(), page, pageSize, filter)
 	} else {
 		if user.DepartmentID == nil {
 			writeError(w, http.StatusForbidden, "user has no department")
 			return
 		}
-		domains, total, err = h.store.ListDomainSummariesForDepartment(r.Context(), page, pageSize, *user.DepartmentID)
+		domains, total, err = h.store.ListDomainSummariesForDepartment(r.Context(), page, pageSize, *user.DepartmentID, filter)
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load domain summaries")

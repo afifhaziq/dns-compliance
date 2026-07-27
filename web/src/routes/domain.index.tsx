@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { type ColumnDef, type ExpandedState, type PaginationState, getCoreRowModel, useReactTable } from '@tanstack/react-table'
-import { FaviconSearch } from '@/components/unlumen-ui/favicon-search'
+import { FaviconSearch, faviconUrl } from '@/components/unlumen-ui/favicon-search'
 import { DataGrid, DataGridContainer } from '@/components/reui/data-grid/data-grid'
 import { DataGridTable } from '@/components/reui/data-grid/data-grid-table'
+import { Filters, type Filter, type FilterFieldConfig } from '@/components/reui/filters'
 import { fetchDomainSummaries, fetchDomainServerSummaries } from '@/api/domains'
-import type { DomainSummary, DomainServerSummary } from '@/api/types'
+import { fetchDnsServers } from '@/api/dns-servers'
+import type { DomainSummary, DomainServerSummary, DNSServer } from '@/api/types'
 import { EmptyIcon } from '@/components/results-table-parts'
 import { relativeTime } from '@/lib/relative-time'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
@@ -16,8 +18,24 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 export const Route = createFileRoute('/domain/')({ component: DomainPickerPage })
 
 const PAGE_SIZE = 25
+const SUGGESTION_COUNT = 6
 
 const skeletonWidths = [180, 90, 60, 100]
+
+// Single "is" operator only — these fields are single-value pickers, not
+// full is/is-not/empty builders, so there's nothing else to implement.
+const IS_ONLY = [{ value: 'is', label: 'is' }]
+
+const STATUS_FIELD: FilterFieldConfig<string> = {
+  key: 'status',
+  label: 'Status',
+  type: 'select',
+  operators: IS_ONLY,
+  options: [
+    { value: 'violations', label: 'Violations' },
+    { value: 'compliant', label: 'Compliant' },
+  ],
+}
 
 /* ─── Server breakdown (expanded nested table) ──────────────────────────── */
 
@@ -57,7 +75,7 @@ function DomainServerBreakdown({ domain }: { domain: string }) {
           <TableHead className="th-left" scope="col">Address</TableHead>
           <TableHead className="col-status th-left" scope="col">Compliance</TableHead>
           <TableHead className="col-scan-id th-left" scope="col">Total Scans</TableHead>
-          <TableHead className="col-last-scanned th-left w-2" scope="col">Last Scanned</TableHead>
+          <TableHead className="col-last-scanned th-left" scope="col">Last Scanned</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -125,7 +143,7 @@ const columns: ColumnDef<DomainSummary>[] = [
     header: 'Domain',
     meta: {
       headerClassName: 'col-domain th-left',
-      cellClassName: 'col-domain',
+      cellClassName: 'col-domain pl-4',
       skeleton: <span className="skeleton" style={{ width: skeletonWidths[0], height: 14 }} />,
     },
     cell: ({ getValue }) => <span className="hostname">{getValue<string>()}</span>,
@@ -135,7 +153,7 @@ const columns: ColumnDef<DomainSummary>[] = [
     header: 'Compliance',
     meta: {
       headerClassName: 'col-status th-left',
-      cellClassName: 'col-status',
+      cellClassName: 'col-status pl-4',
       skeleton: <span className="skeleton" style={{ width: skeletonWidths[1], height: 20, borderRadius: 4 }} />,
     },
     cell: ({ row }) => {
@@ -156,7 +174,7 @@ const columns: ColumnDef<DomainSummary>[] = [
     header: 'Total Scans',
     meta: {
       headerClassName: 'col-scan-id th-left',
-      cellClassName: 'col-scan-id',
+      cellClassName: 'col-scan-id pl-4',
       skeleton: <span className="skeleton" style={{ width: skeletonWidths[2], height: 14 }} />,
     },
   },
@@ -165,7 +183,7 @@ const columns: ColumnDef<DomainSummary>[] = [
     header: 'Last Scanned',
     meta: {
       headerClassName: 'col-last-scanned th-left',
-      cellClassName: 'col-last-scanned',
+      cellClassName: 'col-last-scanned pl-4',
       skeleton: <span className="skeleton" style={{ width: skeletonWidths[3], height: 14 }} />,
     },
     cell: ({ getValue }) => {
@@ -175,7 +193,13 @@ const columns: ColumnDef<DomainSummary>[] = [
   },
 ]
 
-function DomainHistoryTable() {
+function DomainHistoryTable({
+  statusFilter,
+  dnsServerId,
+}: {
+  statusFilter?: 'compliant' | 'violations'
+  dnsServerId?: number
+}) {
   const navigate = useNavigate()
   const [domains, setDomains] = useState<DomainSummary[]>([])
   const [total, setTotal] = useState(0)
@@ -184,10 +208,12 @@ function DomainHistoryTable() {
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
   const [expanded, setExpanded] = useState<ExpandedState>({})
 
+  useEffect(() => { setPagination(p => ({ ...p, pageIndex: 0 })) }, [statusFilter, dnsServerId])
+
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    fetchDomainSummaries(pagination.pageIndex + 1, pagination.pageSize)
+    fetchDomainSummaries(pagination.pageIndex + 1, pagination.pageSize, { status: statusFilter, dnsServerId })
       .then(res => {
         if (cancelled) return
         setDomains(res.domains)
@@ -202,7 +228,7 @@ function DomainHistoryTable() {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [pagination.pageIndex, pagination.pageSize])
+  }, [pagination.pageIndex, pagination.pageSize, statusFilter, dnsServerId])
 
   const pageCount = useMemo(() => Math.max(1, Math.ceil(total / pagination.pageSize)), [total, pagination.pageSize])
 
@@ -235,8 +261,12 @@ function DomainHistoryTable() {
       ) : !loading && domains.length === 0 ? (
         <div className="empty-state" style={{ padding: '3rem 0' }}>
           <EmptyIcon />
-          <p className="empty-heading">No scan history yet</p>
-          <p className="empty-body">Domains will appear here once they've been scanned at least once.</p>
+          <p className="empty-heading">{statusFilter || dnsServerId ? 'No domains match the current filters' : 'No scan history yet'}</p>
+          <p className="empty-body">
+            {statusFilter || dnsServerId
+              ? 'Try clearing a filter to widen the search.'
+              : "Domains will appear here once they've been scanned at least once."}
+          </p>
         </div>
       ) : (
         <div className="results-wrap w-full">
@@ -280,11 +310,93 @@ function DomainHistoryTable() {
   )
 }
 
+// Debounced as-you-type suggestions, sourced from the same lifetime domain
+// history behind the table below (GET /api/domains?q=...) rather than a
+// separate lookup — any domain that's ever been scanned is suggestible.
+function DomainSearchSuggestions({ query, onPick }: { query: string; onPick: (domain: string) => void }) {
+  const [suggestions, setSuggestions] = useState<DomainSummary[]>([])
+  const [open, setOpen] = useState(false)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const q = query.trim()
+    if (q.length < 2) {
+      setSuggestions([])
+      setOpen(false)
+      return
+    }
+    const handle = setTimeout(() => {
+      fetchDomainSummaries(1, SUGGESTION_COUNT, { search: q })
+        .then(res => {
+          setSuggestions(res.domains)
+          setOpen(res.domains.length > 0)
+        })
+        .catch(() => {
+          setSuggestions([])
+          setOpen(false)
+        })
+    }, 250)
+    return () => clearTimeout(handle)
+  }, [query])
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  if (!open) return null
+
+  return (
+    <div
+      ref={wrapperRef}
+      className="absolute left-0 right-0 top-full mt-1 z-20 overflow-hidden rounded-lg border border-stone-border bg-stone-panel shadow-lg"
+    >
+      {suggestions.map(s => (
+        <button
+          key={s.url}
+          type="button"
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-foreground hover:bg-stone-border/60 transition-colors duration-150 ease-snappy"
+          onClick={() => { setOpen(false); onPick(s.url) }}
+        >
+          <img src={faviconUrl(s.url, 16)} alt="" width={14} height={14} />
+          <span className="hostname">{s.url}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function DomainPickerPage() {
   const navigate = useNavigate()
+  const [query, setQuery] = useState('')
+  const [dnsServers, setDnsServers] = useState<DNSServer[]>([])
+  const [filters, setFilters] = useState<Filter<string>[]>([])
+
+  useEffect(() => { fetchDnsServers().then(setDnsServers).catch(() => {}) }, [])
 
   const goToDomain = (domain: string) =>
     navigate({ to: '/domain/$url', params: { url: domain }, search: { tab: 'overview' } })
+
+  const filterFields = useMemo(() => {
+    const fields: FilterFieldConfig<string>[] = [STATUS_FIELD]
+    if (dnsServers.length > 1) {
+      fields.push({
+        key: 'dns_server',
+        label: 'DNS Server',
+        type: 'select',
+        operators: IS_ONLY,
+        options: dnsServers.map(s => ({ value: String(s.id), label: s.name })),
+      })
+    }
+    return fields
+  }, [dnsServers])
+
+  const statusFilter = filters.find(f => f.field === 'status')?.values[0] as 'compliant' | 'violations' | undefined
+  const dnsServerFilter = filters.find(f => f.field === 'dns_server')?.values[0]
 
   return (
     <div className="mx-20 mt-10 mb-10">
@@ -294,14 +406,28 @@ function DomainPickerPage() {
       </div>
 
       <div className="dash-section">
-        <FaviconSearch
-          placeholder="Enter a domain to look up…"
-          className="w-96"
-          onSearch={(_value, domain) => goToDomain(domain)}
-        />
+        <div className="relative w-96">
+          <FaviconSearch
+            placeholder="Enter a domain to look up…"
+            className="w-96"
+            value={query}
+            onChange={setQuery}
+            onSearch={(_value, domain) => goToDomain(domain)}
+          />
+          <DomainSearchSuggestions query={query} onPick={goToDomain} />
+        </div>
       </div>
 
-      <DomainHistoryTable />
+      <div className="dash-section mt-4">
+        <div className="filter-bar flex flex-row items-center justify-start gap-4 w-full">
+          <Filters filters={filters} fields={filterFields} onChange={setFilters} />
+        </div>
+      </div>
+
+      <DomainHistoryTable
+        statusFilter={statusFilter}
+        dnsServerId={dnsServerFilter ? Number(dnsServerFilter) : undefined}
+      />
     </div>
   )
 }

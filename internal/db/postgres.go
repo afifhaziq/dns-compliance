@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/afif/dns-tracking/internal/urlnorm"
@@ -197,34 +198,59 @@ func (s *postgresStore) UpdateScreenshot(ctx context.Context, resultID uint, scr
 		Update("screenshot_url", screenshotURL).Error
 }
 
-func (s *postgresStore) ListDomainSummaries(ctx context.Context, page, pageSize int) ([]DomainSummary, int, error) {
-	return s.listDomainSummaries(ctx, page, pageSize, nil)
+func (s *postgresStore) ListDomainSummaries(ctx context.Context, page, pageSize int, filter DomainSummaryFilter) ([]DomainSummary, int, error) {
+	return s.listDomainSummaries(ctx, page, pageSize, nil, filter)
 }
 
 // ListDomainSummariesForDepartment is the same aggregate as
 // ListDomainSummaries, scoped to domains the department's watchlist has ever
 // linked (department_urls.department_id match, regardless of Enabled) so a
 // domain disabled from the watchlist stays findable by its history.
-func (s *postgresStore) ListDomainSummariesForDepartment(ctx context.Context, page, pageSize int, departmentID uint) ([]DomainSummary, int, error) {
-	return s.listDomainSummaries(ctx, page, pageSize, &departmentID)
+func (s *postgresStore) ListDomainSummariesForDepartment(ctx context.Context, page, pageSize int, departmentID uint, filter DomainSummaryFilter) ([]DomainSummary, int, error) {
+	return s.listDomainSummaries(ctx, page, pageSize, &departmentID, filter)
 }
 
 // domainSummaryQuery returns a fresh scan_results query (optionally
-// department-joined) each call, so the count query and the paginated select
-// below never share mutated clause state.
-func (s *postgresStore) domainSummaryQuery(ctx context.Context, departmentID *uint) *gorm.DB {
+// department-joined and filtered) each call, so the count query and the
+// paginated select below never share mutated clause state.
+func (s *postgresStore) domainSummaryQuery(ctx context.Context, departmentID *uint, filter DomainSummaryFilter) *gorm.DB {
 	q := s.db.WithContext(ctx).Table("scan_results")
 	if departmentID != nil {
 		q = q.Joins("JOIN department_urls ON department_urls.url_id = scan_results.url_id AND department_urls.department_id = ?", *departmentID)
 	}
+	if filter.Search != "" {
+		q = q.Where("scan_results.url_value LIKE ?", "%"+strings.ToLower(filter.Search)+"%")
+	}
+	if filter.DNSServerID != 0 {
+		q = q.Where("scan_results.dns_server_id = ?", filter.DNSServerID)
+	}
 	return q
 }
 
-func (s *postgresStore) listDomainSummaries(ctx context.Context, page, pageSize int, departmentID *uint) ([]DomainSummary, int, error) {
+// groupedDomainSummaryQuery is domainSummaryQuery grouped into one row per
+// domain, with the Status filter applied as a HAVING clause since it depends
+// on the aggregated compliant count, not a raw column.
+func (s *postgresStore) groupedDomainSummaryQuery(ctx context.Context, departmentID *uint, filter DomainSummaryFilter) *gorm.DB {
+	q := s.domainSummaryQuery(ctx, departmentID, filter).
+		Select(`scan_results.url_value,
+            COUNT(*) AS total_scans,
+            SUM(CASE WHEN scan_results.compliant = true THEN 1 ELSE 0 END) AS compliant_scans,
+            MAX(scan_results.scanned_at) AS last_scanned_at`).
+		Group("scan_results.url_value")
+	switch filter.Status {
+	case "compliant":
+		q = q.Having("SUM(CASE WHEN scan_results.compliant = true THEN 0 ELSE 1 END) = 0")
+	case "violations":
+		q = q.Having("SUM(CASE WHEN scan_results.compliant = true THEN 0 ELSE 1 END) > 0")
+	}
+	return q
+}
+
+func (s *postgresStore) listDomainSummaries(ctx context.Context, page, pageSize int, departmentID *uint, filter DomainSummaryFilter) ([]DomainSummary, int, error) {
 	var total int64
-	if err := s.domainSummaryQuery(ctx, departmentID).
-		Select("COUNT(DISTINCT scan_results.url_value)").
-		Scan(&total).Error; err != nil {
+	if err := s.db.WithContext(ctx).
+		Table("(?) as grouped", s.groupedDomainSummaryQuery(ctx, departmentID, filter)).
+		Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
@@ -240,12 +266,7 @@ func (s *postgresStore) listDomainSummaries(ctx context.Context, page, pageSize 
 		LastScannedAt  string
 	}
 	var rows []row
-	err := s.domainSummaryQuery(ctx, departmentID).
-		Select(`scan_results.url_value,
-            COUNT(*) AS total_scans,
-            SUM(CASE WHEN scan_results.compliant = true THEN 1 ELSE 0 END) AS compliant_scans,
-            MAX(scan_results.scanned_at) AS last_scanned_at`).
-		Group("scan_results.url_value").
+	err := s.groupedDomainSummaryQuery(ctx, departmentID, filter).
 		Order("last_scanned_at DESC").
 		Limit(pageSize).
 		Offset((page - 1) * pageSize).

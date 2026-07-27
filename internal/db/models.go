@@ -279,6 +279,18 @@ type ResurfacedDomain struct {
 	AffectedServers []ResurfacedServerEntry `json:"affected_servers"`
 }
 
+// DomainSummaryFilter narrows ListDomainSummaries/ForDepartment — every
+// field is optional (zero value = no filter). Search matches a substring of
+// the domain; DNSServerID, when set, also restricts the aggregate counts to
+// that server's scans only (not just which domains touched it); Status is
+// "compliant" (never once violated) or "violations" (violated at least
+// once), any other value is treated as no filter.
+type DomainSummaryFilter struct {
+	Search      string
+	DNSServerID uint
+	Status      string
+}
+
 // DomainSummary is one row of GET /api/domains — a lifetime aggregate over
 // every ScanResult ever recorded for a domain (not just the latest scan
 // run), used to browse/look up any domain with scan history.

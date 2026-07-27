@@ -467,10 +467,10 @@ func (m *fullMockStore) ResurfacedDomains(_ context.Context) ([]db.ResurfacedDom
 func (m *fullMockStore) ResurfacedDomainsForDepartment(_ context.Context, _ uint) ([]db.ResurfacedDomain, error) {
 	return nil, nil
 }
-func (m *fullMockStore) ListDomainSummaries(_ context.Context, _, _ int) ([]db.DomainSummary, int, error) {
+func (m *fullMockStore) ListDomainSummaries(_ context.Context, _, _ int, _ db.DomainSummaryFilter) ([]db.DomainSummary, int, error) {
 	return nil, 0, nil
 }
-func (m *fullMockStore) ListDomainSummariesForDepartment(_ context.Context, _, _ int, _ uint) ([]db.DomainSummary, int, error) {
+func (m *fullMockStore) ListDomainSummariesForDepartment(_ context.Context, _, _ int, _ uint, _ db.DomainSummaryFilter) ([]db.DomainSummary, int, error) {
 	return nil, 0, nil
 }
 func (m *fullMockStore) DomainServerSummaries(_ context.Context, _ string) ([]db.DomainServerSummary, error) {
