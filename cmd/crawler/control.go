@@ -2,44 +2,20 @@ package main
 
 import (
 	"context"
-	"crypto/subtle"
 	"log"
 	"net"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/afif/dns-tracking/internal/dnsconfig"
+	"github.com/afif/dns-tracking/internal/grpcauth"
 	"github.com/afif/dns-tracking/internal/pipeline"
 	pb "github.com/afif/dns-tracking/proto"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
 )
-
-const authMetadataKey = "x-auth-token"
-
-// authInterceptor rejects any RPC whose x-auth-token metadata doesn't match
-// token, using a constant-time comparison — this is a real credential
-// check, not a lookup, so timing must not leak partial matches.
-func authInterceptor(token string) grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		md, ok := metadata.FromIncomingContext(ctx)
-		if !ok {
-			return nil, status.Error(codes.Unauthenticated, "missing auth token")
-		}
-		got := strings.Join(md.Get(authMetadataKey), "")
-		if subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
-			return nil, status.Error(codes.Unauthenticated, "invalid auth token")
-		}
-		return handler(ctx, req)
-	}
-}
 
 // controlServer implements CrawlerControl.StartSweep, reusing runSweep — the
 // same function the standalone CLI path calls — against DNS servers and
@@ -50,13 +26,14 @@ type controlServer struct {
 	baseCfg       pipeline.Config
 	waitIdle      time.Duration
 	postIdleSleep time.Duration
+	token         string
 
 	mu      sync.Mutex
 	running bool
 }
 
-func newControlServer(conn *grpc.ClientConn, baseCfg pipeline.Config, waitIdle, postIdleSleep time.Duration) *controlServer {
-	return &controlServer{conn: conn, baseCfg: baseCfg, waitIdle: waitIdle, postIdleSleep: postIdleSleep}
+func newControlServer(conn *grpc.ClientConn, baseCfg pipeline.Config, waitIdle, postIdleSleep time.Duration, token string) *controlServer {
+	return &controlServer{conn: conn, baseCfg: baseCfg, waitIdle: waitIdle, postIdleSleep: postIdleSleep, token: token}
 }
 
 func (s *controlServer) StartSweep(ctx context.Context, req *pb.SweepRequest) (*pb.SweepAck, error) {
@@ -78,7 +55,7 @@ func (s *controlServer) StartSweep(ctx context.Context, req *pb.SweepRequest) (*
 	cfg := s.baseCfg
 	cfg.CompliantIPs = req.CompliantIps
 
-	runSweep(ctx, req.Urls, servers, cfg, s.waitIdle, s.postIdleSleep, s.conn, req.Screenshots)
+	runSweep(ctx, req.Urls, servers, cfg, s.waitIdle, s.postIdleSleep, s.conn, s.token, req.Screenshots)
 
 	return &pb.SweepAck{Accepted: true}, nil
 }
@@ -95,14 +72,14 @@ func dnsServerConfigsToServers(configs []*pb.DNSServerConfig) []dnsconfig.Server
 // used by the dashboard to trigger sweeps remotely instead of exec'ing this
 // binary as a local subprocess — see
 // docs/superpowers/specs/2026-07-22-split-crawler-dashboard-hosts-design.md.
-func runListenMode(listenAddr, authToken, grpcAddr string, dnsWorkers, ssWorkers int, dnsTimeout, ssTimeout, waitIdle, postIdleSleep time.Duration) {
+func runListenMode(listenAddr string, tr grpcTransport, grpcAddr string, dnsWorkers, ssWorkers int, dnsTimeout, ssTimeout, waitIdle, postIdleSleep time.Duration) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	var conn *grpc.ClientConn
 	if grpcAddr != "" {
 		var err error
-		conn, err = grpc.NewClient(grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err = grpc.NewClient(grpcAddr, tr.dialOpt)
 		if err != nil {
 			log.Fatalf("connecting to gRPC server: %v", err)
 		}
@@ -120,8 +97,17 @@ func runListenMode(listenAddr, authToken, grpcAddr string, dnsWorkers, ssWorkers
 	if err != nil {
 		log.Fatalf("listen: %v", err)
 	}
-	grpcSrv := grpc.NewServer(grpc.UnaryInterceptor(authInterceptor(authToken)))
-	pb.RegisterCrawlerControlServer(grpcSrv, newControlServer(conn, baseCfg, waitIdle, postIdleSleep))
+	var opts []grpc.ServerOption
+	if tr.creds != nil {
+		opts = append(opts, grpc.Creds(tr.creds))
+	}
+	if ic := grpcauth.UnaryInterceptor(tr.token); ic != nil {
+		opts = append(opts, grpc.UnaryInterceptor(ic))
+	} else {
+		log.Print("WARNING: StartSweep is unauthenticated — set --auth-token to require a shared secret")
+	}
+	grpcSrv := grpc.NewServer(opts...)
+	pb.RegisterCrawlerControlServer(grpcSrv, newControlServer(conn, baseCfg, waitIdle, postIdleSleep, tr.token))
 
 	go func() {
 		<-ctx.Done()
