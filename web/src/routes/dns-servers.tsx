@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { fetchDnsServers, createDnsServer, updateDnsServer, deleteDnsServer } from '../api/dns-servers'
-import type { DNSServer } from '../api/types'
+import { fetchISPLogos, upsertISPLogo, deleteISPLogo } from '../api/isp-logos'
+import type { DNSServer, ISPLogo } from '../api/types'
 import { Badge } from '@/components/ui/badge'
 import { SquarePenIcon } from '@/components/ui/square-pen'
 import { XIcon } from '@/components/ui/x'
+import { ISPLogoChip } from '@/components/isp-logo-chip'
 import {
   Dialog,
   DialogContent,
@@ -197,6 +199,117 @@ function DnsServerFormDialog({
   )
 }
 
+/* ─── Edit ISP Logo Dialog ───────────────────────────────────────────────── */
+
+function EditISPLogoDialog({
+  open,
+  onClose,
+  onSaved,
+  isp,
+  currentLogoUrl,
+}: {
+  open: boolean
+  onClose: () => void
+  onSaved: () => void
+  isp: string
+  currentLogoUrl?: string
+}) {
+  const [logoUrl, setLogoUrl] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [removing, setRemoving] = useState(false)
+  const busy = loading || removing
+
+  useEffect(() => {
+    if (open) { setLogoUrl(currentLogoUrl ?? ''); setError(null) }
+  }, [open, currentLogoUrl])
+
+  const handleClose = () => { setError(null); onClose() }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!logoUrl.trim()) { setError('Logo URL is required'); return }
+    setLoading(true)
+    setError(null)
+    try {
+      await upsertISPLogo(isp, logoUrl.trim())
+      onSaved()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save logo')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleRemove = async () => {
+    setRemoving(true)
+    setError(null)
+    try {
+      await deleteISPLogo(isp)
+      onSaved()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove logo')
+    } finally {
+      setRemoving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: 420 }}>
+        <DialogHeader>
+          <DialogTitle>Edit {isp} Logo</DialogTitle>
+          <DialogDescription>
+            Sets the logo shown for this ISP in the Overview page's bento grid.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit}>
+          <div className="form-field">
+            <div className="flex items-center gap-3">
+              <ISPLogoChip isp={isp} logoUrl={logoUrl} size={32} />
+              <div style={{ flex: 1 }}>
+                <label className="form-label" htmlFor="isp-logo-edit-url-input">Logo URL</label>
+                <input
+                  id="isp-logo-edit-url-input"
+                  className="form-input"
+                  type="text"
+                  placeholder="e.g. https://upload.wikimedia.org/.../cloudflare.svg"
+                  value={logoUrl}
+                  onChange={e => setLogoUrl(e.target.value)}
+                  autoFocus
+                  disabled={busy}
+                />
+              </div>
+            </div>
+          </div>
+          {error && <p className="form-error">{error}</p>}
+          <DialogFooter>
+            {currentLogoUrl && (
+              <button
+                type="button"
+                className="btn-danger"
+                style={{ marginRight: 'auto' }}
+                onClick={handleRemove}
+                disabled={busy}
+              >
+                {removing ? 'Removing…' : 'Remove Logo'}
+              </button>
+            )}
+            <button type="button" className="btn-ghost" onClick={handleClose} disabled={busy}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={busy}>
+              {loading ? 'Saving…' : 'Save Logo'}
+            </button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 /* ─── Grouping ───────────────────────────────────────────────────────────── */
 
 type DNSGroup = { name: string; servers: DNSServer[] }
@@ -256,17 +369,21 @@ function DNSServersPage() {
   const { me } = useAuth()
   const canManage = me?.is_admin || me?.is_dept_admin
   const [servers, setServers] = useState<DNSServer[]>([])
+  const [logos, setLogos] = useState<ISPLogo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<DNSServer | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DNSServer | null>(null)
+  const [editLogoTarget, setEditLogoTarget] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       setError(null)
-      setServers(await fetchDnsServers())
+      const [srvs, lgs] = await Promise.all([fetchDnsServers(), fetchISPLogos()])
+      setServers(srvs)
+      setLogos(lgs)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load DNS servers')
     } finally {
@@ -317,10 +434,29 @@ function DNSServersPage() {
             {loading ? (
               <SkeletonSection />
             ) : (
-              groupByISP(servers).map(group => (
+              groupByISP(servers).map(group => {
+                const groupLogo = logos.find(l => l.isp === group.name)
+                return (
                 <div key={group.name} className="dns-isp-group">
                   <div className="dns-isp-header">
-                    <h2 className="section-title">{group.name}</h2>
+                    <div className="flex items-center gap-2">
+                      <h2 className="section-title">{group.name}</h2>
+                      {canManage && (
+                        <button
+                          type="button"
+                          className="screenshot-icon-btn"
+                          onClick={() => setEditLogoTarget(group.name)}
+                          aria-label={`Edit logo for ${group.name}`}
+                          title="Edit logo"
+                        >
+                          {groupLogo ? (
+                            <ISPLogoChip isp={group.name} logoUrl={groupLogo.logo_url} size={20} />
+                          ) : (
+                            <SquarePenIcon size={14} />
+                          )}
+                        </button>
+                      )}
+                    </div>
                     <span className="dns-isp-count">{group.servers.length} {group.servers.length === 1 ? 'server' : 'servers'}</span>
                   </div>
                   {group.servers.map(s => (
@@ -363,7 +499,8 @@ function DNSServersPage() {
                     </div>
                   ))}
                 </div>
-              ))
+                )
+              })
             )}
           </div>
         )}
@@ -388,6 +525,14 @@ function DNSServersPage() {
         itemLabel={deleteTarget ? serverLabel(deleteTarget) : ''}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      <EditISPLogoDialog
+        open={editLogoTarget !== null}
+        onClose={() => setEditLogoTarget(null)}
+        onSaved={load}
+        isp={editLogoTarget ?? ''}
+        currentLogoUrl={logos.find(l => l.isp === editLogoTarget)?.logo_url}
       />
     </div>
   )
