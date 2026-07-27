@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Minus, TrendingDown, TrendingUp } from 'lucide-react'
 import { fetchISPStats, fetchISPTiming, fetchISPTrend } from '@/api/isps'
+import { fetchISPLogos } from '@/api/isp-logos'
+import { ISPLogoChip } from '@/components/isp-logo-chip'
 import type { ISPStats, ISPTiming, ScanResult } from '@/api/types'
 import { AnimateIcon } from '@/components/animate-ui/icons/icon'
 import { ChevronRightIcon } from '@/components/animate-ui/icons/chevron-right'
@@ -64,12 +66,17 @@ export function ISPBentoSkeleton({ count }: { count: number }) {
 export function ISPBentoGrid({ results }: { results: ScanResult[] }) {
   const isps = useMemo(() => getISPNames(results), [results])
   const [cards, setCards] = useState<ISPCardData[]>([])
+  const [logos, setLogos] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const loaded = await Promise.all(isps.map(loadISPCard))
+    const [loaded, ispLogos] = await Promise.all([
+      Promise.all(isps.map(loadISPCard)),
+      fetchISPLogos().catch(() => []),
+    ])
     setCards(loaded)
+    setLogos(Object.fromEntries(ispLogos.map(l => [l.isp, l.logo_url])))
     setLoading(false)
   }, [isps])
 
@@ -79,24 +86,27 @@ export function ISPBentoGrid({ results }: { results: ScanResult[] }) {
 
   return (
     <div className="bento-grid">
-      {cards.map(card => <ISPCard key={card.isp} data={card} />)}
+      {cards.map(card => <ISPCard key={card.isp} data={card} logoUrl={logos[card.isp]} />)}
     </div>
   )
 }
 
-function ISPCard({ data }: { data: ISPCardData }) {
+function ISPCard({ data, logoUrl }: { data: ISPCardData; logoUrl?: string }) {
   const { isp, stats, timing, trend, pct, avgLatency } = data
   const serverCount = stats.servers.length
 
   return (
     <div className="bento-card">
       <div className="bento-card-header">
-        <AnimateIcon animateOnHover asChild>
-          <Link to="/isps/$isp" params={{ isp }} className="server-name inline-flex items-center gap-1">
-            {isp}
-            <ChevronRightIcon size={14} />
-          </Link>
-        </AnimateIcon>
+        <div className="inline-flex items-center gap-2">
+          <ISPLogoChip isp={isp} logoUrl={logoUrl} size={20} />
+          <AnimateIcon animateOnHover asChild>
+            <Link to="/isps/$isp" params={{ isp }} className="server-name inline-flex items-center gap-1">
+              {isp}
+              <ChevronRightIcon size={14} />
+            </Link>
+          </AnimateIcon>
+        </div>
         <span className="dash-label mb-0">{serverCount} {serverCount === 1 ? 'server' : 'servers'}</span>
       </div>
 

@@ -13,7 +13,10 @@ import {
   setScanInterval,
   type ScanSchedule,
 } from '../api/admin'
-import type { CompliantIP, Department, User } from '../api/types'
+import { fetchISPLogos, upsertISPLogo, deleteISPLogo } from '../api/isp-logos'
+import { fetchDnsServers } from '../api/dns-servers'
+import type { CompliantIP, Department, DNSServer, ISPLogo, User } from '../api/types'
+import { ISPLogoChip } from '@/components/isp-logo-chip'
 import {
   Dialog,
   DialogContent,
@@ -327,6 +330,93 @@ function AddCompliantIPDialog({
   )
 }
 
+/* ─── Add ISP Logo Dialog ────────────────────────────────────────────────── */
+
+function AddISPLogoDialog({
+  open,
+  onClose,
+  onAdded,
+  ispOptions,
+}: {
+  open: boolean
+  onClose: () => void
+  onAdded: () => void
+  ispOptions: string[]
+}) {
+  const [isp, setIsp] = useState('')
+  const [logoUrl, setLogoUrl] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const reset = () => { setIsp(''); setLogoUrl(''); setError(null) }
+  const handleClose = () => { reset(); onClose() }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!isp) { setError('ISP is required'); return }
+    if (!logoUrl.trim()) { setError('Logo URL is required'); return }
+    setLoading(true)
+    setError(null)
+    try {
+      await upsertISPLogo(isp, logoUrl.trim())
+      reset()
+      onAdded()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add logo')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: 420 }}>
+        <DialogHeader>
+          <DialogTitle>Add ISP Logo</DialogTitle>
+          <DialogDescription>
+            Sets the logo shown for this ISP in the Overview page's bento grid. Re-adding an existing ISP overwrites its logo.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit}>
+          <div className="form-field">
+            <label className="form-label" id="isp-logo-isp-label">ISP</label>
+            <Select value={isp} onValueChange={setIsp} disabled={loading}>
+              <SelectTrigger aria-labelledby="isp-logo-isp-label" className="w-full" />
+              <SelectContent>
+                {ispOptions.map((name, i) => (
+                  <SelectItem key={name} index={i} value={name}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="form-field">
+            <label className="form-label" htmlFor="isp-logo-url-input">Logo URL</label>
+            <input
+              id="isp-logo-url-input"
+              className="form-input"
+              type="text"
+              placeholder="e.g. https://upload.wikimedia.org/.../cloudflare.svg"
+              value={logoUrl}
+              onChange={e => setLogoUrl(e.target.value)}
+              disabled={loading}
+            />
+          </div>
+          {error && <p className="form-error">{error}</p>}
+          <DialogFooter>
+            <button type="button" className="btn-ghost" onClick={handleClose} disabled={loading}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={loading}>
+              {loading ? 'Adding…' : 'Add Logo'}
+            </button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 /* ─── Scan Interval Settings ─────────────────────────────────────────────── */
 
 const SCAN_INTERVAL_OPTIONS = [
@@ -400,12 +490,16 @@ function AdminPage() {
   const [departments, setDepartments] = useState<Department[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [compliantIPs, setCompliantIPs] = useState<CompliantIP[]>([])
+  const [ispLogos, setIspLogos] = useState<ISPLogo[]>([])
+  const [dnsServers, setDnsServers] = useState<DNSServer[]>([])
   const [scanSchedule, setScanSchedule] = useState<ScanSchedule | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addDeptOpen, setAddDeptOpen] = useState(false)
   const [addUserOpen, setAddUserOpen] = useState(false)
   const [addIPOpen, setAddIPOpen] = useState(false)
+  const [addLogoOpen, setAddLogoOpen] = useState(false)
+  const [deleteLogoTarget, setDeleteLogoTarget] = useState<ISPLogo | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
   const [deleteIPTarget, setDeleteIPTarget] = useState<CompliantIP | null>(null)
 
@@ -413,6 +507,13 @@ function AdminPage() {
     setLoading(true)
     try {
       setError(null)
+      // ISP Logos and DNS servers are readable by admin and dept-admin alike
+      // (dept-admins already manage the DNS server catalog), unlike the
+      // super-admin-only fetches below.
+      const [logos, servers] = await Promise.all([fetchISPLogos(), fetchDnsServers()])
+      setIspLogos(logos)
+      setDnsServers(servers)
+
       if (me?.is_admin) {
         // Departments/Compliant-IPs/scan interval stay super-admin-only
         // server-side — a department admin would just get a 403 fetching them.
@@ -458,6 +559,13 @@ function AdminPage() {
     if (!deleteIPTarget) return
     await deleteCompliantIP(deleteIPTarget.id)
     setDeleteIPTarget(null)
+    load()
+  }
+
+  const handleDeleteLogo = async () => {
+    if (!deleteLogoTarget) return
+    await deleteISPLogo(deleteLogoTarget.isp)
+    setDeleteLogoTarget(null)
     load()
   }
 
@@ -549,6 +657,52 @@ function AdminPage() {
           </TableBody>
         </Table>
         </div>
+        <div className='mb-4'>
+        <div className="page-header" style={{ marginBottom: 12 }}>
+          <h2 className="section-title">ISP Logos</h2>
+          <p className="page-subtitle" style={{ marginLeft: 8 }}>Shown next to each ISP's name on the Overview page</p>
+          <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddLogoOpen(true)}>
+            + Add Logo
+          </button>
+        </div>
+        <Table className="results-table" aria-label="ISP Logos">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="col-status" scope="col">Logo</TableHead>
+              <TableHead className="col-domain th-left" scope="col">ISP</TableHead>
+              <TableHead className="col-evidence" scope="col" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {ispLogos.map(logo => (
+              <TableRow key={logo.isp} className="admin-row">
+                <TableCell className="col-status text-center">
+                  <ISPLogoChip isp={logo.isp} logoUrl={logo.logo_url} size={24} />
+                </TableCell>
+                <TableCell className="col-domain">{logo.isp}</TableCell>
+                <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
+                  <button
+                    type="button"
+                    className="screenshot-icon-btn"
+                    onClick={() => setDeleteLogoTarget(logo)}
+                    aria-label={`Delete logo for ${logo.isp}`}
+                    title="Delete"
+                  >
+                    <XIcon size={16} />
+                  </button>
+                </TableCell>
+              </TableRow>
+            ))}
+            {ispLogos.length === 0 && !loading && (
+              <TableRow>
+                <TableCell colSpan={3} style={{ textAlign: 'center', color: 'var(--stone-muted)', padding: '16px 0' }}>
+                  No ISP logos configured
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+        </div>
         {me?.is_admin && (
         <div className='mb-4'>
         <div className="page-header" style={{ marginBottom: 12 }}>
@@ -608,6 +762,12 @@ function AdminPage() {
         callerIsSuperAdmin={!!me?.is_admin}
       />
       <AddCompliantIPDialog open={addIPOpen} onClose={() => setAddIPOpen(false)} onAdded={load} />
+      <AddISPLogoDialog
+        open={addLogoOpen}
+        onClose={() => setAddLogoOpen(false)}
+        onAdded={load}
+        ispOptions={Array.from(new Set(dnsServers.map(s => s.isp))).sort()}
+      />
       <DeleteConfirmDialog
         open={deleteTarget !== null}
         itemLabel={deleteTarget?.username ?? ''}
@@ -620,6 +780,13 @@ function AdminPage() {
         description="Scans will no longer classify this IP as compliant."
         onConfirm={handleDeleteIP}
         onCancel={() => setDeleteIPTarget(null)}
+      />
+      <DeleteConfirmDialog
+        open={deleteLogoTarget !== null}
+        itemLabel={deleteLogoTarget?.isp ?? ''}
+        description="The bento grid will fall back to a monogram for this ISP."
+        onConfirm={handleDeleteLogo}
+        onCancel={() => setDeleteLogoTarget(null)}
       />
     </div>
   )

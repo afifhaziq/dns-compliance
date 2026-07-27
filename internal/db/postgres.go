@@ -577,6 +577,24 @@ func (s *postgresStore) DeleteCompliantIP(ctx context.Context, id uint) error {
 	return s.db.WithContext(ctx).Delete(&CompliantIP{}, id).Error
 }
 
+func (s *postgresStore) ListISPLogos(ctx context.Context) ([]ISPLogo, error) {
+	var logos []ISPLogo
+	return logos, s.db.WithContext(ctx).Order("isp").Find(&logos).Error
+}
+
+func (s *postgresStore) UpsertISPLogo(ctx context.Context, isp, logoURL string) (ISPLogo, error) {
+	logo := ISPLogo{ISP: isp, LogoURL: logoURL}
+	err := s.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "isp"}},
+		DoUpdates: clause.AssignmentColumns([]string{"logo_url"}),
+	}).Create(&logo).Error
+	return logo, err
+}
+
+func (s *postgresStore) DeleteISPLogo(ctx context.Context, isp string) error {
+	return s.db.WithContext(ctx).Delete(&ISPLogo{}, "isp = ?", isp).Error
+}
+
 func (s *postgresStore) GetScanInterval(ctx context.Context) (int, error) {
 	var settings ScanSettings
 	if err := s.db.WithContext(ctx).First(&settings, 1).Error; err != nil {

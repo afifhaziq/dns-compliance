@@ -94,6 +94,16 @@ type CompliantIP struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// ISPLogo is an admin-set logo URL for one ISP, rendered in the Overview
+// page's ISPBentoGrid. Keyed by ISP name (not FK'd to DNSServer, since one
+// ISP name is shared across multiple DNSServer rows). Purely cosmetic;
+// never affects compliance calculations.
+type ISPLogo struct {
+	ISP       string    `gorm:"primaryKey" json:"isp"`
+	LogoURL   string    `json:"logo_url"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type ScanRun struct {
 	ID          uint       `gorm:"primaryKey" json:"id"`
 	TriggeredBy string     `json:"triggered_by"` // "scheduled", "manual", "screenshot"
