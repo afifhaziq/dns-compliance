@@ -18,6 +18,7 @@ import (
 
 	"github.com/afif/dns-tracking/internal/dns"
 	"github.com/afif/dns-tracking/internal/dnsconfig"
+	"github.com/afif/dns-tracking/internal/grpcauth"
 	"github.com/afif/dns-tracking/internal/input"
 	"github.com/afif/dns-tracking/internal/pipeline"
 	"github.com/afif/dns-tracking/internal/screenshot"
@@ -25,8 +26,25 @@ import (
 	pb "github.com/afif/dns-tracking/proto"
 	"github.com/chromedp/chromedp"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
+
+// grpcTransport carries the resolved gRPC security settings shared by both
+// crawler modes, so runListenMode doesn't grow three more positional
+// parameters on top of the nine it already has.
+type grpcTransport struct {
+	dialOpt grpc.DialOption
+	creds   credentials.TransportCredentials // nil when TLS is off
+	token   string
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
 
 func main() {
 	sitesFile    := flag.String("sites", "", "path to file with one URL per line")
@@ -42,11 +60,29 @@ func main() {
 	takeScreenshots  := flag.Bool("screenshots", false, "capture screenshots for resolved sites (default: DNS-only)")
 	compliantIPsFlag := flag.String("compliant-ips", "", "comma-separated IPs treated as compliant even when DNS resolves (e.g. MCMC block-page IP)")
 	listenAddr := flag.String("listen-addr", "", "gRPC listen address for persistent trigger mode (e.g. :50052); when set, runs as a long-lived server instead of a one-shot sweep")
-	authToken := flag.String("auth-token", "", "shared secret required on incoming StartSweep RPCs when --listen-addr is set")
+	authToken := flag.String("auth-token", envOr("CRAWLER_TOKEN", ""), "shared secret for both gRPC directions: required on incoming StartSweep RPCs, and sent with outgoing Submit RPCs")
+	tlsCert := flag.String("tls-cert", envOr("TLS_CERT", ""), "PEM path to this binary's leaf certificate; enables mTLS when set together with --tls-key and --tls-ca")
+	tlsKey := flag.String("tls-key", envOr("TLS_KEY", ""), "PEM path to the private key for --tls-cert")
+	tlsCA := flag.String("tls-ca", envOr("TLS_CA", ""), "PEM path to the CA that signed both binaries' certificates")
 	flag.Parse()
 
+	creds, tlsOn, err := grpcauth.Creds(*tlsCert, *tlsKey, *tlsCA)
+	if err != nil {
+		log.Fatalf("TLS config: %v", err)
+	}
+	transport := grpcTransport{
+		dialOpt: grpc.WithTransportCredentials(insecure.NewCredentials()),
+		token:   *authToken,
+	}
+	if tlsOn {
+		transport.dialOpt = grpc.WithTransportCredentials(creds)
+		transport.creds = creds
+	} else {
+		log.Print("WARNING: gRPC links are unencrypted — set --tls-cert, --tls-key and --tls-ca to enable mTLS")
+	}
+
 	if *listenAddr != "" {
-		runListenMode(*listenAddr, *authToken, *grpcAddr, *dnsWorkers, *ssWorkers,
+		runListenMode(*listenAddr, transport, *grpcAddr, *dnsWorkers, *ssWorkers,
 			time.Duration(*dnsTimeoutSec)*time.Second, time.Duration(*ssTimeoutSec)*time.Second,
 			time.Duration(*waitIdleSec)*time.Second, time.Duration(*postIdleSleepMs)*time.Millisecond)
 		return
@@ -77,7 +113,7 @@ func main() {
 
 	var conn *grpc.ClientConn
 	if *grpcAddr != "" {
-		conn, err = grpc.NewClient(*grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err = grpc.NewClient(*grpcAddr, transport.dialOpt)
 		if err != nil {
 			log.Fatalf("connecting to gRPC server: %v", err)
 		}
@@ -104,18 +140,18 @@ func main() {
 	postIdleSleep := time.Duration(*postIdleSleepMs) * time.Millisecond
 
 	if *intervalM == 0 {
-		runSweep(ctx, urls, servers, baseCfg, waitIdle, postIdleSleep, conn, *takeScreenshots)
+		runSweep(ctx, urls, servers, baseCfg, waitIdle, postIdleSleep, conn, transport.token, *takeScreenshots)
 		return
 	}
 
 	ticker := time.NewTicker(time.Duration(*intervalM) * time.Minute)
 	defer ticker.Stop()
 
-	runSweep(ctx, urls, servers, baseCfg, waitIdle, postIdleSleep, conn, *takeScreenshots)
+	runSweep(ctx, urls, servers, baseCfg, waitIdle, postIdleSleep, conn, transport.token, *takeScreenshots)
 	for {
 		select {
 		case <-ticker.C:
-			runSweep(ctx, urls, servers, baseCfg, waitIdle, postIdleSleep, conn, *takeScreenshots)
+			runSweep(ctx, urls, servers, baseCfg, waitIdle, postIdleSleep, conn, transport.token, *takeScreenshots)
 		case <-ctx.Done():
 			log.Println("shutting down")
 			return
@@ -156,6 +192,7 @@ func runSweep(
 	waitIdle time.Duration,
 	postIdleSleep time.Duration,
 	conn *grpc.ClientConn,
+	token string,
 	takeScreenshots bool,
 ) {
 	start := time.Now()
@@ -199,7 +236,7 @@ func runSweep(
 			if conn != nil && !takeScreenshots {
 				r.DNSServer = serverLabel
 				sendCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-				if err := sender.Send(sendCtx, conn, buildReport([]pipeline.SiteResult{r})); err != nil {
+				if err := sender.Send(sendCtx, conn, token, buildReport([]pipeline.SiteResult{r})); err != nil {
 					log.Printf("gRPC stream send failed for %s (%s): %v", r.URL, serverLabel, err)
 				}
 				cancel()
@@ -246,7 +283,7 @@ func runSweep(
 		report := buildReport(allResults)
 		sendCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		if err := sender.Send(sendCtx, conn, report); err != nil {
+		if err := sender.Send(sendCtx, conn, token, report); err != nil {
 			log.Printf("gRPC send failed: %v", err)
 		} else {
 			log.Printf("Report sent to %s", conn.Target())

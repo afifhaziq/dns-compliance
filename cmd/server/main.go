@@ -14,6 +14,7 @@ import (
 	"github.com/afif/dns-tracking/internal/db"
 	"github.com/afif/dns-tracking/internal/dnsconfig"
 	"github.com/afif/dns-tracking/internal/favicon"
+	"github.com/afif/dns-tracking/internal/grpcauth"
 	"github.com/afif/dns-tracking/internal/ipinfo"
 	"github.com/afif/dns-tracking/internal/server"
 	"github.com/afif/dns-tracking/internal/storage"
@@ -35,7 +36,7 @@ func main() {
 	minioSecret := flag.String("minio-secret-key", envOr("MINIO_SECRET_KEY", "minioadmin"), "MinIO secret key")
 	minioBucket := flag.String("minio-bucket", envOr("MINIO_BUCKET", "screenshots"), "MinIO bucket name")
 	crawlerAddr := flag.String("crawler-addr", envOr("CRAWLER_ADDR", "localhost:50052"), "gRPC address of the crawler's control service")
-	crawlerToken := flag.String("crawler-token", envOr("CRAWLER_TOKEN", ""), "shared secret sent with StartSweep RPCs; must match the crawler's --auth-token")
+	crawlerToken := flag.String("crawler-token", envOr("CRAWLER_TOKEN", ""), "shared secret for both gRPC directions: sent with outgoing StartSweep RPCs, and required on incoming Submit RPCs; must match the crawler's --auth-token")
 	seedFile := flag.String("seed-dns", "dns-server.yaml", "YAML file to seed DNS servers on first run; empty to skip")
 	intervalMin := flag.Int("interval", 60, "scan interval in minutes")
 	cookieSecure := flag.Bool("cookie-secure", envOr("COOKIE_SECURE", "true") == "true", "mark the session cookie Secure (disable for local plain-HTTP dev)")
@@ -45,6 +46,9 @@ func main() {
 	whoisRefreshIntervalMin := flag.Int("whois-refresh-interval", 1440, "WHOIS/RDAP refresh sweep interval in minutes")
 	whoisStaleDays := flag.Int("whois-stale-days", 30, "re-fetch a domain's WHOIS/RDAP data once its cached copy is older than this many days")
 	subfinderPath := flag.String("subfinder-path", envOr("SUBFINDER_PATH", "subfinder"), "path to subfinder binary; empty to disable subdomain enumeration")
+	tlsCert := flag.String("tls-cert", envOr("TLS_CERT", ""), "PEM path to this binary's leaf certificate; enables mTLS when set together with --tls-key and --tls-ca")
+	tlsKey := flag.String("tls-key", envOr("TLS_KEY", ""), "PEM path to the private key for --tls-cert")
+	tlsCA := flag.String("tls-ca", envOr("TLS_CA", ""), "PEM path to the CA that signed both binaries' certificates")
 	flag.Parse()
 
 	// Connect to PostgreSQL and run AutoMigrate.
@@ -114,7 +118,19 @@ func main() {
 	// Scanner triggers sweeps on the crawler's persistent control service
 	// over gRPC instead of exec'ing a local subprocess — see
 	// docs/superpowers/specs/2026-07-22-split-crawler-dashboard-hosts-design.md.
-	crawlerConn, err := grpc.NewClient(*crawlerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	// gRPC security applies to both directions: dialing the crawler's control
+	// service, and listening for the crawler's Submit calls.
+	grpcCreds, tlsOn, err := grpcauth.Creds(*tlsCert, *tlsKey, *tlsCA)
+	if err != nil {
+		log.Fatalf("TLS config: %v", err)
+	}
+	dialOpt := grpc.WithTransportCredentials(insecure.NewCredentials())
+	if tlsOn {
+		dialOpt = grpc.WithTransportCredentials(grpcCreds)
+	} else {
+		log.Print("WARNING: gRPC links are unencrypted — set --tls-cert, --tls-key and --tls-ca to enable mTLS")
+	}
+	crawlerConn, err := grpc.NewClient(*crawlerAddr, dialOpt)
 	if err != nil {
 		log.Fatalf("connecting to crawler: %v", err)
 	}
@@ -126,7 +142,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("grpc listen: %v", err)
 	}
-	grpcSrv := grpc.NewServer()
+	var grpcOpts []grpc.ServerOption
+	if tlsOn {
+		grpcOpts = append(grpcOpts, grpc.Creds(grpcCreds))
+	}
+	if ic := grpcauth.UnaryInterceptor(*crawlerToken); ic != nil {
+		grpcOpts = append(grpcOpts, grpc.UnaryInterceptor(ic))
+	} else {
+		log.Print("WARNING: ComplianceService.Submit is unauthenticated — set --crawler-token to require a shared secret")
+	}
+	grpcSrv := grpc.NewServer(grpcOpts...)
 	pb.RegisterComplianceServiceServer(grpcSrv, server.NewGRPCServer(store, stor, broadcaster, ipFetch, whois.FetchIP))
 	go func() {
 		log.Printf("gRPC listening on %s", *grpcAddr)
