@@ -18,6 +18,11 @@ go build -o crawler ./cmd/crawler/
 # Baseline DNS benchmark (dig/nslookup/curl) to compare against crawler concurrency
 ./dns_benchmark.sh [site-list.txt] [dns-server.yaml]   # writes to benchmark_results/
 
+# Generate a private CA + one leaf cert per binary, to enable mutual TLS on the
+# gRPC link between server and crawler (see gRPC section below); output goes to
+# the gitignored certs/, unrelated to any public HTTPS cert the dashboard uses
+./scripts/gen-mtls-certs.sh [extra-hostname-or-IP ...]
+
 # Run the crawler standalone (sites file or inline URLs — always quote URLs with ? or & in zsh)
 go run ./cmd/crawler/ --sites sites.txt
 go run ./cmd/crawler/ "https://example.com" "https://example2.com"
