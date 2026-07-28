@@ -60,6 +60,18 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 				urlID = urlIDByValue[norm]
 			}
 		}
+		if urlID == 0 {
+			// Not on any enabled watchlist — e.g. a "Scan Selected" ad-hoc URL
+			// or a disabled watchlist entry. ScanResult.URLID FKs to urls.id,
+			// so without this the insert below would silently fail (dropped
+			// from the scan run's results). Get-or-create by normalized value,
+			// same as AddToWatchlist.
+			if u, err := s.store.CreateURL(ctx, r.Url); err == nil {
+				urlID = u.ID
+			} else {
+				log.Printf("grpc: resolve url id for %s: %v", r.Url, err)
+			}
+		}
 
 		lookupIP := r.ResolvedIp
 		if lookupIP == "" {
