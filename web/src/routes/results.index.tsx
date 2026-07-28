@@ -14,6 +14,7 @@ import {
   PreviewLinkCardImage,
 } from '@/components/animate-ui/components/base/preview-link-card'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogTitle } from '@/components/animate-ui/components/radix/dialog'
 import { Progress, ProgressTrack } from '@/components/animate-ui/components/base/progress'
 import { AnimatedNumber } from '@/components/ui/animated-number'
@@ -296,6 +297,7 @@ function ResultsPage() {
   const [error, setError] = useState<string | null>(null)
 
   const [filters, setFilters] = useState<Filter<string>[]>([])
+  const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [page, setPage] = useState(1)
 
@@ -402,7 +404,9 @@ function ResultsPage() {
   const dnsFilter = filters.find(f => f.field === 'dns_server')?.values[0] as string | undefined
 
   const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase()
     return groups
+      .filter(g => !query || g.url.toLowerCase().includes(query))
       .map(g => {
         let res = g.results
         if (dnsFilter) res = res.filter(r => r.dns_server.name === dnsFilter)
@@ -413,9 +417,9 @@ function ResultsPage() {
         return { ...g, results: res, violationCount, totalCount: res.length }
       })
       .filter(Boolean) as GroupedResult[]
-  }, [groups, statusFilter, dnsFilter])
+  }, [groups, statusFilter, dnsFilter, search])
 
-  useEffect(() => { setPage(1) }, [statusFilter, dnsFilter])
+  useEffect(() => { setPage(1) }, [statusFilter, dnsFilter, search])
 
   const scanProgress = useMemo(() => {
     if (!progress) return undefined
@@ -471,6 +475,14 @@ function ResultsPage() {
       ) : (
         <div className="flex flex-col items-stretch w-full gap-4 mt-4">
           <div className="filter-bar flex flex-row items-center justify-start gap-4 w-full">
+            <Input
+              type="search"
+              placeholder="Search domain..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="max-w-64"
+              aria-label="Search domain"
+            />
             <Filters filters={filters} fields={filterFields} onChange={setFilters} />
           </div>
 
