@@ -53,6 +53,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			// view them (results reference them by name); only mutating the
 			// set is admin-only, gated below.
 			r.Get("/dns-servers", h.ListDNSServers)
+			r.Get("/dns-servers/{id}/uptime", h.ServerUptime)
 
 			r.With(scanLimit).Post("/scan", h.TriggerScan)
 			r.Get("/scan/status", h.ScanStatus)
@@ -90,6 +91,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 				r.Post("/dns-servers", h.CreateDNSServer)
 				r.Patch("/dns-servers/{id}", h.UpdateDNSServer)
 				r.Delete("/dns-servers/{id}", h.DeleteDNSServer)
+				r.Patch("/dns-servers/{id}/enabled", h.SetDNSServerEnabled)
 				r.Post("/admin/isp-logos", h.UpsertISPLogo)
 				r.Delete("/admin/isp-logos/*", h.DeleteISPLogo)
 

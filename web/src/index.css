@@ -1015,7 +1015,7 @@ th.th-left {
 }
 
 .isp-logo-chip {
-  @apply shrink-0 flex items-center justify-center overflow-hidden rounded-md border border-stone-border bg-stone-panel;
+  @apply shrink-0 flex items-center justify-center overflow-hidden rounded-sm border border-stone-border bg-stone-panel;
 }
 
 .isp-logo-image {

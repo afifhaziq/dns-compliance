@@ -4,6 +4,7 @@ export type DNSServer = {
   name: string
   address: string
   protocol: 'udp' | 'dot' | 'doh'
+  enabled: boolean
   created_at: string
 }
 
@@ -91,6 +92,11 @@ export type ISPTrendStat = {
   day: string       // YYYY-MM-DD
   total: number
   compliant: number
+}
+
+export type ServerUptimeStat = {
+  day: string       // YYYY-MM-DD
+  up: boolean
 }
 
 export type DomainTiming = {

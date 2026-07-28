@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { DNSServer } from './types'
+import type { DNSServer, ServerUptimeStat } from './types'
 
 export async function fetchDnsServers(): Promise<DNSServer[]> {
   const data = await api.get<DNSServer[]>('/dns-servers')
@@ -30,4 +30,13 @@ export async function updateDnsServer(id: number, data: {
 
 export async function deleteDnsServer(id: number): Promise<void> {
   await api.delete<void>(`/dns-servers/${id}`)
+}
+
+export async function setDnsServerEnabled(id: number, enabled: boolean): Promise<void> {
+  await api.patch<void>(`/dns-servers/${id}/enabled`, { enabled })
+}
+
+export async function fetchServerUptime(id: number, sinceDays = 30): Promise<ServerUptimeStat[]> {
+  const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString()
+  return api.get<ServerUptimeStat[]>(`/dns-servers/${id}/uptime?since=${encodeURIComponent(since)}`)
 }

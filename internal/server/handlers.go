@@ -384,6 +384,28 @@ func (h *Handlers) DeleteDNSServer(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// SetDNSServerEnabled toggles whether a DNS server is included in future
+// scan sweeps (ListEnabledDNSServers), without deleting it or its history.
+func (h *Handlers) SetDNSServerEnabled(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var body struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := h.store.SetDNSServerEnabled(r.Context(), uint(id), body.Enabled); err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // Scan control
 
 func (h *Handlers) TriggerScan(w http.ResponseWriter, r *http.Request) {
@@ -1071,6 +1093,49 @@ func (h *Handlers) ISPTrend(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load trend data")
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
+}
+
+// DNS Server Uptime
+
+func (h *Handlers) ServerUptime(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	now := time.Now()
+	since := now.AddDate(0, 0, -30)
+	until := now
+	if s := r.URL.Query().Get("since"); s != "" {
+		if t, err2 := time.Parse(time.RFC3339, s); err2 == nil {
+			since = t
+		}
+	}
+	if u := r.URL.Query().Get("until"); u != "" {
+		if t, err2 := time.Parse(time.RFC3339, u); err2 == nil {
+			until = t
+		}
+	}
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	var stats []db.ServerUptimeStat
+	if user.IsAdmin {
+		stats, err = h.store.ServerUptime(r.Context(), uint(id), since, until)
+	} else {
+		if user.DepartmentID == nil {
+			writeError(w, http.StatusForbidden, "user has no department")
+			return
+		}
+		stats, err = h.store.ServerUptimeForDepartment(r.Context(), uint(id), since, until, *user.DepartmentID)
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load uptime data")
 		return
 	}
 	writeJSON(w, http.StatusOK, stats)

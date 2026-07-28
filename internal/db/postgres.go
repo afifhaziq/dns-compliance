@@ -45,6 +45,15 @@ func (s *postgresStore) ListDNSServers(ctx context.Context) ([]DNSServer, error)
 	return servers, s.db.WithContext(ctx).Order("created_at asc").Find(&servers).Error
 }
 
+func (s *postgresStore) ListEnabledDNSServers(ctx context.Context) ([]DNSServer, error) {
+	var servers []DNSServer
+	return servers, s.db.WithContext(ctx).Where("enabled = ?", true).Order("created_at asc").Find(&servers).Error
+}
+
+func (s *postgresStore) SetDNSServerEnabled(ctx context.Context, id uint, enabled bool) error {
+	return s.db.WithContext(ctx).Model(&DNSServer{}).Where("id = ?", id).Update("enabled", enabled).Error
+}
+
 func (s *postgresStore) CreateDNSServer(ctx context.Context, srv DNSServer) (DNSServer, error) {
 	return srv, s.db.WithContext(ctx).Create(&srv).Error
 }
@@ -852,6 +861,77 @@ func (s *postgresStore) NationalTrend(ctx context.Context, since, until time.Tim
 
 func (s *postgresStore) NationalTrendForDepartment(ctx context.Context, since, until time.Time, departmentID uint) ([]ISPTrendStat, error) {
 	return s.dailyTrend(ctx, since, until, &departmentID)
+}
+
+func (s *postgresStore) ServerUptime(ctx context.Context, dnsServerID uint, since, until time.Time) ([]ServerUptimeStat, error) {
+	return s.serverUptime(ctx, dnsServerID, since, until, nil)
+}
+
+func (s *postgresStore) ServerUptimeForDepartment(ctx context.Context, dnsServerID uint, since, until time.Time, departmentID uint) ([]ServerUptimeStat, error) {
+	return s.serverUptime(ctx, dnsServerID, since, until, &departmentID)
+}
+
+// isDownError reports whether a ScanResult.Error string indicates the
+// resolver itself failed to answer (timeout/SERVFAIL) rather than a normal
+// domain-blocked result — mirrors the frontend's classifyDNSError
+// (web/src/lib/dns-error.ts), keeping just the "down" categories.
+func isDownError(errStr string) bool {
+	if errStr == "" {
+		return false
+	}
+	e := strings.ToLower(errStr)
+	return strings.Contains(e, "timeout") ||
+		strings.Contains(e, "deadline exceeded") ||
+		strings.Contains(e, "server misbehaving") ||
+		strings.Contains(e, "connection refused") ||
+		strings.Contains(e, "servfail")
+}
+
+// serverUptime buckets one specific DNS server's scans into calendar days
+// and marks each day down when a majority of that day's scans against it
+// errored with a timeout/SERVFAIL — i.e. the resolver failed to respond, as
+// opposed to a domain simply being blocked (a normal, non-error result).
+func (s *postgresStore) serverUptime(ctx context.Context, dnsServerID uint, since, until time.Time, departmentID *uint) ([]ServerUptimeStat, error) {
+	type row struct {
+		ScannedAt time.Time
+		Error     string
+	}
+	q := s.db.WithContext(ctx).
+		Table("scan_results").
+		Select("scan_results.scanned_at, scan_results.error").
+		Where("scan_results.dns_server_id = ? AND scan_results.scanned_at >= ? AND scan_results.scanned_at <= ?", dnsServerID, since, until)
+	if departmentID != nil {
+		q = q.Joins("JOIN department_urls ON department_urls.url_id = scan_results.url_id AND department_urls.department_id = ? AND department_urls.enabled = true", *departmentID)
+	}
+	var rows []row
+	if err := q.Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	type bucket struct{ total, down int }
+	buckets := make(map[string]*bucket)
+	order := make([]string, 0)
+	for _, r := range rows {
+		day := r.ScannedAt.Format("2006-01-02")
+		b, ok := buckets[day]
+		if !ok {
+			b = &bucket{}
+			buckets[day] = b
+			order = append(order, day)
+		}
+		b.total++
+		if isDownError(r.Error) {
+			b.down++
+		}
+	}
+	sort.Strings(order)
+
+	stats := make([]ServerUptimeStat, 0, len(order))
+	for _, day := range order {
+		b := buckets[day]
+		stats = append(stats, ServerUptimeStat{Day: day, Up: b.down*2 <= b.total})
+	}
+	return stats, nil
 }
 
 // resurfacedDomains finds domains whose latest scan flipped from compliant

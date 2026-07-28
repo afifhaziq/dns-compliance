@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { fetchDnsServers, createDnsServer, updateDnsServer, deleteDnsServer } from '../api/dns-servers'
+import { fetchDnsServers, createDnsServer, updateDnsServer, deleteDnsServer, fetchServerUptime, setDnsServerEnabled } from '../api/dns-servers'
 import { fetchISPLogos, upsertISPLogo, deleteISPLogo } from '../api/isp-logos'
 import type { DNSServer, ISPLogo } from '../api/types'
-import { Badge } from '@/components/ui/badge'
+import { Radio, ShieldCheck, Lock } from 'lucide-react'
 import { SquarePenIcon } from '@/components/ui/square-pen'
 import { XIcon } from '@/components/ui/x'
 import { ISPLogoChip } from '@/components/isp-logo-chip'
+import { TrendSparkline, type TrendPoint } from '@/components/trend-sparkline'
+import { Switch } from '@/components/ui/r-switch'
 import {
   Dialog,
   DialogContent,
@@ -327,22 +329,18 @@ function groupByISP(servers: DNSServer[]): DNSGroup[] {
 
 function SkeletonSection() {
   return (
-    <>
-      {[2, 1].map((count, gi) => (
-        <div key={gi} className="dns-isp-group">
-          <span className="skeleton" style={{ width: 100, height: 15, marginBottom: 12 }} />
-          {Array.from({ length: count }).map((_, i) => (
-            <div key={i} className="dns-server-entry">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                <span className="skeleton" style={{ width: 140, height: 14 }} />
-                <span className="skeleton" style={{ width: 110, height: 12 }} />
-              </div>
-              <span className="skeleton" style={{ width: 38, height: 20, borderRadius: 99 }} />
-            </div>
-          ))}
+    <div className="bento-grid">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="bento-card">
+          <div className="bento-card-header">
+            <span className="skeleton" style={{ width: 90, height: 14 }} />
+          </div>
+          <span className="skeleton" style={{ width: 140, height: 14 }} />
+          <span className="skeleton" style={{ width: 110, height: 12 }} />
+          <span className="skeleton" style={{ width: '100%', height: 20, borderRadius: 6 }} />
         </div>
       ))}
-    </>
+    </div>
   )
 }
 
@@ -365,11 +363,32 @@ function serverLabel(s: DNSServer): string {
   return s.name || s.address
 }
 
+const PROTOCOL_META: Record<Protocol, { Icon: typeof Radio; bg: string; label: string }> = {
+  udp: { Icon: Radio, bg: '#a3a3a3', label: 'UDP — plain DNS' },
+  dot: { Icon: ShieldCheck, bg: '#14b8a6', label: 'DoT — DNS-over-TLS' },
+  doh: { Icon: Lock, bg: '#3b82f6', label: 'DoH — DNS-over-HTTPS' },
+}
+
+function ProtocolIcon({ protocol }: { protocol: Protocol }) {
+  const { Icon, bg, label } = PROTOCOL_META[protocol]
+  return (
+    <div
+      className="flex items-center justify-center w-8 h-8 rounded-lg text-white shrink-0"
+      style={{ backgroundColor: bg }}
+      title={label}
+      aria-label={label}
+    >
+      <Icon size={16} strokeWidth={2} />
+    </div>
+  )
+}
+
 function DNSServersPage() {
   const { me } = useAuth()
   const canManage = me?.is_admin || me?.is_dept_admin
   const [servers, setServers] = useState<DNSServer[]>([])
   const [logos, setLogos] = useState<ISPLogo[]>([])
+  const [serverTrends, setServerTrends] = useState<Map<number, TrendPoint[]>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -384,6 +403,16 @@ function DNSServersPage() {
       const [srvs, lgs] = await Promise.all([fetchDnsServers(), fetchISPLogos()])
       setServers(srvs)
       setLogos(lgs)
+
+      const uptimes = await Promise.all(srvs.map(s => fetchServerUptime(s.id, 30).catch(() => [])))
+      const byServerTrend = new Map<number, TrendPoint[]>()
+      srvs.forEach((s, i) => {
+        byServerTrend.set(s.id, uptimes[i].map(t => ({
+          date: new Date(t.day),
+          compliance: t.up ? 100 : 0,
+        })))
+      })
+      setServerTrends(byServerTrend)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load DNS servers')
     } finally {
@@ -399,6 +428,15 @@ function DNSServersPage() {
     setDeleteTarget(null)
     load()
   }
+
+  const handleToggleEnabled = useCallback(async (id: number, enabled: boolean) => {
+    setServers(prev => prev.map(s => s.id === id ? { ...s, enabled } : s))
+    try {
+      await setDnsServerEnabled(id, enabled)
+    } catch {
+      setServers(prev => prev.map(s => s.id === id ? { ...s, enabled: !enabled } : s))
+    }
+  }, [])
 
   return (
     <div className="mx-20 mt-10">
@@ -434,73 +472,68 @@ function DNSServersPage() {
             {loading ? (
               <SkeletonSection />
             ) : (
-              groupByISP(servers).map(group => {
-                const groupLogo = logos.find(l => l.isp === group.name)
-                return (
-                <div key={group.name} className="dns-isp-group">
-                  <div className="dns-isp-header">
-                    <div className="flex items-center gap-2">
-                      <h2 className="section-title">{group.name}</h2>
-                      {canManage && (
+              <div className="bento-grid">
+                {groupByISP(servers).flatMap(group => group.servers).map(s => {
+                  const ispLogo = logos.find(l => l.isp === s.isp)
+                  return (
+                    <div key={s.id} className={`bento-card ${s.enabled ? '' : 'opacity-60'}`}>
+                      <div className="bento-card-header">
                         <button
                           type="button"
-                          className="screenshot-icon-btn"
-                          onClick={() => setEditLogoTarget(group.name)}
-                          aria-label={`Edit logo for ${group.name}`}
-                          title="Edit logo"
+                          className="flex gap-2 bg-transparent border-none cursor-pointer"
+                          onClick={() => canManage && setEditLogoTarget(s.isp)}
+                          disabled={!canManage}
+                          aria-label={canManage ? `Edit logo for ${s.isp}` : undefined}
+                          title={canManage ? 'Edit logo' : undefined}
                         >
-                          {groupLogo ? (
-                            <ISPLogoChip isp={group.name} logoUrl={groupLogo.logo_url} size={20} />
-                          ) : (
-                            <SquarePenIcon size={14} />
-                          )}
+                          <ISPLogoChip isp={s.isp} logoUrl={ispLogo?.logo_url} size={40} matchLogoBackground />
+                          <span className="dash-label">{s.isp}</span>
                         </button>
-                      )}
-                    </div>
-                    <span className="dns-isp-count">{group.servers.length} {group.servers.length === 1 ? 'server' : 'servers'}</span>
-                  </div>
-                  {group.servers.map(s => (
-                    <div key={s.id} className="dns-server-entry">
+                        <ProtocolIcon protocol={s.protocol} />
+                      </div>
                       <div className="dns-server-info">
-                        <div className="flex items-center gap-2">
-                          <span className="dns-server-name">{s.name || s.address}</span>
-                          <Badge
-                            size="sm"
-                            animate={false}
-                            color={s.protocol === 'dot' ? 'teal' : s.protocol === 'doh' ? 'blue' : 'gray'}
-                          >
-                            {s.protocol === 'dot' ? 'DoT' : s.protocol === 'doh' ? 'DoH' : 'UDP'}
-                          </Badge>
-                        </div>
+                        <span className="dns-server-name">{s.name || s.address}</span>
                         {s.name && <span className="dns-server-addr">{s.address}</span>}
                       </div>
+                      {(serverTrends.get(s.id)?.length ?? 0) >= 2 && (
+                        <TrendSparkline trend={serverTrends.get(s.id)!} label="30-day uptime" mode="status" />
+                      )}
                       {canManage && (
-                        <div className="dns-server-meta">
-                          <button
-                            type="button"
-                            className="screenshot-icon-btn"
-                            onClick={() => setEditTarget(s)}
-                            aria-label={`Edit ${serverLabel(s)}`}
-                            title="Edit"
-                          >
-                            <SquarePenIcon size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            className="screenshot-icon-btn"
-                            onClick={() => setDeleteTarget(s)}
-                            aria-label={`Delete ${serverLabel(s)}`}
-                            title="Delete"
-                          >
-                            <XIcon size={16} />
-                          </button>
+                        <div className="dns-server-meta mt-auto pt-2 border-t border-stone-border justify-between">
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={s.enabled}
+                              onCheckedChange={checked => handleToggleEnabled(s.id, checked)}
+                              aria-label={`${s.enabled ? 'Stop' : 'Resume'} monitoring ${serverLabel(s)}`}
+                            />
+                            <span className="dash-label">{s.enabled ? 'Monitoring' : 'Off'}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              className="screenshot-icon-btn"
+                              onClick={() => setEditTarget(s)}
+                              aria-label={`Edit ${serverLabel(s)}`}
+                              title="Edit"
+                            >
+                              <SquarePenIcon size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              className="screenshot-icon-btn"
+                              onClick={() => setDeleteTarget(s)}
+                              aria-label={`Delete ${serverLabel(s)}`}
+                              title="Delete"
+                            >
+                              <XIcon size={16} />
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
-                  ))}
-                </div>
-                )
-              })
+                  )
+                })}
+              </div>
             )}
           </div>
         )}

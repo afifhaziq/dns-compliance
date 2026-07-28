@@ -68,6 +68,24 @@ func (m *fullMockStore) DeleteURL(_ context.Context, id uint) error {
 func (m *fullMockStore) ListDNSServers(_ context.Context) ([]db.DNSServer, error) {
 	return m.dnsServers, nil
 }
+func (m *fullMockStore) ListEnabledDNSServers(_ context.Context) ([]db.DNSServer, error) {
+	var enabled []db.DNSServer
+	for _, s := range m.dnsServers {
+		if s.Enabled {
+			enabled = append(enabled, s)
+		}
+	}
+	return enabled, nil
+}
+func (m *fullMockStore) SetDNSServerEnabled(_ context.Context, id uint, enabled bool) error {
+	for i, s := range m.dnsServers {
+		if s.ID == id {
+			m.dnsServers[i].Enabled = enabled
+			return nil
+		}
+	}
+	return fmt.Errorf("dns server %d not found", id)
+}
 func (m *fullMockStore) CreateDNSServer(_ context.Context, s db.DNSServer) (db.DNSServer, error) {
 	s.ID = uint(len(m.dnsServers) + 1)
 	m.dnsServers = append(m.dnsServers, s)
@@ -459,6 +477,12 @@ func (m *fullMockStore) NationalTrend(_ context.Context, _, _ time.Time) ([]db.I
 	return nil, nil
 }
 func (m *fullMockStore) NationalTrendForDepartment(_ context.Context, _, _ time.Time, _ uint) ([]db.ISPTrendStat, error) {
+	return nil, nil
+}
+func (m *fullMockStore) ServerUptime(_ context.Context, _ uint, _, _ time.Time) ([]db.ServerUptimeStat, error) {
+	return nil, nil
+}
+func (m *fullMockStore) ServerUptimeForDepartment(_ context.Context, _ uint, _, _ time.Time, _ uint) ([]db.ServerUptimeStat, error) {
 	return nil, nil
 }
 func (m *fullMockStore) ResurfacedDomains(_ context.Context) ([]db.ResurfacedDomain, error) {

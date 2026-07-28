@@ -8,6 +8,7 @@ type DNSServer struct {
 	Name      string    `gorm:"not null" json:"name"`
 	Address   string    `gorm:"not null" json:"address"`
 	Protocol  string    `gorm:"not null" json:"protocol"` // udp, dot, doh
+	Enabled   bool      `gorm:"not null;default:true" json:"enabled"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -231,6 +232,16 @@ type ISPTrendStat struct {
 	Day       string `json:"day"` // YYYY-MM-DD
 	Total     int    `json:"total"`
 	Compliant int    `json:"compliant"`
+}
+
+// ServerUptimeStat is one calendar day's up/down status for a single DNS
+// server, used by GET /api/dns-servers/{id}/uptime. A day is "down" when a
+// majority of that day's scans against the server errored with a timeout or
+// SERVFAIL — i.e. the resolver itself failed to answer, as opposed to a
+// domain simply being blocked (which is a normal, non-error result).
+type ServerUptimeStat struct {
+	Day string `json:"day"` // YYYY-MM-DD
+	Up  bool   `json:"up"`
 }
 
 // DomainTiming is how long one domain took (or has been waiting) to be

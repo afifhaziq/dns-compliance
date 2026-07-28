@@ -65,6 +65,9 @@ func (c *completionCapture) ListWatchedURLs(_ context.Context) ([]db.URL, error)
 	return []db.URL{{ID: 1, URL: "https://example.com"}}, nil
 }
 func (c *completionCapture) ListDNSServers(_ context.Context) ([]db.DNSServer, error) {
+	return c.ListEnabledDNSServers(context.Background())
+}
+func (c *completionCapture) ListEnabledDNSServers(_ context.Context) ([]db.DNSServer, error) {
 	if c.dnsServers != nil {
 		return c.dnsServers, nil
 	}

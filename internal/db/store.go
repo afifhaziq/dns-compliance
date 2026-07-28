@@ -34,9 +34,14 @@ type URLStore interface {
 // department-scoped, results reference servers by name.
 type DNSServerStore interface {
 	ListDNSServers(ctx context.Context) ([]DNSServer, error)
+	// ListEnabledDNSServers is what a sweep actually scans against — disabled
+	// servers stay in ListDNSServers (so past results/admin UI still show
+	// them) but are skipped by future scans.
+	ListEnabledDNSServers(ctx context.Context) ([]DNSServer, error)
 	CreateDNSServer(ctx context.Context, s DNSServer) (DNSServer, error)
 	UpdateDNSServer(ctx context.Context, id uint, s DNSServer) (DNSServer, error)
 	DeleteDNSServer(ctx context.Context, id uint) error
+	SetDNSServerEnabled(ctx context.Context, id uint, enabled bool) error
 }
 
 // ScanRunStore tracks the lifecycle of a scan sweep (one StartSweep call to
@@ -84,6 +89,8 @@ type ISPStatsStore interface {
 	ISPComplianceTimingForDepartment(ctx context.Context, isp string, departmentID uint) (ISPTimingResult, error)
 	NationalTrend(ctx context.Context, since, until time.Time) ([]ISPTrendStat, error)
 	NationalTrendForDepartment(ctx context.Context, since, until time.Time, departmentID uint) ([]ISPTrendStat, error)
+	ServerUptime(ctx context.Context, dnsServerID uint, since, until time.Time) ([]ServerUptimeStat, error)
+	ServerUptimeForDepartment(ctx context.Context, dnsServerID uint, since, until time.Time, departmentID uint) ([]ServerUptimeStat, error)
 	ResurfacedDomains(ctx context.Context) ([]ResurfacedDomain, error)
 	ResurfacedDomainsForDepartment(ctx context.Context, departmentID uint) ([]ResurfacedDomain, error)
 }

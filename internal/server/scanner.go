@@ -105,9 +105,13 @@ func (sc *Scanner) run(ctx context.Context, triggeredBy string, requestedURLs []
 		}
 	}
 
-	servers, err := sc.store.ListDNSServers(ctx)
+	servers, err := sc.store.ListEnabledDNSServers(ctx)
 	if err != nil {
 		log.Printf("scanner: load DNS servers: %v", err)
+		return
+	}
+	if len(servers) == 0 {
+		log.Printf("scanner: no enabled DNS servers to scan against")
 		return
 	}
 
