@@ -546,25 +546,35 @@ function URLHistoryPage() {
   )
 
   return (
+    
     <div className="mx-60 mb-10">
       <Breadcrumbs items={[{ label: 'Overview', to: '/' }, { label: 'Results', to: '/results' }, { label: hostname }]} />
 
-      <div className="page-header">
-        <div>
-        <h1 className="page-title flex-end items-end gap-3">
-          <img src={faviconApiUrl(hostname)} alt="" width={16} height={16} className="shrink-0" onError={e => { e.currentTarget.style.visibility = 'hidden' }} />
+      <div className="page-header flex flex-col">
+        
+        <h1 className="page-title gap-2 flex flex-row">
+          <div>
+          <img src={faviconApiUrl(hostname)} alt="" width={16} height={16} className="mt-3" onError={e => { e.currentTarget.style.visibility = 'hidden' }} />
+          </div>
           <div>
           {hostname}
           </div>
         </h1>
-        </div>
-        <div className="page-subtitle">{url} · Last 7 days</div>
+        
+        <div className="flex flex-row justify-between min-w-full">
+        <div className="page-subtitle">{url} · Last 7 days </div>
+        <div>
         {!dnsRecordsLoading && dnsRecords?.resolver_ip && (
           <p className="dns-records-resolver ml-auto">
             Looked up via host DNS resolver {dnsRecords.resolver_ip}
           </p>
         )}
+        </div>
       </div>
+      </div>
+      
+      
+      
 
       <Tabs defaultValue={tab} variant="underline">
         <TabsList>

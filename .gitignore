@@ -1,6 +1,13 @@
 .worktrees/
 web/.tanstack/
 
+# Compiled binaries (go build -o server/crawler) — regenerated, not source
+/server
+/crawler
+
+# Skill installs from `npx skills add` — local tooling, not project source
+.agents/skills/
+
 # Crawler screenshot output, saved locally as <dns_label>/<hostname>/*.png
 # when running the crawler standalone (see CLAUDE.md). Named after whatever
 # DNS servers are configured, so add new labels here as they show up.
