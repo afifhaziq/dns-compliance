@@ -1005,6 +1005,48 @@ func TestUpdateDNSServer_AllowedForDeptAdmin(t *testing.T) {
 	}
 }
 
+func TestTestDNSServer_ForbiddenForNonAdmin(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+	body, _ := json.Marshal(map[string]string{"address": "127.0.0.1:1", "protocol": "udp"})
+	req := httptest.NewRequest(http.MethodPost, "/api/dns-servers/test", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for a non-admin, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTestDNSServer_ReportsFailure(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := adminCookie(store)
+	r := setupRouter(store, nil)
+	// port 0 never accepts a connection — a fast, network-independent way to
+	// exercise the failure path without depending on a real resolver being reachable.
+	body, _ := json.Marshal(map[string]string{"address": "127.0.0.1:0", "protocol": "udp"})
+	req := httptest.NewRequest(http.MethodPost, "/api/dns-servers/test", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 even on resolution failure, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Success bool   `json:"success"`
+		Error   string `json:"error"`
+	}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.Success || resp.Error == "" {
+		t.Fatalf("expected success=false with an error message, got %+v", resp)
+	}
+}
+
 func TestGetScanStatusIdle(t *testing.T) {
 	store := &fullMockStore{}
 	cookie := adminCookie(store)

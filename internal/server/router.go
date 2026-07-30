@@ -92,6 +92,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 				r.Patch("/dns-servers/{id}", h.UpdateDNSServer)
 				r.Delete("/dns-servers/{id}", h.DeleteDNSServer)
 				r.Patch("/dns-servers/{id}/enabled", h.SetDNSServerEnabled)
+				r.Post("/dns-servers/test", h.TestDNSServer)
 				r.Post("/admin/isp-logos", h.UpsertISPLogo)
 				r.Delete("/admin/isp-logos/*", h.DeleteISPLogo)
 

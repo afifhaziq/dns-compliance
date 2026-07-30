@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/afif/dns-tracking/internal/db"
+	"github.com/afif/dns-tracking/internal/dns"
 	"github.com/afif/dns-tracking/internal/favicon"
 	"github.com/afif/dns-tracking/internal/ipinfo"
 	"github.com/afif/dns-tracking/internal/subfinder"
@@ -404,6 +405,53 @@ func (h *Handlers) SetDNSServerEnabled(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// TestDNSServer resolves example.com against a caller-supplied address/protocol,
+// letting an admin verify a resolver works before (or after) saving it — the
+// address doesn't need to belong to an already-created DNSServer row.
+func (h *Handlers) TestDNSServer(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Address  string `json:"address"`
+		Protocol string `json:"protocol"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if body.Address == "" {
+		writeError(w, http.StatusBadRequest, "address is required")
+		return
+	}
+
+	var resolve func(context.Context, string) (string, int64, error)
+	switch body.Protocol {
+	case "dot":
+		resolve = dns.NewDoTResolver(body.Address)
+	case "doh":
+		resolve = dns.NewDoHResolver(body.Address)
+	default:
+		resolve = dns.NewResolver(body.Address)
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	resp := struct {
+		Success   bool   `json:"success"`
+		IP        string `json:"ip,omitempty"`
+		LatencyMs int64  `json:"latency_ms,omitempty"`
+		Error     string `json:"error,omitempty"`
+	}{}
+	ip, latencyMs, err := resolve(ctx, "example.com")
+	if err != nil {
+		resp.Error = err.Error()
+	} else {
+		resp.Success = true
+		resp.IP = ip
+		resp.LatencyMs = latencyMs
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // Scan control

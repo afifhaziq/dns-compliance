@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { fetchDnsServers, createDnsServer, updateDnsServer, deleteDnsServer, fetchServerUptime, setDnsServerEnabled } from '../api/dns-servers'
+import { fetchDnsServers, createDnsServer, updateDnsServer, deleteDnsServer, fetchServerUptime, setDnsServerEnabled, testDnsServer, type DnsServerTestResult } from '../api/dns-servers'
 import { fetchISPLogos, upsertISPLogo, deleteISPLogo } from '../api/isp-logos'
 import type { DNSServer, ISPLogo } from '../api/types'
 import { SquarePenIcon } from '@/components/ui/square-pen'
@@ -62,8 +62,23 @@ function DnsServerFormDialog({
   const [protocol, setProtocol] = useState<Protocol>('udp')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<DnsServerTestResult | null>(null)
 
-  const reset = () => { setIsp(''); setName(''); setAddress(''); setProtocol('udp'); setError(null) }
+  const reset = () => { setIsp(''); setName(''); setAddress(''); setProtocol('udp'); setError(null); setTestResult(null) }
+
+  const handleTest = async () => {
+    if (!address.trim()) { setTestResult({ success: false, error: 'Address is required' }); return }
+    setTesting(true)
+    setTestResult(null)
+    try {
+      setTestResult(await testDnsServer(syncPort(address, protocol), protocol))
+    } catch (err) {
+      setTestResult({ success: false, error: err instanceof Error ? err.message : 'Test failed' })
+    } finally {
+      setTesting(false)
+    }
+  }
 
   useEffect(() => {
     if (!open) return
@@ -143,13 +158,23 @@ function DnsServerFormDialog({
           </div>
           <div className="form-field">
             <label className="form-label" id="dns-address-label">Address</label>
-            <IPPortInput
-              value={address}
-              onChange={setAddress}
-              onBlur={() => setAddress(a => syncPort(a, protocol))}
-              disabled={loading}
-              portPlaceholder={DEFAULT_PORTS[protocol]}
-            />
+            <div className="flex items-center gap-2">
+              <IPPortInput
+                value={address}
+                onChange={a => { setAddress(a); setTestResult(null) }}
+                onBlur={() => setAddress(a => syncPort(a, protocol))}
+                disabled={loading}
+                portPlaceholder={DEFAULT_PORTS[protocol]}
+              />
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleTest}
+                disabled={loading || testing || !address.trim()}
+              >
+                {testing ? 'Testing…' : 'Test'}
+              </button>
+            </div>
             <div className="relative my-1 mt-5 mb-5">
               <Separator />
               <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-xs text-stone-muted">
@@ -163,9 +188,16 @@ function DnsServerFormDialog({
               placeholder="https://1.1.1.1/dns-query (DoH URL)"
               aria-label="DoH URL"
               value={address}
-              onChange={e => setAddress(e.target.value)}
+              onChange={e => { setAddress(e.target.value); setTestResult(null) }}
               disabled={loading}
             />
+            {testResult && (
+              <p className={`mt-2! ${testResult.success ? 'form-success' : 'form-error'}`}>
+                {testResult.success
+                  ? `Resolved example.com → ${testResult.ip} (${testResult.latency_ms}ms)`
+                  : `Failed: ${testResult.error}`}
+              </p>
+            )}
           </div>
           <div className="form-field">
             <label className="form-label" id="dns-protocol-label">Protocol</label>
@@ -175,6 +207,7 @@ function DnsServerFormDialog({
                 const next = v as Protocol
                 setProtocol(next)
                 setAddress(a => syncPort(a, next))
+                setTestResult(null)
               }}
               disabled={loading}
             >
@@ -479,19 +512,19 @@ function DNSServersPage() {
                       <div className="bento-card-header">
                         <button
                           type="button"
-                          className="flex gap-2 items-center bg-transparent border-none cursor-pointer"
+                          className="flex gap-2 items-top bg-transparent border-none cursor-pointer"
                           onClick={() => canManage && setEditLogoTarget(s.isp)}
                           disabled={!canManage}
                           aria-label={canManage ? `Edit logo for ${s.isp}` : undefined}
                           title={canManage ? 'Edit logo' : undefined}
                         >
                           <ISPLogoChip isp={s.isp} logoUrl={ispLogo?.logo_url} size={40} matchLogoBackground />
-                          <div className="flex flex-col items-start">
+                          <div className="flex flex-col gap-0">
                             <span className="dash-label mb-0">{s.isp}</span>
-                            <span className="dns-protocol-label">{PROTOCOL_LABEL[s.protocol]}</span>
+                            <span className="dns-protocol-label text-left">{PROTOCOL_LABEL[s.protocol]}</span>
                           </div>
                         </button>
-                        <div className="flex flex-row justify-end">
+                        <div className="flex flex-row justify-end items-top">
                           <AnimatedBadge
                             size="sm"
                             status={!s.enabled ? 'neutral' : syncingIds.has(s.id) ? 'loading' : 'success'}

@@ -40,3 +40,14 @@ export async function fetchServerUptime(id: number, sinceDays = 30): Promise<Ser
   const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString()
   return api.get<ServerUptimeStat[]>(`/dns-servers/${id}/uptime?since=${encodeURIComponent(since)}`)
 }
+
+export interface DnsServerTestResult {
+  success: boolean
+  ip?: string
+  latency_ms?: number
+  error?: string
+}
+
+export async function testDnsServer(address: string, protocol: DNSServer['protocol']): Promise<DnsServerTestResult> {
+  return api.post<DnsServerTestResult>('/dns-servers/test', { address, protocol })
+}
