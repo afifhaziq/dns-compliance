@@ -1145,6 +1145,10 @@ th.th-left {
   @apply font-mono text-[12px] text-stone-muted;
 }
 
+.dns-protocol-label {
+  @apply text-[11px] font-medium text-stone-muted;
+}
+
 .dns-server-meta {
   @apply flex items-center gap-3 shrink-0;
 }

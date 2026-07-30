@@ -3,12 +3,12 @@ import { createFileRoute } from '@tanstack/react-router'
 import { fetchDnsServers, createDnsServer, updateDnsServer, deleteDnsServer, fetchServerUptime, setDnsServerEnabled } from '../api/dns-servers'
 import { fetchISPLogos, upsertISPLogo, deleteISPLogo } from '../api/isp-logos'
 import type { DNSServer, ISPLogo } from '../api/types'
-import { Radio, ShieldCheck, Lock } from 'lucide-react'
 import { SquarePenIcon } from '@/components/ui/square-pen'
 import { XIcon } from '@/components/ui/x'
 import { ISPLogoChip } from '@/components/isp-logo-chip'
 import { TrendSparkline, type TrendPoint } from '@/components/trend-sparkline'
 import { Switch } from '@/components/ui/r-switch'
+import { AnimatedBadge } from '@/components/motion/animated-badge'
 import {
   Dialog,
   DialogContent,
@@ -363,25 +363,7 @@ function serverLabel(s: DNSServer): string {
   return s.name || s.address
 }
 
-const PROTOCOL_META: Record<Protocol, { Icon: typeof Radio; bg: string; label: string }> = {
-  udp: { Icon: Radio, bg: '#a3a3a3', label: 'UDP — plain DNS' },
-  dot: { Icon: ShieldCheck, bg: '#14b8a6', label: 'DoT — DNS-over-TLS' },
-  doh: { Icon: Lock, bg: '#3b82f6', label: 'DoH — DNS-over-HTTPS' },
-}
-
-function ProtocolIcon({ protocol }: { protocol: Protocol }) {
-  const { Icon, bg, label } = PROTOCOL_META[protocol]
-  return (
-    <div
-      className="flex items-center justify-center w-8 h-8 rounded-lg text-white shrink-0"
-      style={{ backgroundColor: bg }}
-      title={label}
-      aria-label={label}
-    >
-      <Icon size={16} strokeWidth={2} />
-    </div>
-  )
-}
+const PROTOCOL_LABEL: Record<Protocol, string> = { udp: 'UDP', dot: 'DoT', doh: 'DoH' }
 
 function DNSServersPage() {
   const { me } = useAuth()
@@ -395,6 +377,7 @@ function DNSServersPage() {
   const [editTarget, setEditTarget] = useState<DNSServer | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DNSServer | null>(null)
   const [editLogoTarget, setEditLogoTarget] = useState<string | null>(null)
+  const [syncingIds, setSyncingIds] = useState<Set<number>>(new Set())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -429,12 +412,28 @@ function DNSServersPage() {
     load()
   }
 
+  // Toggling on shows a brief "Syncing" state before settling to "Active" —
+  // toggling off goes straight to "Disabled", no transition needed.
+  const clearSyncing = (id: number) => setSyncingIds(prev => {
+    if (!prev.has(id)) return prev
+    const next = new Set(prev)
+    next.delete(id)
+    return next
+  })
+
   const handleToggleEnabled = useCallback(async (id: number, enabled: boolean) => {
     setServers(prev => prev.map(s => s.id === id ? { ...s, enabled } : s))
+    if (enabled) {
+      setSyncingIds(prev => new Set(prev).add(id))
+      setTimeout(() => clearSyncing(id), 1200)
+    } else {
+      clearSyncing(id)
+    }
     try {
       await setDnsServerEnabled(id, enabled)
     } catch {
       setServers(prev => prev.map(s => s.id === id ? { ...s, enabled: !enabled } : s))
+      clearSyncing(id)
     }
   }, [])
 
@@ -480,16 +479,26 @@ function DNSServersPage() {
                       <div className="bento-card-header">
                         <button
                           type="button"
-                          className="flex gap-2 bg-transparent border-none cursor-pointer"
+                          className="flex gap-2 items-center bg-transparent border-none cursor-pointer"
                           onClick={() => canManage && setEditLogoTarget(s.isp)}
                           disabled={!canManage}
                           aria-label={canManage ? `Edit logo for ${s.isp}` : undefined}
                           title={canManage ? 'Edit logo' : undefined}
                         >
                           <ISPLogoChip isp={s.isp} logoUrl={ispLogo?.logo_url} size={40} matchLogoBackground />
-                          <span className="dash-label">{s.isp}</span>
+                          <div className="flex flex-col items-start">
+                            <span className="dash-label mb-0">{s.isp}</span>
+                            <span className="dns-protocol-label">{PROTOCOL_LABEL[s.protocol]}</span>
+                          </div>
                         </button>
-                        <ProtocolIcon protocol={s.protocol} />
+                        <div className="flex flex-row justify-end">
+                          <AnimatedBadge
+                            size="sm"
+                            status={!s.enabled ? 'neutral' : syncingIds.has(s.id) ? 'loading' : 'success'}
+                          >
+                            {!s.enabled ? 'Disabled' : syncingIds.has(s.id) ? 'Syncing' : 'Active'}
+                          </AnimatedBadge>
+                        </div>
                       </div>
                       <div className="dns-server-info">
                         <span className="dns-server-name">{s.name || s.address}</span>
@@ -506,7 +515,6 @@ function DNSServersPage() {
                               onCheckedChange={checked => handleToggleEnabled(s.id, checked)}
                               aria-label={`${s.enabled ? 'Stop' : 'Resume'} monitoring ${serverLabel(s)}`}
                             />
-                            <span className="dash-label">{s.enabled ? 'Monitoring' : 'Off'}</span>
                           </div>
                           <div className="flex items-center gap-3">
                             <button
