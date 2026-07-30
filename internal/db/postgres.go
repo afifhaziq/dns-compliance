@@ -653,6 +653,20 @@ func (s *postgresStore) SetScanEnabled(ctx context.Context, enabled bool) error 
 		Update("enabled", enabled).Error
 }
 
+func (s *postgresStore) GetDNSWorkers(ctx context.Context) (int, error) {
+	var settings ScanSettings
+	if err := s.db.WithContext(ctx).First(&settings, 1).Error; err != nil {
+		return 0, err
+	}
+	return settings.DNSWorkers, nil
+}
+
+func (s *postgresStore) SetDNSWorkers(ctx context.Context, workers int) error {
+	return s.db.WithContext(ctx).
+		Model(&ScanSettings{ID: 1}).
+		Update("dns_workers", workers).Error
+}
+
 func (s *postgresStore) ISPStats(ctx context.Context, isp string) (ISPStatsResult, error) {
 	return s.ispStats(ctx, isp, nil)
 }

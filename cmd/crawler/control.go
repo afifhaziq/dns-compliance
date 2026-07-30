@@ -54,6 +54,9 @@ func (s *controlServer) StartSweep(ctx context.Context, req *pb.SweepRequest) (*
 
 	cfg := s.baseCfg
 	cfg.CompliantIPs = req.CompliantIps
+	if req.DnsWorkers > 0 {
+		cfg.DNSWorkers = int(req.DnsWorkers)
+	}
 
 	runSweep(ctx, req.Urls, servers, cfg, s.waitIdle, s.postIdleSleep, s.conn, s.token, req.Screenshots)
 

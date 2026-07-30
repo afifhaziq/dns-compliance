@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"testing"
 	"time"
 
@@ -34,8 +35,10 @@ type fullMockStore struct {
 	favicons       []db.Favicon
 	subdomainScans []db.SubdomainScan
 	ispLogos       []db.ISPLogo
+	scheduleMu     sync.Mutex // guards the three fields below; the scheduler goroutine reads them concurrently with test/handler writes
 	scanInterval   int
 	scanEnabled    bool
+	dnsWorkers     int
 }
 
 func (m *fullMockStore) ListURLs(_ context.Context) ([]db.URL, error) { return m.urls, nil }
@@ -440,14 +443,37 @@ func (m *fullMockStore) DeleteISPLogo(_ context.Context, isp string) error {
 	return nil
 }
 
-func (m *fullMockStore) GetScanInterval(_ context.Context) (int, error) { return m.scanInterval, nil }
+func (m *fullMockStore) GetScanInterval(_ context.Context) (int, error) {
+	m.scheduleMu.Lock()
+	defer m.scheduleMu.Unlock()
+	return m.scanInterval, nil
+}
 func (m *fullMockStore) SetScanInterval(_ context.Context, minutes int) error {
+	m.scheduleMu.Lock()
+	defer m.scheduleMu.Unlock()
 	m.scanInterval = minutes
 	return nil
 }
-func (m *fullMockStore) GetScanEnabled(_ context.Context) (bool, error) { return m.scanEnabled, nil }
+func (m *fullMockStore) GetScanEnabled(_ context.Context) (bool, error) {
+	m.scheduleMu.Lock()
+	defer m.scheduleMu.Unlock()
+	return m.scanEnabled, nil
+}
 func (m *fullMockStore) SetScanEnabled(_ context.Context, enabled bool) error {
+	m.scheduleMu.Lock()
+	defer m.scheduleMu.Unlock()
 	m.scanEnabled = enabled
+	return nil
+}
+func (m *fullMockStore) GetDNSWorkers(_ context.Context) (int, error) {
+	m.scheduleMu.Lock()
+	defer m.scheduleMu.Unlock()
+	return m.dnsWorkers, nil
+}
+func (m *fullMockStore) SetDNSWorkers(_ context.Context, workers int) error {
+	m.scheduleMu.Lock()
+	defer m.scheduleMu.Unlock()
+	m.dnsWorkers = workers
 	return nil
 }
 
@@ -1788,7 +1814,7 @@ func TestURLsRequestedThisMonth_ScopedForDepartment(t *testing.T) {
 }
 
 func TestScanInterval_GetAndSet_AdminOnly(t *testing.T) {
-	store := &fullMockStore{scanInterval: 60, scanEnabled: true}
+	store := &fullMockStore{scanInterval: 60, scanEnabled: true, dnsWorkers: 20}
 	admin := adminCookie(store)
 	r := setupRouter(store, nil)
 
@@ -1802,13 +1828,14 @@ func TestScanInterval_GetAndSet_AdminOnly(t *testing.T) {
 	var got struct {
 		IntervalMinutes int  `json:"interval_minutes"`
 		Enabled         bool `json:"enabled"`
+		DNSWorkers      int  `json:"dns_workers"`
 	}
 	json.NewDecoder(w.Body).Decode(&got)
-	if got.IntervalMinutes != 60 || !got.Enabled {
-		t.Fatalf("expected interval_minutes=60 enabled=true, got %+v", got)
+	if got.IntervalMinutes != 60 || !got.Enabled || got.DNSWorkers != 20 {
+		t.Fatalf("expected interval_minutes=60 enabled=true dns_workers=20, got %+v", got)
 	}
 
-	body, _ := json.Marshal(map[string]any{"interval_minutes": 15, "enabled": false})
+	body, _ := json.Marshal(map[string]any{"interval_minutes": 15, "enabled": false, "dns_workers": 100})
 	req2 := httptest.NewRequest(http.MethodPatch, "/api/admin/scan-interval", bytes.NewReader(body))
 	req2.Header.Set("Content-Type", "application/json")
 	req2.AddCookie(admin)
@@ -1822,6 +1849,9 @@ func TestScanInterval_GetAndSet_AdminOnly(t *testing.T) {
 	}
 	if store.scanEnabled {
 		t.Fatalf("expected the stored enabled flag to update to false")
+	}
+	if store.dnsWorkers != 100 {
+		t.Fatalf("expected the stored dns_workers to update to 100, got %d", store.dnsWorkers)
 	}
 }
 
@@ -1847,6 +1877,41 @@ func TestStartScheduler_SkipsTriggerWhenDisabled(t *testing.T) {
 	if sc.IsRunning() {
 		t.Fatal("expected Trigger to be skipped while the scan schedule is disabled")
 	}
+}
+
+func TestStartScheduler_NotifyScheduleChangedRestartsWait(t *testing.T) {
+	store := &fullMockStore{
+		// A huge interval — long enough that the scheduler's initial wait
+		// would never fire before this test's timeout on its own. Proves
+		// NotifyScheduleChanged abandons that stale wait rather than the
+		// test passing only because the interval happened to be short.
+		scanInterval: 100000,
+		scanEnabled:  true,
+		urls:         []db.URL{{ID: 1, URL: "example.com"}},
+		// A watched URL alone isn't enough — sc.run also short-circuits
+		// before reaching the crawler if there are no enabled DNS servers,
+		// which would flip running true->false almost instantly and make
+		// waitUntil's polling miss the transient window.
+		dnsServers:     []db.DNSServer{{ID: 1, Name: "G", ISP: "Google", Address: "8.8.8.8:53", Protocol: "udp", Enabled: true}},
+		departmentURLs: []db.DepartmentURL{{DepartmentID: 1, URLID: 1, Enabled: true}},
+	}
+	crawler := &fakeCrawlerClient{delay: 50 * time.Millisecond}
+	sc := server.NewScanner(crawler, "", store, server.NewBroadcaster())
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	server.StartScheduler(ctx, sc, store, 10*time.Millisecond)
+
+	// Give the loop a moment to enter its (huge) wait, then simulate an
+	// admin save that shortens the interval — NotifyScheduleChanged should
+	// make the scheduler pick up the new value immediately instead of
+	// finishing out the old wait.
+	time.Sleep(10 * time.Millisecond)
+	store.scheduleMu.Lock()
+	store.scanInterval = 0 // non-positive -> falls back to the 10ms defaultInterval
+	store.scheduleMu.Unlock()
+	sc.NotifyScheduleChanged()
+
+	waitUntil(t, sc.IsRunning, 300*time.Millisecond)
 }
 
 func TestScanInterval_ForbiddenForDeptAdmin(t *testing.T) {

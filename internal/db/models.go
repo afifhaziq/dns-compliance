@@ -79,10 +79,19 @@ type URLEntry struct {
 // scan schedule. SeedScanInterval creates the row from the --interval flag
 // on first boot; after that the admin panel is authoritative. Enabled gates
 // whether the scheduler's cron sweep actually fires — see StartScheduler.
+// Defaults to false: automated scanning is an explicit admin opt-in, not
+// something a fresh deployment starts doing on its own.
+// DNSWorkers is passed to the crawler on every StartSweep RPC (see
+// Scanner.run in internal/server/scanner.go). Defaults to 100, well above
+// the crawler CLI's own --dns-workers default of 20 (which only applies to
+// standalone/manual crawler runs) — benchmarking against a realistic
+// domain-list scale showed 20 concurrent lookups is far too low for a
+// full sweep to complete within a reasonable interval.
 type ScanSettings struct {
 	ID              uint `gorm:"primaryKey" json:"id"`
 	IntervalMinutes int  `gorm:"not null" json:"interval_minutes"`
-	Enabled         bool `gorm:"not null;default:true" json:"enabled"`
+	Enabled         bool `gorm:"not null;default:false" json:"enabled"`
+	DNSWorkers      int  `gorm:"not null;default:100" json:"dns_workers"`
 }
 
 // CompliantIP is an IP address that counts as compliant even when DNS

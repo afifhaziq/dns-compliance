@@ -23,16 +23,34 @@ type crawlerClient interface {
 }
 
 type Scanner struct {
-	crawler      crawlerClient
-	crawlerToken string
-	store        db.Store
-	broadcaster  *Broadcaster
-	mu           sync.Mutex
-	running      bool
+	crawler       crawlerClient
+	crawlerToken  string
+	store         db.Store
+	broadcaster   *Broadcaster
+	mu            sync.Mutex
+	running       bool
+	scheduleReset chan struct{}
 }
 
 func NewScanner(crawler crawlerClient, crawlerToken string, store db.Store, broadcaster *Broadcaster) *Scanner {
-	return &Scanner{crawler: crawler, crawlerToken: crawlerToken, store: store, broadcaster: broadcaster}
+	return &Scanner{crawler: crawler, crawlerToken: crawlerToken, store: store, broadcaster: broadcaster, scheduleReset: make(chan struct{}, 1)}
+}
+
+// NotifyScheduleChanged tells StartScheduler's loop to abandon whatever is
+// left of its current wait and restart it immediately using the
+// freshly-saved interval — so an admin save actually starts the cadence
+// from that moment, instead of finishing out however much of the stale
+// interval happened to be left. Non-blocking (a pending signal is enough;
+// no need to queue more) and nil-safe, since some tests construct routes
+// with a nil *Scanner.
+func (sc *Scanner) NotifyScheduleChanged() {
+	if sc == nil {
+		return
+	}
+	select {
+	case sc.scheduleReset <- struct{}{}:
+	default:
+	}
 }
 
 func (sc *Scanner) IsRunning() bool {
@@ -125,6 +143,7 @@ func (sc *Scanner) run(ctx context.Context, triggeredBy string, requestedURLs []
 		Urls:         urlValues(urlObjs),
 		DnsServers:   dnsServersToProto(servers),
 		CompliantIps: sc.compliantIPs(ctx),
+		DnsWorkers:   sc.dnsWorkers(ctx),
 	}
 	sc.runCrawler(ctx, req, run.ID)
 }
@@ -164,8 +183,21 @@ func (sc *Scanner) runScreenshot(ctx context.Context, rawURL string, dnsServerID
 		DnsServers:   dnsServersToProto(target),
 		CompliantIps: sc.compliantIPs(ctx),
 		Screenshots:  true,
+		DnsWorkers:   sc.dnsWorkers(ctx),
 	}
 	sc.runCrawler(ctx, req, run.ID)
+}
+
+// dnsWorkers fetches the admin-configured DNS worker count for
+// SweepRequest.DnsWorkers. Returns 0 (non-fatal) on a read failure, which
+// tells the crawler to fall back to its own --dns-workers CLI default.
+func (sc *Scanner) dnsWorkers(ctx context.Context) int32 {
+	workers, err := sc.store.GetDNSWorkers(ctx)
+	if err != nil {
+		log.Printf("scanner: load dns workers setting: %v", err)
+		return 0
+	}
+	return int32(workers)
 }
 
 // compliantIPs fetches the compliant IPs from the store as a string slice

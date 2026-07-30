@@ -76,6 +76,7 @@ func (c *completionCapture) ListEnabledDNSServers(_ context.Context) ([]db.DNSSe
 func (c *completionCapture) ListCompliantIPs(_ context.Context) ([]db.CompliantIP, error) {
 	return nil, nil
 }
+func (c *completionCapture) GetDNSWorkers(_ context.Context) (int, error) { return 0, nil }
 func (c *completionCapture) LastScanRun(_ context.Context) (*db.ScanRun, error) {
 	if len(c.created) == 0 {
 		return nil, nil

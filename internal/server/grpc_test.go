@@ -10,6 +10,7 @@ import (
 	"github.com/afif/dns-tracking/internal/db"
 	"github.com/afif/dns-tracking/internal/server"
 	"github.com/afif/dns-tracking/internal/storage"
+	"github.com/afif/dns-tracking/internal/urlnorm"
 	pb "github.com/afif/dns-tracking/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -27,6 +28,7 @@ type mockStore struct {
 	dnsServers         []db.DNSServer
 	ipInfo             *db.IPInfo // returned by GetIPInfo, nil = cache miss
 	updatedScreenshots map[uint]string
+	createdURLs        []db.URL
 }
 
 func (m *mockStore) InsertResult(_ context.Context, r db.ScanResult) error {
@@ -48,6 +50,24 @@ func (m *mockStore) ListURLs(_ context.Context) ([]db.URL, error) {
 }
 func (m *mockStore) ListWatchedURLs(_ context.Context) ([]db.URL, error) {
 	return nil, nil
+}
+
+// CreateURL mirrors postgresStore's get-or-create-by-normalized-value
+// behavior — Submit falls back to this when a result's URL isn't on any
+// watched list (see the URLID resolution fallback in grpc.go).
+func (m *mockStore) CreateURL(_ context.Context, rawURL string) (db.URL, error) {
+	normalized, err := urlnorm.Normalize(rawURL)
+	if err != nil {
+		return db.URL{}, err
+	}
+	for _, u := range m.createdURLs {
+		if u.URL == normalized {
+			return u, nil
+		}
+	}
+	u := db.URL{ID: uint(len(m.createdURLs) + 1), URL: normalized, CreatedAt: time.Now()}
+	m.createdURLs = append(m.createdURLs, u)
+	return u, nil
 }
 // ResultsByURL mirrors postgresStore's "scanned_at desc" ordering — Submit
 // relies on results[0] being the most-recently-inserted row.

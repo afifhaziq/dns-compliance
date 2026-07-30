@@ -271,16 +271,22 @@ func (h *Handlers) GetScanInterval(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"interval_minutes": minutes, "enabled": enabled})
+	dnsWorkers, err := h.store.GetDNSWorkers(r.Context())
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"interval_minutes": minutes, "enabled": enabled, "dns_workers": dnsWorkers})
 }
 
 func (h *Handlers) SetScanInterval(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		IntervalMinutes int  `json:"interval_minutes"`
 		Enabled         bool `json:"enabled"`
+		DNSWorkers      int  `json:"dns_workers"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.IntervalMinutes < 1 {
-		writeError(w, http.StatusBadRequest, "interval_minutes must be a positive integer")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.IntervalMinutes < 1 || body.DNSWorkers < 1 {
+		writeError(w, http.StatusBadRequest, "interval_minutes and dns_workers must be positive integers")
 		return
 	}
 	if err := h.store.SetScanInterval(r.Context(), body.IntervalMinutes); err != nil {
@@ -291,5 +297,13 @@ func (h *Handlers) SetScanInterval(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w, err)
 		return
 	}
+	if err := h.store.SetDNSWorkers(r.Context(), body.DNSWorkers); err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	// Restart the scheduler's wait timer now rather than finishing out
+	// whatever was left of the previous interval — see
+	// Scanner.NotifyScheduleChanged.
+	h.scanner.NotifyScheduleChanged()
 	w.WriteHeader(http.StatusNoContent)
 }

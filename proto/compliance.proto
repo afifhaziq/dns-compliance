@@ -40,6 +40,7 @@ message SweepRequest {
   repeated DNSServerConfig dns_servers   = 2;
   repeated string          compliant_ips = 3;
   bool                     screenshots   = 4;
+  int32                    dns_workers   = 5; // 0 = crawler's own --dns-workers default
 }
 
 message SweepAck {

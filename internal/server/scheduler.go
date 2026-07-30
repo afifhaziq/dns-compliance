@@ -16,7 +16,12 @@ import (
 // disabling the schedule skips that sweep without stopping the loop, so
 // re-enabling takes effect on the next cycle same as an interval change. On
 // a read error it fails open (treated as enabled), consistent with the
-// interval fallback above. It stops when ctx is cancelled.
+// interval fallback above. sc.scheduleReset (signaled by
+// Scanner.NotifyScheduleChanged, called from the admin panel's scan-settings
+// save) abandons whatever is left of the current wait and restarts it with
+// the freshly-saved interval, so a save actually starts the cadence from
+// that moment rather than finishing out the stale one. It stops when ctx is
+// cancelled.
 func StartScheduler(ctx context.Context, sc *Scanner, store db.ScanSettingsStore, defaultInterval time.Duration) {
 	go func() {
 		for {
@@ -32,6 +37,8 @@ func StartScheduler(ctx context.Context, sc *Scanner, store db.ScanSettingsStore
 				if err := sc.Trigger(ctx, "scheduled", nil); err != nil {
 					log.Printf("scheduler: %v", err)
 				}
+			case <-sc.scheduleReset:
+				continue
 			case <-ctx.Done():
 				return
 			}

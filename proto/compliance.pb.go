@@ -291,6 +291,7 @@ type SweepRequest struct {
 	DnsServers    []*DNSServerConfig     `protobuf:"bytes,2,rep,name=dns_servers,json=dnsServers,proto3" json:"dns_servers,omitempty"`
 	CompliantIps  []string               `protobuf:"bytes,3,rep,name=compliant_ips,json=compliantIps,proto3" json:"compliant_ips,omitempty"`
 	Screenshots   bool                   `protobuf:"varint,4,opt,name=screenshots,proto3" json:"screenshots,omitempty"`
+	DnsWorkers    int32                  `protobuf:"varint,5,opt,name=dns_workers,json=dnsWorkers,proto3" json:"dns_workers,omitempty"` // 0 = crawler's own --dns-workers default
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -351,6 +352,13 @@ func (x *SweepRequest) GetScreenshots() bool {
 		return x.Screenshots
 	}
 	return false
+}
+
+func (x *SweepRequest) GetDnsWorkers() int32 {
+	if x != nil {
+		return x.DnsWorkers
+	}
+	return 0
 }
 
 type SweepAck struct {
@@ -435,13 +443,15 @@ const file_proto_compliance_proto_rawDesc = "" +
 	"\x03isp\x18\x01 \x01(\tR\x03isp\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x18\n" +
 	"\aaddress\x18\x03 \x01(\tR\aaddress\x12\x1a\n" +
-	"\bprotocol\x18\x04 \x01(\tR\bprotocol\"\xa7\x01\n" +
+	"\bprotocol\x18\x04 \x01(\tR\bprotocol\"\xc8\x01\n" +
 	"\fSweepRequest\x12\x12\n" +
 	"\x04urls\x18\x01 \x03(\tR\x04urls\x12<\n" +
 	"\vdns_servers\x18\x02 \x03(\v2\x1b.compliance.DNSServerConfigR\n" +
 	"dnsServers\x12#\n" +
 	"\rcompliant_ips\x18\x03 \x03(\tR\fcompliantIps\x12 \n" +
-	"\vscreenshots\x18\x04 \x01(\bR\vscreenshots\"<\n" +
+	"\vscreenshots\x18\x04 \x01(\bR\vscreenshots\x12\x1f\n" +
+	"\vdns_workers\x18\x05 \x01(\x05R\n" +
+	"dnsWorkers\"<\n" +
 	"\bSweepAck\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error2X\n" +

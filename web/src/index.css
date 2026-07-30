@@ -1071,6 +1071,10 @@ th.th-left {
   @apply text-[13px] text-violation-text bg-violation-subtle rounded-lg py-2 px-3 -mt-2 mb-4;
 }
 
+.form-success {
+  @apply text-[13px] text-compliant-text bg-compliant-subtle rounded-lg py-2 px-3 -mt-2 mb-4;
+}
+
 .back-link {
   @apply inline-flex items-center gap-1 text-[13px] font-medium text-stone-muted no-underline mb-3
     transition-colors duration-150 ease-snappy hover:text-foreground;

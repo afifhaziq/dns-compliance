@@ -29,6 +29,7 @@ import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
 import { Switch } from '@/components/ui/r-switch'
+import { Slider } from '@/components/ui/slider'
 import { XIcon } from '@/components/ui/x'
 import { useAuth } from './__root'
 
@@ -428,22 +429,45 @@ const SCAN_INTERVAL_OPTIONS = [
   { minutes: 1440, label: '1 day' },
 ]
 
-function ScanIntervalSection({ value, onSaved }: { value: ScanSchedule; onSaved: (schedule: ScanSchedule) => void }) {
+// 10 steps, each double the last: 1, 2, 4, ..., 512.
+const DNS_WORKER_STEPS = Array.from({ length: 10 }, (_, i) => 2 ** i)
+
+// Snaps an arbitrary stored value (e.g. a legacy non-power-of-2 setting) to
+// the closest slider step, so the slider always has a valid position.
+function nearestDNSWorkerStep(value: number) {
+  return DNS_WORKER_STEPS.reduce((closest, step) =>
+    Math.abs(step - value) < Math.abs(closest - value) ? step : closest,
+  )
+}
+
+function ScanSettingsSection({ value, onSaved }: { value: ScanSchedule; onSaved: (schedule: ScanSchedule) => void }) {
   const [minutes, setMinutes] = useState(value.interval_minutes)
   const [enabled, setEnabled] = useState(value.enabled)
+  const [dnsWorkers, setDnsWorkers] = useState(value.dns_workers)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [savedMessage, setSavedMessage] = useState<string | null>(null)
 
-  useEffect(() => { setMinutes(value.interval_minutes); setEnabled(value.enabled) }, [value])
+  useEffect(() => {
+    setMinutes(value.interval_minutes)
+    setEnabled(value.enabled)
+    setDnsWorkers(value.dns_workers)
+  }, [value])
 
-  const dirty = minutes !== value.interval_minutes || enabled !== value.enabled
+  const dirty = minutes !== value.interval_minutes || enabled !== value.enabled || dnsWorkers !== value.dns_workers
 
   const handleSave = async () => {
     setSaving(true)
     setError(null)
+    setSavedMessage(null)
     try {
-      await setScanInterval(minutes, enabled)
-      onSaved({ interval_minutes: minutes, enabled })
+      await setScanInterval(minutes, enabled, dnsWorkers)
+      onSaved({ interval_minutes: minutes, enabled, dns_workers: dnsWorkers })
+      setSavedMessage(
+        enabled
+          ? 'Scan is active. It will start the cron job from the moment you saved this setting.'
+          : 'Scan schedule saved. The cron job is disabled and will not run.',
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save')
     } finally {
@@ -454,29 +478,62 @@ function ScanIntervalSection({ value, onSaved }: { value: ScanSchedule; onSaved:
   return (
     <div className='mb-4'>
       <div className="page-header" style={{ marginBottom: 12 }}>
-        <h2 className="section-title">Scan Schedule</h2>
-        <p className="page-subtitle" style={{ marginLeft: 8 }}>How often the automated cron sweep runs</p>
-      </div>
-      <div className="flex flex-row items-center" style={{ gap: 8, maxWidth: 320 }}>
-        <Select value={String(minutes)} onValueChange={v => setMinutes(Number(v))} disabled={saving}>
-          <SelectTrigger aria-label="Scan interval" className="w-full" />
-          <SelectContent>
-            {SCAN_INTERVAL_OPTIONS.map((opt, i) => (
-              <SelectItem key={opt.minutes} index={i} value={String(opt.minutes)}>{opt.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Switch
-          checked={enabled}
-          onCheckedChange={setEnabled}
-          disabled={saving}
-          aria-label={`${enabled ? 'Disable' : 'Enable'} the automated cron sweep`}
-        />
-        <button className="btn-primary" onClick={handleSave} disabled={saving || !dirty}>
+        <h2 className="section-title">Scan Settings</h2>
+        <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={handleSave} disabled={saving || !dirty}>
           {saving ? 'Saving…' : 'Save'}
         </button>
       </div>
-      {error && <p className="form-error">{error}</p>}
+
+      <div style={{ marginBottom: 16 }}>
+        <p className="dash-label-subheading">Scan Frequency</p>
+        <p className="page-subtitle" style={{ marginBottom: 8 }}>How often the automated cron sweep runs</p>
+        <div className="flex flex-row items-center" style={{ gap: 8, maxWidth: 320 }}>
+          <Select value={String(minutes)} onValueChange={v => setMinutes(Number(v))} disabled={saving}>
+            <SelectTrigger aria-label="Scan interval" className="w-full" />
+            <SelectContent>
+              {SCAN_INTERVAL_OPTIONS.map((opt, i) => (
+                <SelectItem key={opt.minutes} index={i} value={String(opt.minutes)}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Switch
+            checked={enabled}
+            onCheckedChange={setEnabled}
+            disabled={saving}
+            aria-label={`${enabled ? 'Disable' : 'Enable'} the automated cron sweep`}
+          />
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <p className="dash-label-subheading">DNS Workers</p>
+        <p className="page-subtitle" style={{ marginBottom: 8 }}>Concurrent lookups per DNS server per sweep (default 100) — currently {dnsWorkers}</p>
+        <div className="grid w-full max-w-sm gap-4">
+          <Slider
+            value={[DNS_WORKER_STEPS.indexOf(nearestDNSWorkerStep(dnsWorkers))]}
+            onValueChange={([index]) => setDnsWorkers(DNS_WORKER_STEPS[index])}
+            min={0}
+            max={DNS_WORKER_STEPS.length - 1}
+            step={1}
+            disabled={saving}
+            aria-label="Concurrent DNS workers"
+          />
+          <span
+            aria-hidden="true"
+            className="text-muted-foreground flex w-full items-center justify-between gap-1 px-2.5 text-xs font-medium"
+          >
+            {DNS_WORKER_STEPS.map(step => (
+              <span key={step} className="flex w-0 flex-col items-center justify-center gap-2">
+                <span className="bg-muted-foreground/70 h-1 w-px" />
+                <span>{step}</span>
+              </span>
+            ))}
+          </span>
+        </div>
+      </div>
+
+      {savedMessage && <p className="form-success" style={{ marginTop: 12 }}>{savedMessage}</p>}
+      {error && <p className="form-error" style={{ marginTop: 12 }}>{error}</p>}
     </div>
   )
 }
@@ -613,7 +670,7 @@ function AdminPage() {
         </Table>
         </div>
         {scanSchedule !== null && (
-          <ScanIntervalSection value={scanSchedule} onSaved={setScanSchedule} />
+          <ScanSettingsSection value={scanSchedule} onSaved={setScanSchedule} />
         )}
         </>
         )}

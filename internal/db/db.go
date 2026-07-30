@@ -55,15 +55,17 @@ func SeedDepartments(database *gorm.DB) error {
 }
 
 // SeedScanInterval creates the single ScanSettings row from the --interval
-// flag if it doesn't exist yet. After the first boot, the admin panel is
-// authoritative and this is a no-op.
+// flag if it doesn't exist yet, with the schedule disabled — automated
+// scanning is an explicit admin opt-in, not a fresh deployment's default.
+// After the first boot, the admin panel is authoritative and this is a
+// no-op.
 func SeedScanInterval(database *gorm.DB, minutes int) error {
 	var count int64
 	database.Model(&ScanSettings{}).Count(&count)
 	if count > 0 {
 		return nil
 	}
-	return database.Create(&ScanSettings{ID: 1, IntervalMinutes: minutes, Enabled: true}).Error
+	return database.Create(&ScanSettings{ID: 1, IntervalMinutes: minutes, Enabled: false}).Error
 }
 
 // MigrateAdminDepartments ensures an "Admin" department exists and updates

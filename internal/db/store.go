@@ -141,6 +141,8 @@ type ScanSettingsStore interface {
 	SetScanInterval(ctx context.Context, minutes int) error
 	GetScanEnabled(ctx context.Context) (bool, error)
 	SetScanEnabled(ctx context.Context, enabled bool) error
+	GetDNSWorkers(ctx context.Context) (int, error)
+	SetDNSWorkers(ctx context.Context, workers int) error
 }
 
 // EnrichmentStore covers the fetch-once (or fetch-rarely) caches keyed by

@@ -56,12 +56,13 @@ export async function deleteCompliantIP(id: number): Promise<void> {
 export interface ScanSchedule {
   interval_minutes: number
   enabled: boolean
+  dns_workers: number
 }
 
 export async function fetchScanInterval(): Promise<ScanSchedule> {
   return api.get<ScanSchedule>('/admin/scan-interval')
 }
 
-export async function setScanInterval(minutes: number, enabled: boolean): Promise<void> {
-  await api.patch<void>('/admin/scan-interval', { interval_minutes: minutes, enabled })
+export async function setScanInterval(minutes: number, enabled: boolean, dnsWorkers: number): Promise<void> {
+  await api.patch<void>('/admin/scan-interval', { interval_minutes: minutes, enabled, dns_workers: dnsWorkers })
 }
