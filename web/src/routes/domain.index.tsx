@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { type ColumnDef, type ExpandedState, type PaginationState, getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import { FaviconSearch, faviconUrl } from '@/components/unlumen-ui/favicon-search'
 import { DataGrid, DataGridContainer } from '@/components/reui/data-grid/data-grid'
@@ -12,6 +12,7 @@ import { EmptyIcon } from '@/components/results-table-parts'
 import { relativeTime } from '@/lib/relative-time'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { ChevronRight } from '@/components/ui/chevron-right'
+import { GripIcon } from '@/components/ui/grip'
 import { BrailleLoader } from '@/components/ui/braille-loader'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 
@@ -190,6 +191,26 @@ const columns: ColumnDef<DomainSummary>[] = [
       const value = getValue<string>()
       return <span title={new Date(value).toLocaleString()}>{relativeTime(value)}</span>
     },
+  },
+  {
+    id: 'actions',
+    header: 'Actions',
+    meta: {
+      headerClassName: 'col-evidence th-center',
+      cellClassName: 'col-evidence text-center',
+    },
+    cell: ({ row }) => (
+      <Link
+        to="/domain/$url"
+        params={{ url: row.original.url }}
+        search={{ tab: 'overview' }}
+        className="btn-row-history"
+        aria-label={`View overview for ${row.original.url}`}
+        onClick={e => e.stopPropagation()}
+      >
+        <GripIcon className="btn-row-history-icon" size={16} />
+      </Link>
+    ),
   },
 ]
 
