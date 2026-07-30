@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Camera, Image as ImageIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import {
+  type ColumnDef,
+  type Column,
+  type ExpandedState,
+  type SortingState,
+  type PaginationState,
+  getCoreRowModel,
+  getSortedRowModel,
+  getPaginationRowModel,
+  useReactTable,
+} from '@tanstack/react-table'
+import { Camera, Image as ImageIcon, ChevronLeftIcon, ChevronRightIcon, ArrowUpIcon, ArrowDownIcon, ChevronsUpDownIcon } from 'lucide-react'
 import { GripIcon } from '@/components/ui/grip'
 import { ChevronRight } from '@/components/ui/chevron-right'
 import { fetchResults, groupResults, lastScanTime } from '../api/results'
@@ -13,12 +24,14 @@ import {
   PreviewLinkCardPanel,
   PreviewLinkCardImage,
 } from '@/components/animate-ui/components/base/preview-link-card'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { Table, TableBody, TableRow, TableCell } from '@/components/ui/table'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogTitle } from '@/components/animate-ui/components/radix/dialog'
 import { Progress, ProgressTrack } from '@/components/animate-ui/components/base/progress'
 import { AnimatedNumber } from '@/components/ui/animated-number'
 import { Filters, type Filter, type FilterFieldConfig } from '@/components/reui/filters'
+import { DataGrid, DataGridContainer } from '@/components/reui/data-grid/data-grid'
+import { DataGridTable } from '@/components/reui/data-grid/data-grid-table'
 import { BrailleLoader } from '@/components/ui/braille-loader'
 import { ThinkingIndicator } from '@/components/ui/thinking-indicator'
 import { StatusDot, EmptyIcon } from '@/components/results-table-parts'
@@ -47,11 +60,41 @@ const STATUS_FIELD: FilterFieldConfig<string> = {
   ],
 }
 
-/* ─── Sub-rows (expanded DNS results) ───────────────────────────────────── */
+/* ─── Sortable column header ────────────────────────────────────────────── */
+// Minimal stand-in for reui's DataGridColumnHeader: that component pulls in a
+// column-visibility/pin/move dropdown menu and an IconPlaceholder shim tied
+// to a Next.js app path this repo doesn't have. All we need is click-to-cycle
+// sort with an indicator icon, so it's written directly instead of vendored.
 
-function SubRows({
+function SortableHeader<TData, TValue>({ column, title }: { column: Column<TData, TValue>; title: string }) {
+  const sorted = column.getIsSorted()
+  const cycleSort = () => {
+    if (sorted === 'asc') column.toggleSorting(true)
+    else if (sorted === 'desc') column.clearSorting()
+    else column.toggleSorting(false)
+  }
+  return (
+    <button
+      type="button"
+      className="inline-flex items-center gap-1 text-[11px] font-semibold tracking-[0.06em] uppercase text-stone-muted hover:text-foreground transition-colors duration-150 ease-snappy"
+      onClick={cycleSort}
+    >
+      {title}
+      {sorted === 'asc' ? (
+        <ArrowUpIcon className="w-3 h-3" />
+      ) : sorted === 'desc' ? (
+        <ArrowDownIcon className="w-3 h-3" />
+      ) : (
+        <ChevronsUpDownIcon className="w-3 h-3 opacity-40" />
+      )}
+    </button>
+  )
+}
+
+/* ─── Sub-rows (expanded per-DNS-server results) ────────────────────────── */
+
+function SubRowsTable({
   results,
-  visible,
   pendingScreenshotIds,
   screenshotErrors,
   screenshotsBlocked,
@@ -59,231 +102,88 @@ function SubRows({
   onViewScreenshot,
 }: {
   results: ScanResult[]
-  visible: boolean
   pendingScreenshotIds: Set<number>
   screenshotErrors: Record<number, string>
   screenshotsBlocked: boolean
   onRequestScreenshot: (results: ScanResult[]) => void
   onViewScreenshot: (result: ScanResult) => void
 }) {
-  if (!visible) return null
   return (
-    <>
-      {results.map(r => (
-        <TableRow key={r.id} className={`sub-row${!r.compliant ? ' violation-row' : ''}`}>
-          <TableCell className="col-expand" />
-          <TableCell className="col-domain">
-            <span className="dns-name">{r.dns_server.name}</span>
-          </TableCell>
-          <TableCell className="col-status">
-            <StatusDot compliant={r.compliant} />
-          </TableCell>
-          <TableCell className="col-ip">
-            <div className="ip-meta">
-              {r.resolved_ip ? (
-                <span className="ip-value">{r.resolved_ip}</span>
+    <Table aria-label="Per-DNS-server results">
+      <TableBody>
+        {results.map(r => (
+          <TableRow key={r.id} className={`sub-row${!r.compliant ? ' violation-row' : ''}`}>
+            <TableCell className="col-expand" />
+            <TableCell className="col-domain">
+              <span className="dns-name">{r.dns_server.name}</span>
+            </TableCell>
+            <TableCell className="col-status">
+              <StatusDot compliant={r.compliant} />
+            </TableCell>
+            <TableCell className="col-ip">
+              <div className="ip-meta">
+                {r.resolved_ip ? (
+                  <span className="ip-value">{r.resolved_ip}</span>
+                ) : (
+                  <span className="empty-cell" aria-label="Not resolved">—</span>
+                )}
+                {r.resolved_ipv6 && <span className="ip-meta-secondary">{r.resolved_ipv6}</span>}
+                {r.resolved_asn > 0 && (
+                  <span className="ip-meta-secondary">
+                    AS{r.resolved_asn}{r.resolved_org && ` — ${r.resolved_org}`}
+                  </span>
+                )}
+                {r.resolved_netname && <span className="ip-meta-secondary">{r.resolved_netname}</span>}
+              </div>
+            </TableCell>
+            <TableCell className="col-error">
+              {r.error ? (
+                <span className="col-error-text" title={r.error}>{r.error}</span>
               ) : (
-                <span className="empty-cell" aria-label="Not resolved">—</span>
+                <span className="empty-cell">—</span>
               )}
-              {r.resolved_ipv6 && <span className="ip-meta-secondary">{r.resolved_ipv6}</span>}
-              {r.resolved_asn > 0 && (
-                <span className="ip-meta-secondary">
-                  AS{r.resolved_asn}{r.resolved_org && ` — ${r.resolved_org}`}
-                </span>
-              )}
-              {r.resolved_netname && <span className="ip-meta-secondary">{r.resolved_netname}</span>}
-            </div>
-          </TableCell>
-          <TableCell className="col-error">
-            {r.error ? (
-              <span className="col-error-text" title={r.error}>{r.error}</span>
-            ) : (
-              <span className="empty-cell">—</span>
-            )}
-          </TableCell>
-          <TableCell className="col-last-scanned">
-            {r.scanned_at ? (
-              <span title={new Date(r.scanned_at).toLocaleString()}>{relativeTime(r.scanned_at)}</span>
-            ) : (
-              <span className="empty-cell">—</span>
-            )}
-          </TableCell>
-          <TableCell className="col-evidence text-center">
-            {r.screenshot_url ? (
-              <button
-                type="button"
-                className="screenshot-icon-btn"
-                onClick={() => onViewScreenshot(r)}
-                aria-label={`View screenshot for ${r.dns_server.name}`}
-                title="View screenshot"
-              >
-                <ImageIcon className="screenshot-icon" aria-hidden="true" />
-              </button>
-            ) : pendingScreenshotIds.has(r.id) ? (
-              <span className="screenshot-pending" aria-live="polite" aria-label="Requesting screenshot">
-                <BrailleLoader variant="typing" fontSize={13} />
-              </span>
-            ) : !r.compliant ? (
-              <button
-                type="button"
-                className="screenshot-icon-btn"
-                onClick={() => onRequestScreenshot([r])}
-                disabled={screenshotsBlocked}
-                title={screenshotErrors[r.id] ?? 'Take screenshot'}
-                aria-label={`Request screenshot for ${r.dns_server.name}`}
-              >
-                <Camera className="screenshot-icon" aria-hidden="true" />
-              </button>
-            ) : (
-              <span className="empty-cell" aria-label="No screenshot">—</span>
-            )}
-          </TableCell>
-        </TableRow>
-      ))}
-    </>
-  )
-}
-
-/* ─── URL Group Row ──────────────────────────────────────────────────────── */
-
-function URLGroupRow({
-  group,
-  expanded,
-  onToggle,
-  pendingScreenshotIds,
-  screenshotErrors,
-  screenshotsBlocked,
-  onRequestScreenshot,
-  onViewScreenshot,
-}: {
-  group: GroupedResult
-  expanded: boolean
-  onToggle: () => void
-  pendingScreenshotIds: Set<number>
-  screenshotErrors: Record<number, string>
-  screenshotsBlocked: boolean
-  onRequestScreenshot: (results: ScanResult[]) => void
-  onViewScreenshot: (result: ScanResult) => void
-}) {
-  const { violationCount, totalCount, hostname, url } = group
-  const compliantCount = totalCount - violationCount
-  const pct = totalCount > 0 ? Math.round((compliantCount / totalCount) * 100) : 0
-  const needsScreenshot = group.results.filter(r => !r.compliant && !r.screenshot_url)
-  const groupPending = group.results.some(r => pendingScreenshotIds.has(r.id))
-  const bulkError = needsScreenshot.map(r => screenshotErrors[r.id]).find(Boolean)
-
-  return (
-    <>
-      <TableRow className="url-row" onClick={onToggle} aria-expanded={expanded}>
-        <TableCell className="col-expand">
-          <button
-            className="expand-btn"
-            onClick={e => { e.stopPropagation(); onToggle() }}
-            aria-expanded={expanded}
-            aria-label={`${expanded ? 'Collapse' : 'Expand'} results for ${hostname}`}
-            tabIndex={0}
-          >
-            <ChevronRight className={`expand-icon${expanded ? ' expanded' : ''}`} />
-          </button>
-        </TableCell>
-        <TableCell className="col-domain">
-          <PreviewLinkCard href={url}>
-            <PreviewLinkCardTrigger>
-              <span className="hostname" title={url}>{hostname}</span>
-            </PreviewLinkCardTrigger>
-            <PreviewLinkCardPanel>
-              <PreviewLinkCardImage />
-            </PreviewLinkCardPanel>
-          </PreviewLinkCard>
-        </TableCell>
-        <TableCell className="col-status">
-          <div className="server-bar-wrap">
-            <div className="server-bar" role="presentation">
-              <div className="server-bar-fill" style={{ width: `${pct}%` }} />
-            </div>
-            <span className="server-count">{compliantCount} / {totalCount}</span>
-          </div>
-        </TableCell>
-        <TableCell className="col-ip" />
-        <TableCell className="col-error" />
-        <TableCell className="col-last-scanned">
-          {group.latestScannedAt ? (
-            <span title={new Date(group.latestScannedAt).toLocaleString()}>
-              {relativeTime(group.latestScannedAt)}
-            </span>
-          ) : (
-            <span className="empty-cell">—</span>
-          )}
-        </TableCell>
-        <TableCell className="col-evidence text-center">
-          <div className="flex items-center justify-center gap-1">
-            {needsScreenshot.length > 0 && (
-              groupPending ? (
-                <span className="screenshot-pending" aria-live="polite" aria-label="Requesting screenshots">
-                  <BrailleLoader variant="typing" fontSize={13} />
-                </span>
+            </TableCell>
+            <TableCell className="col-last-scanned">
+              {r.scanned_at ? (
+                <span title={new Date(r.scanned_at).toLocaleString()}>{relativeTime(r.scanned_at)}</span>
               ) : (
+                <span className="empty-cell">—</span>
+              )}
+            </TableCell>
+            <TableCell className="col-evidence text-center">
+              {r.screenshot_url ? (
                 <button
                   type="button"
                   className="screenshot-icon-btn"
-                  onClick={e => { e.stopPropagation(); onRequestScreenshot(needsScreenshot) }}
+                  onClick={() => onViewScreenshot(r)}
+                  aria-label={`View screenshot for ${r.dns_server.name}`}
+                  title="View screenshot"
+                >
+                  <ImageIcon className="screenshot-icon" aria-hidden="true" />
+                </button>
+              ) : pendingScreenshotIds.has(r.id) ? (
+                <span className="screenshot-pending" aria-live="polite" aria-label="Requesting screenshot">
+                  <BrailleLoader variant="typing" fontSize={13} />
+                </span>
+              ) : !r.compliant ? (
+                <button
+                  type="button"
+                  className="screenshot-icon-btn"
+                  onClick={() => onRequestScreenshot([r])}
                   disabled={screenshotsBlocked}
-                  title={bulkError ?? `Take screenshots for ${needsScreenshot.length} violating server${needsScreenshot.length > 1 ? 's' : ''}`}
-                  aria-label={`Request screenshots for all violating DNS servers for ${hostname}`}
+                  title={screenshotErrors[r.id] ?? 'Take screenshot'}
+                  aria-label={`Request screenshot for ${r.dns_server.name}`}
                 >
                   <Camera className="screenshot-icon" aria-hidden="true" />
                 </button>
-              )
-            )}
-            <Link
-              to="/domain/$url"
-              params={{ url }}
-              search={{ tab: 'overview' }}
-              className="btn-row-history"
-              aria-label={`View overview for ${hostname}`}
-              onClick={e => e.stopPropagation()}
-            >
-              <GripIcon className="btn-row-history-icon" size={16} />
-            </Link>
-          </div>
-        </TableCell>
-      </TableRow>
-      <SubRows
-        results={group.results}
-        visible={expanded}
-        pendingScreenshotIds={pendingScreenshotIds}
-        screenshotErrors={screenshotErrors}
-        screenshotsBlocked={screenshotsBlocked}
-        onRequestScreenshot={onRequestScreenshot}
-        onViewScreenshot={onViewScreenshot}
-      />
-    </>
-  )
-}
-
-/* ─── Skeleton ───────────────────────────────────────────────────────────── */
-
-function ResultsTableSkeleton() {
-  return (
-    <>
-      {[180, 140, 220, 160, 200].map((w, i) => (
-        <TableRow key={i} className="skeleton-row">
-          <TableCell className="col-expand">
-            <span className="skeleton" style={{ width: 16, height: 16, borderRadius: 3 }} />
-          </TableCell>
-          <TableCell className="col-domain">
-            <span className="skeleton" style={{ width: w, height: 14 }} />
-          </TableCell>
-          <TableCell className="col-status">
-            <span className="skeleton" style={{ width: 100, height: 20, borderRadius: 4 }} />
-          </TableCell>
-          <TableCell className="col-ip" />
-          <TableCell className="col-error" />
-          <TableCell className="col-last-scanned" />
-          <TableCell className="col-evidence" />
-        </TableRow>
-      ))}
-    </>
+              ) : (
+                <span className="empty-cell" aria-label="No screenshot">—</span>
+              )}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   )
 }
 
@@ -298,8 +198,9 @@ function ResultsPage() {
 
   const [filters, setFilters] = useState<Filter<string>[]>([])
   const [search, setSearch] = useState('')
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const [page, setPage] = useState(1)
+  const [expanded, setExpanded] = useState<ExpandedState>({})
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'status', desc: true }])
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
 
   const [pendingScreenshotIds, setPendingScreenshotIds] = useState<Set<number>>(new Set())
   const [screenshotErrors, setScreenshotErrors] = useState<Record<number, string>>({})
@@ -366,15 +267,6 @@ function ResultsPage() {
     }, 3000)
   }, [load])
 
-  const toggleExpanded = useCallback((url: string) => {
-    setExpanded(prev => {
-      const next = new Set(prev)
-      if (next.has(url)) next.delete(url)
-      else next.add(url)
-      return next
-    })
-  }, [])
-
   const groups = useMemo(() => groupResults(results), [results])
   const lastScan = useMemo(() => lastScanTime(groups), [groups])
 
@@ -419,7 +311,7 @@ function ResultsPage() {
       .filter(Boolean) as GroupedResult[]
   }, [groups, statusFilter, dnsFilter, search])
 
-  useEffect(() => { setPage(1) }, [statusFilter, dnsFilter, search])
+  useEffect(() => { setPagination(p => ({ ...p, pageIndex: 0 })) }, [statusFilter, dnsFilter, search])
 
   const scanProgress = useMemo(() => {
     if (!progress) return undefined
@@ -433,12 +325,173 @@ function ResultsPage() {
     return { completed, total: progress.total_urls }
   }, [progress])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const currentPage = Math.min(page, totalPages)
-  const paginated = useMemo(
-    () => filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
-    [filtered, currentPage],
-  )
+  const screenshotsBlocked = scanning || pendingScreenshotIds.size > 0
+
+  const columns = useMemo<ColumnDef<GroupedResult>[]>(() => [
+    {
+      id: 'expand',
+      header: () => null,
+      size: 30,
+      enableSorting: false,
+      meta: {
+        headerClassName: 'col-expand',
+        cellClassName: 'col-expand',
+        expandedContent: (group: GroupedResult) => (
+          <SubRowsTable
+            results={group.results}
+            pendingScreenshotIds={pendingScreenshotIds}
+            screenshotErrors={screenshotErrors}
+            screenshotsBlocked={screenshotsBlocked}
+            onRequestScreenshot={requestScreenshot}
+            onViewScreenshot={setPreviewScreenshot}
+          />
+        ),
+        skeleton: <span className="skeleton" style={{ width: 16, height: 16, borderRadius: 3 }} />,
+      },
+      cell: ({ row }) => (
+        <button
+          type="button"
+          className="expand-btn"
+          onClick={e => { e.stopPropagation(); row.getToggleExpandedHandler()() }}
+          aria-expanded={row.getIsExpanded()}
+          aria-label={`${row.getIsExpanded() ? 'Collapse' : 'Expand'} results for ${row.original.hostname}`}
+        >
+          <ChevronRight className={`expand-icon${row.getIsExpanded() ? ' expanded' : ''}`} />
+        </button>
+      ),
+    },
+    {
+      accessorKey: 'hostname',
+      id: 'domain',
+      header: ({ column }) => <SortableHeader column={column} title="Domain" />,
+      meta: {
+        headerClassName: 'col-domain th-left',
+        cellClassName: 'col-domain',
+        skeleton: <span className="skeleton" style={{ width: 180, height: 14 }} />,
+      },
+      cell: ({ row }) => (
+        <PreviewLinkCard href={row.original.url}>
+          <PreviewLinkCardTrigger>
+            <span className="hostname" title={row.original.url}>{row.original.hostname}</span>
+          </PreviewLinkCardTrigger>
+          <PreviewLinkCardPanel>
+            <PreviewLinkCardImage />
+          </PreviewLinkCardPanel>
+        </PreviewLinkCard>
+      ),
+    },
+    {
+      id: 'status',
+      accessorFn: g => g.violationCount,
+      header: ({ column }) => <SortableHeader column={column} title="Status" />,
+      meta: {
+        headerClassName: 'col-status th-left',
+        cellClassName: 'col-status',
+        skeleton: <span className="skeleton" style={{ width: 100, height: 20, borderRadius: 4 }} />,
+      },
+      cell: ({ row }) => {
+        const { violationCount, totalCount } = row.original
+        const compliantCount = totalCount - violationCount
+        const pct = totalCount > 0 ? Math.round((compliantCount / totalCount) * 100) : 0
+        return (
+          <div className="server-bar-wrap">
+            <div className="server-bar" role="presentation">
+              <div className="server-bar-fill" style={{ width: `${pct}%` }} />
+            </div>
+            <span className="server-count">{compliantCount} / {totalCount}</span>
+          </div>
+        )
+      },
+    },
+    {
+      id: 'ip',
+      header: 'Resolved IP',
+      enableSorting: false,
+      meta: { headerClassName: 'col-ip th-left', cellClassName: 'col-ip' },
+      cell: () => null,
+    },
+    {
+      id: 'error',
+      header: 'Error',
+      enableSorting: false,
+      meta: { headerClassName: 'col-error th-left', cellClassName: 'col-error' },
+      cell: () => null,
+    },
+    {
+      id: 'lastScanned',
+      accessorFn: g => g.latestScannedAt,
+      header: ({ column }) => <SortableHeader column={column} title="Last scanned" />,
+      meta: { headerClassName: 'col-last-scanned th-left', cellClassName: 'col-last-scanned' },
+      cell: ({ row }) => {
+        const { latestScannedAt } = row.original
+        return latestScannedAt ? (
+          <span title={new Date(latestScannedAt).toLocaleString()}>{relativeTime(latestScannedAt)}</span>
+        ) : (
+          <span className="empty-cell">—</span>
+        )
+      },
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      enableSorting: false,
+      meta: { headerClassName: 'col-evidence th-center', cellClassName: 'col-evidence text-center' },
+      cell: ({ row }) => {
+        const group = row.original
+        const needsScreenshot = group.results.filter(r => !r.compliant && !r.screenshot_url)
+        const groupPending = group.results.some(r => pendingScreenshotIds.has(r.id))
+        const bulkError = needsScreenshot.map(r => screenshotErrors[r.id]).find(Boolean)
+        return (
+          <div className="flex items-center justify-center gap-1">
+            {needsScreenshot.length > 0 && (
+              groupPending ? (
+                <span className="screenshot-pending" aria-live="polite" aria-label="Requesting screenshots">
+                  <BrailleLoader variant="typing" fontSize={13} />
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="screenshot-icon-btn"
+                  onClick={e => { e.stopPropagation(); requestScreenshot(needsScreenshot) }}
+                  disabled={screenshotsBlocked}
+                  title={bulkError ?? `Take screenshots for ${needsScreenshot.length} violating server${needsScreenshot.length > 1 ? 's' : ''}`}
+                  aria-label={`Request screenshots for all violating DNS servers for ${group.hostname}`}
+                >
+                  <Camera className="screenshot-icon" aria-hidden="true" />
+                </button>
+              )
+            )}
+            <Link
+              to="/domain/$url"
+              params={{ url: group.url }}
+              search={{ tab: 'overview' }}
+              className="btn-row-history"
+              aria-label={`View overview for ${group.hostname}`}
+              onClick={e => e.stopPropagation()}
+            >
+              <GripIcon className="btn-row-history-icon" size={16} />
+            </Link>
+          </div>
+        )
+      },
+    },
+  ], [pendingScreenshotIds, screenshotErrors, screenshotsBlocked, requestScreenshot])
+
+  const table = useReactTable({
+    data: filtered,
+    columns,
+    state: { expanded, sorting, pagination },
+    onExpandedChange: setExpanded,
+    onSortingChange: setSorting,
+    onPaginationChange: setPagination,
+    getRowId: g => g.url,
+    getRowCanExpand: () => true,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+  })
+
+  const pageCount = table.getPageCount()
 
   return (
     <div className="mx-20 mt-10">
@@ -495,56 +548,31 @@ function ResultsPage() {
                   No scan has been run. Use Run Scan to begin compliance monitoring.
                 </p>
               </div>
+            ) : !loading && filtered.length === 0 ? (
+              <div className="empty-state" style={{ padding: '3rem 0' }}>
+                <p className="empty-heading">No results match the current filters</p>
+              </div>
             ) : (
-              <Table className="results-table" aria-label="DNS compliance results">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="col-expand" scope="col" />
-                    <TableHead className="col-domain th-left" scope="col">Domain</TableHead>
-                    <TableHead className="col-status th-left" scope= "col">Status</TableHead>
-                    <TableHead className="col-ip th-left" scope="col">Resolved IP</TableHead>
-                    <TableHead className="col-error th-left" scope="col">Error</TableHead>
-                    <TableHead className="col-last-scanned th-left" scope="col">Last scanned</TableHead>
-                    <TableHead className="col-evidence th-center" scope="col">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    <ResultsTableSkeleton />
-                  ) : filtered.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7}>
-                        <div className="empty-state" style={{ padding: '3rem 0' }}>
-                          <p className="empty-heading">No results match the current filters</p>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    paginated.map(group => (
-                      <URLGroupRow
-                        key={group.url}
-                        group={group}
-                        expanded={expanded.has(group.url)}
-                        onToggle={() => toggleExpanded(group.url)}
-                        pendingScreenshotIds={pendingScreenshotIds}
-                        screenshotErrors={screenshotErrors}
-                        screenshotsBlocked={scanning || pendingScreenshotIds.size > 0}
-                        onRequestScreenshot={requestScreenshot}
-                        onViewScreenshot={setPreviewScreenshot}
-                      />
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+              <DataGrid
+                table={table}
+                recordCount={filtered.length}
+                isLoading={loading}
+                onRowClick={group => table.getRow(group.url).toggleExpanded()}
+                tableClassNames={{ base: 'results-table' }}
+              >
+                <DataGridContainer>
+                  <DataGridTable />
+                </DataGridContainer>
+              </DataGrid>
             )}
-            {!loading && totalPages > 1 && (
+            {!loading && pageCount > 1 && (
               <div className="pagination">
-                <span className="pagination-label">Page {currentPage} of {totalPages}</span>
+                <span className="pagination-label">Page {pagination.pageIndex + 1} of {pageCount}</span>
                 <button
                   type="button"
                   className="pagination-btn"
-                  onClick={() => setPage(p => p - 1)}
-                  disabled={currentPage <= 1}
+                  onClick={() => table.previousPage()}
+                  disabled={!table.getCanPreviousPage()}
                   aria-label="Previous page"
                 >
                   <ChevronLeftIcon className="w-4 h-4" />
@@ -552,8 +580,8 @@ function ResultsPage() {
                 <button
                   type="button"
                   className="pagination-btn"
-                  onClick={() => setPage(p => p + 1)}
-                  disabled={currentPage >= totalPages}
+                  onClick={() => table.nextPage()}
+                  disabled={!table.getCanNextPage()}
                   aria-label="Next page"
                 >
                   <ChevronRightIcon className="w-4 h-4" />
