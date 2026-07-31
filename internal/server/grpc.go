@@ -121,8 +121,10 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 				continue
 			}
 			// Find the just-inserted result to update its screenshot URL.
+			// url_value is stored normalized (urlValue, not r.Url) — see the
+			// comment above where urlValue is computed.
 			// time.Time{} = no lower bound; we just need the row inserted above.
-			results, err := s.store.ResultsByURL(ctx, r.Url, time.Time{}, time.Time{})
+			results, err := s.store.ResultsByURL(ctx, urlValue, time.Time{}, time.Time{})
 			if err == nil && len(results) > 0 {
 				_ = s.store.UpdateScreenshot(ctx, results[0].ID, screenshotURL)
 			}

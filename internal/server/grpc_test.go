@@ -29,6 +29,7 @@ type mockStore struct {
 	ipInfo             *db.IPInfo // returned by GetIPInfo, nil = cache miss
 	updatedScreenshots map[uint]string
 	createdURLs        []db.URL
+	watchedURLs        []db.URL // returned by ListWatchedURLs, seeds the urlIDByValue map lookup path
 }
 
 func (m *mockStore) InsertResult(_ context.Context, r db.ScanResult) error {
@@ -49,7 +50,7 @@ func (m *mockStore) ListURLs(_ context.Context) ([]db.URL, error) {
 	return nil, nil
 }
 func (m *mockStore) ListWatchedURLs(_ context.Context) ([]db.URL, error) {
-	return nil, nil
+	return m.watchedURLs, nil
 }
 
 // CreateURL mirrors postgresStore's get-or-create-by-normalized-value
@@ -69,10 +70,16 @@ func (m *mockStore) CreateURL(_ context.Context, rawURL string) (db.URL, error) 
 	m.createdURLs = append(m.createdURLs, u)
 	return u, nil
 }
-// ResultsByURL mirrors postgresStore's "scanned_at desc" ordering — Submit
-// relies on results[0] being the most-recently-inserted row.
-func (m *mockStore) ResultsByURL(_ context.Context, _ string, _, _ time.Time) ([]db.ScanResult, error) {
-	out := append([]db.ScanResult(nil), m.insertedResults...)
+// ResultsByURL mirrors postgresStore's exact `url_value = ?` match (no
+// normalization) and "scanned_at desc" ordering — Submit relies on
+// results[0] being the most-recently-inserted row for the given url_value.
+func (m *mockStore) ResultsByURL(_ context.Context, url string, _, _ time.Time) ([]db.ScanResult, error) {
+	var out []db.ScanResult
+	for _, r := range m.insertedResults {
+		if r.URLValue == url {
+			out = append(out, r)
+		}
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ScannedAt.After(out[j].ScannedAt) })
 	return out, nil
 }
@@ -175,8 +182,11 @@ func TestSubmitScreenshotUpdatesVisibleRow(t *testing.T) {
 		ID:          1,
 		ScanRunID:   100,
 		DNSServerID: 7,
-		URLValue:    "https://example.com",
-		ScannedAt:   time.Now().Add(-time.Hour),
+		// Post-88c053f, url_value is always normalized — this row simulates
+		// one already in the DB from a prior scan, so it must be normalized
+		// too or ResultsByURL(ctx, "example.com", ...) won't find it.
+		URLValue:  "example.com",
+		ScannedAt: time.Now().Add(-time.Hour),
 	}
 	store := &mockStore{
 		activeScanRun:   &db.ScanRun{ID: 200, Status: "running"},
@@ -271,6 +281,42 @@ func TestSubmitStoresNormalizedURLValue(t *testing.T) {
 	}
 	if got.URLID == 0 {
 		t.Fatal("expected non-zero URLID")
+	}
+}
+
+// TestSubmitResolvesURLIDFromWatchlist exercises the urlIDByValue map-lookup
+// branch (a URL genuinely on the watchlist) rather than the CreateURL
+// fallback — the primary path in production, previously untested.
+func TestSubmitResolvesURLIDFromWatchlist(t *testing.T) {
+	store := &mockStore{
+		activeScanRun: &db.ScanRun{ID: 1, Status: "running"},
+		watchedURLs:   []db.URL{{ID: 42, URL: "example.com"}},
+	}
+	client := newTestGRPCClient(t, store, &mockStorage{})
+
+	_, err := client.Submit(context.Background(), &pb.ComplianceReport{
+		Results: []*pb.SiteResult{{
+			Url:       "https://example.com",
+			Compliant: false,
+			DnsServer: "Google",
+			Timestamp: time.Now().Unix(),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	if len(store.insertedResults) != 1 {
+		t.Fatalf("expected 1 inserted result, got %d", len(store.insertedResults))
+	}
+	got := store.insertedResults[0]
+	if got.URLID != 42 {
+		t.Errorf("URLID = %d, want 42 (map lookup, not CreateURL fallback)", got.URLID)
+	}
+	if got.URLValue != "example.com" {
+		t.Errorf("URLValue = %q, want %q", got.URLValue, "example.com")
+	}
+	if len(store.createdURLs) != 0 {
+		t.Errorf("expected CreateURL fallback not to run, got %d createdURLs", len(store.createdURLs))
 	}
 }
 
