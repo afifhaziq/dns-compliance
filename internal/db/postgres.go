@@ -493,6 +493,11 @@ func (s *postgresStore) DeleteSession(ctx context.Context, token string) error {
 	return s.db.WithContext(ctx).Where("token = ?", token).Delete(&Session{}).Error
 }
 
+func (s *postgresStore) DeleteExpiredSessions(ctx context.Context) (int64, error) {
+	res := s.db.WithContext(ctx).Where("expires_at <= ?", time.Now()).Delete(&Session{})
+	return res.RowsAffected, res.Error
+}
+
 // Department watchlists
 
 func (s *postgresStore) ListDepartmentURLs(ctx context.Context, departmentID uint) ([]URLEntry, error) {

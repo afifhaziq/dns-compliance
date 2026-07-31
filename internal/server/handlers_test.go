@@ -274,6 +274,20 @@ func (m *fullMockStore) DeleteSession(_ context.Context, token string) error {
 	}
 	return nil
 }
+func (m *fullMockStore) DeleteExpiredSessions(_ context.Context) (int64, error) {
+	var kept []db.Session
+	var n int64
+	now := time.Now()
+	for _, s := range m.sessions {
+		if s.ExpiresAt.After(now) {
+			kept = append(kept, s)
+		} else {
+			n++
+		}
+	}
+	m.sessions = kept
+	return n, nil
+}
 
 func (m *fullMockStore) ListDepartmentURLs(_ context.Context, departmentID uint) ([]db.URLEntry, error) {
 	var out []db.URLEntry

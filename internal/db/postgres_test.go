@@ -1665,3 +1665,32 @@ func TestDailyComplianceByURLBucketsInMalaysiaTime(t *testing.T) {
 		t.Fatalf("expected day 2026-07-16 (Malaysia time), got %q", stats[0].Day)
 	}
 }
+
+func TestDeleteExpiredSessions(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	dept, _ := s.CreateDepartment(ctx, "CMOD")
+	u, _ := s.CreateUser(ctx, db.User{Username: "a", PasswordHash: "x", DepartmentID: &dept.ID})
+
+	live := db.Session{Token: "live", UserID: u.ID, ExpiresAt: time.Now().Add(time.Hour)}
+	dead := db.Session{Token: "dead", UserID: u.ID, ExpiresAt: time.Now().Add(-time.Hour)}
+	if err := s.CreateSession(ctx, live); err != nil {
+		t.Fatalf("CreateSession live: %v", err)
+	}
+	if err := s.CreateSession(ctx, dead); err != nil {
+		t.Fatalf("CreateSession dead: %v", err)
+	}
+
+	n, err := s.DeleteExpiredSessions(ctx)
+	if err != nil {
+		t.Fatalf("DeleteExpiredSessions: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("expected 1 row deleted, got %d", n)
+	}
+
+	if got, _ := s.GetSession(ctx, "live"); got == nil {
+		t.Fatal("live session should have survived")
+	}
+}

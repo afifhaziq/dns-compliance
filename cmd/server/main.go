@@ -176,6 +176,10 @@ func main() {
 	// a much slower cadence than the scan scheduler.
 	server.StartWhoisRefresher(ctx, store, whois.Fetch, time.Duration(*whoisRefreshIntervalMin)*time.Minute, *whoisStaleDays)
 
+	// Start the session cleanup loop — sweeps expired session rows hourly so
+	// the sessions table doesn't grow without bound.
+	server.StartSessionCleanup(ctx, store)
+
 	// HTTP server — REST API for the frontend.
 	var subfinderFetch subfinder.Fetcher
 	if *subfinderPath != "" {

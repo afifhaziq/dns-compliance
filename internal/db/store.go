@@ -117,6 +117,11 @@ type SessionStore interface {
 	CreateSession(ctx context.Context, s Session) error
 	GetSession(ctx context.Context, token string) (*Session, error)
 	DeleteSession(ctx context.Context, token string) error
+
+	// DeleteExpiredSessions removes sessions past their expiry. Returns the
+	// number of rows deleted. GetSession already filters these out, so this
+	// is purely to stop the table growing without bound.
+	DeleteExpiredSessions(ctx context.Context) (int64, error)
 }
 
 // CompliantIPStore is the admin-managed list of IPs treated as compliant
