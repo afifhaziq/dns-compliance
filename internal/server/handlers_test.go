@@ -1161,8 +1161,8 @@ func TestScanProgressWithRun(t *testing.T) {
 
 func TestResultsByURL_DefaultWindow(t *testing.T) {
 	store := &fullMockStore{results: []db.ScanResult{
-		{ID: 1, URLValue: "https://example.com", ScannedAt: time.Now().AddDate(0, 0, -10)},
-		{ID: 2, URLValue: "https://example.com", ScannedAt: time.Now()},
+		{ID: 1, URLValue: "example.com", ScannedAt: time.Now().AddDate(0, 0, -10)},
+		{ID: 2, URLValue: "example.com", ScannedAt: time.Now()},
 	}}
 	cookie := adminCookie(store)
 	r := setupRouter(store, nil)
@@ -1186,8 +1186,8 @@ func TestResultsByURL_DefaultWindow(t *testing.T) {
 
 func TestResultsByURL_ExplicitSince(t *testing.T) {
 	store := &fullMockStore{results: []db.ScanResult{
-		{ID: 1, URLValue: "https://example.com", ScannedAt: time.Now().AddDate(0, 0, -10)},
-		{ID: 2, URLValue: "https://example.com", ScannedAt: time.Now()},
+		{ID: 1, URLValue: "example.com", ScannedAt: time.Now().AddDate(0, 0, -10)},
+		{ID: 2, URLValue: "example.com", ScannedAt: time.Now()},
 	}}
 	cookie := adminCookie(store)
 	r := setupRouter(store, nil)
@@ -1209,8 +1209,8 @@ func TestResultsByURL_ExplicitSince(t *testing.T) {
 
 func TestResultsByURL_ExplicitUntil(t *testing.T) {
 	store := &fullMockStore{results: []db.ScanResult{
-		{ID: 1, URLValue: "https://example.com", ScannedAt: time.Now().AddDate(-1, 0, 0)},
-		{ID: 2, URLValue: "https://example.com", ScannedAt: time.Now()},
+		{ID: 1, URLValue: "example.com", ScannedAt: time.Now().AddDate(-1, 0, 0)},
+		{ID: 2, URLValue: "example.com", ScannedAt: time.Now()},
 	}}
 	cookie := adminCookie(store)
 	r := setupRouter(store, nil)
@@ -1274,8 +1274,8 @@ func TestDomainServerSummaries_404ForUnownedDomain(t *testing.T) {
 func TestHeatmapByURL_GroupsByDay(t *testing.T) {
 	day := time.Date(2026, 6, 22, 0, 0, 0, 0, time.UTC)
 	store := &fullMockStore{results: []db.ScanResult{
-		{ID: 1, URLValue: "https://example.com", DNSServerID: 1, DNSServer: db.DNSServer{ID: 1, ISP: "Google", Name: "Google UDP"}, Compliant: true, ScannedAt: day.Add(1 * time.Hour)},
-		{ID: 2, URLValue: "https://example.com", DNSServerID: 1, DNSServer: db.DNSServer{ID: 1, ISP: "Google", Name: "Google UDP"}, Compliant: false, ScannedAt: day.Add(2 * time.Hour)},
+		{ID: 1, URLValue: "example.com", DNSServerID: 1, DNSServer: db.DNSServer{ID: 1, ISP: "Google", Name: "Google UDP"}, Compliant: true, ScannedAt: day.Add(1 * time.Hour)},
+		{ID: 2, URLValue: "example.com", DNSServerID: 1, DNSServer: db.DNSServer{ID: 1, ISP: "Google", Name: "Google UDP"}, Compliant: false, ScannedAt: day.Add(2 * time.Hour)},
 	}}
 	cookie := adminCookie(store)
 	r := setupRouter(store, nil)
@@ -1372,7 +1372,7 @@ func TestDNSRecordsByURL_NXDOMAIN(t *testing.T) {
 
 func TestResultsByURL_PercentEncodedSlashes(t *testing.T) {
 	store := &fullMockStore{results: []db.ScanResult{
-		{ID: 1, URLValue: "https://example.com/", ScannedAt: time.Now()},
+		{ID: 1, URLValue: "example.com", ScannedAt: time.Now()},
 	}}
 	cookie := adminCookie(store)
 	r := setupRouter(store, nil)
@@ -1388,6 +1388,41 @@ func TestResultsByURL_PercentEncodedSlashes(t *testing.T) {
 	json.NewDecoder(w.Body).Decode(&results)
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+}
+
+// TestResultsByURL_NormalizesMixedCaseAndScheme is a regression test for the
+// bug where ResultsByURL/HeatmapByURL/DomainServerSummaries matched the raw
+// `*url` wildcard segment against url_value directly instead of normalizing
+// it first (like URLOwnedByDepartment/GetURLByValue do). Since
+// scan_results.url_value now stores the normalized bare hostname, a
+// mixed-case or scheme-prefixed bookmarked URL must resolve to the same scan
+// history as the bare lowercase form rather than silently returning nothing.
+func TestResultsByURL_NormalizesMixedCaseAndScheme(t *testing.T) {
+	store := &fullMockStore{results: []db.ScanResult{
+		{ID: 1, URLValue: "example.com", ScannedAt: time.Now()},
+	}}
+	cookie := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	for _, path := range []string{
+		"/api/results/example.com",
+		"/api/results/Example.com",
+		"/api/results/https%3A%2F%2FExample.com%2F",
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.AddCookie(cookie)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s: expected 200, got %d: %s", path, w.Code, w.Body.String())
+		}
+		var results []db.ScanResult
+		json.NewDecoder(w.Body).Decode(&results)
+		if len(results) != 1 {
+			t.Fatalf("%s: expected 1 result matching the normalized bare hostname, got %d", path, len(results))
+		}
 	}
 }
 

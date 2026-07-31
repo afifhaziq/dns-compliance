@@ -84,6 +84,19 @@ func NormalizeAndDedupeURLs(ctx context.Context, database *gorm.DB) error {
 	})
 }
 
+// BackfillURLValuesBatchSize caps each UPDATE to a bounded chunk of rows —
+// on a first deploy (pre-branch, every url_value diverges) this would
+// otherwise be a single full-table rewrite, risking a managed-Postgres
+// statement_timeout. Exported so tests can seed a multi-batch scenario
+// without needing tens of thousands of rows.
+const BackfillURLValuesBatchSize = 1000
+
+// backfillURLValuesMaxIterations guards against spinning forever if some
+// row's url_value can never converge (shouldn't happen — canonical is keyed
+// off the row's own url_id — but a stuck loop should error out, not hang the
+// startup goroutine indefinitely).
+const backfillURLValuesMaxIterations = 100000
+
 // BackfillURLValues repairs scan_results rows whose denormalized url_value
 // drifted from the canonical urls.url it points at via url_id — the state
 // NormalizeAndDedupeURLs used to leave behind (it reassigned url_id and
@@ -95,12 +108,27 @@ func NormalizeAndDedupeURLs(ctx context.Context, database *gorm.DB) error {
 // domain — or as no domain at all, when a handler looks it up by its
 // normalized name. Idempotent: rows already in sync match nothing.
 //
+// Runs in bounded batches (BackfillURLValuesBatchSize rows per statement)
+// rather than one unbatched UPDATE, repeating until no diverged rows remain.
 // Written as a correlated subquery rather than Postgres's UPDATE ... FROM so
-// the same statement also runs on the SQLite backend used by tests.
+// the same statement also runs on the SQLite backend used by tests; the
+// batch is selected via `id IN (SELECT id ... LIMIT n)`, which both engines
+// support even where a direct `UPDATE ... LIMIT` doesn't exist (SQLite).
 func BackfillURLValues(ctx context.Context, database *gorm.DB) error {
 	const canonical = "(SELECT url FROM urls WHERE urls.id = scan_results.url_id)"
-	return database.WithContext(ctx).Exec(
-		"UPDATE scan_results SET url_value = " + canonical +
-			" WHERE url_id IS NOT NULL AND url_value <> " + canonical,
-	).Error
+	stmt := "UPDATE scan_results SET url_value = " + canonical +
+		" WHERE id IN (SELECT id FROM scan_results" +
+		" WHERE url_id IS NOT NULL AND url_value <> " + canonical +
+		" LIMIT ?)"
+
+	for i := 0; i < backfillURLValuesMaxIterations; i++ {
+		res := database.WithContext(ctx).Exec(stmt, BackfillURLValuesBatchSize)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return nil
+		}
+	}
+	return fmt.Errorf("backfilling scan_results.url_value: did not converge after %d iterations", backfillURLValuesMaxIterations)
 }

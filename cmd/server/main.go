@@ -66,9 +66,12 @@ func main() {
 
 	// Must run after NormalizeAndDedupeURLs — that pass rewrites urls.url and
 	// reassigns scan_results.url_id, which is exactly what leaves url_value
-	// stale.
+	// stale. Non-fatal: on a large table this can be slow enough to trip a
+	// managed-Postgres statement_timeout, and failing startup over it would
+	// crash-loop rather than converge — a partial/failed run just leaves some
+	// rows stale until the next boot retries.
 	if err := db.BackfillURLValues(context.Background(), gormDB); err != nil {
-		log.Fatalf("backfilling scan_results.url_value: %v", err)
+		log.Printf("backfilling scan_results.url_value: %v", err)
 	}
 
 	if err := db.SeedDepartments(gormDB); err != nil {

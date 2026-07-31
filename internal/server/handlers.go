@@ -536,6 +536,21 @@ func (h *Handlers) URLsRequestedThisMonth(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]int{"count": count})
 }
 
+// urlParamFromRequest unescapes the `*url` wildcard path segment and
+// normalizes it to the same bare-hostname form scan_results.url_value stores
+// (see urlnorm.Normalize). Handlers that match against url_value directly —
+// rather than going through a store method that already normalizes
+// internally, like URLOwnedByDepartment/GetURLByValue — must use this instead
+// of a bare url.PathUnescape, or a mixed-case/scheme-prefixed request
+// silently matches zero rows.
+func urlParamFromRequest(r *http.Request) (string, error) {
+	raw, err := url.PathUnescape(chi.URLParam(r, "*"))
+	if err != nil {
+		return "", err
+	}
+	return urlnorm.Normalize(raw)
+}
+
 // requireDomainOwnership 404s non-admins who request a domain not on their
 // own department's watchlist — a 404 rather than 403 so the response
 // doesn't confirm the domain even exists to a department that shouldn't
@@ -566,7 +581,7 @@ func requireDomainOwnership(h *Handlers, w http.ResponseWriter, r *http.Request,
 }
 
 func (h *Handlers) ResultsByURL(w http.ResponseWriter, r *http.Request) {
-	urlValue, err := url.PathUnescape(chi.URLParam(r, "*"))
+	urlValue, err := urlParamFromRequest(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid url")
 		return
@@ -598,7 +613,7 @@ func (h *Handlers) ResultsByURL(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) HeatmapByURL(w http.ResponseWriter, r *http.Request) {
-	urlValue, err := url.PathUnescape(chi.URLParam(r, "*"))
+	urlValue, err := urlParamFromRequest(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid url")
 		return
@@ -640,7 +655,7 @@ type domainInfoResponse struct {
 // exists). Returns {"fetched":false} — not a 404 — when the domain is owned
 // but has no cached WHOIS row yet (never fetched).
 func (h *Handlers) DomainInfoByURL(w http.ResponseWriter, r *http.Request) {
-	urlValue, err := url.PathUnescape(chi.URLParam(r, "*"))
+	urlValue, err := urlParamFromRequest(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid url")
 		return
@@ -709,7 +724,7 @@ type subdomainScanResponse struct {
 // department). Returns {"fetched":false} — not a 404 — when the domain is
 // owned but has no cached row yet (never fetched, or subfinder is disabled).
 func (h *Handlers) SubdomainsByURL(w http.ResponseWriter, r *http.Request) {
-	urlValue, err := url.PathUnescape(chi.URLParam(r, "*"))
+	urlValue, err := urlParamFromRequest(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid url")
 		return
@@ -1345,7 +1360,7 @@ func (h *Handlers) DomainSummaries(w http.ResponseWriter, r *http.Request) {
 // under the Domain page's history table: one lifetime aggregate row per DNS
 // server that has ever scanned this one domain.
 func (h *Handlers) DomainServerSummaries(w http.ResponseWriter, r *http.Request) {
-	urlValue, err := url.PathUnescape(chi.URLParam(r, "*"))
+	urlValue, err := urlParamFromRequest(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid url")
 		return

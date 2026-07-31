@@ -370,7 +370,7 @@ function ResultsPage() {
         skeleton: <span className="skeleton" style={{ width: 180, height: 14 }} />,
       },
       cell: ({ row }) => (
-        <PreviewLinkCard href={row.original.url}>
+        <PreviewLinkCard href={`https://${row.original.url}`}>
           <PreviewLinkCardTrigger>
             <span className="hostname" title={row.original.url}>{row.original.hostname}</span>
           </PreviewLinkCardTrigger>
