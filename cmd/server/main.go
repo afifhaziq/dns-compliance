@@ -64,6 +64,13 @@ func main() {
 		log.Fatalf("normalize urls: %v", err)
 	}
 
+	// Must run after NormalizeAndDedupeURLs — that pass rewrites urls.url and
+	// reassigns scan_results.url_id, which is exactly what leaves url_value
+	// stale.
+	if err := db.BackfillURLValues(context.Background(), gormDB); err != nil {
+		log.Fatalf("backfilling scan_results.url_value: %v", err)
+	}
+
 	if err := db.SeedDepartments(gormDB); err != nil {
 		log.Printf("seed departments: %v", err)
 	}

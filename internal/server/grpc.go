@@ -50,27 +50,27 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 	}
 
 	for _, r := range report.Results {
-		// urls.url is stored normalized; r.Url comes from the crawler as
-		// whatever raw string was fed into it, so normalize defensively
-		// before the lookup. URLValue itself stays raw — it's just for
-		// display.
-		urlID := urlIDByValue[r.Url]
-		if urlID == 0 {
-			if norm, err := urlnorm.Normalize(r.Url); err == nil {
-				urlID = urlIDByValue[norm]
-			}
+		// urls.url is stored normalized, and scan_results.url_value is the
+		// GROUP BY / join key for nearly every aggregate in internal/db —
+		// so it must be the normalized value, not the raw string the crawler
+		// happened to be fed. Resolve both together.
+		urlValue := r.Url
+		if norm, err := urlnorm.Normalize(r.Url); err == nil {
+			urlValue = norm
 		}
+		urlID := urlIDByValue[urlValue]
 		if urlID == 0 {
 			// Not on any enabled watchlist — e.g. a "Scan Selected" ad-hoc URL
 			// or a disabled watchlist entry. ScanResult.URLID FKs to urls.id,
-			// so without this the insert below would silently fail (dropped
-			// from the scan run's results). Get-or-create by normalized value,
-			// same as AddToWatchlist.
-			if u, err := s.store.CreateURL(ctx, r.Url); err == nil {
-				urlID = u.ID
-			} else {
+			// so without this the insert below would fail and the row would be
+			// dropped. Get-or-create by normalized value, same as
+			// AddToWatchlist; u.URL is then authoritative for url_value.
+			u, err := s.store.CreateURL(ctx, r.Url)
+			if err != nil {
 				log.Printf("grpc: resolve url id for %s: %v", r.Url, err)
+				continue
 			}
+			urlID, urlValue = u.ID, u.URL
 		}
 
 		lookupIP := r.ResolvedIp
@@ -95,7 +95,7 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 		result := db.ScanResult{
 			ScanRunID:          runID,
 			URLID:              urlID,
-			URLValue:           r.Url,
+			URLValue:           urlValue,
 			DNSServerID:        serverByName[r.DnsServer],
 			Compliant:          r.Compliant,
 			ResolvedIP:         r.ResolvedIp,

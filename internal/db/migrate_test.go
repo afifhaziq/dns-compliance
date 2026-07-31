@@ -109,3 +109,66 @@ func TestNormalizeAndDedupeURLs_Idempotent(t *testing.T) {
 		t.Fatalf("expected idempotent result, got %v", urls)
 	}
 }
+
+func TestBackfillURLValues_RewritesDivergedRows(t *testing.T) {
+	gormDB, s := rawConnect(t)
+	ctx := context.Background()
+
+	u, err := s.CreateURL(ctx, "https://Example.com/")
+	if err != nil {
+		t.Fatalf("CreateURL: %v", err)
+	}
+	if u.URL != "example.com" {
+		t.Fatalf("expected normalized url row, got %q", u.URL)
+	}
+
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{Name: "G", Address: "8.8.8.8:53", Protocol: "udp"})
+	run, _ := s.CreateScanRun(ctx, "manual")
+
+	// A legacy row whose url_value kept the raw pre-normalization string.
+	if err := gormDB.Create(&db.ScanResult{
+		ScanRunID: run.ID, URLID: u.ID, URLValue: "https://Example.com/",
+		DNSServerID: srv.ID, Compliant: true, ScannedAt: time.Now(),
+	}).Error; err != nil {
+		t.Fatalf("seed diverged result: %v", err)
+	}
+
+	if err := db.BackfillURLValues(ctx, gormDB); err != nil {
+		t.Fatalf("BackfillURLValues: %v", err)
+	}
+
+	var got db.ScanResult
+	if err := gormDB.First(&got).Error; err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if got.URLValue != "example.com" {
+		t.Fatalf("expected url_value backfilled to example.com, got %q", got.URLValue)
+	}
+}
+
+func TestBackfillURLValues_IsIdempotent(t *testing.T) {
+	gormDB, s := rawConnect(t)
+	ctx := context.Background()
+
+	u, _ := s.CreateURL(ctx, "example.com")
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{Name: "G", Address: "8.8.8.8:53", Protocol: "udp"})
+	run, _ := s.CreateScanRun(ctx, "manual")
+	if err := gormDB.Create(&db.ScanResult{
+		ScanRunID: run.ID, URLID: u.ID, URLValue: "example.com",
+		DNSServerID: srv.ID, Compliant: true, ScannedAt: time.Now(),
+	}).Error; err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		if err := db.BackfillURLValues(ctx, gormDB); err != nil {
+			t.Fatalf("BackfillURLValues run %d: %v", i, err)
+		}
+	}
+
+	var got db.ScanResult
+	gormDB.First(&got)
+	if got.URLValue != "example.com" {
+		t.Fatalf("expected url_value unchanged, got %q", got.URLValue)
+	}
+}

@@ -83,3 +83,24 @@ func NormalizeAndDedupeURLs(ctx context.Context, database *gorm.DB) error {
 		return nil
 	})
 }
+
+// BackfillURLValues repairs scan_results rows whose denormalized url_value
+// drifted from the canonical urls.url it points at via url_id — the state
+// NormalizeAndDedupeURLs used to leave behind (it reassigned url_id and
+// renamed urls.url, but never rewrote url_value), and that a pre-fix
+// grpcServer.Submit wrote directly by storing the raw crawler string.
+//
+// url_value is the GROUP BY / join key for nearly every aggregate in
+// internal/db/postgres.go, so a diverged row silently reads as a separate
+// domain — or as no domain at all, when a handler looks it up by its
+// normalized name. Idempotent: rows already in sync match nothing.
+//
+// Written as a correlated subquery rather than Postgres's UPDATE ... FROM so
+// the same statement also runs on the SQLite backend used by tests.
+func BackfillURLValues(ctx context.Context, database *gorm.DB) error {
+	const canonical = "(SELECT url FROM urls WHERE urls.id = scan_results.url_id)"
+	return database.WithContext(ctx).Exec(
+		"UPDATE scan_results SET url_value = " + canonical +
+			" WHERE url_id IS NOT NULL AND url_value <> " + canonical,
+	).Error
+}

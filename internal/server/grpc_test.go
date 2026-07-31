@@ -138,7 +138,7 @@ func TestSubmitStoresResults(t *testing.T) {
 	if len(store.insertedResults) != 1 {
 		t.Fatalf("expected 1 inserted result, got %d", len(store.insertedResults))
 	}
-	if store.insertedResults[0].URLValue != "https://example.com" {
+	if store.insertedResults[0].URLValue != "example.com" {
 		t.Fatalf("unexpected URL: %s", store.insertedResults[0].URLValue)
 	}
 }
@@ -239,6 +239,38 @@ func TestSubmitReadsNetNameFromCache(t *testing.T) {
 	}
 	if got := store.insertedResults[0].ResolvedNetName; got != "GOOGLE" {
 		t.Fatalf("ResolvedNetName = %q, want %q", got, "GOOGLE")
+	}
+}
+
+func TestSubmitStoresNormalizedURLValue(t *testing.T) {
+	store := &mockStore{
+		activeScanRun: &db.ScanRun{ID: 1, Status: "running"},
+		dnsServers:    []db.DNSServer{{ID: 3, Name: "Google"}},
+	}
+	client := newTestGRPCClient(t, store, &mockStorage{})
+
+	_, err := client.Submit(context.Background(), &pb.ComplianceReport{
+		Results: []*pb.SiteResult{{
+			Url:       "https://Example.com/path?q=1",
+			Compliant: false,
+			DnsServer: "Google",
+			Timestamp: time.Now().Unix(),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	if len(store.insertedResults) != 1 {
+		t.Fatalf("expected 1 inserted result, got %d", len(store.insertedResults))
+	}
+	got := store.insertedResults[0]
+	// url_value is the GROUP BY/join key for every aggregate — it must match
+	// the urls row url_id points at, not the raw string the crawler was fed.
+	if got.URLValue != "example.com" {
+		t.Fatalf("expected normalized url_value example.com, got %q", got.URLValue)
+	}
+	if got.URLID == 0 {
+		t.Fatal("expected non-zero URLID")
 	}
 }
 
