@@ -1,0 +1,201 @@
+// Hand-derived snapshot of the current PostgreSQL schema, sourced from the
+// GORM models passed to AutoMigrate in internal/db/db.go and defined in
+// internal/db/models.go. Not a build artifact — no generator keeps this in
+// sync, so re-export by hand if those files change.
+//
+// Table names are GORM's default snake_case/pluralized names (schema.NamingStrategy),
+// confirmed against raw SQL table references in internal/db/postgres.go.
+
+Table departments {
+  id         integer   [pk, increment]
+  name       varchar   [not null, unique, note: '"CMOD", "CRD", "Admin"']
+  created_at timestamptz
+
+  Note: 'Seeded by SeedDepartments if empty (CMOD/CRD/Admin).'
+}
+
+Table users {
+  id            integer   [pk, increment]
+  username      varchar   [not null, unique]
+  password_hash varchar   [not null]
+  is_admin      boolean   [not null, default: false]
+  is_dept_admin boolean   [not null, default: false]
+  department_id integer   [null]
+  created_at    timestamptz
+
+  Note: '''
+    department_id required for every real user (incl. admins, who get the
+    "Admin" department via MigrateAdminDepartments); nullable only because
+    GORM needs it nullable to express the optional FK. is_admin and
+    is_dept_admin are mutually exclusive.
+  '''
+}
+Ref: users.department_id > departments.id
+
+Table sessions {
+  token      varchar   [pk, note: 'random session token, not auto-increment']
+  user_id    integer   [not null, note: 'indexed']
+  expires_at timestamptz [not null, note: 'indexed -- GetSession filters expires_at > now']
+  created_at timestamptz
+}
+Ref: sessions.user_id > users.id
+
+Table dns_servers {
+  id         integer   [pk, increment]
+  isp        varchar   [not null, default: 'Unknown']
+  name       varchar   [not null]
+  address    varchar   [not null]
+  protocol   varchar   [not null, note: 'udp | dot | doh']
+  enabled    boolean   [not null, default: true]
+  created_at timestamptz
+}
+
+Table urls {
+  id         integer   [pk, increment]
+  url        varchar   [not null, unique, note: 'expected pre-normalized bare lowercase hostname, see internal/urlnorm']
+  created_at timestamptz
+}
+
+Table department_urls {
+  department_id integer    [not null]
+  url_id        integer    [not null]
+  enabled       boolean    [not null, default: true]
+  ordered_at    timestamptz  [null, note: 'optional takedown-order date, set at add-time or later']
+  created_at    timestamptz
+
+  indexes {
+    (department_id, url_id) [pk]
+  }
+
+  Note: '''
+    Composite PK, no surrogate id. Removing a URL from a watchlist deletes
+    only this row (RemoveFromWatchlist) -- never URL or ScanResult, so scan
+    history survives even once no department watches a domain. The
+    OnDelete:CASCADE on url_id only fires via the admin-only PurgeURL path
+    that deletes the URL row itself.
+  '''
+}
+Ref: department_urls.department_id > departments.id
+Ref: department_urls.url_id > urls.id [delete: cascade]
+
+Table scan_runs {
+  id           integer   [pk, increment]
+  triggered_by varchar   [note: '"scheduled" | "manual" | "screenshot"']
+  status       varchar   [note: '"running" | "completed" | "failed"']
+  started_at   timestamptz
+  completed_at timestamptz [null]
+}
+
+Table scan_results {
+  id                   integer   [pk, increment]
+  scan_run_id          integer   [not null, note: 'indexed']
+  url_id               integer   [not null, note: 'indexed']
+  url_value            varchar   [not null, note: 'denormalized copy of urls.url, avoids a join for display/matching']
+  dns_server_id        integer   [not null]
+  compliant            boolean   [not null, note: 'INVERTED: DNS resolves = violation (false), DNS fails = compliant (true)']
+  resolved_ip          varchar
+  resolved_ipv6        varchar
+  resolved_asn         integer
+  resolved_org         varchar
+  resolved_netname     varchar
+  resolved_abuse_email varchar
+  screenshot_url       varchar
+  error                varchar
+  latency_ms           bigint    [default: 0, note: '0 = failed/unmeasured, excluded from ISP latency aggregates']
+  scanned_at           timestamptz
+}
+Ref: scan_results.scan_run_id > scan_runs.id
+Ref: scan_results.url_id > urls.id [delete: cascade]
+Ref: scan_results.dns_server_id > dns_servers.id [note: '''
+  No FK-level cascade -- DeleteDNSServer manually deletes ScanResult rows in
+  a transaction before deleting the server, per the model comment. This is
+  deliberate, not a missed constraint.
+''']
+
+Table compliant_ips {
+  id         integer   [pk, increment]
+  address    varchar   [not null, unique]
+  note       varchar
+  created_at timestamptz
+
+  Note: 'IPs treated as compliant even when DNS resolves, e.g. an ISP block-page IP (MCMC redirect).'
+}
+
+Table domain_whois {
+  url_id                 integer   [pk, note: 'natural key, not surrogate -- one row per URL, 1:1']
+  registrar               varchar
+  registrar_url           varchar
+  registrar_abuse_email   varchar
+  registrar_abuse_phone   varchar
+  domain_created          timestamptz [null]
+  domain_expires          timestamptz [null]
+  last_fetched_at         timestamptz [note: 'indexed']
+  fetch_error             varchar
+
+  Note: 'RDAP registration metadata. Absent row = never fetched. A failed re-fetch leaves stale fields in place rather than wiping them.'
+}
+Ref: domain_whois.url_id - urls.id
+
+Table subdomain_scans {
+  url_id      integer   [pk, note: 'natural key, 1:1']
+  subdomains  jsonb     [note: '[]string via GORM json serializer']
+  fetched_at  timestamptz
+  fetch_error varchar
+
+  Note: 'subfinder enumeration cache. No periodic refresh -- only re-run via explicit POST /api/subdomains/*url.'
+}
+Ref: subdomain_scans.url_id - urls.id
+
+Table ip_infos {
+  ip          varchar   [pk, note: 'the resolved IP itself, not a surrogate id']
+  asn         integer
+  org         varchar
+  netname     varchar
+  abuse_email varchar
+  fetched_at  timestamptz
+  fetch_error varchar
+
+  Note: '''
+    Keyed by IP, not domain or url_id -- deliberately NOT FK'd to any table.
+    An IP's ASN/NetName is stable regardless of which domain currently
+    resolves to it, so a distinct IP is looked up at most once, ever.
+  '''
+}
+
+Table favicons {
+  domain       varchar  [pk]
+  content_type varchar
+  data         bytea
+  fetched_at   timestamptz
+  fetch_error  varchar
+
+  Note: '''
+    Keyed by domain string, deliberately NOT FK'd to urls -- fetched at most
+    once per domain ever, server-proxied so the target's logs never see a
+    direct client request.
+  '''
+}
+
+Table scan_settings {
+  id               integer [pk, increment, note: 'single-row table -- app only ever writes ID 1']
+  interval_minutes integer [not null]
+  enabled          boolean [not null, default: false, note: 'automated scanning is an explicit admin opt-in']
+  dns_workers      integer [not null, default: 100]
+
+  Note: 'Seeded once from --interval on first boot (SeedScanInterval); the admin panel is authoritative after that.'
+}
+
+Table isp_logos {
+  isp        varchar   [pk, note: 'ISP name itself, not a surrogate id']
+  logo_url   varchar
+  created_at timestamptz
+
+  Note: '''
+    Keyed by ISP name, deliberately NOT FK'd to dns_servers -- one ISP name
+    is shared across multiple DNSServer rows (e.g. an ISP's DoT and UDP
+    servers), so a DNSServer-level field would need cross-row sync. Purely
+    cosmetic, never affects compliance calculations. Renaming/deleting an
+    ISP via dns_servers does not cascade here -- orphaned rows are cleaned
+    up manually.
+  '''
+}
