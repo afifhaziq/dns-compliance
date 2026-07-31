@@ -18,6 +18,7 @@ import (
 	"github.com/afif/dns-tracking/internal/favicon"
 	"github.com/afif/dns-tracking/internal/ipinfo"
 	"github.com/afif/dns-tracking/internal/subfinder"
+	"github.com/afif/dns-tracking/internal/urlnorm"
 	"github.com/afif/dns-tracking/internal/whois"
 	"github.com/go-chi/chi/v5"
 )
@@ -878,9 +879,14 @@ func (h *Handlers) FaviconByURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	domain := urlValue
-	if parsed, parseErr := url.Parse(urlValue); parseErr == nil && parsed.Hostname() != "" {
-		domain = parsed.Hostname()
+	// Normalize before using as the cache key: db.Favicon is keyed by domain
+	// and fetched at most once ever, so "Example.com" and "example.com"
+	// hitting separate rows means a second outbound request to a domain this
+	// tool is deliberately trying not to touch twice.
+	domain, err := urlnorm.Normalize(urlValue)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid url")
+		return
 	}
 
 	cached, err := h.store.GetFavicon(r.Context(), domain)

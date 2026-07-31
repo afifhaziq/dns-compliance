@@ -2171,3 +2171,30 @@ func TestDeleteISPLogo_HandlesEscapedName(t *testing.T) {
 		t.Fatalf("expected the ISP logo to be deleted, got %d remaining: %+v", len(store.ispLogos), store.ispLogos)
 	}
 }
+
+func TestFaviconByURLNormalizesCacheKey(t *testing.T) {
+	store := &fullMockStore{
+		favicons: []db.Favicon{{
+			Domain:      "example.com",
+			ContentType: "image/png",
+			Data:        []byte{0x89, 'P', 'N', 'G'},
+			FetchedAt:   time.Now(),
+		}},
+	}
+	cookie := deptCookie(store, 1)
+	router := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/favicon/Example.com", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	// faviconFetch is nil in setupRouter, so a cache miss 503s. A 200 proves
+	// "Example.com" normalized down to the cached "example.com" row.
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 from normalized cache hit, got %d (%s)", w.Code, w.Body.String())
+	}
+	if len(store.favicons) != 1 {
+		t.Fatalf("expected no second favicon row, got %d", len(store.favicons))
+	}
+}
