@@ -5,6 +5,10 @@
 //
 // Table names are GORM's default snake_case/pluralized names (schema.NamingStrategy),
 // confirmed against raw SQL table references in internal/db/postgres.go.
+//
+// Updated for the db-schema-hardening branch (scan_results.url_value write-time
+// guarantee + backfill, the composite index, Malaysia-time day bucketing) —
+// see docs/superpowers/plans/2026-07-31-db-schema-hardening.md.
 
 Table departments {
   id         integer   [pk, increment]
@@ -90,8 +94,15 @@ Table scan_results {
   id                   integer   [pk, increment]
   scan_run_id          integer   [not null, note: 'indexed']
   url_id               integer   [not null, note: 'indexed']
-  url_value            varchar   [not null, note: 'denormalized copy of urls.url, avoids a join for display/matching']
-  dns_server_id        integer   [not null]
+  url_value            varchar   [not null, note: '''
+    Guaranteed equal to urls.url (normalized at write time in
+    grpcServer.Submit; pre-existing rows repaired once by
+    db.BackfillURLValues on startup). This is NOT just a denormalized
+    display copy -- it is the GROUP BY / join key for nearly every
+    aggregate query (ispStats, resurfacedDomains, trend/heatmap/uptime).
+    Leading column of idx_scan_results_url_server_time.
+  ''']
+  dns_server_id        integer   [not null, note: 'indexed standalone + priority:2 in idx_scan_results_url_server_time']
   compliant            boolean   [not null, note: 'INVERTED: DNS resolves = violation (false), DNS fails = compliant (true)']
   resolved_ip          varchar
   resolved_ipv6        varchar
@@ -102,7 +113,21 @@ Table scan_results {
   screenshot_url       varchar
   error                varchar
   latency_ms           bigint    [default: 0, note: '0 = failed/unmeasured, excluded from ISP latency aggregates']
-  scanned_at           timestamptz
+  scanned_at           timestamptz [note: '''
+    Whole-second precision (time.Unix(r.Timestamp, 0)), not sub-second.
+    Indexed standalone + priority:3 in idx_scan_results_url_server_time.
+    Calendar-day bucketing elsewhere in the app (heatmap/trend/uptime) buckets
+    this in Asia/Kuala_Lumpur (UTC+8), not UTC -- see postgres.go's
+    reportingLocation.
+  ''']
+
+  indexes {
+    (url_value, dns_server_id, scanned_at) [name: 'idx_scan_results_url_server_time', note: '''
+      Column order matches the GROUP BY (url_value, dns_server_id) /
+      MAX(scanned_at) shape used by ispStats and resurfacedDomains'
+      latest-scan-per-(domain,server) subqueries -- do not reorder.
+    ''']
+  }
 }
 Ref: scan_results.scan_run_id > scan_runs.id
 Ref: scan_results.url_id > urls.id [delete: cascade]
