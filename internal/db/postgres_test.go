@@ -1633,3 +1633,35 @@ func TestDeleteISPLogo(t *testing.T) {
 		t.Fatalf("expected 0 logos after delete, got %d", len(logos))
 	}
 }
+
+func TestDailyComplianceByURLBucketsInMalaysiaTime(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	u, _ := s.CreateURL(ctx, "example.com")
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{Name: "G", Address: "8.8.8.8:53", Protocol: "udp"})
+	run, _ := s.CreateScanRun(ctx, "manual")
+
+	// 2026-07-15 23:30 UTC == 2026-07-16 07:30 in Malaysia (UTC+8).
+	// The analyst scanned on the 16th and must see it on the 16th.
+	scanned := time.Date(2026, 7, 15, 23, 30, 0, 0, time.UTC)
+	if err := s.InsertResult(ctx, db.ScanResult{
+		ScanRunID: run.ID, URLID: u.ID, URLValue: u.URL,
+		DNSServerID: srv.ID, Compliant: true, ScannedAt: scanned,
+	}); err != nil {
+		t.Fatalf("InsertResult: %v", err)
+	}
+
+	stats, err := s.DailyComplianceByURL(ctx, "example.com",
+		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 7, 31, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("DailyComplianceByURL: %v", err)
+	}
+	if len(stats) != 1 {
+		t.Fatalf("expected 1 bucket, got %d", len(stats))
+	}
+	if stats[0].Day != "2026-07-16" {
+		t.Fatalf("expected day 2026-07-16 (Malaysia time), got %q", stats[0].Day)
+	}
+}

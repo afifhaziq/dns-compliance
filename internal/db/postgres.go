@@ -11,6 +11,20 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// reportingLocation is the timezone every calendar-day bucket in this package
+// is computed in. Results are stored as timestamptz (UTC instants); bucketing
+// them by UTC date would put a 07:00 Malaysia-time scan on the previous day's
+// heatmap cell. This tool reports to a Malaysian regulator, so days are
+// Malaysian days. Falls back to a fixed +08:00 offset if the host image has
+// no tzdata (the debian-slim runtime does, but a scratch image would not).
+var reportingLocation = func() *time.Location {
+	loc, err := time.LoadLocation("Asia/Kuala_Lumpur")
+	if err != nil {
+		return time.FixedZone("MYT", 8*60*60)
+	}
+	return loc
+}()
+
 type postgresStore struct{ db *gorm.DB }
 
 func NewStore(db *gorm.DB) Store { return &postgresStore{db: db} }
@@ -170,7 +184,7 @@ func (s *postgresStore) DailyComplianceByURL(ctx context.Context, urlValue strin
 	buckets := make(map[bucketKey]*bucket)
 	order := make([]bucketKey, 0)
 	for _, r := range rows {
-		k := bucketKey{dnsServerID: r.DNSServerID, day: r.ScannedAt.Format("2006-01-02")}
+		k := bucketKey{dnsServerID: r.DNSServerID, day: r.ScannedAt.In(reportingLocation).Format("2006-01-02")}
 		b, ok := buckets[k]
 		if !ok {
 			b = &bucket{dnsServerName: r.DNSServerName}
@@ -800,7 +814,7 @@ func (s *postgresStore) ispTrend(ctx context.Context, isp string, since, until t
 	buckets := make(map[string]*bucket)
 	order := make([]string, 0)
 	for _, r := range rows {
-		day := r.ScannedAt.Format("2006-01-02")
+		day := r.ScannedAt.In(reportingLocation).Format("2006-01-02")
 		b, ok := buckets[day]
 		if !ok {
 			b = &bucket{}
@@ -847,7 +861,7 @@ func (s *postgresStore) dailyTrend(ctx context.Context, since, until time.Time, 
 	buckets := make(map[string]*bucket)
 	order := make([]string, 0)
 	for _, r := range rows {
-		day := r.ScannedAt.Format("2006-01-02")
+		day := r.ScannedAt.In(reportingLocation).Format("2006-01-02")
 		b, ok := buckets[day]
 		if !ok {
 			b = &bucket{}
@@ -926,7 +940,7 @@ func (s *postgresStore) serverUptime(ctx context.Context, dnsServerID uint, sinc
 	buckets := make(map[string]*bucket)
 	order := make([]string, 0)
 	for _, r := range rows {
-		day := r.ScannedAt.Format("2006-01-02")
+		day := r.ScannedAt.In(reportingLocation).Format("2006-01-02")
 		b, ok := buckets[day]
 		if !ok {
 			b = &bucket{}
