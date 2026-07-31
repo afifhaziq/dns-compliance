@@ -122,13 +122,17 @@ type ScanRun struct {
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
 
+// The composite index (url_value, dns_server_id, scanned_at) serves the
+// latest-scan-per-(domain, server) subqueries in ispStats and
+// resurfacedDomains, which would otherwise aggregate the whole table on
+// every ISP page load. Column order matters — do not reorder.
 type ScanResult struct {
 	ID                 uint      `gorm:"primaryKey" json:"id"`
 	ScanRunID          uint      `gorm:"not null;index" json:"scan_run_id"`
 	URLID              uint      `gorm:"not null;index" json:"url_id"`
 	URLRef             URL       `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
-	URLValue           string    `gorm:"not null" json:"url"`
-	DNSServerID        uint      `gorm:"not null" json:"dns_server_id"`
+	URLValue           string    `gorm:"not null;index:idx_scan_results_url_server_time,priority:1" json:"url"`
+	DNSServerID        uint      `gorm:"not null;index;index:idx_scan_results_url_server_time,priority:2" json:"dns_server_id"`
 	DNSServer          DNSServer `gorm:"foreignKey:DNSServerID" json:"dns_server"`
 	Compliant          bool      `gorm:"not null" json:"compliant"`
 	ResolvedIP         string    `json:"resolved_ip"`
@@ -140,7 +144,7 @@ type ScanResult struct {
 	ScreenshotURL      string    `json:"screenshot_url"`
 	Error              string    `json:"error"`
 	LatencyMs          int64     `gorm:"default:0" json:"latency_ms"`
-	ScannedAt          time.Time `json:"scanned_at"`
+	ScannedAt          time.Time `gorm:"index;index:idx_scan_results_url_server_time,priority:3" json:"scanned_at"`
 }
 
 // DomainWhois caches RDAP registration metadata for a domain (not a scan —
