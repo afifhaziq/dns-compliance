@@ -125,7 +125,10 @@ func newTestGRPCClient(t *testing.T, store db.Store, stor storage.Storage) pb.Co
 }
 
 func TestSubmitStoresResults(t *testing.T) {
-	store := &mockStore{activeScanRun: &db.ScanRun{ID: 1, Status: "running"}}
+	store := &mockStore{
+		activeScanRun: &db.ScanRun{ID: 1, Status: "running"},
+		dnsServers:    []db.DNSServer{{ID: 3, Name: "Google"}},
+	}
 	client := newTestGRPCClient(t, store, &mockStorage{})
 
 	_, err := client.Submit(context.Background(), &pb.ComplianceReport{
@@ -151,7 +154,10 @@ func TestSubmitStoresResults(t *testing.T) {
 }
 
 func TestSubmitUploadsScreenshot(t *testing.T) {
-	store := &mockStore{activeScanRun: &db.ScanRun{ID: 1, Status: "running"}}
+	store := &mockStore{
+		activeScanRun: &db.ScanRun{ID: 1, Status: "running"},
+		dnsServers:    []db.DNSServer{{ID: 3, Name: "Google"}},
+	}
 	stor := &mockStorage{}
 	client := newTestGRPCClient(t, store, stor)
 
@@ -159,6 +165,7 @@ func TestSubmitUploadsScreenshot(t *testing.T) {
 		Results: []*pb.SiteResult{
 			{
 				Url:        "https://example.com",
+				DnsServer:  "Google",
 				Screenshot: []byte("fake-png"),
 				Timestamp:  time.Now().Unix(),
 			},
@@ -226,6 +233,7 @@ func TestSubmitScreenshotUpdatesVisibleRow(t *testing.T) {
 func TestSubmitReadsNetNameFromCache(t *testing.T) {
 	store := &mockStore{
 		activeScanRun: &db.ScanRun{ID: 1, Status: "running"},
+		dnsServers:    []db.DNSServer{{ID: 3, Name: "Google"}},
 		ipInfo:        &db.IPInfo{IP: "1.2.3.4", ASN: 15169, Org: "Google LLC", NetName: "GOOGLE"},
 	}
 	client := newTestGRPCClient(t, store, &mockStorage{})
@@ -290,6 +298,7 @@ func TestSubmitStoresNormalizedURLValue(t *testing.T) {
 func TestSubmitResolvesURLIDFromWatchlist(t *testing.T) {
 	store := &mockStore{
 		activeScanRun: &db.ScanRun{ID: 1, Status: "running"},
+		dnsServers:    []db.DNSServer{{ID: 3, Name: "Google"}},
 		watchedURLs:   []db.URL{{ID: 42, URL: "example.com"}},
 	}
 	client := newTestGRPCClient(t, store, &mockStorage{})
@@ -321,12 +330,14 @@ func TestSubmitResolvesURLIDFromWatchlist(t *testing.T) {
 }
 
 func TestSubmitNoActiveRun(t *testing.T) {
-	store := &mockStore{} // no active scan run
+	store := &mockStore{
+		dnsServers: []db.DNSServer{{ID: 3, Name: "Google"}},
+	} // no active scan run
 	client := newTestGRPCClient(t, store, &mockStorage{})
 
 	_, err := client.Submit(context.Background(), &pb.ComplianceReport{
 		Results: []*pb.SiteResult{
-			{Url: "https://example.com", Timestamp: time.Now().Unix()},
+			{Url: "https://example.com", DnsServer: "Google", Timestamp: time.Now().Unix()},
 		},
 	})
 	if err != nil {
@@ -334,5 +345,31 @@ func TestSubmitNoActiveRun(t *testing.T) {
 	}
 	if len(store.insertedResults) != 1 {
 		t.Fatalf("expected result inserted even without active run")
+	}
+}
+
+// TestSubmitSkipsUnknownDNSServer exercises the guard added to stop a
+// renamed/deleted-mid-sweep DNS server from failing as a bare FK violation:
+// a result naming a server absent from the store must be skipped, not
+// inserted with DNSServerID 0.
+func TestSubmitSkipsUnknownDNSServer(t *testing.T) {
+	store := &mockStore{
+		activeScanRun: &db.ScanRun{ID: 1, Status: "running"},
+		dnsServers:    []db.DNSServer{{ID: 3, Name: "Google"}},
+	}
+	client := newTestGRPCClient(t, store, &mockStorage{})
+
+	_, err := client.Submit(context.Background(), &pb.ComplianceReport{
+		Results: []*pb.SiteResult{{
+			Url:       "https://example.com",
+			DnsServer: "Renamed Resolver",
+			Timestamp: time.Now().Unix(),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	if len(store.insertedResults) != 0 {
+		t.Fatalf("expected unknown-server result skipped, got %d inserted", len(store.insertedResults))
 	}
 }

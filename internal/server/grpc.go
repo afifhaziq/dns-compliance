@@ -92,11 +92,21 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 			}
 		}
 
+		dnsServerID, ok := serverByName[r.DnsServer]
+		if !ok {
+			// A server renamed or deleted mid-sweep. dns_server_id has a real
+			// FK, so inserting 0 here fails anyway — but as a constraint
+			// violation buried in a log line, which reads like a database
+			// problem rather than a config change. Say what actually happened.
+			log.Printf("grpc: unknown dns server %q reported for %s — result dropped; was it renamed mid-sweep?", r.DnsServer, r.Url)
+			continue
+		}
+
 		result := db.ScanResult{
 			ScanRunID:          runID,
 			URLID:              urlID,
 			URLValue:           urlValue,
-			DNSServerID:        serverByName[r.DnsServer],
+			DNSServerID:        dnsServerID,
 			Compliant:          r.Compliant,
 			ResolvedIP:         r.ResolvedIp,
 			ResolvedIPv6:       r.ResolvedIpv6,
