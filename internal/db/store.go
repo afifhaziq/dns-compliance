@@ -169,6 +169,54 @@ type EnrichmentStore interface {
 	UpsertSubdomainScan(ctx context.Context, s SubdomainScan) error
 }
 
+// LegalCitationStore covers the full Instrument→Citation→Category→Element
+// legal-reference catalog plus the URL↔offence join (URLOffence). Kept as
+// one sub-interface rather than split per-table: every real consumer walks
+// the whole chain together (listing a URL's offences means resolving
+// Element→Category→Citation→Instrument to render anything useful), the
+// same reasoning EnrichmentStore already uses to bundle unrelated cache
+// tables under one interface.
+type LegalCitationStore interface {
+	ListInstruments(ctx context.Context) ([]Instrument, error)
+	// GetOrCreateInstrument finds an existing row by (type, jurisdiction,
+	// number, year) or creates one, mirroring CreateURL's
+	// get-or-create-by-natural-key pattern so the same law is never
+	// duplicated across citations.
+	GetOrCreateInstrument(ctx context.Context, in Instrument) (Instrument, error)
+	UpdateInstrument(ctx context.Context, id uint, in Instrument) (Instrument, error)
+	DeleteInstrument(ctx context.Context, id uint) error // cascades to Citation/Category/Element/URLOffence
+
+	ListCitationsByInstrument(ctx context.Context, instrumentID uint) ([]Citation, error)
+	// CreateCitation/UpdateCitation always recompute SortKey server-side
+	// from c.Parsed.ProvisionNum/ProvisionSuffix — never trust a
+	// client-supplied sort key.
+	CreateCitation(ctx context.Context, c Citation) (Citation, error)
+	UpdateCitation(ctx context.Context, id uint, c Citation) (Citation, error)
+	DeleteCitation(ctx context.Context, id uint) error // cascades to Category/Element/URLOffence
+
+	ListCategoriesByCitation(ctx context.Context, citationID uint) ([]Category, error)
+	CreateCategory(ctx context.Context, cat Category) (Category, error)
+	UpdateCategory(ctx context.Context, id uint, name string) (Category, error)
+	DeleteCategory(ctx context.Context, id uint) error // cascades to Element/URLOffence
+
+	ListElementsByCategory(ctx context.Context, categoryID uint) ([]Element, error)
+	CreateElement(ctx context.Context, el Element) (Element, error)
+	UpdateElement(ctx context.Context, id uint, name string) (Element, error)
+	DeleteElement(ctx context.Context, id uint) error // cascades to URLOffence
+
+	// ListOffencesByURL preloads Category (and its parent Citation/
+	// Instrument) plus Element so a listing can render full context in one
+	// query. Keyed by urlValue, not urlID, matching the *url wildcard
+	// convention used by every other domain-scoped read.
+	ListOffencesByURL(ctx context.Context, urlValue string) ([]URLOffence, error)
+	// GetOffence preloads URL — used by the detach handler to resolve the
+	// owning department before deleting, since DELETE is keyed by the
+	// offence's own surrogate ID, not by URL. nil, nil if not found.
+	GetOffence(ctx context.Context, id uint) (*URLOffence, error)
+	AttachOffenceToURL(ctx context.Context, urlValue string, categoryID uint, elementID *uint) (URLOffence, error)
+	DetachOffenceFromURL(ctx context.Context, id uint) error
+}
+
 // Store is the full persistence port — the union of every aggregate-scoped
 // store above. Multi-aggregate consumers (Handlers, Scanner) depend on this.
 // A consumer that only ever touches one aggregate should depend on that
@@ -188,4 +236,5 @@ type Store interface {
 	ISPLogoStore
 	ScanSettingsStore
 	EnrichmentStore
+	LegalCitationStore
 }

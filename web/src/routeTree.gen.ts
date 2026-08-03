@@ -13,6 +13,7 @@ import { Route as UrlsRouteImport } from './routes/urls'
 import { Route as ScanResultsRouteImport } from './routes/scan-results'
 import { Route as ResultsRouteImport } from './routes/results'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as LegalCitationsRouteImport } from './routes/legal-citations'
 import { Route as DnsServersRouteImport } from './routes/dns-servers'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
@@ -40,6 +41,11 @@ const ResultsRoute = ResultsRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LegalCitationsRoute = LegalCitationsRouteImport.update({
+  id: '/legal-citations',
+  path: '/legal-citations',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DnsServersRoute = DnsServersRouteImport.update({
@@ -87,6 +93,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
   '/dns-servers': typeof DnsServersRoute
+  '/legal-citations': typeof LegalCitationsRoute
   '/login': typeof LoginRoute
   '/results': typeof ResultsRouteWithChildren
   '/scan-results': typeof ScanResultsRoute
@@ -100,6 +107,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dns-servers': typeof DnsServersRoute
+  '/legal-citations': typeof LegalCitationsRoute
   '/login': typeof LoginRoute
   '/scan-results': typeof ScanResultsRoute
   '/urls': typeof UrlsRoute
@@ -114,6 +122,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
   '/dns-servers': typeof DnsServersRoute
+  '/legal-citations': typeof LegalCitationsRoute
   '/login': typeof LoginRoute
   '/results': typeof ResultsRouteWithChildren
   '/scan-results': typeof ScanResultsRoute
@@ -130,6 +139,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/dns-servers'
+    | '/legal-citations'
     | '/login'
     | '/results'
     | '/scan-results'
@@ -143,6 +153,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/dns-servers'
+    | '/legal-citations'
     | '/login'
     | '/scan-results'
     | '/urls'
@@ -156,6 +167,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/dns-servers'
+    | '/legal-citations'
     | '/login'
     | '/results'
     | '/scan-results'
@@ -171,6 +183,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRouteWithChildren
   DnsServersRoute: typeof DnsServersRoute
+  LegalCitationsRoute: typeof LegalCitationsRoute
   LoginRoute: typeof LoginRoute
   ResultsRoute: typeof ResultsRouteWithChildren
   ScanResultsRoute: typeof ScanResultsRoute
@@ -208,6 +221,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/legal-citations': {
+      id: '/legal-citations'
+      path: '/legal-citations'
+      fullPath: '/legal-citations'
+      preLoaderRoute: typeof LegalCitationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dns-servers': {
@@ -294,6 +314,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
   DnsServersRoute: DnsServersRoute,
+  LegalCitationsRoute: LegalCitationsRoute,
   LoginRoute: LoginRoute,
   ResultsRoute: ResultsRouteWithChildren,
   ScanResultsRoute: ScanResultsRoute,

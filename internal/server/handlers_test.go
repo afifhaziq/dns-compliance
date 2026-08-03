@@ -35,6 +35,11 @@ type fullMockStore struct {
 	favicons       []db.Favicon
 	subdomainScans []db.SubdomainScan
 	ispLogos       []db.ISPLogo
+	instruments    []db.Instrument
+	citations      []db.Citation
+	categories     []db.Category
+	elements       []db.Element
+	urlOffences    []db.URLOffence
 	scheduleMu     sync.Mutex // guards the three fields below; the scheduler goroutine reads them concurrently with test/handler writes
 	scanInterval   int
 	scanEnabled    bool
@@ -451,6 +456,270 @@ func (m *fullMockStore) DeleteISPLogo(_ context.Context, isp string) error {
 	for i, l := range m.ispLogos {
 		if l.ISP == isp {
 			m.ispLogos = append(m.ispLogos[:i], m.ispLogos[i+1:]...)
+			return nil
+		}
+	}
+	return nil
+}
+
+func (m *fullMockStore) ListInstruments(_ context.Context) ([]db.Instrument, error) {
+	return m.instruments, nil
+}
+func (m *fullMockStore) GetOrCreateInstrument(_ context.Context, in db.Instrument) (db.Instrument, error) {
+	for _, existing := range m.instruments {
+		sameYear := (existing.Year == nil) == (in.Year == nil) && (existing.Year == nil || *existing.Year == *in.Year)
+		if existing.Type == in.Type && existing.Jurisdiction == in.Jurisdiction && existing.Number == in.Number && sameYear {
+			return existing, nil
+		}
+	}
+	in.ID = uint(len(m.instruments) + 1)
+	m.instruments = append(m.instruments, in)
+	return in, nil
+}
+func (m *fullMockStore) UpdateInstrument(_ context.Context, id uint, in db.Instrument) (db.Instrument, error) {
+	in.ID = id
+	for i, existing := range m.instruments {
+		if existing.ID == id {
+			m.instruments[i] = in
+			return in, nil
+		}
+	}
+	return in, nil
+}
+func (m *fullMockStore) DeleteInstrument(_ context.Context, id uint) error {
+	for i, in := range m.instruments {
+		if in.ID == id {
+			m.instruments = append(m.instruments[:i], m.instruments[i+1:]...)
+		}
+	}
+	for _, c := range m.citations {
+		if c.InstrumentID == id {
+			_ = m.deleteCitationCascade(c.ID)
+		}
+	}
+	return nil
+}
+
+func (m *fullMockStore) ListCitationsByInstrument(_ context.Context, instrumentID uint) ([]db.Citation, error) {
+	var out []db.Citation
+	for _, c := range m.citations {
+		if c.InstrumentID == instrumentID {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+func (m *fullMockStore) CreateCitation(_ context.Context, c db.Citation) (db.Citation, error) {
+	c.ID = uint(len(m.citations) + 1)
+	c.SortKey = db.BuildProvisionSortKey(c.Parsed.ProvisionNum, c.Parsed.ProvisionSuffix)
+	m.citations = append(m.citations, c)
+	return c, nil
+}
+func (m *fullMockStore) UpdateCitation(_ context.Context, id uint, c db.Citation) (db.Citation, error) {
+	c.ID = id
+	c.SortKey = db.BuildProvisionSortKey(c.Parsed.ProvisionNum, c.Parsed.ProvisionSuffix)
+	for i, existing := range m.citations {
+		if existing.ID == id {
+			m.citations[i] = c
+			return c, nil
+		}
+	}
+	return c, nil
+}
+func (m *fullMockStore) DeleteCitation(_ context.Context, id uint) error {
+	return m.deleteCitationCascade(id)
+}
+func (m *fullMockStore) deleteCitationCascade(id uint) error {
+	for i, c := range m.citations {
+		if c.ID == id {
+			m.citations = append(m.citations[:i], m.citations[i+1:]...)
+		}
+	}
+	for _, cat := range m.categories {
+		if cat.CitationID == id {
+			_ = m.deleteCategoryCascade(cat.ID)
+		}
+	}
+	return nil
+}
+
+func (m *fullMockStore) ListCategoriesByCitation(_ context.Context, citationID uint) ([]db.Category, error) {
+	var out []db.Category
+	for _, c := range m.categories {
+		if c.CitationID == citationID {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+func (m *fullMockStore) CreateCategory(_ context.Context, cat db.Category) (db.Category, error) {
+	cat.ID = uint(len(m.categories) + 1)
+	m.categories = append(m.categories, cat)
+	return cat, nil
+}
+func (m *fullMockStore) UpdateCategory(_ context.Context, id uint, name string) (db.Category, error) {
+	for i, cat := range m.categories {
+		if cat.ID == id {
+			m.categories[i].Name = name
+			return m.categories[i], nil
+		}
+	}
+	return db.Category{}, nil
+}
+func (m *fullMockStore) DeleteCategory(_ context.Context, id uint) error {
+	return m.deleteCategoryCascade(id)
+}
+func (m *fullMockStore) deleteCategoryCascade(id uint) error {
+	for i, cat := range m.categories {
+		if cat.ID == id {
+			m.categories = append(m.categories[:i], m.categories[i+1:]...)
+		}
+	}
+	for _, el := range m.elements {
+		if el.CategoryID == id {
+			m.deleteElementCascade(el.ID)
+		}
+	}
+	return nil
+}
+
+func (m *fullMockStore) ListElementsByCategory(_ context.Context, categoryID uint) ([]db.Element, error) {
+	var out []db.Element
+	for _, el := range m.elements {
+		if el.CategoryID == categoryID {
+			out = append(out, el)
+		}
+	}
+	return out, nil
+}
+func (m *fullMockStore) CreateElement(_ context.Context, el db.Element) (db.Element, error) {
+	el.ID = uint(len(m.elements) + 1)
+	m.elements = append(m.elements, el)
+	return el, nil
+}
+func (m *fullMockStore) UpdateElement(_ context.Context, id uint, name string) (db.Element, error) {
+	for i, el := range m.elements {
+		if el.ID == id {
+			m.elements[i].Name = name
+			return m.elements[i], nil
+		}
+	}
+	return db.Element{}, nil
+}
+func (m *fullMockStore) DeleteElement(_ context.Context, id uint) error {
+	m.deleteElementCascade(id)
+	return nil
+}
+func (m *fullMockStore) deleteElementCascade(id uint) {
+	for i, el := range m.elements {
+		if el.ID == id {
+			m.elements = append(m.elements[:i], m.elements[i+1:]...)
+		}
+	}
+	for i := 0; i < len(m.urlOffences); i++ {
+		if m.urlOffences[i].ElementID != nil && *m.urlOffences[i].ElementID == id {
+			m.urlOffences = append(m.urlOffences[:i], m.urlOffences[i+1:]...)
+			i--
+		}
+	}
+}
+
+// findCategoryCitationInstrument resolves the preload chain a real
+// ListOffencesByURL/GetOffence call would return via
+// Preload("Category.Citation.Instrument").
+func (m *fullMockStore) hydrateOffence(o db.URLOffence) db.URLOffence {
+	for _, cat := range m.categories {
+		if cat.ID == o.CategoryID {
+			for _, c := range m.citations {
+				if c.ID == cat.CitationID {
+					for _, in := range m.instruments {
+						if in.ID == c.InstrumentID {
+							c.Instrument = in
+						}
+					}
+					cat.Citation = c
+				}
+			}
+			o.Category = cat
+		}
+	}
+	if o.ElementID != nil {
+		for _, el := range m.elements {
+			if el.ID == *o.ElementID {
+				elCopy := el
+				o.Element = &elCopy
+			}
+		}
+	}
+	for _, u := range m.urls {
+		if u.ID == o.URLID {
+			o.URL = u
+		}
+	}
+	return o
+}
+
+func (m *fullMockStore) ListOffencesByURL(_ context.Context, urlValue string) ([]db.URLOffence, error) {
+	normalized, err := urlnorm.Normalize(urlValue)
+	if err != nil {
+		return nil, err
+	}
+	var urlID uint
+	found := false
+	for _, u := range m.urls {
+		if u.URL == normalized {
+			urlID = u.ID
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, nil
+	}
+	var out []db.URLOffence
+	for _, o := range m.urlOffences {
+		if o.URLID == urlID {
+			out = append(out, m.hydrateOffence(o))
+		}
+	}
+	return out, nil
+}
+func (m *fullMockStore) GetOffence(_ context.Context, id uint) (*db.URLOffence, error) {
+	for _, o := range m.urlOffences {
+		if o.ID == id {
+			hydrated := m.hydrateOffence(o)
+			return &hydrated, nil
+		}
+	}
+	return nil, nil
+}
+func (m *fullMockStore) AttachOffenceToURL(_ context.Context, urlValue string, categoryID uint, elementID *uint) (db.URLOffence, error) {
+	normalized, err := urlnorm.Normalize(urlValue)
+	if err != nil {
+		return db.URLOffence{}, err
+	}
+	var urlID uint
+	found := false
+	for _, u := range m.urls {
+		if u.URL == normalized {
+			urlID = u.ID
+			found = true
+			break
+		}
+	}
+	if !found {
+		return db.URLOffence{}, fmt.Errorf("url not found: %s", urlValue)
+	}
+	o := db.URLOffence{
+		ID: uint(len(m.urlOffences) + 1), URLID: urlID, CategoryID: categoryID, ElementID: elementID, RecordedAt: time.Now(),
+	}
+	m.urlOffences = append(m.urlOffences, o)
+	return o, nil
+}
+func (m *fullMockStore) DetachOffenceFromURL(_ context.Context, id uint) error {
+	for i, o := range m.urlOffences {
+		if o.ID == id {
+			m.urlOffences = append(m.urlOffences[:i], m.urlOffences[i+1:]...)
 			return nil
 		}
 	}

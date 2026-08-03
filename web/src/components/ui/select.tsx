@@ -6,6 +6,7 @@ import {
   useEffect,
   useState,
   useCallback,
+  useReducer,
   createContext,
   useContext,
   type ComponentType,
@@ -45,6 +46,7 @@ interface SelectContextValue {
   disabled: boolean;
   triggerRef: React.RefObject<HTMLButtonElement | null>;
   labelMap: React.MutableRefObject<Map<string, string>>;
+  notifyLabelsChanged: () => void;
 }
 
 const SelectContext = createContext<SelectContextValue | null>(null);
@@ -93,6 +95,14 @@ function Select({
   const currentValue = value !== undefined ? value : internalValue;
   const triggerRef = useRef<HTMLButtonElement>(null);
   const labelMap = useRef(new Map<string, string>());
+  // SelectContent always renders its children (hidden, via [hidden]) even
+  // when closed, specifically so SelectItem's registration effect can
+  // populate labelMap on mount — but mutating a ref doesn't itself trigger a
+  // re-render, so SelectTrigger's very first paint reads an empty map and
+  // falls back to the raw value. This dispatch (stable identity, like a
+  // useState setter) forces the one extra render SelectItem needs after
+  // registering a label the trigger hadn't seen yet.
+  const [, notifyLabelsChanged] = useReducer((c: number) => c + 1, 0);
 
   const onChange = useCallback(
     (v: string) => {
@@ -114,6 +124,7 @@ function Select({
         disabled,
         triggerRef,
         labelMap,
+        notifyLabelsChanged,
       }}
     >
       {children}
@@ -627,12 +638,18 @@ const SelectItem = forwardRef<HTMLDivElement, SelectItemProps>(
       hasMounted.current = true;
     }, []);
 
-    // Register label with root context
+    // Register label with root context. Only notify (forcing SelectTrigger
+    // to re-render) when the mapping actually changed — otherwise every
+    // render of every item would re-trigger this, and re-registering an
+    // already-known label is a no-op that doesn't need a repaint.
     useEffect(() => {
       if (typeof children === "string") {
-        selectCtx.labelMap.current.set(value, children);
+        if (selectCtx.labelMap.current.get(value) !== children) {
+          selectCtx.labelMap.current.set(value, children);
+          selectCtx.notifyLabelsChanged();
+        }
       }
-    }, [value, children, selectCtx.labelMap]);
+    }, [value, children, selectCtx.labelMap, selectCtx.notifyLabelsChanged]);
 
     // Register with proximity hover (only when content context exists = open)
     useEffect(() => {
