@@ -81,6 +81,20 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 
 			r.With(scanLimit).Post("/screenshot", h.TriggerScreenshot)
 
+			// Legal citation catalog — shared/global reference data, same
+			// read-open/write-admin-gated shape as DNS servers/ISP logos
+			// (mutation routes are in the requireAnyAdmin group below).
+			r.Get("/legal/instruments", h.ListInstruments)
+			r.Get("/legal/instruments/{id}/citations", h.ListCitationsByInstrument)
+			r.Get("/legal/citations/{id}/categories", h.ListCategoriesByCitation)
+			r.Get("/legal/categories/{id}/elements", h.ListElementsByCategory)
+
+			// URL<->offence linking — department-ownership-scoped like
+			// /results and /domain, not global; see requireDomainOwnership.
+			r.Get("/legal/offences/*", h.OffencesByURL)
+			r.Post("/legal/offences/*", h.AttachOffence)
+			r.Delete("/legal/offences/{id}", h.DetachOffence)
+
 			// Reachable by a super admin OR a department admin — DNS servers
 			// stay one shared/global catalog (no department scoping), while
 			// user management is scoped to the caller's own department for
@@ -95,6 +109,20 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 				r.Post("/dns-servers/test", h.TestDNSServer)
 				r.Post("/admin/isp-logos", h.UpsertISPLogo)
 				r.Delete("/admin/isp-logos/*", h.DeleteISPLogo)
+
+				r.Post("/legal/instruments", h.CreateInstrument)
+				r.Patch("/legal/instruments/{id}", h.UpdateInstrument)
+				r.Delete("/legal/instruments/{id}", h.DeleteInstrument)
+				r.Post("/legal/citations/parse-preview", h.ParseCitationPreview)
+				r.Post("/legal/citations", h.CreateCitation)
+				r.Patch("/legal/citations/{id}", h.UpdateCitation)
+				r.Delete("/legal/citations/{id}", h.DeleteCitation)
+				r.Post("/legal/categories", h.CreateCategory)
+				r.Patch("/legal/categories/{id}", h.UpdateCategory)
+				r.Delete("/legal/categories/{id}", h.DeleteCategory)
+				r.Post("/legal/elements", h.CreateElement)
+				r.Patch("/legal/elements/{id}", h.UpdateElement)
+				r.Delete("/legal/elements/{id}", h.DeleteElement)
 
 				r.Get("/admin/users", h.ListUsers)
 				r.Post("/admin/users", h.CreateUser)

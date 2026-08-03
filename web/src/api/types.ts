@@ -155,3 +155,69 @@ export type DomainServerSummary = {
   compliant_scans: number
   last_scanned_at: string  // RFC3339
 }
+
+// Mirrors db.LegalCitationParsed — structured breakdown of a Citation's
+// raw_text, either from internal/legalcite.Parse or hand-corrected.
+export type LegalCitationParsed = {
+  part?: number
+  chapter?: number
+  provision_num?: number
+  provision_suffix?: string
+  sub_provision?: number
+  sub_provision_suffix?: string
+  paragraph?: string
+  subparagraph?: string
+  sub_subparagraph?: string
+  schedule?: number
+  schedule_list?: number
+}
+
+export type Instrument = {
+  id: number
+  type: 'ACT' | 'ORDINANCE' | 'ENACTMENT' | 'SUBSIDIARY' | 'CONSTITUTION'
+  jurisdiction: string
+  number: string
+  year?: number
+  short_title: string
+  created_at: string
+}
+
+export type Citation = {
+  id: number
+  instrument_id: number
+  instrument: Instrument
+  raw_text: string
+  parsed: LegalCitationParsed
+  parse_confidence: 'OK' | 'NEEDS_REVIEW'
+  created_at: string
+}
+
+// Scoped to one Citation, not a shared lookup — see internal/db/models.go's
+// Category doc comment.
+export type LegalCategory = {
+  id: number
+  citation_id: number
+  citation: Citation
+  name: string
+  created_at: string
+}
+
+// Named LegalElement (not Element) to avoid shadowing the DOM Element type.
+export type LegalElement = {
+  id: number
+  category_id: number
+  name: string
+  created_at: string
+}
+
+// One row of GET /api/legal/offences/*url — a domain tagged with a specific
+// (Category, optional Element) offence.
+export type URLOffence = {
+  id: number
+  url_id: number
+  category_id: number
+  category: LegalCategory
+  element_id?: number
+  element?: LegalElement
+  recorded_at: string
+}

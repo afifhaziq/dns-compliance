@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlOrderedAt } from '../api/urls'
-import type { URLEntry } from '../api/types'
+import type { URLEntry, Instrument, Citation, LegalCategory, LegalElement } from '../api/types'
+import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, attachOffence, formatParsedCitation } from '../api/legal'
 import {
   Dialog,
   DialogContent,
@@ -14,6 +15,7 @@ import {
 import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/r-switch'
+import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { XIcon } from '@/components/ui/x'
 import { FaviconSearch } from '@/components/unlumen-ui/favicon-search'
@@ -64,6 +66,113 @@ export const Route = createFileRoute('/urls')({ component: URLsPage })
 
 /* ─── Add Domain Dialog ──────────────────────────────────────────────────── */
 
+// Cascading Instrument -> Citation -> Category -> Element picker. Element is
+// optional (not every category has one); Instrument/Citation/Category are
+// all required to attach an offence, but the whole block is optional — a
+// domain can be added with no offence tagged at all.
+function OffencePicker({
+  instrumentId, citationId, categoryId, elementId,
+  onInstrumentChange, onCitationChange, onCategoryChange, onElementChange,
+  disabled,
+}: {
+  instrumentId: number | ''
+  citationId: number | ''
+  categoryId: number | ''
+  elementId: number | ''
+  onInstrumentChange: (id: number | '') => void
+  onCitationChange: (id: number | '') => void
+  onCategoryChange: (id: number | '') => void
+  onElementChange: (id: number | '') => void
+  disabled: boolean
+}) {
+  const [instruments, setInstruments] = useState<Instrument[]>([])
+  const [citations, setCitations] = useState<Citation[]>([])
+  const [categories, setCategories] = useState<LegalCategory[]>([])
+  const [elements, setElements] = useState<LegalElement[]>([])
+
+  useEffect(() => { fetchInstruments().then(setInstruments) }, [])
+  useEffect(() => {
+    if (instrumentId === '') { setCitations([]); return }
+    fetchCitations(instrumentId).then(setCitations)
+  }, [instrumentId])
+  useEffect(() => {
+    if (citationId === '') { setCategories([]); return }
+    fetchCategories(citationId).then(setCategories)
+  }, [citationId])
+  useEffect(() => {
+    if (categoryId === '') { setElements([]); return }
+    fetchElements(categoryId).then(setElements)
+  }, [categoryId])
+
+  return (
+    <div className="form-field">
+      <label className="form-label" id="offence-picker-label">
+        Offence <span style={{ color: 'var(--stone-muted)', fontWeight: 400 }}>(optional — attaches to every domain added above)</span>
+      </label>
+      <div className="flex flex-col" style={{ gap: 8 }}>
+        <Select
+          value={String(instrumentId)}
+          onValueChange={v => { onInstrumentChange(v === '' ? '' : Number(v)); onCitationChange(''); onCategoryChange(''); onElementChange('') }}
+          disabled={disabled}
+        >
+          <SelectTrigger aria-labelledby="offence-picker-label" placeholder="Instrument…" className="w-full" />
+          <SelectContent>
+            <SelectItem index={0} value="">No instrument</SelectItem>
+            {instruments.map((inst, i) => (
+              <SelectItem key={inst.id} index={i + 1} value={String(inst.id)}>{inst.short_title}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {instrumentId !== '' && (
+          <Select
+            value={String(citationId)}
+            onValueChange={v => { onCitationChange(v === '' ? '' : Number(v)); onCategoryChange(''); onElementChange('') }}
+            disabled={disabled}
+          >
+            <SelectTrigger aria-label="Citation" placeholder="Citation…" className="w-full" />
+            <SelectContent>
+              <SelectItem index={0} value="">No citation</SelectItem>
+              {citations.map((c, i) => (
+                <SelectItem key={c.id} index={i + 1} value={String(c.id)}>{formatParsedCitation(c.parsed)} ({c.raw_text})</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {citationId !== '' && (
+          <Select
+            value={String(categoryId)}
+            onValueChange={v => { onCategoryChange(v === '' ? '' : Number(v)); onElementChange('') }}
+            disabled={disabled}
+          >
+            <SelectTrigger aria-label="Category" placeholder="Category…" className="w-full" />
+            <SelectContent>
+              <SelectItem index={0} value="">No category</SelectItem>
+              {categories.map((cat, i) => (
+                <SelectItem key={cat.id} index={i + 1} value={String(cat.id)}>{cat.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {categoryId !== '' && elements.length > 0 && (
+          <Select
+            value={String(elementId)}
+            onValueChange={v => onElementChange(v === '' ? '' : Number(v))}
+            disabled={disabled}
+          >
+            <SelectTrigger aria-label="Element" placeholder="Element (optional)…" className="w-full" />
+            <SelectContent>
+              <SelectItem index={0} value="">No element</SelectItem>
+              {elements.map((el, i) => (
+                <SelectItem key={el.id} index={i + 1} value={String(el.id)}>{el.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function AddUrlDialog({
   open,
   onClose,
@@ -74,10 +183,16 @@ function AddUrlDialog({
   onAdded: () => void
 }) {
   const [value, setValue] = useState('')
+  const [instrumentId, setInstrumentId] = useState<number | ''>('')
+  const [citationId, setCitationId] = useState<number | ''>('')
+  const [categoryId, setCategoryId] = useState<number | ''>('')
+  const [elementId, setElementId] = useState<number | ''>('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const reset = () => { setValue(''); setError(null) }
+  const reset = () => {
+    setValue(''); setInstrumentId(''); setCitationId(''); setCategoryId(''); setElementId(''); setError(null)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -87,6 +202,9 @@ function AddUrlDialog({
     setError(null)
     try {
       await Promise.all(domains.map(d => createUrl(d)))
+      if (categoryId !== '') {
+        await Promise.all(domains.map(d => attachOffence(d, categoryId, elementId === '' ? undefined : elementId)))
+      }
       reset()
       onAdded()
       onClose()
@@ -101,7 +219,7 @@ function AddUrlDialog({
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
-      <DialogContent showCloseButton={false} style={{ maxWidth: 420 }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: 440 }}>
         <DialogHeader>
           <DialogTitle>Add Domain</DialogTitle>
           <DialogDescription>
@@ -123,6 +241,17 @@ function AddUrlDialog({
               style={{ resize: 'vertical', fontFamily: 'inherit' }}
             />
           </div>
+          <OffencePicker
+            instrumentId={instrumentId}
+            citationId={citationId}
+            categoryId={categoryId}
+            elementId={elementId}
+            onInstrumentChange={setInstrumentId}
+            onCitationChange={setCitationId}
+            onCategoryChange={setCategoryId}
+            onElementChange={setElementId}
+            disabled={loading}
+          />
           {error && <p className="form-error">{error}</p>}
           <DialogFooter>
             <button type="button" className="btn-ghost" onClick={handleClose} disabled={loading}>

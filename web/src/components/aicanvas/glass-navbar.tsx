@@ -10,6 +10,7 @@ const BASE_NAV_ITEMS = [
   { to: '/domain' as const, label: 'Domain' },
   { to: '/urls' as const, label: 'Watchlist' },
   { to: '/dns-servers' as const, label: 'DNS Servers' },
+  { to: '/legal-citations' as const, label: 'Legal Citations' },
 ]
 
 const ADMIN_NAV_ITEM = { to: '/admin' as const, label: 'Admin' }

@@ -1,6 +1,10 @@
 package db
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
 
 type DNSServer struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
@@ -336,6 +340,113 @@ type DomainServerSummary struct {
 	TotalScans     int       `json:"total_scans"`
 	CompliantScans int       `json:"compliant_scans"`
 	LastScannedAt  time.Time `json:"last_scanned_at"`
+}
+
+// Instrument is a Malaysian law (Act, Ordinance, Enactment, subsidiary
+// legislation, or Constitution) — created/selected once and reused via
+// GetOrCreateInstrument rather than re-entered per citation. Jurisdiction
+// scopes legal force informationally only (a state Enactment only applies
+// within that state); nothing in this package enforces that beyond storage.
+type Instrument struct {
+	ID           uint      `gorm:"primaryKey" json:"id"`
+	Type         string    `gorm:"not null;index" json:"type"`         // ACT, ORDINANCE, ENACTMENT, SUBSIDIARY, CONSTITUTION
+	Jurisdiction string    `gorm:"not null;index" json:"jurisdiction"` // FEDERAL, or a state name
+	Number       string    `gorm:"not null;default:''" json:"number"` // "588", "A1220", "No. 9 of 1995" — always a string, amendment/state formats break plain int. May be "" — plenty of instruments (older pre-1968-revision Acts, most state Enactments) have no commonly cited official number
+	Year         *int      `json:"year,omitempty"`
+	ShortTitle   string    `gorm:"not null" json:"short_title"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// LegalCitationParsed is the structured breakdown of Citation.RawText,
+// produced by internal/legalcite.Parse or hand-corrected when
+// ParseConfidence is NEEDS_REVIEW. Section/Article and Subsection/Clause
+// share the same ProvisionNum/SubProvision fields — which label applies is
+// a display-only switch on Instrument.Type == "CONSTITUTION", not a
+// separate set of columns. Suffixes (e.g. the "A" in "4A") are captured
+// regardless of instrument type, since e.g. Article 121(1A) is a real,
+// frequently-cited provision.
+type LegalCitationParsed struct {
+	Part               *int   `json:"part,omitempty"`
+	Chapter            *int   `json:"chapter,omitempty"`
+	ProvisionNum       *int   `json:"provision_num,omitempty"`
+	ProvisionSuffix    string `json:"provision_suffix,omitempty"`
+	SubProvision       *int   `json:"sub_provision,omitempty"`
+	SubProvisionSuffix string `json:"sub_provision_suffix,omitempty"`
+	Paragraph          string `json:"paragraph,omitempty"`
+	Subparagraph       string `json:"subparagraph,omitempty"`
+	SubSubparagraph    string `json:"sub_subparagraph,omitempty"`
+	Schedule           *int   `json:"schedule,omitempty"`
+	ScheduleList       *int   `json:"schedule_list,omitempty"`
+}
+
+// Citation is one specific provision cited under an Instrument. RawText is
+// exactly what the user typed — the source of truth/audit trail. Parsed is
+// stored as a genuine Postgres jsonb column (not the plain-JSON
+// serializer-only pattern SubdomainScan.Subdomains uses) so it stays
+// independently indexable via parsed->>'key' if a future feature needs
+// that. SortKey is a derived, zero-padded sortable string over
+// ProvisionNum+ProvisionSuffix (see BuildProvisionSortKey) — recomputed by
+// the store on every create/update, never client-supplied — because a
+// plain ORDER BY on provision_num would put "4A" after "40".
+type Citation struct {
+	ID              uint                `gorm:"primaryKey" json:"id"`
+	InstrumentID    uint                `gorm:"not null;index" json:"instrument_id"`
+	Instrument      Instrument          `gorm:"foreignKey:InstrumentID;constraint:OnDelete:CASCADE" json:"instrument"`
+	RawText         string              `gorm:"not null" json:"raw_text"`
+	Parsed          LegalCitationParsed `gorm:"type:jsonb;serializer:json" json:"parsed"`
+	SortKey         string              `gorm:"index" json:"-"`
+	ParseConfidence string              `gorm:"not null;default:'NEEDS_REVIEW'" json:"parse_confidence"` // OK, NEEDS_REVIEW
+	CreatedAt       time.Time           `json:"created_at"`
+}
+
+// Category is scoped to one Citation, not a shared global lookup — the
+// same category name under two different citations is deliberately two
+// separate rows, since category vocabulary is specific to the wording of
+// the provision it's cited under (e.g. the content-offence categories that
+// make sense under CMA 1998 s233 don't generalize to an unrelated Act).
+type Category struct {
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	CitationID uint      `gorm:"not null;index" json:"citation_id"`
+	Citation   Citation  `gorm:"foreignKey:CitationID;constraint:OnDelete:CASCADE" json:"citation"`
+	Name       string    `gorm:"not null" json:"name"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// Element is an optional sub-category of a Category — not every category
+// has one (e.g. "Indecent" stands alone; "Harassment" splits into
+// "Menacing"/"Obscene" elements).
+type Element struct {
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	CategoryID uint      `gorm:"not null;index" json:"category_id"`
+	Category   Category  `gorm:"foreignKey:CategoryID;constraint:OnDelete:CASCADE" json:"-"`
+	Name       string    `gorm:"not null" json:"name"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// URLOffence links a URL to the specific offence it committed, at Category
+// granularity with an optional Element. Uses a surrogate ID PK rather than
+// a composite one (unlike DepartmentURL) because ElementID is nullable and
+// SQL NULL != NULL breaks composite-PK uniqueness semantics.
+type URLOffence struct {
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	URLID      uint      `gorm:"not null;index" json:"url_id"`
+	URL        URL       `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
+	CategoryID uint      `gorm:"not null;index" json:"category_id"`
+	Category   Category  `gorm:"foreignKey:CategoryID;constraint:OnDelete:CASCADE" json:"category"`
+	ElementID  *uint     `gorm:"index" json:"element_id,omitempty"`
+	Element    *Element  `gorm:"foreignKey:ElementID;constraint:OnDelete:CASCADE" json:"element,omitempty"`
+	RecordedAt time.Time `gorm:"not null" json:"recorded_at"`
+}
+
+// BuildProvisionSortKey returns a zero-padded, suffix-aware sortable
+// representation of a section/article number + its letter suffix, so a
+// plain ORDER BY doesn't put "4A" after "40". A nil num (a Part-only or
+// Schedule-only citation with no provision number) sorts first via "".
+func BuildProvisionSortKey(num *int, suffix string) string {
+	if num == nil {
+		return ""
+	}
+	return fmt.Sprintf("%06d%s", *num, strings.ToUpper(suffix))
 }
 
 // DailyComplianceLevel buckets a day's results onto the heatmap's 5-level

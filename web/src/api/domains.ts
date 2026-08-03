@@ -20,5 +20,6 @@ export async function fetchDomainSummaries(
 }
 
 export async function fetchDomainServerSummaries(url: string): Promise<DomainServerSummary[]> {
-  return api.get<DomainServerSummary[]>(`/domains/${encodeURIComponent(url)}`)
+  const data = await api.get<DomainServerSummary[]>(`/domains/${encodeURIComponent(url)}`)
+  return Array.isArray(data) ? data : []
 }
