@@ -8,6 +8,7 @@ import {
   type PaginationState,
   getCoreRowModel,
   getSortedRowModel,
+  getExpandedRowModel,
   getPaginationRowModel,
   useReactTable,
 } from '@tanstack/react-table'
@@ -24,14 +25,13 @@ import {
   PreviewLinkCardPanel,
   PreviewLinkCardImage,
 } from '@/components/animate-ui/components/base/preview-link-card'
-import { Table, TableBody, TableRow, TableCell } from '@/components/ui/table'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogTitle } from '@/components/animate-ui/components/radix/dialog'
 import { Progress, ProgressTrack } from '@/components/animate-ui/components/base/progress'
 import { AnimatedNumber } from '@/components/ui/animated-number'
 import { Filters, type Filter, type FilterFieldConfig } from '@/components/reui/filters'
 import { DataGrid, DataGridContainer } from '@/components/reui/data-grid/data-grid'
-import { DataGridTable } from '@/components/reui/data-grid/data-grid-table'
+import { DataGridTable, DataGridTableRowExpand } from '@/components/reui/data-grid/data-grid-table'
 import { BrailleLoader } from '@/components/ui/braille-loader'
 import { ThinkingIndicator } from '@/components/ui/thinking-indicator'
 import { StatusDot, EmptyIcon } from '@/components/results-table-parts'
@@ -91,100 +91,85 @@ function SortableHeader<TData, TValue>({ column, title }: { column: Column<TData
   )
 }
 
-/* ─── Sub-rows (expanded per-DNS-server results) ────────────────────────── */
+/* ─── Tree rows (domain parent + per-DNS-server children) ──────────────── */
+// Replaces the old expand-to-reveal-a-nested-<Table> pattern with real
+// tree rows via getExpandedRowModel/subRows, so per-server rows share the
+// same column set (and DataGridTableRowExpand's depth indent) as the domain
+// row instead of a bespoke, headerless inner table.
 
-function SubRowsTable({
-  results,
+type DomainRow = { kind: 'domain'; group: GroupedResult; subRows: ServerRow[] }
+type ServerRow = { kind: 'server'; result: ScanResult }
+type ResultRow = DomainRow | ServerRow
+
+function ServerIpCell({ result }: { result: ScanResult }) {
+  return (
+    <div className="ip-meta">
+      {result.resolved_ip ? (
+        <span className="ip-value">{result.resolved_ip}</span>
+      ) : (
+        <span className="empty-cell" aria-label="Not resolved">—</span>
+      )}
+      {result.resolved_ipv6 && <span className="ip-meta-secondary">{result.resolved_ipv6}</span>}
+      {result.resolved_asn > 0 && (
+        <span className="ip-meta-secondary">
+          AS{result.resolved_asn}{result.resolved_org && ` — ${result.resolved_org}`}
+        </span>
+      )}
+      {result.resolved_netname && <span className="ip-meta-secondary">{result.resolved_netname}</span>}
+    </div>
+  )
+}
+
+function ServerEvidenceCell({
+  result,
   pendingScreenshotIds,
   screenshotErrors,
   screenshotsBlocked,
   onRequestScreenshot,
   onViewScreenshot,
 }: {
-  results: ScanResult[]
+  result: ScanResult
   pendingScreenshotIds: Set<number>
   screenshotErrors: Record<number, string>
   screenshotsBlocked: boolean
   onRequestScreenshot: (results: ScanResult[]) => void
   onViewScreenshot: (result: ScanResult) => void
 }) {
-  return (
-    <Table aria-label="Per-DNS-server results">
-      <TableBody>
-        {results.map(r => (
-          <TableRow key={r.id} className={`sub-row${!r.compliant ? ' violation-row' : ''}`}>
-            <TableCell className="col-expand" />
-            <TableCell className="col-domain">
-              <span className="dns-name">{r.dns_server.name}</span>
-            </TableCell>
-            <TableCell className="col-status">
-              <StatusDot compliant={r.compliant} />
-            </TableCell>
-            <TableCell className="col-ip">
-              <div className="ip-meta">
-                {r.resolved_ip ? (
-                  <span className="ip-value">{r.resolved_ip}</span>
-                ) : (
-                  <span className="empty-cell" aria-label="Not resolved">—</span>
-                )}
-                {r.resolved_ipv6 && <span className="ip-meta-secondary">{r.resolved_ipv6}</span>}
-                {r.resolved_asn > 0 && (
-                  <span className="ip-meta-secondary">
-                    AS{r.resolved_asn}{r.resolved_org && ` — ${r.resolved_org}`}
-                  </span>
-                )}
-                {r.resolved_netname && <span className="ip-meta-secondary">{r.resolved_netname}</span>}
-              </div>
-            </TableCell>
-            <TableCell className="col-error">
-              {r.error ? (
-                <span className="col-error-text" title={r.error}>{r.error}</span>
-              ) : (
-                <span className="empty-cell">—</span>
-              )}
-            </TableCell>
-            <TableCell className="col-last-scanned">
-              {r.scanned_at ? (
-                <span title={new Date(r.scanned_at).toLocaleString()}>{relativeTime(r.scanned_at)}</span>
-              ) : (
-                <span className="empty-cell">—</span>
-              )}
-            </TableCell>
-            <TableCell className="col-evidence text-center">
-              {r.screenshot_url ? (
-                <button
-                  type="button"
-                  className="screenshot-icon-btn"
-                  onClick={() => onViewScreenshot(r)}
-                  aria-label={`View screenshot for ${r.dns_server.name}`}
-                  title="View screenshot"
-                >
-                  <ImageIcon className="screenshot-icon" aria-hidden="true" />
-                </button>
-              ) : pendingScreenshotIds.has(r.id) ? (
-                <span className="screenshot-pending" aria-live="polite" aria-label="Requesting screenshot">
-                  <BrailleLoader variant="typing" fontSize={13} />
-                </span>
-              ) : !r.compliant ? (
-                <button
-                  type="button"
-                  className="screenshot-icon-btn"
-                  onClick={() => onRequestScreenshot([r])}
-                  disabled={screenshotsBlocked}
-                  title={screenshotErrors[r.id] ?? 'Take screenshot'}
-                  aria-label={`Request screenshot for ${r.dns_server.name}`}
-                >
-                  <Camera className="screenshot-icon" aria-hidden="true" />
-                </button>
-              ) : (
-                <span className="empty-cell" aria-label="No screenshot">—</span>
-              )}
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  )
+  if (result.screenshot_url) {
+    return (
+      <button
+        type="button"
+        className="screenshot-icon-btn"
+        onClick={() => onViewScreenshot(result)}
+        aria-label={`View screenshot for ${result.dns_server.name}`}
+        title="View screenshot"
+      >
+        <ImageIcon className="screenshot-icon" aria-hidden="true" />
+      </button>
+    )
+  }
+  if (pendingScreenshotIds.has(result.id)) {
+    return (
+      <span className="screenshot-pending" aria-live="polite" aria-label="Requesting screenshot">
+        <BrailleLoader variant="typing" fontSize={13} />
+      </span>
+    )
+  }
+  if (!result.compliant) {
+    return (
+      <button
+        type="button"
+        className="screenshot-icon-btn"
+        onClick={() => onRequestScreenshot([result])}
+        disabled={screenshotsBlocked}
+        title={screenshotErrors[result.id] ?? 'Take screenshot'}
+        aria-label={`Request screenshot for ${result.dns_server.name}`}
+      >
+        <Camera className="screenshot-icon" aria-hidden="true" />
+      </button>
+    )
+  }
+  return <span className="empty-cell" aria-label="No screenshot">—</span>
 }
 
 /* ─── Results Page ───────────────────────────────────────────────────────── */
@@ -327,7 +312,13 @@ function ResultsPage() {
 
   const screenshotsBlocked = scanning || pendingScreenshotIds.size > 0
 
-  const columns = useMemo<ColumnDef<GroupedResult>[]>(() => [
+  const treeData = useMemo<DomainRow[]>(() => filtered.map(group => ({
+    kind: 'domain',
+    group,
+    subRows: group.results.map(result => ({ kind: 'server', result })),
+  })), [filtered])
+
+  const columns = useMemo<ColumnDef<ResultRow>[]>(() => [
     {
       id: 'expand',
       header: () => null,
@@ -336,53 +327,44 @@ function ResultsPage() {
       meta: {
         headerClassName: 'col-expand',
         cellClassName: 'col-expand',
-        expandedContent: (group: GroupedResult) => (
-          <SubRowsTable
-            results={group.results}
-            pendingScreenshotIds={pendingScreenshotIds}
-            screenshotErrors={screenshotErrors}
-            screenshotsBlocked={screenshotsBlocked}
-            onRequestScreenshot={requestScreenshot}
-            onViewScreenshot={setPreviewScreenshot}
-          />
-        ),
         skeleton: <span className="skeleton" style={{ width: 16, height: 16, borderRadius: 3 }} />,
       },
       cell: ({ row }) => (
-        <button
-          type="button"
-          className="expand-btn"
-          onClick={e => { e.stopPropagation(); row.getToggleExpandedHandler()() }}
-          aria-expanded={row.getIsExpanded()}
-          aria-label={`${row.getIsExpanded() ? 'Collapse' : 'Expand'} results for ${row.original.hostname}`}
-        >
+        <DataGridTableRowExpand row={row}>
           <ChevronRight className={`expand-icon${row.getIsExpanded() ? ' expanded' : ''}`} />
-        </button>
+        </DataGridTableRowExpand>
       ),
     },
     {
-      accessorKey: 'hostname',
       id: 'domain',
+      accessorFn: r => r.kind === 'domain' ? r.group.hostname : r.result.dns_server.name,
       header: ({ column }) => <SortableHeader column={column} title="Domain" />,
       meta: {
         headerClassName: 'col-domain th-left',
         cellClassName: 'col-domain',
         skeleton: <span className="skeleton" style={{ width: 180, height: 14 }} />,
       },
-      cell: ({ row }) => (
-        <PreviewLinkCard href={`https://${row.original.hostname}`}>
-          <PreviewLinkCardTrigger>
-            <span className="hostname" title={row.original.url}>{row.original.hostname}</span>
-          </PreviewLinkCardTrigger>
-          <PreviewLinkCardPanel>
-            <PreviewLinkCardImage />
-          </PreviewLinkCardPanel>
-        </PreviewLinkCard>
-      ),
+      cell: ({ row }) => {
+        const original = row.original
+        if (original.kind === 'server') {
+          return <span className="dns-name">{original.result.dns_server.name}</span>
+        }
+        const { group } = original
+        return (
+          <PreviewLinkCard href={`https://${group.hostname}`}>
+            <PreviewLinkCardTrigger>
+              <span className="hostname" title={group.url}>{group.hostname}</span>
+            </PreviewLinkCardTrigger>
+            <PreviewLinkCardPanel>
+              <PreviewLinkCardImage />
+            </PreviewLinkCardPanel>
+          </PreviewLinkCard>
+        )
+      },
     },
     {
       id: 'status',
-      accessorFn: g => g.violationCount,
+      accessorFn: r => r.kind === 'domain' ? r.group.violationCount : (r.result.compliant ? 0 : 1),
       header: ({ column }) => <SortableHeader column={column} title="Status" />,
       meta: {
         headerClassName: 'col-status th-left',
@@ -390,7 +372,9 @@ function ResultsPage() {
         skeleton: <span className="skeleton" style={{ width: 100, height: 20, borderRadius: 4 }} />,
       },
       cell: ({ row }) => {
-        const { violationCount, totalCount } = row.original
+        const original = row.original
+        if (original.kind === 'server') return <StatusDot compliant={original.result.compliant} />
+        const { violationCount, totalCount } = original.group
         const compliantCount = totalCount - violationCount
         const pct = totalCount > 0 ? Math.round((compliantCount / totalCount) * 100) : 0
         return (
@@ -408,24 +392,28 @@ function ResultsPage() {
       header: 'Resolved IP',
       enableSorting: false,
       meta: { headerClassName: 'col-ip th-left', cellClassName: 'col-ip' },
-      cell: () => null,
+      cell: ({ row }) => row.original.kind === 'server' ? <ServerIpCell result={row.original.result} /> : null,
     },
     {
       id: 'error',
       header: 'Error',
       enableSorting: false,
       meta: { headerClassName: 'col-error th-left', cellClassName: 'col-error' },
-      cell: () => null,
+      cell: ({ row }) => {
+        if (row.original.kind !== 'server') return null
+        const { error } = row.original.result
+        return error ? <span className="col-error-text" title={error}>{error}</span> : <span className="empty-cell">—</span>
+      },
     },
     {
       id: 'lastScanned',
-      accessorFn: g => g.latestScannedAt,
+      accessorFn: r => r.kind === 'domain' ? r.group.latestScannedAt : r.result.scanned_at,
       header: ({ column }) => <SortableHeader column={column} title="Last scanned" />,
       meta: { headerClassName: 'col-last-scanned th-left', cellClassName: 'col-last-scanned' },
       cell: ({ row }) => {
-        const { latestScannedAt } = row.original
-        return latestScannedAt ? (
-          <span title={new Date(latestScannedAt).toLocaleString()}>{relativeTime(latestScannedAt)}</span>
+        const at = row.original.kind === 'domain' ? row.original.group.latestScannedAt : row.original.result.scanned_at
+        return at ? (
+          <span title={new Date(at).toLocaleString()}>{relativeTime(at)}</span>
         ) : (
           <span className="empty-cell">—</span>
         )
@@ -437,7 +425,20 @@ function ResultsPage() {
       enableSorting: false,
       meta: { headerClassName: 'col-evidence th-center', cellClassName: 'col-evidence text-center' },
       cell: ({ row }) => {
-        const group = row.original
+        const original = row.original
+        if (original.kind === 'server') {
+          return (
+            <ServerEvidenceCell
+              result={original.result}
+              pendingScreenshotIds={pendingScreenshotIds}
+              screenshotErrors={screenshotErrors}
+              screenshotsBlocked={screenshotsBlocked}
+              onRequestScreenshot={requestScreenshot}
+              onViewScreenshot={setPreviewScreenshot}
+            />
+          )
+        }
+        const { group } = original
         const needsScreenshot = group.results.filter(r => !r.compliant && !r.screenshot_url)
         const groupPending = group.results.some(r => pendingScreenshotIds.has(r.id))
         const bulkError = needsScreenshot.map(r => screenshotErrors[r.id]).find(Boolean)
@@ -478,16 +479,19 @@ function ResultsPage() {
   ], [pendingScreenshotIds, screenshotErrors, screenshotsBlocked, requestScreenshot])
 
   const table = useReactTable({
-    data: filtered,
+    data: treeData,
     columns,
     state: { expanded, sorting, pagination },
     onExpandedChange: setExpanded,
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
-    getRowId: g => g.url,
-    getRowCanExpand: () => true,
+    getRowId: r => r.kind === 'domain' ? r.group.url : `sr:${r.result.id}`,
+    getSubRows: r => r.kind === 'domain' ? r.subRows : undefined,
+    getRowCanExpand: row => row.original.kind === 'domain',
+    paginateExpandedRows: false,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getExpandedRowModel: getExpandedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
   })
 
@@ -557,7 +561,8 @@ function ResultsPage() {
                 table={table}
                 recordCount={filtered.length}
                 isLoading={loading}
-                onRowClick={group => table.getRow(group.url).toggleExpanded()}
+                onRowClick={row => { if (row.kind === 'domain') table.getRow(row.group.url).toggleExpanded() }}
+                rowClassName={row => row.kind === 'server' && !row.result.compliant ? 'violation-row' : undefined}
                 tableClassNames={{ base: 'results-table' }}
               >
                 <DataGridContainer>
