@@ -3,27 +3,31 @@ import type { DailyComplianceStat, GroupedResult, ISPTrendStat, ResurfacedDomain
 export async function fetchResults(): Promise<ScanResult[]> {
   const res = await fetch('/api/results')
   if (!res.ok) throw new Error(`Failed to load results: ${res.status}`)
-  return res.json()
+  const data = await res.json()
+  return Array.isArray(data) ? data : []
 }
 
 export async function fetchNationalTrend(sinceDays = 30): Promise<ISPTrendStat[]> {
   const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString()
   const res = await fetch(`/api/trend?since=${encodeURIComponent(since)}`)
   if (!res.ok) throw new Error(`Failed to load trend: ${res.status}`)
-  return res.json()
+  const data = await res.json()
+  return Array.isArray(data) ? data : []
 }
 
 export async function fetchResurfacedDomains(): Promise<ResurfacedDomain[]> {
   const res = await fetch('/api/resurfaced')
   if (!res.ok) throw new Error(`Failed to load resurfaced domains: ${res.status}`)
-  return res.json()
+  const data = await res.json()
+  return Array.isArray(data) ? data : []
 }
 
 export async function fetchResultsByUrl(url: string, sinceDays = 7): Promise<ScanResult[]> {
   const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString()
   const res = await fetch(`/api/results/${encodeURIComponent(url)}?since=${encodeURIComponent(since)}`)
   if (!res.ok) throw new Error(`Failed to load results: ${res.status}`)
-  return res.json()
+  const data = await res.json()
+  return Array.isArray(data) ? data : []
 }
 
 export async function fetchHeatmapByUrlAndYear(url: string, year: number): Promise<DailyComplianceStat[]> {
@@ -31,7 +35,8 @@ export async function fetchHeatmapByUrlAndYear(url: string, year: number): Promi
   const until = new Date(year, 11, 31, 23, 59, 59, 999).toISOString()
   const res = await fetch(`/api/heatmap/${encodeURIComponent(url)}?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`)
   if (!res.ok) throw new Error(`Failed to load heatmap: ${res.status}`)
-  return res.json()
+  const data = await res.json()
+  return Array.isArray(data) ? data : []
 }
 
 export function groupResults(results: ScanResult[]): GroupedResult[] {
