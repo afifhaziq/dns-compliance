@@ -56,6 +56,34 @@ func TestCreateInstrument_AllowedForDeptAdmin(t *testing.T) {
 	}
 }
 
+// Number is deliberately optional — most Malaysian state Enactments and
+// older pre-1968-revision Acts (e.g. Akta Rumah Judi Terbuka 1953) have no
+// commonly cited official number.
+func TestCreateInstrument_NumberIsOptional(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := deptAdminCookie(store, 1)
+	r := setupRouter(store, nil)
+	body, _ := json.Marshal(map[string]any{
+		"type": "ACT", "jurisdiction": "FEDERAL", "short_title": "Akta Rumah Judi Terbuka 1953", "year": 1953,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/legal/instruments", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var instrument db.Instrument
+	if err := json.Unmarshal(w.Body.Bytes(), &instrument); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if instrument.Number != "" {
+		t.Fatalf("expected empty number, got %q", instrument.Number)
+	}
+}
+
 func TestParseCitationPreview(t *testing.T) {
 	store := &fullMockStore{}
 	cookie := deptAdminCookie(store, 1)

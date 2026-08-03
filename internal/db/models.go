@@ -351,7 +351,7 @@ type Instrument struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
 	Type         string    `gorm:"not null;index" json:"type"`         // ACT, ORDINANCE, ENACTMENT, SUBSIDIARY, CONSTITUTION
 	Jurisdiction string    `gorm:"not null;index" json:"jurisdiction"` // FEDERAL, or a state name
-	Number       string    `gorm:"not null" json:"number"`             // "588", "A1220", "No. 9 of 1995" — always a string, amendment/state formats break plain int
+	Number       string    `gorm:"not null;default:''" json:"number"` // "588", "A1220", "No. 9 of 1995" — always a string, amendment/state formats break plain int. May be "" — plenty of instruments (older pre-1968-revision Acts, most state Enactments) have no commonly cited official number
 	Year         *int      `json:"year,omitempty"`
 	ShortTitle   string    `gorm:"not null" json:"short_title"`
 	CreatedAt    time.Time `json:"created_at"`

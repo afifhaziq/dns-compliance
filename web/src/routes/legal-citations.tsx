@@ -4,13 +4,13 @@ import { type ColumnDef, type ExpandedState, getCoreRowModel, getExpandedRowMode
 import { DataGrid, DataGridContainer } from '@/components/reui/data-grid/data-grid'
 import { DataGridTable, DataGridTableRowExpand } from '@/components/reui/data-grid/data-grid-table'
 import {
-  fetchInstruments, createInstrument, deleteInstrument,
-  fetchCitations, parseCitationPreview, createCitation, deleteCitation,
-  fetchCategories, createCategory, deleteCategory,
-  fetchElements, createElement, deleteElement,
+  fetchInstruments, createInstrument, updateInstrument, deleteInstrument,
+  fetchCitations, parseCitationPreview, createCitation, updateCitation, deleteCitation,
+  fetchCategories, createCategory, updateCategory, deleteCategory,
+  fetchElements, createElement, updateElement, deleteElement,
   formatParsedCitation,
 } from '@/api/legal'
-import type { Instrument, Citation, LegalCategory, LegalCitationParsed } from '@/api/types'
+import type { Instrument, Citation, LegalCategory, LegalElement, LegalCitationParsed } from '@/api/types'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/animate-ui/components/radix/dialog'
@@ -19,6 +19,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/u
 import { BrailleLoader } from '@/components/ui/braille-loader'
 import { EmptyIcon } from '@/components/results-table-parts'
 import { XIcon } from '@/components/ui/x'
+import { SquarePenIcon } from '@/components/ui/square-pen'
 import { useAuth } from './__root'
 
 export const Route = createFileRoute('/legal-citations')({ component: LegalCitationsPage })
@@ -35,6 +36,7 @@ type LegalTreeRow = {
   instrument?: Instrument
   citation?: Citation
   category?: LegalCategory
+  element?: LegalElement
   children?: LegalTreeRow[]
 }
 
@@ -52,7 +54,7 @@ async function loadTree(): Promise<LegalTreeRow[]> {
       const categoryRows = await Promise.all(categories.map(async (cat): Promise<LegalTreeRow> => {
         const elements = await fetchElements(cat.id)
         const elementRows: LegalTreeRow[] = elements.map(el => ({
-          id: `element-${el.id}`, kind: 'element', refId: el.id, label: el.name,
+          id: `element-${el.id}`, kind: 'element', refId: el.id, label: el.name, element: el,
         }))
         return {
           id: `category-${cat.id}`, kind: 'category', refId: cat.id, label: cat.name, category: cat,
@@ -109,9 +111,9 @@ function ConfidenceBadge({ confidence }: { confidence: 'OK' | 'NEEDS_REVIEW' }) 
   )
 }
 
-function AddInstrumentDialog({
-  open, onClose, onAdded,
-}: { open: boolean; onClose: () => void; onAdded: () => void }) {
+function InstrumentFormDialog({
+  open, onClose, onSaved, editing,
+}: { open: boolean; onClose: () => void; onSaved: () => void; editing: Instrument | null }) {
   const [type, setType] = useState<string>('ACT')
   const [jurisdiction, setJurisdiction] = useState('FEDERAL')
   const [number, setNumber] = useState('')
@@ -123,24 +125,41 @@ function AddInstrumentDialog({
   const reset = () => {
     setType('ACT'); setJurisdiction('FEDERAL'); setNumber(''); setYear(''); setShortTitle(''); setError(null)
   }
+
+  useEffect(() => {
+    if (!open) return
+    if (editing) {
+      setType(editing.type); setJurisdiction(editing.jurisdiction)
+      setNumber(editing.number); setYear(editing.year != null ? String(editing.year) : '')
+      setShortTitle(editing.short_title); setError(null)
+    } else {
+      reset()
+    }
+  }, [open, editing])
+
   const handleClose = () => { reset(); onClose() }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!number.trim() || !shortTitle.trim()) { setError('Number and short title are required'); return }
+    if (!shortTitle.trim()) { setError('Short title is required'); return }
     setLoading(true)
     setError(null)
     try {
-      await createInstrument({
+      const payload = {
         type, jurisdiction, number: number.trim(),
         year: year.trim() ? Number(year) : undefined,
         short_title: shortTitle.trim(),
-      })
+      }
+      if (editing) {
+        await updateInstrument(editing.id, payload)
+      } else {
+        await createInstrument(payload)
+      }
       reset()
-      onAdded()
+      onSaved()
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add instrument')
+      setError(err instanceof Error ? err.message : `Failed to ${editing ? 'save' : 'add'} instrument`)
     } finally {
       setLoading(false)
     }
@@ -150,9 +169,9 @@ function AddInstrumentDialog({
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
       <DialogContent showCloseButton={false} style={{ maxWidth: 440 }}>
         <DialogHeader>
-          <DialogTitle>Add Instrument</DialogTitle>
+          <DialogTitle>{editing ? 'Edit Instrument' : 'Add Instrument'}</DialogTitle>
           <DialogDescription>
-            The law itself — created once, reused via lookup across citations (e.g. "Communications and Multimedia Act 1998").
+            The law itself — created once, reused via lookup across citations (e.g. "Akta Komunikasi dan Multimedia 1998").
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -180,13 +199,15 @@ function AddInstrumentDialog({
           </div>
           <div className="form-field">
             <label className="form-label" htmlFor="instrument-number-input">
-              Number <span style={{ color: 'var(--stone-muted)', fontWeight: 400 }}>(always text — e.g. "588", "A1220", "No. 9 of 1995")</span>
+              Number <span style={{ color: 'var(--stone-muted)', fontWeight: 400 }}>
+                (optional — the Act's own official number, e.g. "588" for Akta 588; not a Seksyen number, which belongs to a Citation instead. Leave blank if this instrument doesn't have one — common for older Acts and most Enactments, e.g. Akta Rumah Judi Terbuka 1953)
+              </span>
             </label>
             <input
               id="instrument-number-input"
               className="form-input"
               type="text"
-              placeholder="e.g. 588"
+              placeholder="e.g. 588 (leave blank if unknown/none)"
               value={number}
               onChange={e => setNumber(e.target.value)}
               autoFocus
@@ -213,7 +234,7 @@ function AddInstrumentDialog({
               id="instrument-title-input"
               className="form-input"
               type="text"
-              placeholder="e.g. Communications and Multimedia Act 1998"
+              placeholder="e.g. Akta Komunikasi dan Multimedia 1998"
               value={shortTitle}
               onChange={e => setShortTitle(e.target.value)}
               disabled={loading}
@@ -225,7 +246,7 @@ function AddInstrumentDialog({
               Cancel
             </button>
             <button type="submit" className="btn-primary" disabled={loading}>
-              {loading ? 'Adding…' : 'Add Instrument'}
+              {editing ? (loading ? 'Saving…' : 'Save Changes') : (loading ? 'Adding…' : 'Add Instrument')}
             </button>
           </DialogFooter>
         </form>
@@ -234,9 +255,9 @@ function AddInstrumentDialog({
   )
 }
 
-function AddCitationDialog({
-  open, onClose, onAdded, instrument,
-}: { open: boolean; onClose: () => void; onAdded: () => void; instrument: Instrument | null }) {
+function CitationFormDialog({
+  open, onClose, onSaved, instrument, editing,
+}: { open: boolean; onClose: () => void; onSaved: () => void; instrument: Instrument | null; editing: Citation | null }) {
   const [rawText, setRawText] = useState('')
   const [preview, setPreview] = useState<{ parsed: LegalCitationParsed; parse_confidence: 'OK' | 'NEEDS_REVIEW' } | null>(null)
   const [parsing, setParsing] = useState(false)
@@ -245,6 +266,17 @@ function AddCitationDialog({
 
   const reset = () => { setRawText(''); setPreview(null); setError(null) }
   const handleClose = () => { reset(); onClose() }
+
+  useEffect(() => {
+    if (!open) return
+    if (editing) {
+      setRawText(editing.raw_text)
+      setPreview({ parsed: editing.parsed, parse_confidence: editing.parse_confidence })
+      setError(null)
+    } else {
+      reset()
+    }
+  }, [open, editing])
 
   const handleParse = async () => {
     if (!rawText.trim()) return
@@ -266,20 +298,25 @@ function AddCitationDialog({
     setLoading(true)
     setError(null)
     try {
-      // Parse first if the user hasn't hit "Parse" yet, so save never sends
-      // a stale/empty parsed payload.
+      // Parse first if the user hasn't hit "Parse" yet (or hasn't touched
+      // a pre-filled edit), so save never sends a stale/empty parsed payload.
       const result = preview ?? await parseCitationPreview(rawText.trim())
-      await createCitation({
+      const payload = {
         instrument_id: instrument.id,
         raw_text: rawText.trim(),
         parsed: result.parsed,
         parse_confidence: result.parse_confidence,
-      })
+      }
+      if (editing) {
+        await updateCitation(editing.id, payload)
+      } else {
+        await createCitation(payload)
+      }
       reset()
-      onAdded()
+      onSaved()
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add citation')
+      setError(err instanceof Error ? err.message : `Failed to ${editing ? 'save' : 'add'} citation`)
     } finally {
       setLoading(false)
     }
@@ -289,7 +326,7 @@ function AddCitationDialog({
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
       <DialogContent showCloseButton={false} style={{ maxWidth: 460 }}>
         <DialogHeader>
-          <DialogTitle>Add Citation</DialogTitle>
+          <DialogTitle>{editing ? 'Edit Citation' : 'Add Citation'}</DialogTitle>
           <DialogDescription>
             {instrument ? `Under ${instrument.short_title}.` : ''} Type the citation as free text in Malay (e.g. "Seksyen 233(1)(a)") — it's parsed automatically into structured fields.
           </DialogDescription>
@@ -325,7 +362,7 @@ function AddCitationDialog({
               Cancel
             </button>
             <button type="submit" className="btn-primary" disabled={loading}>
-              {loading ? 'Adding…' : 'Add Citation'}
+              {editing ? (loading ? 'Saving…' : 'Save Changes') : (loading ? 'Adding…' : 'Add Citation')}
             </button>
           </DialogFooter>
         </form>
@@ -334,15 +371,20 @@ function AddCitationDialog({
   )
 }
 
-function AddCategoryDialog({
-  open, onClose, onAdded, citation,
-}: { open: boolean; onClose: () => void; onAdded: () => void; citation: Citation | null }) {
+function CategoryFormDialog({
+  open, onClose, onSaved, citation, editing,
+}: { open: boolean; onClose: () => void; onSaved: () => void; citation: Citation | null; editing: LegalCategory | null }) {
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   const reset = () => { setName(''); setError(null) }
   const handleClose = () => { reset(); onClose() }
+
+  useEffect(() => {
+    if (!open) return
+    if (editing) { setName(editing.name); setError(null) } else { reset() }
+  }, [open, editing])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -351,12 +393,16 @@ function AddCategoryDialog({
     setLoading(true)
     setError(null)
     try {
-      await createCategory(citation.id, name.trim())
+      if (editing) {
+        await updateCategory(editing.id, name.trim())
+      } else {
+        await createCategory(citation.id, name.trim())
+      }
       reset()
-      onAdded()
+      onSaved()
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add category')
+      setError(err instanceof Error ? err.message : `Failed to ${editing ? 'save' : 'add'} category`)
     } finally {
       setLoading(false)
     }
@@ -366,7 +412,7 @@ function AddCategoryDialog({
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
       <DialogContent showCloseButton={false} style={{ maxWidth: 420 }}>
         <DialogHeader>
-          <DialogTitle>Add Category</DialogTitle>
+          <DialogTitle>{editing ? 'Edit Category' : 'Add Category'}</DialogTitle>
           <DialogDescription>
             {citation ? `Under "${citation.raw_text}".` : ''} Scoped to this citation only — e.g. "Harassment", "Hate Speech".
           </DialogDescription>
@@ -391,7 +437,7 @@ function AddCategoryDialog({
               Cancel
             </button>
             <button type="submit" className="btn-primary" disabled={loading}>
-              {loading ? 'Adding…' : 'Add Category'}
+              {editing ? (loading ? 'Saving…' : 'Save Changes') : (loading ? 'Adding…' : 'Add Category')}
             </button>
           </DialogFooter>
         </form>
@@ -400,15 +446,20 @@ function AddCategoryDialog({
   )
 }
 
-function AddElementDialog({
-  open, onClose, onAdded, category,
-}: { open: boolean; onClose: () => void; onAdded: () => void; category: LegalCategory | null }) {
+function ElementFormDialog({
+  open, onClose, onSaved, category, editing,
+}: { open: boolean; onClose: () => void; onSaved: () => void; category: LegalCategory | null; editing: LegalElement | null }) {
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   const reset = () => { setName(''); setError(null) }
   const handleClose = () => { reset(); onClose() }
+
+  useEffect(() => {
+    if (!open) return
+    if (editing) { setName(editing.name); setError(null) } else { reset() }
+  }, [open, editing])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -417,12 +468,16 @@ function AddElementDialog({
     setLoading(true)
     setError(null)
     try {
-      await createElement(category.id, name.trim())
+      if (editing) {
+        await updateElement(editing.id, name.trim())
+      } else {
+        await createElement(category.id, name.trim())
+      }
       reset()
-      onAdded()
+      onSaved()
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add element')
+      setError(err instanceof Error ? err.message : `Failed to ${editing ? 'save' : 'add'} element`)
     } finally {
       setLoading(false)
     }
@@ -432,7 +487,7 @@ function AddElementDialog({
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
       <DialogContent showCloseButton={false} style={{ maxWidth: 420 }}>
         <DialogHeader>
-          <DialogTitle>Add Element</DialogTitle>
+          <DialogTitle>{editing ? 'Edit Element' : 'Add Element'}</DialogTitle>
           <DialogDescription>
             {category ? `Sub-category of "${category.name}".` : ''} Optional finer-grained qualifier — e.g. "Menacing", "Obscene".
           </DialogDescription>
@@ -457,7 +512,7 @@ function AddElementDialog({
               Cancel
             </button>
             <button type="submit" className="btn-primary" disabled={loading}>
-              {loading ? 'Adding…' : 'Add Element'}
+              {editing ? (loading ? 'Saving…' : 'Save Changes') : (loading ? 'Adding…' : 'Add Element')}
             </button>
           </DialogFooter>
         </form>
@@ -480,6 +535,10 @@ function LegalCitationsPage() {
   const [addCitationFor, setAddCitationFor] = useState<Instrument | null>(null)
   const [addCategoryFor, setAddCategoryFor] = useState<Citation | null>(null)
   const [addElementFor, setAddElementFor] = useState<LegalCategory | null>(null)
+  const [editInstrumentTarget, setEditInstrumentTarget] = useState<Instrument | null>(null)
+  const [editCitationTarget, setEditCitationTarget] = useState<Citation | null>(null)
+  const [editCategoryTarget, setEditCategoryTarget] = useState<LegalCategory | null>(null)
+  const [editElementTarget, setEditElementTarget] = useState<LegalElement | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ kind: LegalKind; id: number; label: string } | null>(null)
 
   const load = useCallback(async () => {
@@ -522,7 +581,11 @@ function LegalCitationsPage() {
               <div className="flex flex-col">
                 <span className="font-semibold">{r.label}</span>
                 <span className="text-xs text-stone-muted">
-                  {INSTRUMENT_TYPE_LABELS[r.instrument.type] ?? r.instrument.type} · {jurisdictionLabel(r.instrument.jurisdiction)} · {r.instrument.number}
+                  {[
+                    INSTRUMENT_TYPE_LABELS[r.instrument.type] ?? r.instrument.type,
+                    jurisdictionLabel(r.instrument.jurisdiction),
+                    r.instrument.number || null,
+                  ].filter(Boolean).join(' · ')}
                   {r.instrument.year ? ` (${r.instrument.year})` : ''}
                 </span>
               </div>
@@ -584,6 +647,20 @@ function LegalCitationsPage() {
                 + Element
               </button>
             )}
+            <button
+              type="button"
+              className="screenshot-icon-btn"
+              onClick={() => {
+                if (r.kind === 'instrument' && r.instrument) setEditInstrumentTarget(r.instrument)
+                else if (r.kind === 'citation' && r.citation) setEditCitationTarget(r.citation)
+                else if (r.kind === 'category' && r.category) setEditCategoryTarget(r.category)
+                else if (r.kind === 'element' && r.element) setEditElementTarget(r.element)
+              }}
+              aria-label={`Edit ${r.label}`}
+              title="Edit"
+            >
+              <SquarePenIcon size={16} />
+            </button>
             <button
               type="button"
               className="screenshot-icon-btn"
@@ -654,10 +731,23 @@ function LegalCitationsPage() {
         </div>
       )}
 
-      <AddInstrumentDialog open={addInstrumentOpen} onClose={() => setAddInstrumentOpen(false)} onAdded={load} />
-      <AddCitationDialog open={addCitationFor !== null} onClose={() => setAddCitationFor(null)} onAdded={load} instrument={addCitationFor} />
-      <AddCategoryDialog open={addCategoryFor !== null} onClose={() => setAddCategoryFor(null)} onAdded={load} citation={addCategoryFor} />
-      <AddElementDialog open={addElementFor !== null} onClose={() => setAddElementFor(null)} onAdded={load} category={addElementFor} />
+      <InstrumentFormDialog open={addInstrumentOpen} onClose={() => setAddInstrumentOpen(false)} onSaved={load} editing={null} />
+      <InstrumentFormDialog open={editInstrumentTarget !== null} onClose={() => setEditInstrumentTarget(null)} onSaved={load} editing={editInstrumentTarget} />
+
+      <CitationFormDialog open={addCitationFor !== null} onClose={() => setAddCitationFor(null)} onSaved={load} instrument={addCitationFor} editing={null} />
+      <CitationFormDialog open={editCitationTarget !== null} onClose={() => setEditCitationTarget(null)} onSaved={load} instrument={editCitationTarget?.instrument ?? null} editing={editCitationTarget} />
+
+      <CategoryFormDialog open={addCategoryFor !== null} onClose={() => setAddCategoryFor(null)} onSaved={load} citation={addCategoryFor} editing={null} />
+      <CategoryFormDialog open={editCategoryTarget !== null} onClose={() => setEditCategoryTarget(null)} onSaved={load} citation={editCategoryTarget?.citation ?? null} editing={editCategoryTarget} />
+
+      <ElementFormDialog open={addElementFor !== null} onClose={() => setAddElementFor(null)} onSaved={load} category={addElementFor} editing={null} />
+      {/* category is null here (not editCategoryTarget — unrelated state for
+          the edit-category dialog above): LegalElement doesn't carry its
+          parent Category, and the update payload doesn't need it either
+          (updateElement only takes id+name) — this only affects the
+          dialog's "Sub-category of ..." description line, which is simply
+          omitted for the edit case. */}
+      <ElementFormDialog open={editElementTarget !== null} onClose={() => setEditElementTarget(null)} onSaved={load} category={null} editing={editElementTarget} />
 
       <DeleteConfirmDialog
         open={deleteTarget !== null}

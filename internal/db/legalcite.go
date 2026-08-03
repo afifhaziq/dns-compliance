@@ -41,9 +41,13 @@ func (s *postgresStore) DeleteInstrument(ctx context.Context, id uint) error {
 	return s.db.WithContext(ctx).Delete(&Instrument{}, id).Error
 }
 
+// ListCitationsByInstrument preloads Instrument — the frontend's citation
+// edit flow needs the parent instrument_id for the update payload, and this
+// list is small (one instrument's citations) so preloading it unconditionally
+// is cheap.
 func (s *postgresStore) ListCitationsByInstrument(ctx context.Context, instrumentID uint) ([]Citation, error) {
 	var citations []Citation
-	return citations, s.db.WithContext(ctx).Where("instrument_id = ?", instrumentID).Order("sort_key asc").Find(&citations).Error
+	return citations, s.db.WithContext(ctx).Preload("Instrument").Where("instrument_id = ?", instrumentID).Order("sort_key asc").Find(&citations).Error
 }
 
 func (s *postgresStore) CreateCitation(ctx context.Context, c Citation) (Citation, error) {
@@ -69,9 +73,12 @@ func (s *postgresStore) DeleteCitation(ctx context.Context, id uint) error {
 	return s.db.WithContext(ctx).Delete(&Citation{}, id).Error
 }
 
+// ListCategoriesByCitation preloads Citation for the same reason
+// ListCitationsByInstrument preloads Instrument — the frontend's category
+// edit flow needs it for display, not just the raw citation_id.
 func (s *postgresStore) ListCategoriesByCitation(ctx context.Context, citationID uint) ([]Category, error) {
 	var categories []Category
-	return categories, s.db.WithContext(ctx).Where("citation_id = ?", citationID).Order("name asc").Find(&categories).Error
+	return categories, s.db.WithContext(ctx).Preload("Citation").Where("citation_id = ?", citationID).Order("name asc").Find(&categories).Error
 }
 
 func (s *postgresStore) CreateCategory(ctx context.Context, cat Category) (Category, error) {

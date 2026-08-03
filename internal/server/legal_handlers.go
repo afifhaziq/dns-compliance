@@ -29,8 +29,14 @@ type instrumentBody struct {
 	ShortTitle   string `json:"short_title"`
 }
 
+// Number is deliberately not required — plenty of Malaysian instruments
+// (older pre-1968-revision Acts, most state Enactments) have no commonly
+// cited official number, or the analyst simply doesn't have it on hand.
+// GetOrCreateInstrument's dedup key still includes it, so leaving it blank
+// only risks under-deduping (two different unnumbered same-year same-type
+// instruments colliding) — never a false negative on a real duplicate.
 func (b instrumentBody) valid() bool {
-	return b.Type != "" && b.Jurisdiction != "" && b.Number != "" && b.ShortTitle != ""
+	return b.Type != "" && b.Jurisdiction != "" && b.ShortTitle != ""
 }
 
 // CreateInstrument gets-or-creates by (type, jurisdiction, number, year) so
@@ -39,7 +45,7 @@ func (b instrumentBody) valid() bool {
 func (h *Handlers) CreateInstrument(w http.ResponseWriter, r *http.Request) {
 	var body instrumentBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !body.valid() {
-		writeError(w, http.StatusBadRequest, "type, jurisdiction, number, and short_title are required")
+		writeError(w, http.StatusBadRequest, "type, jurisdiction, and short_title are required")
 		return
 	}
 	instrument, err := h.store.GetOrCreateInstrument(r.Context(), db.Instrument{
@@ -60,7 +66,7 @@ func (h *Handlers) UpdateInstrument(w http.ResponseWriter, r *http.Request) {
 	}
 	var body instrumentBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !body.valid() {
-		writeError(w, http.StatusBadRequest, "type, jurisdiction, number, and short_title are required")
+		writeError(w, http.StatusBadRequest, "type, jurisdiction, and short_title are required")
 		return
 	}
 	instrument, err := h.store.UpdateInstrument(r.Context(), uint(id), db.Instrument{

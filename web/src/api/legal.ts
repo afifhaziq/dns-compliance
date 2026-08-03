@@ -16,6 +16,16 @@ export function createInstrument(input: {
   return api.post<Instrument>('/legal/instruments', input)
 }
 
+export function updateInstrument(id: number, input: {
+  type: string
+  jurisdiction: string
+  number: string
+  year?: number
+  short_title: string
+}): Promise<Instrument> {
+  return api.patch<Instrument>(`/legal/instruments/${id}`, input)
+}
+
 export function deleteInstrument(id: number): Promise<void> {
   return api.delete<void>(`/legal/instruments/${id}`)
 }
@@ -42,6 +52,15 @@ export function createCitation(input: {
   return api.post<Citation>('/legal/citations', input)
 }
 
+export function updateCitation(id: number, input: {
+  instrument_id: number
+  raw_text: string
+  parsed: LegalCitationParsed
+  parse_confidence: string
+}): Promise<Citation> {
+  return api.patch<Citation>(`/legal/citations/${id}`, input)
+}
+
 export function deleteCitation(id: number): Promise<void> {
   return api.delete<void>(`/legal/citations/${id}`)
 }
@@ -55,6 +74,10 @@ export function createCategory(citationId: number, name: string): Promise<LegalC
   return api.post<LegalCategory>('/legal/categories', { citation_id: citationId, name })
 }
 
+export function updateCategory(id: number, name: string): Promise<LegalCategory> {
+  return api.patch<LegalCategory>(`/legal/categories/${id}`, { name })
+}
+
 export function deleteCategory(id: number): Promise<void> {
   return api.delete<void>(`/legal/categories/${id}`)
 }
@@ -66,6 +89,10 @@ export async function fetchElements(categoryId: number): Promise<LegalElement[]>
 
 export function createElement(categoryId: number, name: string): Promise<LegalElement> {
   return api.post<LegalElement>('/legal/elements', { category_id: categoryId, name })
+}
+
+export function updateElement(id: number, name: string): Promise<LegalElement> {
+  return api.patch<LegalElement>(`/legal/elements/${id}`, { name })
 }
 
 export function deleteElement(id: number): Promise<void> {
