@@ -149,7 +149,7 @@ func CaptureWithAllocator(ctx, allocCtx context.Context, rawURL string, waitIdle
 
 	// Wrap the page screenshot in a Chrome-like browser mockup.
 	// Fall back to the raw screenshot if framing fails.
-	framed, err := addBrowserFrame(tabCtx, pageBuf, rawURL, capturedAt)
+	framed, err := Frame(tabCtx, pageBuf, rawURL, capturedAt, "", "")
 	if err != nil {
 		return pageBuf, nil
 	}

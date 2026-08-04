@@ -245,13 +245,6 @@ func Frame(chromeCtx context.Context, pageBytes []byte, rawURL string, capturedA
 	return buf, nil
 }
 
-// addBrowserFrame is the old unexported function, kept for backward compatibility
-// until Task 2 updates callers to use Frame instead. Calls Frame with empty
-// ISP and DNS address.
-func addBrowserFrame(chromeCtx context.Context, pageBytes []byte, rawURL string, capturedAt time.Time) ([]byte, error) {
-	return Frame(chromeCtx, pageBytes, rawURL, capturedAt, "", "")
-}
-
 func hostnameFromURL(rawURL string) string {
 	u, err := url.Parse(rawURL)
 	if err == nil && u.Hostname() != "" {
