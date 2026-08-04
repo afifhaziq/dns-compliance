@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, ScaleIcon } from 'lucide-react'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlOrderedAt } from '../api/urls'
 import type { URLEntry, Instrument, Citation, LegalCategory, LegalElement } from '../api/types'
 import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, attachOffence, formatParsedCitation } from '../api/legal'
@@ -66,29 +66,38 @@ export const Route = createFileRoute('/urls')({ component: URLsPage })
 
 /* ─── Add Domain Dialog ──────────────────────────────────────────────────── */
 
-// Cascading Instrument -> Citation -> Category -> Element picker. Element is
-// optional (not every category has one); Instrument/Citation/Category are
-// all required to attach an offence, but the whole block is optional — a
-// domain can be added with no offence tagged at all.
-function OffencePicker({
-  instrumentId, citationId, categoryId, elementId,
-  onInstrumentChange, onCitationChange, onCategoryChange, onElementChange,
-  disabled,
+export type StagedOffence = {
+  instrumentId: number
+  citationId: number
+  categoryId: number
+  elementId?: number
+  label: string
+}
+
+// Cascading Instrument -> Citation -> Category -> Element picker that stages
+// one offence at a time and appends it to a removable-chip list on "Add
+// offence" — a domain can violate multiple sections/offences at once (real
+// MCMC data cites domains under several sections joined by "dan"/"&"), so
+// this replaces the old single-selection OffencePicker. Reused by both
+// AddUrlDialog (staged offences applied to every domain on submit) and
+// EditOffencesDialog (each addition attaches immediately to one existing
+// domain) — this component has no knowledge of which caller it's in.
+function MultiOffencePicker({
+  value, onChange, disabled,
 }: {
-  instrumentId: number | ''
-  citationId: number | ''
-  categoryId: number | ''
-  elementId: number | ''
-  onInstrumentChange: (id: number | '') => void
-  onCitationChange: (id: number | '') => void
-  onCategoryChange: (id: number | '') => void
-  onElementChange: (id: number | '') => void
+  value: StagedOffence[]
+  onChange: (offences: StagedOffence[]) => void
   disabled: boolean
 }) {
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [citations, setCitations] = useState<Citation[]>([])
   const [categories, setCategories] = useState<LegalCategory[]>([])
   const [elements, setElements] = useState<LegalElement[]>([])
+
+  const [instrumentId, setInstrumentId] = useState<number | ''>('')
+  const [citationId, setCitationId] = useState<number | ''>('')
+  const [categoryId, setCategoryId] = useState<number | ''>('')
+  const [elementId, setElementId] = useState<number | ''>('')
 
   useEffect(() => { fetchInstruments().then(setInstruments) }, [])
   useEffect(() => {
@@ -104,15 +113,52 @@ function OffencePicker({
     fetchElements(categoryId).then(setElements)
   }, [categoryId])
 
+  const resetStaging = () => {
+    setInstrumentId(''); setCitationId(''); setCategoryId(''); setElementId('')
+  }
+
+  const handleAdd = () => {
+    if (instrumentId === '' || citationId === '' || categoryId === '') return
+    const citation = citations.find(c => c.id === citationId)
+    const category = categories.find(c => c.id === categoryId)
+    const element = elementId === '' ? undefined : elements.find(e => e.id === elementId)
+    if (!citation || !category) return
+    const label = `${formatParsedCitation(citation.parsed)} — ${category.name}${element ? ` (${element.name})` : ''}`
+    onChange([...value, { instrumentId, citationId, categoryId, elementId: elementId === '' ? undefined : elementId, label }])
+    resetStaging()
+  }
+
+  const handleRemove = (index: number) => {
+    onChange(value.filter((_, i) => i !== index))
+  }
+
   return (
     <div className="form-field">
       <label className="form-label" id="offence-picker-label">
-        Offence <span style={{ color: 'var(--stone-muted)', fontWeight: 400 }}>(optional — attaches to every domain added above)</span>
+        Offences <span style={{ color: 'var(--stone-muted)', fontWeight: 400 }}>(optional — attaches to every domain added above)</span>
       </label>
+      {value.length > 0 && (
+        <ul className="offence-chip-list">
+          {value.map((o, i) => (
+            <li key={i} className="offence-chip">
+              <span>{o.label}</span>
+              <button
+                type="button"
+                className="screenshot-icon-btn"
+                onClick={() => handleRemove(i)}
+                disabled={disabled}
+                aria-label={`Remove offence ${o.label}`}
+              >
+                <XIcon size={14} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="flex flex-col" style={{ gap: 8 }}>
         <Select
           value={String(instrumentId)}
-          onValueChange={v => { onInstrumentChange(v === '' ? '' : Number(v)); onCitationChange(''); onCategoryChange(''); onElementChange('') }}
+          onValueChange={v => { setInstrumentId(v === '' ? '' : Number(v)); setCitationId(''); setCategoryId(''); setElementId('') }}
           disabled={disabled}
         >
           <SelectTrigger aria-labelledby="offence-picker-label" placeholder="Instrument…" className="w-full" />
@@ -126,7 +172,7 @@ function OffencePicker({
         {instrumentId !== '' && (
           <Select
             value={String(citationId)}
-            onValueChange={v => { onCitationChange(v === '' ? '' : Number(v)); onCategoryChange(''); onElementChange('') }}
+            onValueChange={v => { setCitationId(v === '' ? '' : Number(v)); setCategoryId(''); setElementId('') }}
             disabled={disabled}
           >
             <SelectTrigger aria-label="Citation" placeholder="Citation…" className="w-full" />
@@ -141,7 +187,7 @@ function OffencePicker({
         {citationId !== '' && (
           <Select
             value={String(categoryId)}
-            onValueChange={v => { onCategoryChange(v === '' ? '' : Number(v)); onElementChange('') }}
+            onValueChange={v => { setCategoryId(v === '' ? '' : Number(v)); setElementId('') }}
             disabled={disabled}
           >
             <SelectTrigger aria-label="Category" placeholder="Category…" className="w-full" />
@@ -156,7 +202,7 @@ function OffencePicker({
         {categoryId !== '' && elements.length > 0 && (
           <Select
             value={String(elementId)}
-            onValueChange={v => onElementChange(v === '' ? '' : Number(v))}
+            onValueChange={v => setElementId(v === '' ? '' : Number(v))}
             disabled={disabled}
           >
             <SelectTrigger aria-label="Element" placeholder="Element (optional)…" className="w-full" />
@@ -167,6 +213,11 @@ function OffencePicker({
               ))}
             </SelectContent>
           </Select>
+        )}
+        {categoryId !== '' && (
+          <button type="button" className="btn-ghost" onClick={handleAdd} disabled={disabled}>
+            + Add offence
+          </button>
         )}
       </div>
     </div>
@@ -183,15 +234,12 @@ function AddUrlDialog({
   onAdded: () => void
 }) {
   const [value, setValue] = useState('')
-  const [instrumentId, setInstrumentId] = useState<number | ''>('')
-  const [citationId, setCitationId] = useState<number | ''>('')
-  const [categoryId, setCategoryId] = useState<number | ''>('')
-  const [elementId, setElementId] = useState<number | ''>('')
+  const [offences, setOffences] = useState<StagedOffence[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   const reset = () => {
-    setValue(''); setInstrumentId(''); setCitationId(''); setCategoryId(''); setElementId(''); setError(null)
+    setValue(''); setOffences([]); setError(null)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -202,9 +250,9 @@ function AddUrlDialog({
     setError(null)
     try {
       await Promise.all(domains.map(d => createUrl(d)))
-      if (categoryId !== '') {
-        await Promise.all(domains.map(d => attachOffence(d, categoryId, elementId === '' ? undefined : elementId)))
-      }
+      await Promise.all(
+        domains.flatMap(d => offences.map(o => attachOffence(d, o.categoryId, o.elementId)))
+      )
       reset()
       onAdded()
       onClose()
@@ -241,15 +289,9 @@ function AddUrlDialog({
               style={{ resize: 'vertical', fontFamily: 'inherit' }}
             />
           </div>
-          <OffencePicker
-            instrumentId={instrumentId}
-            citationId={citationId}
-            categoryId={categoryId}
-            elementId={elementId}
-            onInstrumentChange={setInstrumentId}
-            onCitationChange={setCitationId}
-            onCategoryChange={setCategoryId}
-            onElementChange={setElementId}
+          <MultiOffencePicker
+            value={offences}
+            onChange={setOffences}
             disabled={loading}
           />
           {error && <p className="form-error">{error}</p>}
