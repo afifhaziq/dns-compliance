@@ -179,7 +179,15 @@ function MultiOffencePicker({
             <SelectContent>
               <SelectItem index={0} value="">No citation</SelectItem>
               {citations.map((c, i) => (
-                <SelectItem key={c.id} index={i + 1} value={String(c.id)}>{formatParsedCitation(c.parsed)} ({c.raw_text})</SelectItem>
+                <SelectItem key={c.id} index={i + 1} value={String(c.id)}>
+                  {/* A clean parse reconstructs to the same string as raw_text —
+                      showing both would just repeat it. Only surface the parsed
+                      form for NEEDS_REVIEW, where it shows how far parsing got.
+                      Must stay a single string child, not a JSX fragment — Select's
+                      label registration (select.tsx) only stores a label when
+                      typeof children === 'string'. */}
+                  {c.parse_confidence === 'NEEDS_REVIEW' ? `${c.raw_text} (parsed: ${formatParsedCitation(c.parsed)})` : c.raw_text}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
