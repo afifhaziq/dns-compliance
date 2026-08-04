@@ -307,6 +307,32 @@ type ResurfacedDomain struct {
 	AffectedServers []ResurfacedServerEntry `json:"affected_servers"`
 }
 
+// NotificationDetails is a free-form per-notification-type payload (e.g.
+// resurfaced's affected-server list, due_date_reached's per-server
+// breakdown) — stored as jsonb via GORM's json serializer, same pattern
+// Citation.Parsed already uses.
+type NotificationDetails map[string]any
+
+// Notification is a queued alert for a department about a domain event —
+// either a resurfaced (compliant->violating) regression or a due-date scan
+// outcome. URLID/URLValue mirror ScanResult's dual FK+denormalized-value
+// pattern: URLID cascades on URL purge, URLValue is the read/query key so
+// list/dedup queries don't need a join.
+type Notification struct {
+	ID           uint                `gorm:"primaryKey" json:"id"`
+	DepartmentID uint                `gorm:"not null;index:idx_notifications_dept_read,priority:1" json:"department_id"`
+	URLID        uint                `gorm:"not null;index" json:"url_id"`
+	URL          URL                 `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
+	URLValue     string              `gorm:"not null;index" json:"url"`
+	Type         string              `gorm:"not null" json:"type"` // "resurfaced" | "due_date_reached"
+	// Compliant is always nil for "resurfaced" (the type itself is the
+	// signal) and always set for "due_date_reached" (the scan outcome).
+	Compliant *bool               `json:"compliant,omitempty"`
+	Details   NotificationDetails `gorm:"type:jsonb;serializer:json" json:"details,omitempty"`
+	ReadAt    *time.Time          `gorm:"index:idx_notifications_dept_read,priority:2" json:"read_at,omitempty"`
+	CreatedAt time.Time           `gorm:"index" json:"created_at"`
+}
+
 // DomainSummaryFilter narrows ListDomainSummaries/ForDepartment — every
 // field is optional (zero value = no filter). Search matches a substring of
 // the domain; DNSServerID, when set, also restricts the aggregate counts to

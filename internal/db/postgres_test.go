@@ -1694,3 +1694,139 @@ func TestDeleteExpiredSessions(t *testing.T) {
 		t.Fatal("live session should have survived")
 	}
 }
+
+func TestNotifications_CreateListUnreadMarkRead(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	dept, _ := s.CreateDepartment(ctx, "NotifyDept")
+	u, _ := s.AddURLToWatchlist(ctx, dept.ID, "notify-flow.com")
+
+	n, err := s.CreateNotification(ctx, db.Notification{
+		DepartmentID: dept.ID,
+		URLID:        u.ID,
+		URLValue:     u.URL,
+		Type:         "resurfaced",
+		Details:      db.NotificationDetails{"note": "test"},
+	})
+	if err != nil {
+		t.Fatalf("CreateNotification: %v", err)
+	}
+	if n.ID == 0 {
+		t.Fatal("expected a non-zero ID after create")
+	}
+
+	list, total, err := s.ListNotificationsForDepartment(ctx, 1, 10, dept.ID)
+	if err != nil {
+		t.Fatalf("ListNotificationsForDepartment: %v", err)
+	}
+	if total != 1 || len(list) != 1 {
+		t.Fatalf("expected 1 notification, got total=%d len=%d", total, len(list))
+	}
+	if list[0].Details["note"] != "test" {
+		t.Fatalf("expected details to round-trip, got %+v", list[0].Details)
+	}
+
+	count, err := s.UnreadCountForDepartment(ctx, dept.ID)
+	if err != nil {
+		t.Fatalf("UnreadCountForDepartment: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected unread count 1, got %d", count)
+	}
+
+	got, err := s.GetNotification(ctx, n.ID)
+	if err != nil || got == nil {
+		t.Fatalf("GetNotification: got=%v err=%v", got, err)
+	}
+	if got.ReadAt != nil {
+		t.Fatal("expected ReadAt nil before marking read")
+	}
+
+	if err := s.MarkNotificationRead(ctx, n.ID); err != nil {
+		t.Fatalf("MarkNotificationRead: %v", err)
+	}
+	count, err = s.UnreadCountForDepartment(ctx, dept.ID)
+	if err != nil {
+		t.Fatalf("UnreadCountForDepartment after read: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected unread count 0 after marking read, got %d", count)
+	}
+
+	// Admin-global scope sees the same row.
+	globalTotal := 0
+	if _, total, err := s.ListNotifications(ctx, 1, 10); err != nil {
+		t.Fatalf("ListNotifications: %v", err)
+	} else {
+		globalTotal = total
+	}
+	if globalTotal != 1 {
+		t.Fatalf("expected global total 1, got %d", globalTotal)
+	}
+}
+
+func TestNotifications_GetNotificationReturnsNilForUnknownID(t *testing.T) {
+	s := newTestStore(t)
+	got, err := s.GetNotification(context.Background(), 999999)
+	if err != nil {
+		t.Fatalf("GetNotification: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("expected nil for unknown id, got %+v", got)
+	}
+}
+
+func TestHasRecentResurfacedNotification(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	dept, _ := s.CreateDepartment(ctx, "DedupDept")
+	u, _ := s.AddURLToWatchlist(ctx, dept.ID, "dedup.com")
+
+	resurfacedAt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+
+	has, err := s.HasRecentResurfacedNotification(ctx, dept.ID, u.URL, resurfacedAt)
+	if err != nil {
+		t.Fatalf("HasRecentResurfacedNotification (none yet): %v", err)
+	}
+	if has {
+		t.Fatal("expected false before any notification exists")
+	}
+
+	if _, err := s.CreateNotification(ctx, db.Notification{
+		DepartmentID: dept.ID, URLID: u.ID, URLValue: u.URL, Type: "resurfaced",
+	}); err != nil {
+		t.Fatalf("CreateNotification: %v", err)
+	}
+
+	has, err = s.HasRecentResurfacedNotification(ctx, dept.ID, u.URL, resurfacedAt)
+	if err != nil {
+		t.Fatalf("HasRecentResurfacedNotification (after create): %v", err)
+	}
+	if !has {
+		t.Fatal("expected true — the just-created row's CreatedAt is after resurfacedAt (2026-07-02)")
+	}
+}
+
+func TestGetURLByID(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	dept, _ := s.CreateDepartment(ctx, "GetByIDDept")
+	u, _ := s.AddURLToWatchlist(ctx, dept.ID, "get-by-id.com")
+
+	got, err := s.GetURLByID(ctx, u.ID)
+	if err != nil || got == nil {
+		t.Fatalf("GetURLByID: got=%v err=%v", got, err)
+	}
+	if got.URL != "get-by-id.com" {
+		t.Fatalf("expected get-by-id.com, got %q", got.URL)
+	}
+
+	missing, err := s.GetURLByID(ctx, 999999)
+	if err != nil {
+		t.Fatalf("GetURLByID (missing): %v", err)
+	}
+	if missing != nil {
+		t.Fatalf("expected nil for unknown id, got %+v", missing)
+	}
+}

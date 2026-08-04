@@ -14,6 +14,7 @@ type URLStore interface {
 	CreateURL(ctx context.Context, rawURL string) (URL, error)
 	DeleteURL(ctx context.Context, id uint) error                     // admin-only hard purge; cascades to ScanResult
 	GetURLByValue(ctx context.Context, urlValue string) (*URL, error) // nil, nil if urlValue is unknown
+	GetURLByID(ctx context.Context, id uint) (*URL, error)            // nil, nil if id is unknown
 
 	ListDepartmentURLs(ctx context.Context, departmentID uint) ([]URLEntry, error)
 	AddURLToWatchlist(ctx context.Context, departmentID uint, rawURL string) (URL, error)
@@ -217,6 +218,27 @@ type LegalCitationStore interface {
 	DetachOffenceFromURL(ctx context.Context, id uint) error
 }
 
+// NotificationStore covers the notification-center table — same
+// admin-global/department-scoped read pattern as ResultStore's
+// ListDomainSummaries/ForDepartment. CreateNotification and
+// HasRecentResurfacedNotification are called only from internal/notify's
+// task handlers, not from any HTTP handler directly.
+type NotificationStore interface {
+	CreateNotification(ctx context.Context, n Notification) (Notification, error)
+	ListNotifications(ctx context.Context, page, pageSize int) ([]Notification, int, error)
+	ListNotificationsForDepartment(ctx context.Context, page, pageSize int, departmentID uint) ([]Notification, int, error)
+	UnreadCount(ctx context.Context) (int, error)
+	UnreadCountForDepartment(ctx context.Context, departmentID uint) (int, error)
+	GetNotification(ctx context.Context, id uint) (*Notification, error) // nil, nil if not found
+	MarkNotificationRead(ctx context.Context, id uint) error
+
+	// HasRecentResurfacedNotification is the dedup check for the periodic
+	// resurfaced sweep: true if a "resurfaced" notification for
+	// (departmentID, urlValue) already has CreatedAt >= sinceResurfacedAt,
+	// meaning this specific regression event was already notified.
+	HasRecentResurfacedNotification(ctx context.Context, departmentID uint, urlValue string, sinceResurfacedAt time.Time) (bool, error)
+}
+
 // Store is the full persistence port — the union of every aggregate-scoped
 // store above. Multi-aggregate consumers (Handlers, Scanner) depend on this.
 // A consumer that only ever touches one aggregate should depend on that
@@ -237,4 +259,5 @@ type Store interface {
 	ScanSettingsStore
 	EnrichmentStore
 	LegalCitationStore
+	NotificationStore
 }
