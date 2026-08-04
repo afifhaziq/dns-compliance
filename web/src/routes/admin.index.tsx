@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/motion/tabs'
 import {
   fetchDepartments,
   createDepartment,
@@ -13,10 +14,7 @@ import {
   setScanInterval,
   type ScanSchedule,
 } from '../api/admin'
-import { fetchISPLogos, upsertISPLogo, deleteISPLogo } from '../api/isp-logos'
-import { fetchDnsServers } from '../api/dns-servers'
-import type { CompliantIP, Department, DNSServer, ISPLogo, User } from '../api/types'
-import { ISPLogoChip } from '@/components/isp-logo-chip'
+import type { CompliantIP, Department, User } from '../api/types'
 import {
   Dialog,
   DialogContent,
@@ -33,7 +31,15 @@ import { Slider } from '@/components/ui/slider'
 import { XIcon } from '@/components/ui/x'
 import { useAuth } from './__root'
 
-export const Route = createFileRoute('/admin/')({ component: AdminPage })
+const ADMIN_TABS = ['departments', 'users', 'ip', 'scan-settings'] as const
+type AdminTab = typeof ADMIN_TABS[number]
+
+export const Route = createFileRoute('/admin/')({
+  component: AdminPage,
+  validateSearch: (search: Record<string, unknown>): { tab: AdminTab } => ({
+    tab: ADMIN_TABS.includes(search.tab as AdminTab) ? (search.tab as AdminTab) : 'users',
+  }),
+})
 
 /* ─── Add Department Dialog ─────────────────────────────────────────────── */
 
@@ -331,93 +337,6 @@ function AddCompliantIPDialog({
   )
 }
 
-/* ─── Add ISP Logo Dialog ────────────────────────────────────────────────── */
-
-function AddISPLogoDialog({
-  open,
-  onClose,
-  onAdded,
-  ispOptions,
-}: {
-  open: boolean
-  onClose: () => void
-  onAdded: () => void
-  ispOptions: string[]
-}) {
-  const [isp, setIsp] = useState('')
-  const [logoUrl, setLogoUrl] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  const reset = () => { setIsp(''); setLogoUrl(''); setError(null) }
-  const handleClose = () => { reset(); onClose() }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!isp) { setError('ISP is required'); return }
-    if (!logoUrl.trim()) { setError('Logo URL is required'); return }
-    setLoading(true)
-    setError(null)
-    try {
-      await upsertISPLogo(isp, logoUrl.trim())
-      reset()
-      onAdded()
-      onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add logo')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
-      <DialogContent showCloseButton={false} style={{ maxWidth: 420 }}>
-        <DialogHeader>
-          <DialogTitle>Add ISP Logo</DialogTitle>
-          <DialogDescription>
-            Sets the logo shown for this ISP in the Overview page's bento grid. Re-adding an existing ISP overwrites its logo.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit}>
-          <div className="form-field">
-            <label className="form-label" id="isp-logo-isp-label">ISP</label>
-            <Select value={isp} onValueChange={setIsp} disabled={loading}>
-              <SelectTrigger aria-labelledby="isp-logo-isp-label" className="w-full" />
-              <SelectContent>
-                {ispOptions.map((name, i) => (
-                  <SelectItem key={name} index={i} value={name}>{name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="form-field">
-            <label className="form-label" htmlFor="isp-logo-url-input">Logo URL</label>
-            <input
-              id="isp-logo-url-input"
-              className="form-input"
-              type="text"
-              placeholder="e.g. https://upload.wikimedia.org/.../cloudflare.svg"
-              value={logoUrl}
-              onChange={e => setLogoUrl(e.target.value)}
-              disabled={loading}
-            />
-          </div>
-          {error && <p className="form-error">{error}</p>}
-          <DialogFooter>
-            <button type="button" className="btn-ghost" onClick={handleClose} disabled={loading}>
-              Cancel
-            </button>
-            <button type="submit" className="btn-primary" disabled={loading}>
-              {loading ? 'Adding…' : 'Add Logo'}
-            </button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 /* ─── Scan Interval Settings ─────────────────────────────────────────────── */
 
 const SCAN_INTERVAL_OPTIONS = [
@@ -538,25 +457,33 @@ function ScanSettingsSection({ value, onSaved }: { value: ScanSchedule; onSaved:
   )
 }
 
+/* ─── Restricted Tab Notice ──────────────────────────────────────────────── */
+
+function RestrictedTabNotice() {
+  return (
+    <div className="error-state">
+      <p className="error-message">Admin access required.</p>
+    </div>
+  )
+}
+
 /* ─── Admin Page ─────────────────────────────────────────────────────────── */
 
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 
 function AdminPage() {
   const { me } = useAuth()
+  const { tab } = Route.useSearch()
+  const navigate = useNavigate()
   const [departments, setDepartments] = useState<Department[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [compliantIPs, setCompliantIPs] = useState<CompliantIP[]>([])
-  const [ispLogos, setIspLogos] = useState<ISPLogo[]>([])
-  const [dnsServers, setDnsServers] = useState<DNSServer[]>([])
   const [scanSchedule, setScanSchedule] = useState<ScanSchedule | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addDeptOpen, setAddDeptOpen] = useState(false)
   const [addUserOpen, setAddUserOpen] = useState(false)
   const [addIPOpen, setAddIPOpen] = useState(false)
-  const [addLogoOpen, setAddLogoOpen] = useState(false)
-  const [deleteLogoTarget, setDeleteLogoTarget] = useState<ISPLogo | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
   const [deleteIPTarget, setDeleteIPTarget] = useState<CompliantIP | null>(null)
 
@@ -564,13 +491,6 @@ function AdminPage() {
     setLoading(true)
     try {
       setError(null)
-      // ISP Logos and DNS servers are readable by admin and dept-admin alike
-      // (dept-admins already manage the DNS server catalog), unlike the
-      // super-admin-only fetches below.
-      const [logos, servers] = await Promise.all([fetchISPLogos(), fetchDnsServers()])
-      setIspLogos(logos)
-      setDnsServers(servers)
-
       if (me?.is_admin) {
         // Departments/Compliant-IPs/scan interval stay super-admin-only
         // server-side — a department admin would just get a 403 fetching them.
@@ -619,13 +539,6 @@ function AdminPage() {
     load()
   }
 
-  const handleDeleteLogo = async () => {
-    if (!deleteLogoTarget) return
-    await deleteISPLogo(deleteLogoTarget.isp)
-    setDeleteLogoTarget(null)
-    load()
-  }
-
   return (
     <div className="mx-20 mt-10">
       <div className="page-header">
@@ -643,171 +556,153 @@ function AdminPage() {
       )}
 
       <div className="results-wrap" style={{ marginBottom: 32 }}>
-        {me?.is_admin && (
-        <>
-        <div className='mb-4'>
-        <div className="page-header" style={{ marginBottom: 12 }}>
-          <h2 className="section-title">Departments</h2>
-          <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddDeptOpen(true)}>
-            + Add Department
-          </button>
-        </div>
-        <Table className="results-table" aria-label="Departments">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="col-domain th-left" scope="col">Name</TableHead>
-              <TableHead className="col-status" scope="col">Created</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {departments.map(d => (
-              <TableRow key={d.id} className="admin-row">
-                <TableCell className="col-domain">{d.name}</TableCell>
-                <TableCell className="col-status text-center">{DATE_FMT.format(new Date(d.created_at))}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        </div>
-        {scanSchedule !== null && (
-          <ScanSettingsSection value={scanSchedule} onSaved={setScanSchedule} />
-        )}
-        </>
-        )}
-        <div className='mb-4'>
-        <div className="page-header" style={{ marginBottom: 12 }}>
-          <h2 className="section-title">Users</h2>
-          <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddUserOpen(true)}>
-            + Create User
-          </button>
-        </div>
-        <Table className="results-table" aria-label="Users">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="col-domain th-left" scope="col">Username</TableHead>
-              <TableHead className="col-status" scope="col">Department</TableHead>
-              <TableHead className="col-status" scope="col">Created</TableHead>
-              <TableHead className="col-evidence" scope="col" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {users.map(u => (
-              <TableRow key={u.id} className="admin-row">
-                <TableCell className="col-domain">{u.username}</TableCell>
-                <TableCell className="col-status">
-                  {u.is_admin ? 'Admin' : u.is_dept_admin ? `${u.department?.name ?? '—'} (Admin)` : u.department?.name ?? '—'}
-                </TableCell>
-                <TableCell className="col-status">{DATE_FMT.format(new Date(u.created_at))}</TableCell>
-                <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
-                  <button
-                    type="button"
-                    className="screenshot-icon-btn"
-                    onClick={() => setDeleteTarget(u)}
-                    aria-label={`Delete ${u.username}`}
-                    title="Delete"
-                  >
-                    <XIcon size={16} />
+        <Tabs
+          value={tab}
+          onValueChange={next => navigate({ to: '/admin', search: { tab: next as AdminTab } })}
+          variant="underline"
+        >
+          <TabsList>
+            <TabsTrigger value="departments">Departments</TabsTrigger>
+            <TabsTrigger value="users">Users</TabsTrigger>
+            <TabsTrigger value="ip">IP</TabsTrigger>
+            <TabsTrigger value="scan-settings">Scan Settings</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="departments">
+            {me?.is_admin ? (
+              <div className='mb-4'>
+                <div className="page-header" style={{ marginBottom: 12 }}>
+                  <h2 className="section-title">Departments</h2>
+                  <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddDeptOpen(true)}>
+                    + Add Department
                   </button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        </div>
-        <div className='mb-4'>
-        <div className="page-header" style={{ marginBottom: 12 }}>
-          <h2 className="section-title">ISP Logos</h2>
-          <p className="page-subtitle" style={{ marginLeft: 8 }}>Shown next to each ISP's name on the Overview page</p>
-          <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddLogoOpen(true)}>
-            + Add Logo
-          </button>
-        </div>
-        <Table className="results-table" aria-label="ISP Logos">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="col-status" scope="col">Logo</TableHead>
-              <TableHead className="col-domain th-left" scope="col">ISP</TableHead>
-              <TableHead className="col-evidence" scope="col" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {ispLogos.map(logo => (
-              <TableRow key={logo.isp} className="admin-row">
-                <TableCell className="col-status text-center">
-                  <ISPLogoChip isp={logo.isp} logoUrl={logo.logo_url} size={24} />
-                </TableCell>
-                <TableCell className="col-domain">{logo.isp}</TableCell>
-                <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
-                  <button
-                    type="button"
-                    className="screenshot-icon-btn"
-                    onClick={() => setDeleteLogoTarget(logo)}
-                    aria-label={`Delete logo for ${logo.isp}`}
-                    title="Delete"
-                  >
-                    <XIcon size={16} />
-                  </button>
-                </TableCell>
-              </TableRow>
-            ))}
-            {ispLogos.length === 0 && !loading && (
-              <TableRow>
-                <TableCell colSpan={3} style={{ textAlign: 'center', color: 'var(--stone-muted)', padding: '16px 0' }}>
-                  No ISP logos configured
-                </TableCell>
-              </TableRow>
+                </div>
+                <Table className="results-table" aria-label="Departments">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="col-domain th-left" scope="col">Name</TableHead>
+                      <TableHead className="col-status" scope="col">Created</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {departments.map(d => (
+                      <TableRow key={d.id} className="admin-row">
+                        <TableCell className="col-domain">{d.name}</TableCell>
+                        <TableCell className="col-status text-center">{DATE_FMT.format(new Date(d.created_at))}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <RestrictedTabNotice />
             )}
-          </TableBody>
-        </Table>
-        </div>
-        {me?.is_admin && (
-        <div className='mb-4'>
-        <div className="page-header" style={{ marginBottom: 12 }}>
-          <h2 className="section-title">Compliant IPs</h2>
-          <p className="page-subtitle" style={{ marginLeft: 8 }}>DNS resolutions to these IPs are classified as compliant</p>
-          <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddIPOpen(true)}>
-            + Add IP
-          </button>
-        </div>
-        <Table className="results-table" aria-label="Compliant IPs">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="col-domain th-left" scope="col">IP Address</TableHead>
-              <TableHead className="col-status" scope="col">Note</TableHead>
-              <TableHead className="col-status" scope="col">Added</TableHead>
-              <TableHead className="col-evidence" scope="col" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {compliantIPs.map(ip => (
-              <TableRow key={ip.id} className="admin-row">
-                <TableCell className="col-domain"><span className="ip-value">{ip.address}</span></TableCell>
-                <TableCell className="col-status">{ip.note || '—'}</TableCell>
-                <TableCell className="col-status">{DATE_FMT.format(new Date(ip.created_at))}</TableCell>
-                <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
-                  <button
-                    type="button"
-                    className="screenshot-icon-btn"
-                    onClick={() => setDeleteIPTarget(ip)}
-                    aria-label={`Delete ${ip.address}`}
-                    title="Delete"
-                  >
-                    <XIcon size={16} />
+          </TabsContent>
+
+          <TabsContent value="users">
+            <div className='mb-4'>
+              <div className="page-header" style={{ marginBottom: 12 }}>
+                <h2 className="section-title">Users</h2>
+                <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddUserOpen(true)}>
+                  + Create User
+                </button>
+              </div>
+              <Table className="results-table" aria-label="Users">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="col-domain th-left" scope="col">Username</TableHead>
+                    <TableHead className="col-status" scope="col">Department</TableHead>
+                    <TableHead className="col-status" scope="col">Created</TableHead>
+                    <TableHead className="col-evidence" scope="col" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {users.map(u => (
+                    <TableRow key={u.id} className="admin-row">
+                      <TableCell className="col-domain">{u.username}</TableCell>
+                      <TableCell className="col-status">
+                        {u.is_admin ? 'Admin' : u.is_dept_admin ? `${u.department?.name ?? '—'} (Admin)` : u.department?.name ?? '—'}
+                      </TableCell>
+                      <TableCell className="col-status">{DATE_FMT.format(new Date(u.created_at))}</TableCell>
+                      <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
+                        <button
+                          type="button"
+                          className="screenshot-icon-btn"
+                          onClick={() => setDeleteTarget(u)}
+                          aria-label={`Delete ${u.username}`}
+                          title="Delete"
+                        >
+                          <XIcon size={16} />
+                        </button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="ip">
+            {me?.is_admin ? (
+              <div className='mb-4'>
+                <div className="page-header" style={{ marginBottom: 12 }}>
+                  <h2 className="section-title">Compliant IPs</h2>
+                  <p className="page-subtitle" style={{ marginLeft: 8 }}>DNS resolutions to these IPs are classified as compliant</p>
+                  <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddIPOpen(true)}>
+                    + Add IP
                   </button>
-                </TableCell>
-              </TableRow>
-            ))}
-            {compliantIPs.length === 0 && !loading && (
-              <TableRow>
-                <TableCell colSpan={4} style={{ textAlign: 'center', color: 'var(--stone-muted)', padding: '16px 0' }}>
-                  No compliant IPs configured
-                </TableCell>
-              </TableRow>
+                </div>
+                <Table className="results-table" aria-label="Compliant IPs">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="col-domain th-left" scope="col">IP Address</TableHead>
+                      <TableHead className="col-status" scope="col">Note</TableHead>
+                      <TableHead className="col-status" scope="col">Added</TableHead>
+                      <TableHead className="col-evidence" scope="col" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {compliantIPs.map(ip => (
+                      <TableRow key={ip.id} className="admin-row">
+                        <TableCell className="col-domain"><span className="ip-value">{ip.address}</span></TableCell>
+                        <TableCell className="col-status">{ip.note || '—'}</TableCell>
+                        <TableCell className="col-status">{DATE_FMT.format(new Date(ip.created_at))}</TableCell>
+                        <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
+                          <button
+                            type="button"
+                            className="screenshot-icon-btn"
+                            onClick={() => setDeleteIPTarget(ip)}
+                            aria-label={`Delete ${ip.address}`}
+                            title="Delete"
+                          >
+                            <XIcon size={16} />
+                          </button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {compliantIPs.length === 0 && !loading && (
+                      <TableRow>
+                        <TableCell colSpan={4} style={{ textAlign: 'center', color: 'var(--stone-muted)', padding: '16px 0' }}>
+                          No compliant IPs configured
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <RestrictedTabNotice />
             )}
-          </TableBody>
-        </Table>
-        </div>
-        )}
+          </TabsContent>
+
+          <TabsContent value="scan-settings">
+            {me?.is_admin && scanSchedule !== null ? (
+              <ScanSettingsSection value={scanSchedule} onSaved={setScanSchedule} />
+            ) : (
+              <RestrictedTabNotice />
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
 
       <AddDepartmentDialog open={addDeptOpen} onClose={() => setAddDeptOpen(false)} onAdded={load} />
@@ -819,12 +714,6 @@ function AdminPage() {
         callerIsSuperAdmin={!!me?.is_admin}
       />
       <AddCompliantIPDialog open={addIPOpen} onClose={() => setAddIPOpen(false)} onAdded={load} />
-      <AddISPLogoDialog
-        open={addLogoOpen}
-        onClose={() => setAddLogoOpen(false)}
-        onAdded={load}
-        ispOptions={Array.from(new Set(dnsServers.map(s => s.isp))).sort()}
-      />
       <DeleteConfirmDialog
         open={deleteTarget !== null}
         itemLabel={deleteTarget?.username ?? ''}
@@ -837,13 +726,6 @@ function AdminPage() {
         description="Scans will no longer classify this IP as compliant."
         onConfirm={handleDeleteIP}
         onCancel={() => setDeleteIPTarget(null)}
-      />
-      <DeleteConfirmDialog
-        open={deleteLogoTarget !== null}
-        itemLabel={deleteLogoTarget?.isp ?? ''}
-        description="The bento grid will fall back to a monogram for this ISP."
-        onConfirm={handleDeleteLogo}
-        onCancel={() => setDeleteLogoTarget(null)}
       />
     </div>
   )
