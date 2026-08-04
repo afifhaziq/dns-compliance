@@ -1,0 +1,225 @@
+// dns-compliance schema — full current schema + additions for the 4 in-flight features.
+// Feature tags: [F2] agency/ref/dept/status/due-date, [F3] notifications, [F4] sub-element.
+// Everything else is unchanged existing schema, included for context.
+
+Table dns_servers {
+  id integer [pk, increment]
+  isp varchar [not null, default: 'Unknown']
+  name varchar [not null]
+  address varchar [not null]
+  protocol varchar [not null, note: 'udp | dot | doh']
+  enabled boolean [not null, default: true]
+  created_at timestamp
+}
+
+Table urls {
+  id integer [pk, increment]
+  url varchar [not null, unique, note: 'normalized bare hostname, see internal/urlnorm']
+  created_at timestamp
+}
+
+Table departments {
+  id integer [pk, increment]
+  name varchar [not null, unique, note: 'CMOD, CRD, Admin, ...']
+  created_at timestamp
+}
+
+Table users {
+  id integer [pk, increment]
+  username varchar [not null, unique]
+  password_hash varchar [not null]
+  is_admin boolean [not null, default: false]
+  is_dept_admin boolean [not null, default: false]
+  department_id integer [ref: > departments.id]
+  created_at timestamp
+}
+
+Table sessions {
+  token varchar [pk]
+  user_id integer [not null, ref: > users.id]
+  expires_at timestamp [not null]
+  created_at timestamp
+}
+
+// [F2] renamed ordered_at -> due_date (now carries time-of-day, used both for
+// time-to-compliance and as the feature-3 scan-and-notify trigger instant);
+// + agency/reference_number/requesting_dept/status/requested_at, all new & nullable.
+Table department_urls {
+  department_id integer [not null, ref: > departments.id]
+  url_id integer [not null, ref: > urls.id]
+  enabled boolean [not null, default: true]
+  due_date timestamp [note: 'RENAMED from ordered_at. SLA deadline (date+time) — feature 3 schedules a scan-and-notify task at this instant']
+  agency varchar [note: '[F2] NEW — requesting agency, free text from Excel import']
+  reference_number varchar [note: '[F2] NEW — case/order reference number, free text; may repeat across domains covered by one order']
+  requesting_dept varchar [note: '[F2] NEW — requesting department name from Excel; distinct from departments table (CMOD/CRD RBAC ownership)']
+  status varchar [note: '[F2] NEW — requested | uplift | suspended. Independent of the derived compliant flag (blocked/not-blocked already comes from scan results)']
+  requested_at timestamp [note: '[F2] NEW — when the request was made per Excel, distinct from created_at (watchlist-add time)']
+  created_at timestamp
+
+  indexes {
+    (department_id, url_id) [pk]
+  }
+}
+
+Table scan_settings {
+  id integer [pk]
+  interval_minutes integer [not null]
+  enabled boolean [not null, default: false]
+  dns_workers integer [not null, default: 100]
+}
+
+Table compliant_ips {
+  id integer [pk, increment]
+  address varchar [not null, unique]
+  note varchar
+  created_at timestamp
+}
+
+Table isp_logos {
+  isp varchar [pk]
+  logo_url varchar
+  created_at timestamp
+}
+
+Table scan_runs {
+  id integer [pk, increment]
+  triggered_by varchar [note: 'scheduled | manual | screenshot | due-date-check [F3]']
+  status varchar [note: 'running | completed | failed']
+  started_at timestamp
+  completed_at timestamp
+}
+
+Table scan_results {
+  id integer [pk, increment]
+  scan_run_id integer [not null, ref: > scan_runs.id]
+  url_id integer [not null, ref: > urls.id]
+  url_value varchar [not null]
+  dns_server_id integer [not null, ref: > dns_servers.id]
+  compliant boolean [not null]
+  resolved_ip varchar
+  resolved_ipv6 varchar
+  resolved_asn integer
+  resolved_org varchar
+  resolved_netname varchar
+  resolved_abuse_email varchar
+  screenshot_url varchar [note: '[F1] frame now also burns in ISP name + DNS server address per-server, not just timestamp']
+  error varchar
+  latency_ms integer [default: 0]
+  scanned_at timestamp
+
+  indexes {
+    (url_value, dns_server_id, scanned_at) [name: 'idx_scan_results_url_server_time']
+    dns_server_id
+    scanned_at
+  }
+}
+
+Table domain_whois {
+  url_id integer [pk, ref: > urls.id]
+  registrar varchar
+  registrar_url varchar
+  registrar_abuse_email varchar
+  registrar_abuse_phone varchar
+  domain_created timestamp
+  domain_expires timestamp
+  last_fetched_at timestamp
+  fetch_error varchar
+}
+
+Table subdomain_scans {
+  url_id integer [pk, ref: > urls.id]
+  subdomains "text[]" [note: 'json serializer']
+  fetched_at timestamp
+  fetch_error varchar
+}
+
+Table ip_info {
+  ip varchar [pk]
+  asn integer
+  org varchar
+  netname varchar
+  abuse_email varchar
+  fetched_at timestamp
+  fetch_error varchar
+}
+
+Table favicons {
+  domain varchar [pk]
+  content_type varchar
+  data bytea
+  fetched_at timestamp
+  fetch_error varchar
+}
+
+Table instruments {
+  id integer [pk, increment]
+  type varchar [not null, note: 'ACT | ORDINANCE | ENACTMENT | SUBSIDIARY | CONSTITUTION']
+  jurisdiction varchar [not null, note: 'FEDERAL or a state name']
+  number varchar [not null, default: '']
+  year integer
+  short_title varchar [not null]
+  created_at timestamp
+}
+
+Table citations {
+  id integer [pk, increment]
+  instrument_id integer [not null, ref: > instruments.id]
+  raw_text varchar [not null]
+  parsed jsonb
+  sort_key varchar
+  parse_confidence varchar [not null, default: 'NEEDS_REVIEW', note: 'OK | NEEDS_REVIEW']
+  created_at timestamp
+}
+
+Table categories {
+  id integer [pk, increment]
+  citation_id integer [not null, ref: > citations.id]
+  name varchar [not null]
+  created_at timestamp
+}
+
+Table elements {
+  id integer [pk, increment]
+  category_id integer [not null, ref: > categories.id]
+  name varchar [not null]
+  created_at timestamp
+}
+
+// [F4] NEW — mirrors elements exactly, one level deeper.
+Table sub_elements {
+  id integer [pk, increment]
+  element_id integer [not null, ref: > elements.id]
+  name varchar [not null]
+  created_at timestamp
+}
+
+// [F4] gains optional sub_element_id alongside the existing optional element_id.
+Table url_offences {
+  id integer [pk, increment]
+  url_id integer [not null, ref: > urls.id]
+  category_id integer [not null, ref: > categories.id]
+  element_id integer [ref: > elements.id]
+  sub_element_id integer [note: '[F4] NEW', ref: > sub_elements.id]
+  recorded_at timestamp [not null]
+}
+
+// [F3] NEW — persisted notification feed. Populated by an asynq worker:
+// (a) periodic sweep diffing resurfaced domains against what's already notified,
+// (b) one-shot due-date-check tasks scheduled per department_urls.due_date via
+//     asynq.ProcessAt + a deterministic TaskID (due:<department_id>:<url_id>),
+//     rescheduled/cancelled whenever due_date changes via PATCH /api/urls/{id}.
+Table notifications {
+  id integer [pk, increment]
+  department_id integer [not null, ref: > departments.id, note: 'watchlist-owning department this notification is scoped to']
+  url_id integer [not null, ref: > urls.id]
+  type varchar [not null, note: 'resurfaced | due_date_reached']
+  compliant boolean [note: 'outcome of the triggered scan at due-date-reached time; null for type=resurfaced (always a regression, i.e. false, by definition)']
+  details jsonb [note: 'freeform — e.g. affected DNS servers/ISPs for resurfaced, or the per-server scan outcome for due_date_reached']
+  read_at timestamp
+  created_at timestamp [not null]
+
+  indexes {
+    (department_id, read_at)
+    created_at
+  }
+}
