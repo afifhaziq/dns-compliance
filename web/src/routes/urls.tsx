@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
-import { BrailleLoader } from '@/components/ui/braille-loader'
+import { GripIcon } from '@/components/ui/grip'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlOrderedAt } from '../api/urls'
 import type { URLEntry, Instrument, Citation, LegalCategory, LegalElement, URLOffence } from '../api/types'
 import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, attachOffence, fetchOffencesByUrl, detachOffence, formatParsedCitation } from '../api/legal'
@@ -606,7 +606,7 @@ function URLsPage() {
                           aria-label={`Edit offences for ${u.url}`}
                           title="Offences"
                         >
-                          <BrailleLoader variant="typing" fontSize={14} label="" />
+                          <GripIcon size={16} />
                         </button>
                         <button
                           type="button"
