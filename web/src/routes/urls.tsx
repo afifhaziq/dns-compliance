@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { ChevronLeftIcon, ChevronRightIcon, ScaleIcon } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { BrailleLoader } from '@/components/ui/braille-loader'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlOrderedAt } from '../api/urls'
 import type { URLEntry, Instrument, Citation, LegalCategory, LegalElement, URLOffence } from '../api/types'
 import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, attachOffence, fetchOffencesByUrl, detachOffence, formatParsedCitation } from '../api/legal'
@@ -597,24 +598,26 @@ function URLsPage() {
                       />
                     </TableCell>
                     <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
-                      <button
-                        type="button"
-                        className="screenshot-icon-btn"
-                        onClick={() => setEditOffencesTarget(u.url)}
-                        aria-label={`Edit offences for ${u.url}`}
-                        title="Offences"
-                      >
-                        <ScaleIcon size={16} />
-                      </button>
-                      <button
-                        type="button"
-                        className="screenshot-icon-btn"
-                        onClick={() => setDeleteTarget(u)}
-                        aria-label={`Delete ${u.url}`}
-                        title="Delete"
-                      >
-                        <XIcon size={16} />
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          className="screenshot-icon-btn"
+                          onClick={() => setEditOffencesTarget(u.url)}
+                          aria-label={`Edit offences for ${u.url}`}
+                          title="Offences"
+                        >
+                          <BrailleLoader variant="typing" fontSize={14} label="" />
+                        </button>
+                        <button
+                          type="button"
+                          className="screenshot-icon-btn"
+                          onClick={() => setDeleteTarget(u)}
+                          aria-label={`Delete ${u.url}`}
+                          title="Delete"
+                        >
+                          <XIcon size={16} />
+                        </button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
