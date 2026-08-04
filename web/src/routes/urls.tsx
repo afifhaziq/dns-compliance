@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { ChevronLeftIcon, ChevronRightIcon, ScaleIcon } from 'lucide-react'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlOrderedAt } from '../api/urls'
-import type { URLEntry, Instrument, Citation, LegalCategory, LegalElement } from '../api/types'
-import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, attachOffence, formatParsedCitation } from '../api/legal'
+import type { URLEntry, Instrument, Citation, LegalCategory, LegalElement, URLOffence } from '../api/types'
+import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, attachOffence, fetchOffencesByUrl, detachOffence, formatParsedCitation } from '../api/legal'
 import {
   Dialog,
   DialogContent,
@@ -309,6 +309,105 @@ function AddUrlDialog({
   )
 }
 
+function EditOffencesDialog({
+  url,
+  open,
+  onClose,
+}: {
+  url: string | null
+  open: boolean
+  onClose: () => void
+}) {
+  const [offences, setOffences] = useState<URLOffence[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [staged, setStaged] = useState<StagedOffence[]>([])
+
+  const load = useCallback(async () => {
+    if (!url) return
+    setLoading(true)
+    setError(null)
+    try {
+      setOffences(await fetchOffencesByUrl(url))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load offences')
+    } finally {
+      setLoading(false)
+    }
+  }, [url])
+
+  useEffect(() => {
+    if (open) { load(); setStaged([]) }
+  }, [open, load])
+
+  const handleRemove = async (id: number) => {
+    setError(null)
+    try {
+      await detachOffence(id)
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove offence')
+    }
+  }
+
+  // MultiOffencePicker's onChange always receives the full next array; the
+  // newly-staged item is always the last one, since this dialog has no
+  // batch-submit step — every addition attaches immediately, unlike
+  // AddUrlDialog which accumulates offences for one later submit.
+  const handleAddStaged = async (next: StagedOffence[]) => {
+    if (!url || next.length === 0) { setStaged(next); return }
+    const added = next[next.length - 1]
+    setError(null)
+    try {
+      await attachOffence(url, added.categoryId, added.elementId)
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add offence')
+    } finally {
+      setStaged([])
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) onClose() }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: 440 }}>
+        <DialogHeader>
+          <DialogTitle>Offences</DialogTitle>
+          <DialogDescription>{url}</DialogDescription>
+        </DialogHeader>
+        {loading ? (
+          <p className="text-sm text-stone-muted">Loading…</p>
+        ) : offences.length > 0 ? (
+          <ul className="offence-chip-list">
+            {offences.map(o => (
+              <li key={o.id} className="offence-chip">
+                <span>{formatParsedCitation(o.category.citation.parsed)} — {o.category.name}{o.element ? ` (${o.element.name})` : ''}</span>
+                <button
+                  type="button"
+                  className="screenshot-icon-btn"
+                  onClick={() => handleRemove(o.id)}
+                  aria-label={`Remove offence ${o.category.name}`}
+                >
+                  <XIcon size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-stone-muted mb-2">No offences attached yet.</p>
+        )}
+        <MultiOffencePicker value={staged} onChange={handleAddStaged} disabled={loading} />
+        {error && <p className="form-error">{error}</p>}
+        <DialogFooter>
+          <button type="button" className="btn-primary" onClick={onClose}>
+            Done
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 /* ─── Skeleton ───────────────────────────────────────────────────────────── */
 
 function SkeletonRows() {
@@ -360,6 +459,7 @@ function URLsPage() {
   const [error, setError] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<URLEntry | null>(null)
+  const [editOffencesTarget, setEditOffencesTarget] = useState<string | null>(null)
   const [page, setPage] = useState(1)
 
   const load = useCallback(async () => {
@@ -492,6 +592,15 @@ function URLsPage() {
                       <button
                         type="button"
                         className="screenshot-icon-btn"
+                        onClick={() => setEditOffencesTarget(u.url)}
+                        aria-label={`Edit offences for ${u.url}`}
+                        title="Offences"
+                      >
+                        <ScaleIcon size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        className="screenshot-icon-btn"
                         onClick={() => setDeleteTarget(u)}
                         aria-label={`Delete ${u.url}`}
                         title="Delete"
@@ -542,6 +651,12 @@ function URLsPage() {
         description="This will remove it from your department's watchlist. The domain and its scan history are kept if any other department still watches it."
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      <EditOffencesDialog
+        url={editOffencesTarget}
+        open={editOffencesTarget !== null}
+        onClose={() => setEditOffencesTarget(null)}
       />
     </div>
   )
