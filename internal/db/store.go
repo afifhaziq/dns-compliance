@@ -19,7 +19,7 @@ type URLStore interface {
 	AddURLToWatchlist(ctx context.Context, departmentID uint, rawURL string) (URL, error)
 	RemoveURLFromWatchlist(ctx context.Context, departmentID, urlID uint) (bool, error)                // false if no row was deleted (not on that watchlist)
 	SetURLEnabled(ctx context.Context, departmentID, urlID uint, enabled bool) (bool, error)           // false if the URL is not on that watchlist
-	SetURLOrderedAt(ctx context.Context, departmentID, urlID uint, orderedAt *time.Time) (bool, error) // nil clears the order date; false if the URL is not on that watchlist
+	UpdateDepartmentURLFields(ctx context.Context, departmentID, urlID uint, fields DepartmentURLFields) (bool, error) // only non-nil fields in `fields` are applied; false if the URL is not on that watchlist
 	ListWatchedURLs(ctx context.Context) ([]URL, error)                                                // urls with >=1 enabled DepartmentURL row — used by the scan sweep
 	ListUnassignedURLs(ctx context.Context) ([]URL, error)                                             // admin view: urls with 0 DepartmentURL rows
 	URLOwnedByDepartment(ctx context.Context, departmentID uint, urlValue string) (bool, error)

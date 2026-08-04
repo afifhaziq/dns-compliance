@@ -3,6 +3,7 @@ package db_test
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -223,5 +224,109 @@ func TestBackfillURLValues_HandlesMultipleBatches(t *testing.T) {
 	}
 	if stale != 0 {
 		t.Fatalf("expected all %d rows backfilled across multiple batches, %d still stale", n, stale)
+	}
+}
+
+// legacyDepartmentURL mimics the pre-rename DepartmentURL shape (ordered_at,
+// not due_date) to simulate an already-deployed database's schema before
+// this migration runs.
+type legacyDepartmentURL struct {
+	DepartmentID uint `gorm:"primaryKey;autoIncrement:false"`
+	URLID        uint `gorm:"primaryKey;autoIncrement:false"`
+	Enabled      bool `gorm:"not null;default:true"`
+	OrderedAt    *time.Time
+	CreatedAt    time.Time
+}
+
+func (legacyDepartmentURL) TableName() string { return "department_urls" }
+
+// TestConnect_RenamesOrderedAtToDueDate simulates an existing deployment: a
+// department_urls table with the old ordered_at column, seeded with data.
+// db.Connect must rename the column (not drop/recreate it) so the data
+// survives under due_date.
+func TestConnect_RenamesOrderedAtToDueDate(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "migrate.db")
+
+	// Build the old schema directly (bypassing db.Connect, which only knows
+	// about the current — already renamed — struct) and seed a row.
+	oldDB, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open old schema db: %v", err)
+	}
+	if err := oldDB.AutoMigrate(&legacyDepartmentURL{}); err != nil {
+		t.Fatalf("migrate legacy schema: %v", err)
+	}
+	seeded := time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC)
+	if err := oldDB.Create(&legacyDepartmentURL{DepartmentID: 1, URLID: 1, Enabled: true, OrderedAt: &seeded}).Error; err != nil {
+		t.Fatalf("seed legacy row: %v", err)
+	}
+	oldSQLDB, err := oldDB.DB()
+	if err != nil {
+		t.Fatalf("underlying sql.DB: %v", err)
+	}
+	if err := oldSQLDB.Close(); err != nil {
+		t.Fatalf("close old connection: %v", err)
+	}
+
+	// Reopen through the real db.Connect, which must detect ordered_at,
+	// rename it to due_date, then AutoMigrate the rest of the current
+	// schema (including the new case-metadata columns) on top.
+	newDB, err := db.Connect(sqlite.Open(dbPath))
+	if err != nil {
+		t.Fatalf("db.Connect: %v", err)
+	}
+
+	var got struct{ DueDate *time.Time }
+	if err := newDB.Table("department_urls").
+		Select("due_date").
+		Where("department_id = ? AND url_id = ?", 1, 1).
+		Scan(&got).Error; err != nil {
+		t.Fatalf("query due_date: %v", err)
+	}
+	if got.DueDate == nil || !got.DueDate.Equal(seeded) {
+		t.Fatalf("expected due_date to carry over the seeded ordered_at value, got %+v", got.DueDate)
+	}
+	if newDB.Migrator().HasColumn(&db.DepartmentURL{}, "ordered_at") {
+		t.Fatal("expected ordered_at column to be gone after rename")
+	}
+}
+
+// TestConnect_RenameIsIdempotent runs db.Connect twice against the same
+// already-migrated database (the normal case for every restart after the
+// first) and confirms it doesn't error or touch existing due_date data.
+func TestConnect_RenameIsIdempotent(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "migrate_idempotent.db")
+
+	firstDB, err := db.Connect(sqlite.Open(dbPath))
+	if err != nil {
+		t.Fatalf("first db.Connect: %v", err)
+	}
+	due := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	if err := firstDB.Table("department_urls").Create(map[string]interface{}{
+		"department_id": 1, "url_id": 1, "enabled": true, "due_date": due,
+	}).Error; err != nil {
+		t.Fatalf("seed row: %v", err)
+	}
+	firstSQLDB, err := firstDB.DB()
+	if err != nil {
+		t.Fatalf("underlying sql.DB: %v", err)
+	}
+	if err := firstSQLDB.Close(); err != nil {
+		t.Fatalf("close first connection: %v", err)
+	}
+
+	secondDB, err := db.Connect(sqlite.Open(dbPath))
+	if err != nil {
+		t.Fatalf("second db.Connect: %v", err)
+	}
+	var got struct{ DueDate *time.Time }
+	if err := secondDB.Table("department_urls").
+		Select("due_date").
+		Where("department_id = ? AND url_id = ?", 1, 1).
+		Scan(&got).Error; err != nil {
+		t.Fatalf("query due_date: %v", err)
+	}
+	if got.DueDate == nil || !got.DueDate.Equal(due) {
+		t.Fatalf("expected due_date to survive a second Connect call, got %+v", got.DueDate)
 	}
 }

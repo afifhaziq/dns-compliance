@@ -61,22 +61,58 @@ type Session struct {
 // a domain anymore. Its OnDelete:CASCADE only fires on the admin-only
 // "purge a domain" path that deletes the URL row itself.
 type DepartmentURL struct {
-	DepartmentID uint       `gorm:"primaryKey;autoIncrement:false" json:"department_id"`
-	URLID        uint       `gorm:"primaryKey;autoIncrement:false" json:"url_id"`
-	URL          URL        `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
-	Enabled      bool       `gorm:"not null;default:true" json:"enabled"`
-	OrderedAt    *time.Time `json:"ordered_at,omitempty"` // optional: when the takedown order was issued for this domain, set at add-time or later
-	CreatedAt    time.Time  `json:"created_at"`
+	DepartmentID uint   `gorm:"primaryKey;autoIncrement:false" json:"department_id"`
+	URLID        uint   `gorm:"primaryKey;autoIncrement:false" json:"url_id"`
+	URL          URL    `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
+	Enabled      bool   `gorm:"not null;default:true" json:"enabled"`
+	// DueDate is the takedown-order SLA deadline (carries time-of-day —
+	// some orders require blocking within 6h/24h). Renamed from OrderedAt;
+	// see internal/db/db.go's Connect for the column-rename migration.
+	DueDate *time.Time `json:"due_date,omitempty"`
+	// Agency/ReferenceNumber/RequestingDept/Status/RequestedAt are
+	// Excel-sourced case metadata, per-department-per-URL — plain columns,
+	// no admin-curated lookup table. RequestingDept is deliberately free
+	// text (e.g. a ministry name), distinct from the app's own CMOD/CRD
+	// RBAC Department model.
+	Agency          string `json:"agency,omitempty"`
+	ReferenceNumber string `json:"reference_number,omitempty"`
+	RequestingDept  string `json:"requesting_dept,omitempty"`
+	// Status is requested | uplift | suspended, validated server-side
+	// (internal/server/handlers.go) — independent of the derived Compliant
+	// field; blocked/not-blocked already comes from scan results.
+	Status      string     `json:"status,omitempty"`
+	RequestedAt *time.Time `json:"requested_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+// DepartmentURLFields is a partial update for one department's watchlist
+// entry. Every field is optional (nil = leave untouched) — one flexible
+// update path instead of a SetURLX method per column. DueDate/RequestedAt
+// are double pointers so "clear" (set to NULL) is distinguishable from "not
+// present in this update": outer nil = don't touch, outer non-nil pointing
+// at a nil inner = clear, outer non-nil pointing at &t = set.
+type DepartmentURLFields struct {
+	DueDate         **time.Time
+	Agency          *string
+	ReferenceNumber *string
+	RequestingDept  *string
+	Status          *string
+	RequestedAt     **time.Time
 }
 
 // URLEntry is the department-scoped view of a URL, carrying the watchlist
-// enabled flag and order date that the shared URL model does not have.
+// case-management fields the shared URL model does not have.
 type URLEntry struct {
-	ID        uint       `json:"id"`
-	URL       string     `json:"url"`
-	Enabled   bool       `json:"enabled"`
-	OrderedAt *time.Time `json:"ordered_at,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
+	ID              uint       `json:"id"`
+	URL             string     `json:"url"`
+	Enabled         bool       `json:"enabled"`
+	DueDate         *time.Time `json:"due_date,omitempty"`
+	Agency          string     `json:"agency,omitempty"`
+	ReferenceNumber string     `json:"reference_number,omitempty"`
+	RequestingDept  string     `json:"requesting_dept,omitempty"`
+	Status          string     `json:"status,omitempty"`
+	RequestedAt     *time.Time `json:"requested_at,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
 }
 
 // ScanSettings is a single-row (ID 1) table holding the admin-configurable
@@ -272,17 +308,17 @@ type DomainTiming struct {
 
 // ISPTimingResult is the response shape for GET /api/isps/{isp}/timing.
 // Median/avg are computed only over domains with Blocked=true; domains with
-// no recorded order date are excluded entirely (WithOrderDateCount tracks
+// no recorded due date are excluded entirely (WithDueDateCount tracks
 // coverage against TotalDomains so the figure isn't silently misleading).
 type ISPTimingResult struct {
-	ISP                string         `json:"isp"`
-	MedianDaysToBlock  float64        `json:"median_days_to_block"`
-	AvgDaysToBlock     float64        `json:"avg_days_to_block"`
-	BlockedCount       int            `json:"blocked_count"`
-	StillOpenCount     int            `json:"still_open_count"`
-	WithOrderDateCount int            `json:"with_order_date_count"`
-	TotalDomains       int            `json:"total_domains"`
-	Slowest            []DomainTiming `json:"slowest"` // top 5 by days-to-block, blocked and still-open combined
+	ISP               string         `json:"isp"`
+	MedianDaysToBlock float64        `json:"median_days_to_block"`
+	AvgDaysToBlock    float64        `json:"avg_days_to_block"`
+	BlockedCount      int            `json:"blocked_count"`
+	StillOpenCount    int            `json:"still_open_count"`
+	WithDueDateCount  int            `json:"with_due_date_count"`
+	TotalDomains      int            `json:"total_domains"`
+	Slowest           []DomainTiming `json:"slowest"` // top 5 by days-to-block, blocked and still-open combined
 }
 
 // ResurfacedServerEntry is one DNS server on which a domain flipped from

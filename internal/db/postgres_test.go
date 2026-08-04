@@ -807,44 +807,87 @@ func TestListWatchedURLsDeduplicatesAcrossDepartments(t *testing.T) {
 	}
 }
 
-func TestSetURLOrderedAt(t *testing.T) {
+func TestUpdateDepartmentURLFields_DueDate(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
 	dept, _ := s.CreateDepartment(ctx, "TestDept4")
 	u, _ := s.AddURLToWatchlist(ctx, dept.ID, "example.com")
 
-	orderedAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	found, err := s.SetURLOrderedAt(ctx, dept.ID, u.ID, &orderedAt)
+	dueDate := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	duePtr := &dueDate
+	found, err := s.UpdateDepartmentURLFields(ctx, dept.ID, u.ID, db.DepartmentURLFields{DueDate: &duePtr})
 	if err != nil || !found {
-		t.Fatalf("SetURLOrderedAt(set): found=%v err=%v", found, err)
+		t.Fatalf("UpdateDepartmentURLFields(set due_date): found=%v err=%v", found, err)
 	}
 
 	entries, _ := s.ListDepartmentURLs(ctx, dept.ID)
-	if len(entries) != 1 || entries[0].OrderedAt == nil || !entries[0].OrderedAt.Equal(orderedAt) {
-		t.Fatalf("expected ordered_at to be set, got %+v", entries)
+	if len(entries) != 1 || entries[0].DueDate == nil || !entries[0].DueDate.Equal(dueDate) {
+		t.Fatalf("expected due_date to be set, got %+v", entries)
 	}
 
 	// Clear it
-	found, err = s.SetURLOrderedAt(ctx, dept.ID, u.ID, nil)
+	var nilTime *time.Time
+	found, err = s.UpdateDepartmentURLFields(ctx, dept.ID, u.ID, db.DepartmentURLFields{DueDate: &nilTime})
 	if err != nil || !found {
-		t.Fatalf("SetURLOrderedAt(clear): found=%v err=%v", found, err)
+		t.Fatalf("UpdateDepartmentURLFields(clear due_date): found=%v err=%v", found, err)
 	}
 	entries, _ = s.ListDepartmentURLs(ctx, dept.ID)
-	if len(entries) != 1 || entries[0].OrderedAt != nil {
-		t.Fatalf("expected ordered_at to be cleared, got %+v", entries)
+	if len(entries) != 1 || entries[0].DueDate != nil {
+		t.Fatalf("expected due_date to be cleared, got %+v", entries)
 	}
 }
 
-func TestSetURLOrderedAtNotOnWatchlist(t *testing.T) {
+func TestUpdateDepartmentURLFields_CaseMetadata(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	dept, _ := s.CreateDepartment(ctx, "TestDept6")
+	u, _ := s.AddURLToWatchlist(ctx, dept.ID, "casefields.com")
+
+	agency, ref, reqDept, status := "MCMC", "REF-001", "Ministry of X", "requested"
+	found, err := s.UpdateDepartmentURLFields(ctx, dept.ID, u.ID, db.DepartmentURLFields{
+		Agency: &agency, ReferenceNumber: &ref, RequestingDept: &reqDept, Status: &status,
+	})
+	if err != nil || !found {
+		t.Fatalf("UpdateDepartmentURLFields(case metadata): found=%v err=%v", found, err)
+	}
+
+	entries, _ := s.ListDepartmentURLs(ctx, dept.ID)
+	if len(entries) != 1 {
+		t.Fatalf("want 1 entry, got %d", len(entries))
+	}
+	e := entries[0]
+	if e.Agency != agency || e.ReferenceNumber != ref || e.RequestingDept != reqDept || e.Status != status {
+		t.Fatalf("expected case metadata to be set, got %+v", e)
+	}
+
+	// Updating only Status must not clobber the other fields already set.
+	newStatus := "uplift"
+	found, err = s.UpdateDepartmentURLFields(ctx, dept.ID, u.ID, db.DepartmentURLFields{Status: &newStatus})
+	if err != nil || !found {
+		t.Fatalf("UpdateDepartmentURLFields(status only): found=%v err=%v", found, err)
+	}
+	entries, _ = s.ListDepartmentURLs(ctx, dept.ID)
+	e = entries[0]
+	if e.Status != newStatus {
+		t.Fatalf("expected status to be updated, got %q", e.Status)
+	}
+	if e.Agency != agency || e.ReferenceNumber != ref || e.RequestingDept != reqDept {
+		t.Fatalf("expected other case fields to remain untouched, got %+v", e)
+	}
+}
+
+func TestUpdateDepartmentURLFields_NotOnWatchlist(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
 	dept, _ := s.CreateDepartment(ctx, "TestDept5")
 	u, _ := s.CreateURL(ctx, "notlinked2.com")
 
-	orderedAt := time.Now()
-	found, err := s.SetURLOrderedAt(ctx, dept.ID, u.ID, &orderedAt)
+	dueDate := time.Now()
+	duePtr := &dueDate
+	found, err := s.UpdateDepartmentURLFields(ctx, dept.ID, u.ID, db.DepartmentURLFields{DueDate: &duePtr})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -867,11 +910,12 @@ func TestISPComplianceTiming_BlockedAndStillOpen(t *testing.T) {
 
 	blockedOrder := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	openOrder := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	if _, err := s.SetURLOrderedAt(ctx, dept.ID, blocked.ID, &blockedOrder); err != nil {
-		t.Fatalf("SetURLOrderedAt blocked: %v", err)
+	blockedOrderPtr, openOrderPtr := &blockedOrder, &openOrder
+	if _, err := s.UpdateDepartmentURLFields(ctx, dept.ID, blocked.ID, db.DepartmentURLFields{DueDate: &blockedOrderPtr}); err != nil {
+		t.Fatalf("UpdateDepartmentURLFields blocked: %v", err)
 	}
-	if _, err := s.SetURLOrderedAt(ctx, dept.ID, stillOpen.ID, &openOrder); err != nil {
-		t.Fatalf("SetURLOrderedAt open: %v", err)
+	if _, err := s.UpdateDepartmentURLFields(ctx, dept.ID, stillOpen.ID, db.DepartmentURLFields{DueDate: &openOrderPtr}); err != nil {
+		t.Fatalf("UpdateDepartmentURLFields open: %v", err)
 	}
 	_ = noOrderDate
 
@@ -900,8 +944,8 @@ func TestISPComplianceTiming_BlockedAndStillOpen(t *testing.T) {
 	if timing.StillOpenCount != 1 {
 		t.Fatalf("expected 1 still-open domain, got %d", timing.StillOpenCount)
 	}
-	if timing.WithOrderDateCount != 2 {
-		t.Fatalf("expected 2 domains with an order date, got %d", timing.WithOrderDateCount)
+	if timing.WithDueDateCount != 2 {
+		t.Fatalf("expected 2 domains with a due date, got %d", timing.WithDueDateCount)
 	}
 	if timing.TotalDomains != 3 {
 		t.Fatalf("expected 3 total monitored domains, got %d", timing.TotalDomains)
@@ -937,8 +981,9 @@ func TestISPComplianceTiming_NegativeClampedToZero(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("InsertResult: %v", err)
 	}
-	if _, err := s.SetURLOrderedAt(ctx, dept.ID, u.ID, &orderedAt); err != nil {
-		t.Fatalf("SetURLOrderedAt: %v", err)
+	orderedAtPtr := &orderedAt
+	if _, err := s.UpdateDepartmentURLFields(ctx, dept.ID, u.ID, db.DepartmentURLFields{DueDate: &orderedAtPtr}); err != nil {
+		t.Fatalf("UpdateDepartmentURLFields: %v", err)
 	}
 
 	timing, err := s.ISPComplianceTiming(ctx, "TelCo2")

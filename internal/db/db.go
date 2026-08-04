@@ -24,6 +24,17 @@ func Connect(dialector gorm.Dialector) (*gorm.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening db: %w", err)
 	}
+	// DepartmentURL.OrderedAt was renamed to DueDate. AutoMigrate only adds
+	// columns matching current struct tags — it never renames or drops — so
+	// without this, an already-deployed instance would silently orphan the
+	// column and its data (a new empty due_date column, stale ordered_at).
+	// Idempotent: a no-op once due_date exists, including on a fresh DB
+	// where ordered_at never existed either.
+	if database.Migrator().HasColumn(&DepartmentURL{}, "ordered_at") && !database.Migrator().HasColumn(&DepartmentURL{}, "due_date") {
+		if err := database.Migrator().RenameColumn(&DepartmentURL{}, "ordered_at", "due_date"); err != nil {
+			return nil, fmt.Errorf("renaming ordered_at to due_date: %w", err)
+		}
+	}
 	if err := database.AutoMigrate(
 		&Department{}, &User{}, &Session{}, &DNSServer{}, &URL{}, &DepartmentURL{}, &ScanRun{}, &ScanResult{}, &CompliantIP{}, &DomainWhois{}, &IPInfo{}, &Favicon{}, &ScanSettings{}, &SubdomainScan{}, &ISPLogo{},
 		&Instrument{}, &Citation{}, &Category{}, &Element{}, &URLOffence{},
