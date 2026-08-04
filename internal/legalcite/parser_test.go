@@ -161,6 +161,30 @@ func TestParse_RealWorldMalaySamples(t *testing.T) {
 			want: legalcite.Parsed{ProvisionNum: iptr(58)},
 			conf: legalcite.ConfidenceOK,
 		},
+		{
+			name: "ampersand-joined provisions — bug: parser didn't recognize '&' as a list joiner",
+			raw:  "Seksyen 292 & Seksyen 372 Kanun Keseksaan",
+			want: legalcite.Parsed{ProvisionNum: iptr(292)},
+			conf: legalcite.ConfidenceNeedsReview,
+		},
+		{
+			name: "ampersand-joined provisions, peraturan label, no instrument suffix words",
+			raw:  "Peraturan 62 & 63 Enakmen Kesalahan Syariah Negeri Melaka 1991",
+			want: legalcite.Parsed{ProvisionNum: iptr(62)},
+			conf: legalcite.ConfidenceNeedsReview,
+		},
+		{
+			name: "list marker after a subsection paren — bug: multiProvisionRe was anchored to the start of tail",
+			raw:  "Seksyen 4(1), 7(a), 9 dan 12 Enakmen Kesalahan Jenayah Syariah (Johor) 1997",
+			want: legalcite.Parsed{ProvisionNum: iptr(4), SubProvision: iptr(1)},
+			conf: legalcite.ConfidenceNeedsReview,
+		},
+		{
+			name: "missing-space typo before dan — bug: greedy suffix letter consumed the 'd' of 'dan'",
+			raw:  "Seksyen 14dan 15 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",
+			want: legalcite.Parsed{ProvisionNum: iptr(14)},
+			conf: legalcite.ConfidenceNeedsReview,
+		},
 	}
 
 	for _, tc := range cases {

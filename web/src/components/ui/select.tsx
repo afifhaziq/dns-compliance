@@ -508,6 +508,16 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
               setActiveIndex(null);
             }}
             onKeyDown={handleKeyDown}
+            // A Dialog-hosted Select portals its content to document.body, outside
+            // DialogContent's own DOM subtree. Radix's Dialog uses react-remove-scroll
+            // to lock body scroll while open, via a document-level bubble-phase wheel
+            // listener that calls preventDefault() unless the event's target is inside
+            // the Dialog's own content (or an explicit shard) — this popover is neither,
+            // so every wheel tick here got silently swallowed before it could scroll.
+            // Stopping propagation here (before the event reaches that document
+            // listener) lets the browser's native default action — scrolling this
+            // already-overflow-auto container — proceed untouched.
+            onWheel={(e) => e.stopPropagation()}
             className={cn(
               "relative flex flex-col gap-0.5 max-h-[300px] overflow-y-auto rounded-xl p-1 select-none outline-none",
               "bg-stone-panel border border-stone-border shadow-lg",

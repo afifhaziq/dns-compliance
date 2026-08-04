@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { GripIcon } from '@/components/ui/grip'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlOrderedAt } from '../api/urls'
-import type { URLEntry, Instrument, Citation, LegalCategory, LegalElement } from '../api/types'
-import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, attachOffence, formatParsedCitation } from '../api/legal'
+import type { URLEntry, Instrument, Citation, LegalCategory, LegalElement, URLOffence } from '../api/types'
+import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, attachOffence, fetchOffencesByUrl, detachOffence, formatParsedCitation } from '../api/legal'
 import {
   Dialog,
   DialogContent,
@@ -66,29 +67,48 @@ export const Route = createFileRoute('/urls')({ component: URLsPage })
 
 /* ─── Add Domain Dialog ──────────────────────────────────────────────────── */
 
-// Cascading Instrument -> Citation -> Category -> Element picker. Element is
-// optional (not every category has one); Instrument/Citation/Category are
-// all required to attach an offence, but the whole block is optional — a
-// domain can be added with no offence tagged at all.
-function OffencePicker({
-  instrumentId, citationId, categoryId, elementId,
-  onInstrumentChange, onCitationChange, onCategoryChange, onElementChange,
-  disabled,
-}: {
-  instrumentId: number | ''
-  citationId: number | ''
-  categoryId: number | ''
-  elementId: number | ''
-  onInstrumentChange: (id: number | '') => void
-  onCitationChange: (id: number | '') => void
-  onCategoryChange: (id: number | '') => void
-  onElementChange: (id: number | '') => void
+export type StagedOffence = {
+  instrumentId: number
+  citationId: number
+  categoryId: number
+  elementId?: number
+  label: string
+}
+
+// Imperative escape hatch for a picker that has Instrument/Citation/Category
+// filled in but hasn't had "+ Add offence" clicked yet — without this, that
+// selection lives only in the picker's own local state, invisible to the
+// parent, so closing/submitting silently drops it (the exact bug reported:
+// fill in the picker, close the dialog, reopen — nothing saved). Callers
+// flush() right before they close/submit and fold the result into what they
+// were about to save, rather than relying on the user to remember the extra
+// click.
+export type MultiOffencePickerHandle = {
+  flush: () => StagedOffence | null
+}
+
+// Cascading Instrument -> Citation -> Category -> Element picker that stages
+// one offence at a time and appends it to a removable-chip list on "Add
+// offence" — a domain can violate multiple sections/offences at once (real
+// MCMC data cites domains under several sections joined by "dan"/"&"), so
+// this replaces the old single-selection OffencePicker. Reused by both
+// AddUrlDialog (staged offences applied to every domain on submit) and
+// EditOffencesDialog (each addition attaches immediately to one existing
+// domain) — this component has no knowledge of which caller it's in.
+const MultiOffencePicker = forwardRef<MultiOffencePickerHandle, {
+  value: StagedOffence[]
+  onChange: (offences: StagedOffence[]) => void
   disabled: boolean
-}) {
+}>(function MultiOffencePicker({ value, onChange, disabled }, ref) {
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [citations, setCitations] = useState<Citation[]>([])
   const [categories, setCategories] = useState<LegalCategory[]>([])
   const [elements, setElements] = useState<LegalElement[]>([])
+
+  const [instrumentId, setInstrumentId] = useState<number | ''>('')
+  const [citationId, setCitationId] = useState<number | ''>('')
+  const [categoryId, setCategoryId] = useState<number | ''>('')
+  const [elementId, setElementId] = useState<number | ''>('')
 
   useEffect(() => { fetchInstruments().then(setInstruments) }, [])
   useEffect(() => {
@@ -104,15 +124,60 @@ function OffencePicker({
     fetchElements(categoryId).then(setElements)
   }, [categoryId])
 
+  const resetStaging = () => {
+    setInstrumentId(''); setCitationId(''); setCategoryId(''); setElementId('')
+  }
+
+  const computePending = (): StagedOffence | null => {
+    if (instrumentId === '' || citationId === '' || categoryId === '') return null
+    const citation = citations.find(c => c.id === citationId)
+    const category = categories.find(c => c.id === categoryId)
+    const element = elementId === '' ? undefined : elements.find(e => e.id === elementId)
+    if (!citation || !category) return null
+    const label = `${formatParsedCitation(citation.parsed)} — ${category.name}${element ? ` (${element.name})` : ''}`
+    return { instrumentId, citationId, categoryId, elementId: elementId === '' ? undefined : elementId, label }
+  }
+
+  const handleAdd = () => {
+    const pending = computePending()
+    if (!pending) return
+    onChange([...value, pending])
+    resetStaging()
+  }
+
+  const handleRemove = (index: number) => {
+    onChange(value.filter((_, i) => i !== index))
+  }
+
+  useImperativeHandle(ref, () => ({ flush: computePending }))
+
   return (
     <div className="form-field">
       <label className="form-label" id="offence-picker-label">
-        Offence <span style={{ color: 'var(--stone-muted)', fontWeight: 400 }}>(optional — attaches to every domain added above)</span>
+        Offences <span style={{ color: 'var(--stone-muted)', fontWeight: 400 }}>(optional — attaches to every domain added above)</span>
       </label>
+      {value.length > 0 && (
+        <ul className="offence-chip-list">
+          {value.map((o, i) => (
+            <li key={i} className="offence-chip">
+              <span>{o.label}</span>
+              <button
+                type="button"
+                className="screenshot-icon-btn"
+                onClick={() => handleRemove(i)}
+                disabled={disabled}
+                aria-label={`Remove offence ${o.label}`}
+              >
+                <XIcon size={14} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="flex flex-col" style={{ gap: 8 }}>
         <Select
           value={String(instrumentId)}
-          onValueChange={v => { onInstrumentChange(v === '' ? '' : Number(v)); onCitationChange(''); onCategoryChange(''); onElementChange('') }}
+          onValueChange={v => { setInstrumentId(v === '' ? '' : Number(v)); setCitationId(''); setCategoryId(''); setElementId('') }}
           disabled={disabled}
         >
           <SelectTrigger aria-labelledby="offence-picker-label" placeholder="Instrument…" className="w-full" />
@@ -126,14 +191,22 @@ function OffencePicker({
         {instrumentId !== '' && (
           <Select
             value={String(citationId)}
-            onValueChange={v => { onCitationChange(v === '' ? '' : Number(v)); onCategoryChange(''); onElementChange('') }}
+            onValueChange={v => { setCitationId(v === '' ? '' : Number(v)); setCategoryId(''); setElementId('') }}
             disabled={disabled}
           >
             <SelectTrigger aria-label="Citation" placeholder="Citation…" className="w-full" />
             <SelectContent>
               <SelectItem index={0} value="">No citation</SelectItem>
               {citations.map((c, i) => (
-                <SelectItem key={c.id} index={i + 1} value={String(c.id)}>{formatParsedCitation(c.parsed)} ({c.raw_text})</SelectItem>
+                <SelectItem key={c.id} index={i + 1} value={String(c.id)}>
+                  {/* A clean parse reconstructs to the same string as raw_text —
+                      showing both would just repeat it. Only surface the parsed
+                      form for NEEDS_REVIEW, where it shows how far parsing got.
+                      Must stay a single string child, not a JSX fragment — Select's
+                      label registration (select.tsx) only stores a label when
+                      typeof children === 'string'. */}
+                  {c.parse_confidence === 'NEEDS_REVIEW' ? `${c.raw_text} (parsed: ${formatParsedCitation(c.parsed)})` : c.raw_text}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -141,7 +214,7 @@ function OffencePicker({
         {citationId !== '' && (
           <Select
             value={String(categoryId)}
-            onValueChange={v => { onCategoryChange(v === '' ? '' : Number(v)); onElementChange('') }}
+            onValueChange={v => { setCategoryId(v === '' ? '' : Number(v)); setElementId('') }}
             disabled={disabled}
           >
             <SelectTrigger aria-label="Category" placeholder="Category…" className="w-full" />
@@ -156,7 +229,7 @@ function OffencePicker({
         {categoryId !== '' && elements.length > 0 && (
           <Select
             value={String(elementId)}
-            onValueChange={v => onElementChange(v === '' ? '' : Number(v))}
+            onValueChange={v => setElementId(v === '' ? '' : Number(v))}
             disabled={disabled}
           >
             <SelectTrigger aria-label="Element" placeholder="Element (optional)…" className="w-full" />
@@ -168,10 +241,15 @@ function OffencePicker({
             </SelectContent>
           </Select>
         )}
+        {categoryId !== '' && (
+          <button type="button" className="btn-ghost" onClick={handleAdd} disabled={disabled}>
+            + Add offence
+          </button>
+        )}
       </div>
     </div>
   )
-}
+})
 
 function AddUrlDialog({
   open,
@@ -183,28 +261,30 @@ function AddUrlDialog({
   onAdded: () => void
 }) {
   const [value, setValue] = useState('')
-  const [instrumentId, setInstrumentId] = useState<number | ''>('')
-  const [citationId, setCitationId] = useState<number | ''>('')
-  const [categoryId, setCategoryId] = useState<number | ''>('')
-  const [elementId, setElementId] = useState<number | ''>('')
+  const [offences, setOffences] = useState<StagedOffence[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const pickerRef = useRef<MultiOffencePickerHandle>(null)
 
   const reset = () => {
-    setValue(''); setInstrumentId(''); setCitationId(''); setCategoryId(''); setElementId(''); setError(null)
+    setValue(''); setOffences([]); setError(null)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const domains = value.split('\n').map(s => s.trim()).filter(Boolean)
     if (domains.length === 0) { setError('At least one domain is required'); return }
+    // Catch a filled-in-but-not-yet-"+ Add offence"-clicked selection sitting
+    // in the picker — otherwise it's silently dropped rather than attached.
+    const pending = pickerRef.current?.flush()
+    const allOffences = pending ? [...offences, pending] : offences
     setLoading(true)
     setError(null)
     try {
       await Promise.all(domains.map(d => createUrl(d)))
-      if (categoryId !== '') {
-        await Promise.all(domains.map(d => attachOffence(d, categoryId, elementId === '' ? undefined : elementId)))
-      }
+      await Promise.all(
+        domains.flatMap(d => allOffences.map(o => attachOffence(d, o.categoryId, o.elementId)))
+      )
       reset()
       onAdded()
       onClose()
@@ -241,15 +321,10 @@ function AddUrlDialog({
               style={{ resize: 'vertical', fontFamily: 'inherit' }}
             />
           </div>
-          <OffencePicker
-            instrumentId={instrumentId}
-            citationId={citationId}
-            categoryId={categoryId}
-            elementId={elementId}
-            onInstrumentChange={setInstrumentId}
-            onCitationChange={setCitationId}
-            onCategoryChange={setCategoryId}
-            onElementChange={setElementId}
+          <MultiOffencePicker
+            ref={pickerRef}
+            value={offences}
+            onChange={setOffences}
             disabled={loading}
           />
           {error && <p className="form-error">{error}</p>}
@@ -262,6 +337,124 @@ function AddUrlDialog({
             </button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function EditOffencesDialog({
+  url,
+  open,
+  onClose,
+}: {
+  url: string | null
+  open: boolean
+  onClose: () => void
+}) {
+  const [offences, setOffences] = useState<URLOffence[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [staged, setStaged] = useState<StagedOffence[]>([])
+  const pickerRef = useRef<MultiOffencePickerHandle>(null)
+
+  const load = useCallback(async () => {
+    if (!url) return
+    setLoading(true)
+    setError(null)
+    try {
+      setOffences(await fetchOffencesByUrl(url))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load offences')
+    } finally {
+      setLoading(false)
+    }
+  }, [url])
+
+  useEffect(() => {
+    if (open) { load(); setStaged([]) }
+  }, [open, load])
+
+  const handleRemove = async (id: number) => {
+    setError(null)
+    try {
+      await detachOffence(id)
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove offence')
+    }
+  }
+
+  // MultiOffencePicker's onChange always receives the full next array; the
+  // newly-staged item is always the last one, since this dialog has no
+  // batch-submit step — every addition attaches immediately, unlike
+  // AddUrlDialog which accumulates offences for one later submit.
+  const handleAddStaged = async (next: StagedOffence[]) => {
+    if (!url || next.length === 0) { setStaged(next); return }
+    const added = next[next.length - 1]
+    setError(null)
+    try {
+      await attachOffence(url, added.categoryId, added.elementId)
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add offence')
+    } finally {
+      setStaged([])
+    }
+  }
+
+  // "Done" used to just close — a filled-in-but-not-yet-"+ Add offence"-
+  // clicked selection sitting in the picker was silently discarded rather
+  // than attached. Flush it first, and keep the dialog open on failure so
+  // the error is visible instead of losing the offence a second way.
+  const handleDone = async () => {
+    const pending = pickerRef.current?.flush()
+    if (pending && url) {
+      setError(null)
+      try {
+        await attachOffence(url, pending.categoryId, pending.elementId)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to add offence')
+        return
+      }
+    }
+    onClose()
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) handleDone() }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: 440 }}>
+        <DialogHeader>
+          <DialogTitle>Offences</DialogTitle>
+          <DialogDescription>{url}</DialogDescription>
+        </DialogHeader>
+        {loading ? (
+          <p className="text-sm text-stone-muted">Loading…</p>
+        ) : offences.length > 0 ? (
+          <ul className="offence-chip-list">
+            {offences.map(o => (
+              <li key={o.id} className="offence-chip">
+                <span>{formatParsedCitation(o.category.citation.parsed)} — {o.category.name}{o.element ? ` (${o.element.name})` : ''}</span>
+                <button
+                  type="button"
+                  className="screenshot-icon-btn"
+                  onClick={() => handleRemove(o.id)}
+                  aria-label={`Remove offence ${o.category.name}`}
+                >
+                  <XIcon size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-stone-muted mb-2">No offences attached yet.</p>
+        )}
+        <MultiOffencePicker ref={pickerRef} value={staged} onChange={handleAddStaged} disabled={loading} />
+        {error && <p className="form-error">{error}</p>}
+        <DialogFooter>
+          <button type="button" className="btn-primary" onClick={handleDone}>
+            Done
+          </button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
@@ -318,6 +511,7 @@ function URLsPage() {
   const [error, setError] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<URLEntry | null>(null)
+  const [editOffencesTarget, setEditOffencesTarget] = useState<string | null>(null)
   const [page, setPage] = useState(1)
 
   const load = useCallback(async () => {
@@ -447,15 +641,26 @@ function URLsPage() {
                       />
                     </TableCell>
                     <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
-                      <button
-                        type="button"
-                        className="screenshot-icon-btn"
-                        onClick={() => setDeleteTarget(u)}
-                        aria-label={`Delete ${u.url}`}
-                        title="Delete"
-                      >
-                        <XIcon size={16} />
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          className="screenshot-icon-btn"
+                          onClick={() => setEditOffencesTarget(u.url)}
+                          aria-label={`Edit offences for ${u.url}`}
+                          title="Offences"
+                        >
+                          <GripIcon size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          className="screenshot-icon-btn"
+                          onClick={() => setDeleteTarget(u)}
+                          aria-label={`Delete ${u.url}`}
+                          title="Delete"
+                        >
+                          <XIcon size={16} />
+                        </button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -500,6 +705,12 @@ function URLsPage() {
         description="This will remove it from your department's watchlist. The domain and its scan history are kept if any other department still watches it."
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      <EditOffencesDialog
+        url={editOffencesTarget}
+        open={editOffencesTarget !== null}
+        onClose={() => setEditOffencesTarget(null)}
       />
     </div>
   )
