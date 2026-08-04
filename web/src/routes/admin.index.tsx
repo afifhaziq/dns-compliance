@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/motion/tabs'
 import {
   fetchDepartments,
   createDepartment,
@@ -30,7 +31,15 @@ import { Slider } from '@/components/ui/slider'
 import { XIcon } from '@/components/ui/x'
 import { useAuth } from './__root'
 
-export const Route = createFileRoute('/admin/')({ component: AdminPage })
+const ADMIN_TABS = ['departments', 'users', 'ip', 'scan-settings'] as const
+type AdminTab = typeof ADMIN_TABS[number]
+
+export const Route = createFileRoute('/admin/')({
+  component: AdminPage,
+  validateSearch: (search: Record<string, unknown>): { tab: AdminTab } => ({
+    tab: ADMIN_TABS.includes(search.tab as AdminTab) ? (search.tab as AdminTab) : 'users',
+  }),
+})
 
 /* ─── Add Department Dialog ─────────────────────────────────────────────── */
 
@@ -448,12 +457,24 @@ function ScanSettingsSection({ value, onSaved }: { value: ScanSchedule; onSaved:
   )
 }
 
+/* ─── Restricted Tab Notice ──────────────────────────────────────────────── */
+
+function RestrictedTabNotice() {
+  return (
+    <div className="error-state">
+      <p className="error-message">Admin access required.</p>
+    </div>
+  )
+}
+
 /* ─── Admin Page ─────────────────────────────────────────────────────────── */
 
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 
 function AdminPage() {
   const { me } = useAuth()
+  const { tab } = Route.useSearch()
+  const navigate = useNavigate()
   const [departments, setDepartments] = useState<Department[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [compliantIPs, setCompliantIPs] = useState<CompliantIP[]>([])
@@ -535,125 +556,153 @@ function AdminPage() {
       )}
 
       <div className="results-wrap" style={{ marginBottom: 32 }}>
-        {me?.is_admin && (
-        <>
-        <div className='mb-4'>
-        <div className="page-header" style={{ marginBottom: 12 }}>
-          <h2 className="section-title">Departments</h2>
-          <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddDeptOpen(true)}>
-            + Add Department
-          </button>
-        </div>
-        <Table className="results-table" aria-label="Departments">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="col-domain th-left" scope="col">Name</TableHead>
-              <TableHead className="col-status" scope="col">Created</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {departments.map(d => (
-              <TableRow key={d.id} className="admin-row">
-                <TableCell className="col-domain">{d.name}</TableCell>
-                <TableCell className="col-status text-center">{DATE_FMT.format(new Date(d.created_at))}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        </div>
-        {scanSchedule !== null && (
-          <ScanSettingsSection value={scanSchedule} onSaved={setScanSchedule} />
-        )}
-        </>
-        )}
-        <div className='mb-4'>
-        <div className="page-header" style={{ marginBottom: 12 }}>
-          <h2 className="section-title">Users</h2>
-          <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddUserOpen(true)}>
-            + Create User
-          </button>
-        </div>
-        <Table className="results-table" aria-label="Users">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="col-domain th-left" scope="col">Username</TableHead>
-              <TableHead className="col-status" scope="col">Department</TableHead>
-              <TableHead className="col-status" scope="col">Created</TableHead>
-              <TableHead className="col-evidence" scope="col" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {users.map(u => (
-              <TableRow key={u.id} className="admin-row">
-                <TableCell className="col-domain">{u.username}</TableCell>
-                <TableCell className="col-status">
-                  {u.is_admin ? 'Admin' : u.is_dept_admin ? `${u.department?.name ?? '—'} (Admin)` : u.department?.name ?? '—'}
-                </TableCell>
-                <TableCell className="col-status">{DATE_FMT.format(new Date(u.created_at))}</TableCell>
-                <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
-                  <button
-                    type="button"
-                    className="screenshot-icon-btn"
-                    onClick={() => setDeleteTarget(u)}
-                    aria-label={`Delete ${u.username}`}
-                    title="Delete"
-                  >
-                    <XIcon size={16} />
+        <Tabs
+          value={tab}
+          onValueChange={next => navigate({ to: '/admin', search: { tab: next as AdminTab } })}
+          variant="underline"
+        >
+          <TabsList>
+            <TabsTrigger value="departments">Departments</TabsTrigger>
+            <TabsTrigger value="users">Users</TabsTrigger>
+            <TabsTrigger value="ip">IP</TabsTrigger>
+            <TabsTrigger value="scan-settings">Scan Settings</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="departments">
+            {me?.is_admin ? (
+              <div className='mb-4'>
+                <div className="page-header" style={{ marginBottom: 12 }}>
+                  <h2 className="section-title">Departments</h2>
+                  <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddDeptOpen(true)}>
+                    + Add Department
                   </button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        </div>
-        {me?.is_admin && (
-        <div className='mb-4'>
-        <div className="page-header" style={{ marginBottom: 12 }}>
-          <h2 className="section-title">Compliant IPs</h2>
-          <p className="page-subtitle" style={{ marginLeft: 8 }}>DNS resolutions to these IPs are classified as compliant</p>
-          <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddIPOpen(true)}>
-            + Add IP
-          </button>
-        </div>
-        <Table className="results-table" aria-label="Compliant IPs">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="col-domain th-left" scope="col">IP Address</TableHead>
-              <TableHead className="col-status" scope="col">Note</TableHead>
-              <TableHead className="col-status" scope="col">Added</TableHead>
-              <TableHead className="col-evidence" scope="col" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {compliantIPs.map(ip => (
-              <TableRow key={ip.id} className="admin-row">
-                <TableCell className="col-domain"><span className="ip-value">{ip.address}</span></TableCell>
-                <TableCell className="col-status">{ip.note || '—'}</TableCell>
-                <TableCell className="col-status">{DATE_FMT.format(new Date(ip.created_at))}</TableCell>
-                <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
-                  <button
-                    type="button"
-                    className="screenshot-icon-btn"
-                    onClick={() => setDeleteIPTarget(ip)}
-                    aria-label={`Delete ${ip.address}`}
-                    title="Delete"
-                  >
-                    <XIcon size={16} />
-                  </button>
-                </TableCell>
-              </TableRow>
-            ))}
-            {compliantIPs.length === 0 && !loading && (
-              <TableRow>
-                <TableCell colSpan={4} style={{ textAlign: 'center', color: 'var(--stone-muted)', padding: '16px 0' }}>
-                  No compliant IPs configured
-                </TableCell>
-              </TableRow>
+                </div>
+                <Table className="results-table" aria-label="Departments">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="col-domain th-left" scope="col">Name</TableHead>
+                      <TableHead className="col-status" scope="col">Created</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {departments.map(d => (
+                      <TableRow key={d.id} className="admin-row">
+                        <TableCell className="col-domain">{d.name}</TableCell>
+                        <TableCell className="col-status text-center">{DATE_FMT.format(new Date(d.created_at))}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <RestrictedTabNotice />
             )}
-          </TableBody>
-        </Table>
-        </div>
-        )}
+          </TabsContent>
+
+          <TabsContent value="users">
+            <div className='mb-4'>
+              <div className="page-header" style={{ marginBottom: 12 }}>
+                <h2 className="section-title">Users</h2>
+                <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddUserOpen(true)}>
+                  + Create User
+                </button>
+              </div>
+              <Table className="results-table" aria-label="Users">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="col-domain th-left" scope="col">Username</TableHead>
+                    <TableHead className="col-status" scope="col">Department</TableHead>
+                    <TableHead className="col-status" scope="col">Created</TableHead>
+                    <TableHead className="col-evidence" scope="col" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {users.map(u => (
+                    <TableRow key={u.id} className="admin-row">
+                      <TableCell className="col-domain">{u.username}</TableCell>
+                      <TableCell className="col-status">
+                        {u.is_admin ? 'Admin' : u.is_dept_admin ? `${u.department?.name ?? '—'} (Admin)` : u.department?.name ?? '—'}
+                      </TableCell>
+                      <TableCell className="col-status">{DATE_FMT.format(new Date(u.created_at))}</TableCell>
+                      <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
+                        <button
+                          type="button"
+                          className="screenshot-icon-btn"
+                          onClick={() => setDeleteTarget(u)}
+                          aria-label={`Delete ${u.username}`}
+                          title="Delete"
+                        >
+                          <XIcon size={16} />
+                        </button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="ip">
+            {me?.is_admin ? (
+              <div className='mb-4'>
+                <div className="page-header" style={{ marginBottom: 12 }}>
+                  <h2 className="section-title">Compliant IPs</h2>
+                  <p className="page-subtitle" style={{ marginLeft: 8 }}>DNS resolutions to these IPs are classified as compliant</p>
+                  <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddIPOpen(true)}>
+                    + Add IP
+                  </button>
+                </div>
+                <Table className="results-table" aria-label="Compliant IPs">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="col-domain th-left" scope="col">IP Address</TableHead>
+                      <TableHead className="col-status" scope="col">Note</TableHead>
+                      <TableHead className="col-status" scope="col">Added</TableHead>
+                      <TableHead className="col-evidence" scope="col" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {compliantIPs.map(ip => (
+                      <TableRow key={ip.id} className="admin-row">
+                        <TableCell className="col-domain"><span className="ip-value">{ip.address}</span></TableCell>
+                        <TableCell className="col-status">{ip.note || '—'}</TableCell>
+                        <TableCell className="col-status">{DATE_FMT.format(new Date(ip.created_at))}</TableCell>
+                        <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
+                          <button
+                            type="button"
+                            className="screenshot-icon-btn"
+                            onClick={() => setDeleteIPTarget(ip)}
+                            aria-label={`Delete ${ip.address}`}
+                            title="Delete"
+                          >
+                            <XIcon size={16} />
+                          </button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {compliantIPs.length === 0 && !loading && (
+                      <TableRow>
+                        <TableCell colSpan={4} style={{ textAlign: 'center', color: 'var(--stone-muted)', padding: '16px 0' }}>
+                          No compliant IPs configured
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <RestrictedTabNotice />
+            )}
+          </TabsContent>
+
+          <TabsContent value="scan-settings">
+            {me?.is_admin && scanSchedule !== null ? (
+              <ScanSettingsSection value={scanSchedule} onSaved={setScanSchedule} />
+            ) : (
+              <RestrictedTabNotice />
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
 
       <AddDepartmentDialog open={addDeptOpen} onClose={() => setAddDeptOpen(false)} onAdded={load} />
