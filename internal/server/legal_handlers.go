@@ -385,7 +385,7 @@ func (h *Handlers) AttachOffence(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "category_id is required")
 		return
 	}
-	offence, err := h.store.AttachOffenceToURL(r.Context(), urlValue, body.CategoryID, body.ElementID)
+	offence, err := h.store.AttachOffenceToURL(r.Context(), urlValue, body.CategoryID, body.ElementID, nil)
 	if err != nil {
 		writeInternalError(w, err)
 		return

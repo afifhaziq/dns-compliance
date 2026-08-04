@@ -423,19 +423,32 @@ type Element struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
+// SubElement is an optional sub-category of an Element — not every element
+// has one, mirroring how not every Category has an Element.
+type SubElement struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	ElementID uint      `gorm:"not null;index" json:"element_id"`
+	Element   Element   `gorm:"foreignKey:ElementID;constraint:OnDelete:CASCADE" json:"-"`
+	Name      string    `gorm:"not null" json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // URLOffence links a URL to the specific offence it committed, at Category
-// granularity with an optional Element. Uses a surrogate ID PK rather than
-// a composite one (unlike DepartmentURL) because ElementID is nullable and
-// SQL NULL != NULL breaks composite-PK uniqueness semantics.
+// granularity with an optional Element and, one level deeper, an optional
+// SubElement. Uses a surrogate ID PK rather than a composite one (unlike
+// DepartmentURL) because ElementID/SubElementID are nullable and SQL
+// NULL != NULL breaks composite-PK uniqueness semantics.
 type URLOffence struct {
-	ID         uint      `gorm:"primaryKey" json:"id"`
-	URLID      uint      `gorm:"not null;index" json:"url_id"`
-	URL        URL       `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
-	CategoryID uint      `gorm:"not null;index" json:"category_id"`
-	Category   Category  `gorm:"foreignKey:CategoryID;constraint:OnDelete:CASCADE" json:"category"`
-	ElementID  *uint     `gorm:"index" json:"element_id,omitempty"`
-	Element    *Element  `gorm:"foreignKey:ElementID;constraint:OnDelete:CASCADE" json:"element,omitempty"`
-	RecordedAt time.Time `gorm:"not null" json:"recorded_at"`
+	ID           uint        `gorm:"primaryKey" json:"id"`
+	URLID        uint        `gorm:"not null;index" json:"url_id"`
+	URL          URL         `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
+	CategoryID   uint        `gorm:"not null;index" json:"category_id"`
+	Category     Category    `gorm:"foreignKey:CategoryID;constraint:OnDelete:CASCADE" json:"category"`
+	ElementID    *uint       `gorm:"index" json:"element_id,omitempty"`
+	Element      *Element    `gorm:"foreignKey:ElementID;constraint:OnDelete:CASCADE" json:"element,omitempty"`
+	SubElementID *uint       `gorm:"index" json:"sub_element_id,omitempty"`
+	SubElement   *SubElement `gorm:"foreignKey:SubElementID;constraint:OnDelete:CASCADE" json:"sub_element,omitempty"`
+	RecordedAt   time.Time   `gorm:"not null" json:"recorded_at"`
 }
 
 // BuildProvisionSortKey returns a zero-padded, suffix-aware sortable

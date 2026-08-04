@@ -122,6 +122,29 @@ func (s *postgresStore) DeleteElement(ctx context.Context, id uint) error {
 	return s.db.WithContext(ctx).Delete(&Element{}, id).Error
 }
 
+func (s *postgresStore) ListSubElementsByElement(ctx context.Context, elementID uint) ([]SubElement, error) {
+	var subElements []SubElement
+	return subElements, s.db.WithContext(ctx).Where("element_id = ?", elementID).Order("name asc").Find(&subElements).Error
+}
+
+func (s *postgresStore) CreateSubElement(ctx context.Context, se SubElement) (SubElement, error) {
+	se.ID = 0
+	return se, s.db.WithContext(ctx).Create(&se).Error
+}
+
+func (s *postgresStore) UpdateSubElement(ctx context.Context, id uint, name string) (SubElement, error) {
+	err := s.db.WithContext(ctx).Model(&SubElement{}).Where("id = ?", id).Update("name", name).Error
+	if err != nil {
+		return SubElement{}, err
+	}
+	var se SubElement
+	return se, s.db.WithContext(ctx).First(&se, id).Error
+}
+
+func (s *postgresStore) DeleteSubElement(ctx context.Context, id uint) error {
+	return s.db.WithContext(ctx).Delete(&SubElement{}, id).Error
+}
+
 func (s *postgresStore) ListOffencesByURL(ctx context.Context, urlValue string) ([]URLOffence, error) {
 	var offences []URLOffence
 	err := s.db.WithContext(ctx).
@@ -129,6 +152,7 @@ func (s *postgresStore) ListOffencesByURL(ctx context.Context, urlValue string) 
 		Where("urls.url = ?", urlValue).
 		Preload("Category.Citation.Instrument").
 		Preload("Element").
+		Preload("SubElement").
 		Order("url_offences.recorded_at desc").
 		Find(&offences).Error
 	return offences, err
@@ -148,7 +172,7 @@ func (s *postgresStore) GetOffence(ctx context.Context, id uint) (*URLOffence, e
 	return &o, nil
 }
 
-func (s *postgresStore) AttachOffenceToURL(ctx context.Context, urlValue string, categoryID uint, elementID *uint) (URLOffence, error) {
+func (s *postgresStore) AttachOffenceToURL(ctx context.Context, urlValue string, categoryID uint, elementID *uint, subElementID *uint) (URLOffence, error) {
 	u, err := s.GetURLByValue(ctx, urlValue)
 	if err != nil {
 		return URLOffence{}, err
@@ -156,7 +180,7 @@ func (s *postgresStore) AttachOffenceToURL(ctx context.Context, urlValue string,
 	if u == nil {
 		return URLOffence{}, gorm.ErrRecordNotFound
 	}
-	o := URLOffence{URLID: u.ID, CategoryID: categoryID, ElementID: elementID, RecordedAt: time.Now()}
+	o := URLOffence{URLID: u.ID, CategoryID: categoryID, ElementID: elementID, SubElementID: subElementID, RecordedAt: time.Now()}
 	return o, s.db.WithContext(ctx).Create(&o).Error
 }
 
