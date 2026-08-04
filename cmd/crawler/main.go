@@ -161,6 +161,8 @@ func main() {
 
 type serverEntry struct {
 	name    string
+	isp     string
+	address string
 	resolve func(context.Context, string) (string, int64, error)
 }
 
@@ -179,7 +181,7 @@ func buildServerEntries(servers []dnsconfig.Server) []serverEntry {
 		default:
 			resolveFn = dns.NewResolver(s.Address)
 		}
-		entries[i] = serverEntry{name: s.Name, resolve: resolveFn}
+		entries[i] = serverEntry{name: s.Name, isp: s.ISP, address: s.Address, resolve: resolveFn}
 	}
 	return entries
 }
@@ -257,12 +259,20 @@ func runSweep(
 	// Phase 2: Screenshot each unique (URL, IP) pair (only when --screenshots is set).
 	var screenshots map[string][]byte
 	var screenshotErrs map[string]string
+	var capturedAts map[string]time.Time
 	if takeScreenshots {
-		screenshots, screenshotErrs = captureResolved(ctx, allResults, baseCfg.ScreenshotWorkers, baseCfg.ScreenshotTimeout, waitIdle, postIdleSleep)
+		screenshots, screenshotErrs, capturedAts = captureResolved(ctx, allResults, baseCfg.ScreenshotWorkers, baseCfg.ScreenshotTimeout, waitIdle, postIdleSleep)
 	}
 
 	// Attach screenshots to the first matching result per URL; mark others shared.
 	assignScreenshots(allResults, screenshots, screenshotErrs)
+
+	// Frame each result with its own ISP/DNS-address chip — must happen after
+	// assignScreenshots so every DNS server's copy gets framed, not just the
+	// one raw capture per (url, resolvedIP).
+	if takeScreenshots {
+		frameScreenshots(ctx, allResults, servers, capturedAts)
+	}
 
 	compliant, nonCompliant := 0, 0
 	for _, r := range allResults {
@@ -339,8 +349,10 @@ func groupJobs(jobs []screenshotJob) [][]screenshotJob {
 // captureResolved screenshots each unique (URL, resolvedIP) pair, forcing
 // Chrome to connect to the pre-resolved IP via --host-resolver-rules so the
 // screenshot reflects what that DNS server's users actually see.
-// Returns the screenshot bytes and any capture errors, both keyed by
-// shotKey(url, ip).
+// Returns the screenshot bytes, any capture errors, and each capture's
+// timestamp — all keyed by shotKey(url, ip). The timestamp map is what lets
+// frameScreenshots stamp the correct capture time into each DNS server's
+// framed copy even though the raw capture itself only happened once.
 func captureResolved(
 	ctx context.Context,
 	results []pipeline.SiteResult,
@@ -348,7 +360,7 @@ func captureResolved(
 	ssTimeout time.Duration,
 	waitIdle time.Duration,
 	postIdleSleep time.Duration,
-) (map[string][]byte, map[string]string) {
+) (map[string][]byte, map[string]string, map[string]time.Time) {
 	// Collect unique (url, ip) jobs preserving order.
 	seen := make(map[string]struct{})
 	var jobs []screenshotJob
@@ -363,11 +375,12 @@ func captureResolved(
 		}
 	}
 	if len(jobs) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	shots := make(map[string][]byte, len(jobs))
 	errs := make(map[string]string, len(jobs))
+	capturedAts := make(map[string]time.Time, len(jobs))
 	var mu sync.Mutex
 
 	for _, group := range groupJobs(jobs) {
@@ -399,7 +412,7 @@ func captureResolved(
 				siteCtx, cancel := context.WithTimeout(ctx, ssTimeout)
 				defer cancel()
 
-				buf, err := captureWithSchemeFallback(siteCtx, groupAllocCtx, j.url, waitIdle, postIdleSleep)
+				buf, capturedAt, err := captureWithSchemeFallback(siteCtx, groupAllocCtx, j.url, waitIdle, postIdleSleep)
 				if err != nil {
 					log.Printf("screenshot failed for %s: %v", j.url, err)
 					mu.Lock()
@@ -409,13 +422,14 @@ func captureResolved(
 				}
 				mu.Lock()
 				shots[shotKey(j.url, j.ip)] = buf
+				capturedAts[shotKey(j.url, j.ip)] = capturedAt
 				mu.Unlock()
 			}()
 		}
 		wg.Wait()
 		groupAllocCancel()
 	}
-	return shots, errs
+	return shots, errs, capturedAts
 }
 
 // assignScreenshots copies screenshot bytes into every SiteResult sharing a
@@ -434,6 +448,47 @@ func assignScreenshots(results []pipeline.SiteResult, shots map[string][]byte, e
 		if buf, ok := shots[key]; ok {
 			results[i].Screenshot = buf
 		}
+	}
+}
+
+// frameScreenshots burns each result's own ISP/DNS-server chip into its
+// screenshot. assignScreenshots has already copied the shared raw pixels
+// (deduped per (url, resolvedIP)) into every result sharing that pair;
+// this pass re-renders each one through screenshot.Frame with that specific
+// result's DNS server metadata, so two servers that resolved to the same IP
+// still end up with two separately (and correctly) labeled images. Framing
+// only renders a local HTML wrapper (no navigation to the target site), so
+// repeating it once per DNS server is cheap — a single shared Chrome tab
+// handles every result sequentially.
+func frameScreenshots(ctx context.Context, results []pipeline.SiteResult, servers []serverEntry, capturedAts map[string]time.Time) {
+	if len(capturedAts) == 0 {
+		return
+	}
+	byName := make(map[string]serverEntry, len(servers))
+	for _, s := range servers {
+		byName[s.name] = s
+	}
+
+	allocCtx, allocCancel := chromedp.NewExecAllocator(ctx, screenshot.AllocatorOptions...)
+	defer allocCancel()
+	tabCtx, tabCancel := chromedp.NewContext(allocCtx)
+	defer tabCancel()
+
+	for i, r := range results {
+		if len(r.Screenshot) == 0 {
+			continue
+		}
+		capturedAt, ok := capturedAts[shotKey(r.URL, r.ResolvedIP)]
+		if !ok {
+			continue
+		}
+		meta := byName[r.DNSServer]
+		framed, err := screenshot.Frame(tabCtx, r.Screenshot, r.URL, capturedAt, meta.isp, meta.address)
+		if err != nil {
+			log.Printf("framing failed for %s (%s): %v", r.URL, r.DNSServer, err)
+			continue
+		}
+		results[i].Screenshot = framed
 	}
 }
 
@@ -530,13 +585,13 @@ func hostnameFromURL(rawURL string) string {
 // http:// if that connection is refused — some blocked/parked sites (e.g.
 // domain-parking pages) only ever serve on port 80. URLs that already carry
 // an explicit scheme are tried as-is, with no fallback.
-func captureWithSchemeFallback(ctx, allocCtx context.Context, rawURL string, waitIdle, postIdleSleep time.Duration) ([]byte, error) {
+func captureWithSchemeFallback(ctx, allocCtx context.Context, rawURL string, waitIdle, postIdleSleep time.Duration) ([]byte, time.Time, error) {
 	if strings.Contains(rawURL, "://") {
 		return screenshot.CaptureWithAllocator(ctx, allocCtx, rawURL, waitIdle, postIdleSleep)
 	}
-	buf, err := screenshot.CaptureWithAllocator(ctx, allocCtx, "https://"+rawURL, waitIdle, postIdleSleep)
+	buf, capturedAt, err := screenshot.CaptureWithAllocator(ctx, allocCtx, "https://"+rawURL, waitIdle, postIdleSleep)
 	if err == nil {
-		return buf, nil
+		return buf, capturedAt, nil
 	}
 	return screenshot.CaptureWithAllocator(ctx, allocCtx, "http://"+rawURL, waitIdle, postIdleSleep)
 }

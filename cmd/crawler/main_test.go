@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/afif/dns-tracking/internal/dnsconfig"
@@ -23,9 +24,28 @@ func TestBuildServerEntries(t *testing.T) {
 		if e.name != servers[i].Name {
 			t.Errorf("entry %d: want name %q, got %q", i, servers[i].Name, e.name)
 		}
+		if e.isp != servers[i].ISP {
+			t.Errorf("entry %d: want isp %q, got %q", i, servers[i].ISP, e.isp)
+		}
+		if e.address != servers[i].Address {
+			t.Errorf("entry %d: want address %q, got %q", i, servers[i].Address, e.address)
+		}
 		if e.resolve == nil {
 			t.Errorf("entry %d: resolve func is nil", i)
 		}
+	}
+}
+
+// No capturedAts means no screenshots were actually taken this sweep;
+// frameScreenshots must return immediately without launching Chrome.
+func TestFrameScreenshotsNoOpWhenNoCapturedAts(t *testing.T) {
+	results := []pipeline.SiteResult{
+		{URL: "https://example.com", ResolvedIP: "1.2.3.4", DNSServer: "Cloudflare DoT", Screenshot: []byte("fake-png")},
+	}
+	frameScreenshots(context.Background(), results, nil, nil)
+
+	if string(results[0].Screenshot) != "fake-png" {
+		t.Errorf("expected screenshot bytes untouched, got %q", results[0].Screenshot)
 	}
 }
 
