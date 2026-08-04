@@ -88,6 +88,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Get("/legal/instruments/{id}/citations", h.ListCitationsByInstrument)
 			r.Get("/legal/citations/{id}/categories", h.ListCategoriesByCitation)
 			r.Get("/legal/categories/{id}/elements", h.ListElementsByCategory)
+			r.Get("/legal/elements/{id}/subelements", h.ListSubElementsByElement)
 
 			// URL<->offence linking — department-ownership-scoped like
 			// /results and /domain, not global; see requireDomainOwnership.
@@ -123,6 +124,9 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 				r.Post("/legal/elements", h.CreateElement)
 				r.Patch("/legal/elements/{id}", h.UpdateElement)
 				r.Delete("/legal/elements/{id}", h.DeleteElement)
+				r.Post("/legal/subelements", h.CreateSubElement)
+				r.Patch("/legal/subelements/{id}", h.UpdateSubElement)
+				r.Delete("/legal/subelements/{id}", h.DeleteSubElement)
 
 				r.Get("/admin/users", h.ListUsers)
 				r.Post("/admin/users", h.CreateUser)

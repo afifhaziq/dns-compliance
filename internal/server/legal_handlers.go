@@ -347,6 +347,73 @@ func (h *Handlers) DeleteElement(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// SubElements
+
+func (h *Handlers) ListSubElementsByElement(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	subElements, err := h.store.ListSubElementsByElement(r.Context(), uint(id))
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, subElements)
+}
+
+func (h *Handlers) CreateSubElement(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ElementID uint   `json:"element_id"`
+		Name      string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ElementID == 0 || body.Name == "" {
+		writeError(w, http.StatusBadRequest, "element_id and name are required")
+		return
+	}
+	subElement, err := h.store.CreateSubElement(r.Context(), db.SubElement{ElementID: body.ElementID, Name: body.Name})
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, subElement)
+}
+
+func (h *Handlers) UpdateSubElement(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	subElement, err := h.store.UpdateSubElement(r.Context(), uint(id), body.Name)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, subElement)
+}
+
+func (h *Handlers) DeleteSubElement(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := h.store.DeleteSubElement(r.Context(), uint(id)); err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // URL <-> offence linking. Department-ownership-scoped (404, not 403), like
 // ResultsByURL/DomainInfoByURL — an offence record is per-monitored-domain
 // enforcement data, not shared infrastructure like the catalog above.
@@ -378,14 +445,15 @@ func (h *Handlers) AttachOffence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		CategoryID uint  `json:"category_id"`
-		ElementID  *uint `json:"element_id"`
+		CategoryID   uint  `json:"category_id"`
+		ElementID    *uint `json:"element_id"`
+		SubElementID *uint `json:"sub_element_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.CategoryID == 0 {
 		writeError(w, http.StatusBadRequest, "category_id is required")
 		return
 	}
-	offence, err := h.store.AttachOffenceToURL(r.Context(), urlValue, body.CategoryID, body.ElementID, nil)
+	offence, err := h.store.AttachOffenceToURL(r.Context(), urlValue, body.CategoryID, body.ElementID, body.SubElementID)
 	if err != nil {
 		writeInternalError(w, err)
 		return

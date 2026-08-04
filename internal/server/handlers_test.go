@@ -39,6 +39,7 @@ type fullMockStore struct {
 	citations      []db.Citation
 	categories     []db.Category
 	elements       []db.Element
+	subElements    []db.SubElement
 	urlOffences    []db.URLOffence
 	scheduleMu     sync.Mutex // guards the three fields below; the scheduler goroutine reads them concurrently with test/handler writes
 	scanInterval   int
@@ -616,8 +617,54 @@ func (m *fullMockStore) deleteElementCascade(id uint) {
 			m.elements = append(m.elements[:i], m.elements[i+1:]...)
 		}
 	}
+	for _, se := range m.subElements {
+		if se.ElementID == id {
+			m.deleteSubElementCascade(se.ID)
+		}
+	}
 	for i := 0; i < len(m.urlOffences); i++ {
 		if m.urlOffences[i].ElementID != nil && *m.urlOffences[i].ElementID == id {
+			m.urlOffences = append(m.urlOffences[:i], m.urlOffences[i+1:]...)
+			i--
+		}
+	}
+}
+
+func (m *fullMockStore) ListSubElementsByElement(_ context.Context, elementID uint) ([]db.SubElement, error) {
+	var out []db.SubElement
+	for _, se := range m.subElements {
+		if se.ElementID == elementID {
+			out = append(out, se)
+		}
+	}
+	return out, nil
+}
+func (m *fullMockStore) CreateSubElement(_ context.Context, se db.SubElement) (db.SubElement, error) {
+	se.ID = uint(len(m.subElements) + 1)
+	m.subElements = append(m.subElements, se)
+	return se, nil
+}
+func (m *fullMockStore) UpdateSubElement(_ context.Context, id uint, name string) (db.SubElement, error) {
+	for i, se := range m.subElements {
+		if se.ID == id {
+			m.subElements[i].Name = name
+			return m.subElements[i], nil
+		}
+	}
+	return db.SubElement{}, nil
+}
+func (m *fullMockStore) DeleteSubElement(_ context.Context, id uint) error {
+	m.deleteSubElementCascade(id)
+	return nil
+}
+func (m *fullMockStore) deleteSubElementCascade(id uint) {
+	for i, se := range m.subElements {
+		if se.ID == id {
+			m.subElements = append(m.subElements[:i], m.subElements[i+1:]...)
+		}
+	}
+	for i := 0; i < len(m.urlOffences); i++ {
+		if m.urlOffences[i].SubElementID != nil && *m.urlOffences[i].SubElementID == id {
 			m.urlOffences = append(m.urlOffences[:i], m.urlOffences[i+1:]...)
 			i--
 		}
@@ -648,6 +695,14 @@ func (m *fullMockStore) hydrateOffence(o db.URLOffence) db.URLOffence {
 			if el.ID == *o.ElementID {
 				elCopy := el
 				o.Element = &elCopy
+			}
+		}
+	}
+	if o.SubElementID != nil {
+		for _, se := range m.subElements {
+			if se.ID == *o.SubElementID {
+				seCopy := se
+				o.SubElement = &seCopy
 			}
 		}
 	}
@@ -693,7 +748,7 @@ func (m *fullMockStore) GetOffence(_ context.Context, id uint) (*db.URLOffence, 
 	}
 	return nil, nil
 }
-func (m *fullMockStore) AttachOffenceToURL(_ context.Context, urlValue string, categoryID uint, elementID *uint) (db.URLOffence, error) {
+func (m *fullMockStore) AttachOffenceToURL(_ context.Context, urlValue string, categoryID uint, elementID *uint, subElementID *uint) (db.URLOffence, error) {
 	normalized, err := urlnorm.Normalize(urlValue)
 	if err != nil {
 		return db.URLOffence{}, err
@@ -711,7 +766,7 @@ func (m *fullMockStore) AttachOffenceToURL(_ context.Context, urlValue string, c
 		return db.URLOffence{}, fmt.Errorf("url not found: %s", urlValue)
 	}
 	o := db.URLOffence{
-		ID: uint(len(m.urlOffences) + 1), URLID: urlID, CategoryID: categoryID, ElementID: elementID, RecordedAt: time.Now(),
+		ID: uint(len(m.urlOffences) + 1), URLID: urlID, CategoryID: categoryID, ElementID: elementID, SubElementID: subElementID, RecordedAt: time.Now(),
 	}
 	m.urlOffences = append(m.urlOffences, o)
 	return o, nil
