@@ -210,9 +210,9 @@ type LegalCitationStore interface {
 	DeleteSubElement(ctx context.Context, id uint) error // cascades to URLOffence
 
 	// ListOffencesByURL preloads Category (and its parent Citation/
-	// Instrument) plus Element so a listing can render full context in one
-	// query. Keyed by urlValue, not urlID, matching the *url wildcard
-	// convention used by every other domain-scoped read.
+	// Instrument) plus Element and SubElement so a listing can render full
+	// context in one query. Keyed by urlValue, not urlID, matching the *url
+	// wildcard convention used by every other domain-scoped read.
 	ListOffencesByURL(ctx context.Context, urlValue string) ([]URLOffence, error)
 	// GetOffence preloads URL — used by the detach handler to resolve the
 	// owning department before deleting, since DELETE is keyed by the
