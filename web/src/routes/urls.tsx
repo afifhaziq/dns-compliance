@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { GripIcon } from '@/components/ui/grip'
@@ -75,6 +75,18 @@ export type StagedOffence = {
   label: string
 }
 
+// Imperative escape hatch for a picker that has Instrument/Citation/Category
+// filled in but hasn't had "+ Add offence" clicked yet — without this, that
+// selection lives only in the picker's own local state, invisible to the
+// parent, so closing/submitting silently drops it (the exact bug reported:
+// fill in the picker, close the dialog, reopen — nothing saved). Callers
+// flush() right before they close/submit and fold the result into what they
+// were about to save, rather than relying on the user to remember the extra
+// click.
+export type MultiOffencePickerHandle = {
+  flush: () => StagedOffence | null
+}
+
 // Cascading Instrument -> Citation -> Category -> Element picker that stages
 // one offence at a time and appends it to a removable-chip list on "Add
 // offence" — a domain can violate multiple sections/offences at once (real
@@ -83,13 +95,11 @@ export type StagedOffence = {
 // AddUrlDialog (staged offences applied to every domain on submit) and
 // EditOffencesDialog (each addition attaches immediately to one existing
 // domain) — this component has no knowledge of which caller it's in.
-function MultiOffencePicker({
-  value, onChange, disabled,
-}: {
+const MultiOffencePicker = forwardRef<MultiOffencePickerHandle, {
   value: StagedOffence[]
   onChange: (offences: StagedOffence[]) => void
   disabled: boolean
-}) {
+}>(function MultiOffencePicker({ value, onChange, disabled }, ref) {
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [citations, setCitations] = useState<Citation[]>([])
   const [categories, setCategories] = useState<LegalCategory[]>([])
@@ -118,20 +128,28 @@ function MultiOffencePicker({
     setInstrumentId(''); setCitationId(''); setCategoryId(''); setElementId('')
   }
 
-  const handleAdd = () => {
-    if (instrumentId === '' || citationId === '' || categoryId === '') return
+  const computePending = (): StagedOffence | null => {
+    if (instrumentId === '' || citationId === '' || categoryId === '') return null
     const citation = citations.find(c => c.id === citationId)
     const category = categories.find(c => c.id === categoryId)
     const element = elementId === '' ? undefined : elements.find(e => e.id === elementId)
-    if (!citation || !category) return
+    if (!citation || !category) return null
     const label = `${formatParsedCitation(citation.parsed)} — ${category.name}${element ? ` (${element.name})` : ''}`
-    onChange([...value, { instrumentId, citationId, categoryId, elementId: elementId === '' ? undefined : elementId, label }])
+    return { instrumentId, citationId, categoryId, elementId: elementId === '' ? undefined : elementId, label }
+  }
+
+  const handleAdd = () => {
+    const pending = computePending()
+    if (!pending) return
+    onChange([...value, pending])
     resetStaging()
   }
 
   const handleRemove = (index: number) => {
     onChange(value.filter((_, i) => i !== index))
   }
+
+  useImperativeHandle(ref, () => ({ flush: computePending }))
 
   return (
     <div className="form-field">
@@ -231,7 +249,7 @@ function MultiOffencePicker({
       </div>
     </div>
   )
-}
+})
 
 function AddUrlDialog({
   open,
@@ -246,6 +264,7 @@ function AddUrlDialog({
   const [offences, setOffences] = useState<StagedOffence[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const pickerRef = useRef<MultiOffencePickerHandle>(null)
 
   const reset = () => {
     setValue(''); setOffences([]); setError(null)
@@ -255,12 +274,16 @@ function AddUrlDialog({
     e.preventDefault()
     const domains = value.split('\n').map(s => s.trim()).filter(Boolean)
     if (domains.length === 0) { setError('At least one domain is required'); return }
+    // Catch a filled-in-but-not-yet-"+ Add offence"-clicked selection sitting
+    // in the picker — otherwise it's silently dropped rather than attached.
+    const pending = pickerRef.current?.flush()
+    const allOffences = pending ? [...offences, pending] : offences
     setLoading(true)
     setError(null)
     try {
       await Promise.all(domains.map(d => createUrl(d)))
       await Promise.all(
-        domains.flatMap(d => offences.map(o => attachOffence(d, o.categoryId, o.elementId)))
+        domains.flatMap(d => allOffences.map(o => attachOffence(d, o.categoryId, o.elementId)))
       )
       reset()
       onAdded()
@@ -299,6 +322,7 @@ function AddUrlDialog({
             />
           </div>
           <MultiOffencePicker
+            ref={pickerRef}
             value={offences}
             onChange={setOffences}
             disabled={loading}
@@ -331,6 +355,7 @@ function EditOffencesDialog({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [staged, setStaged] = useState<StagedOffence[]>([])
+  const pickerRef = useRef<MultiOffencePickerHandle>(null)
 
   const load = useCallback(async () => {
     if (!url) return
@@ -377,8 +402,26 @@ function EditOffencesDialog({
     }
   }
 
+  // "Done" used to just close — a filled-in-but-not-yet-"+ Add offence"-
+  // clicked selection sitting in the picker was silently discarded rather
+  // than attached. Flush it first, and keep the dialog open on failure so
+  // the error is visible instead of losing the offence a second way.
+  const handleDone = async () => {
+    const pending = pickerRef.current?.flush()
+    if (pending && url) {
+      setError(null)
+      try {
+        await attachOffence(url, pending.categoryId, pending.elementId)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to add offence')
+        return
+      }
+    }
+    onClose()
+  }
+
   return (
-    <Dialog open={open} onOpenChange={v => { if (!v) onClose() }}>
+    <Dialog open={open} onOpenChange={v => { if (!v) handleDone() }}>
       <DialogContent showCloseButton={false} style={{ maxWidth: 440 }}>
         <DialogHeader>
           <DialogTitle>Offences</DialogTitle>
@@ -405,10 +448,10 @@ function EditOffencesDialog({
         ) : (
           <p className="text-sm text-stone-muted mb-2">No offences attached yet.</p>
         )}
-        <MultiOffencePicker value={staged} onChange={handleAddStaged} disabled={loading} />
+        <MultiOffencePicker ref={pickerRef} value={staged} onChange={handleAddStaged} disabled={loading} />
         {error && <p className="form-error">{error}</p>}
         <DialogFooter>
-          <button type="button" className="btn-primary" onClick={onClose}>
+          <button type="button" className="btn-primary" onClick={handleDone}>
             Done
           </button>
         </DialogFooter>
