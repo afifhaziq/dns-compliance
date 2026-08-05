@@ -3,8 +3,8 @@ import { createFileRoute } from '@tanstack/react-router'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { GripIcon } from '@/components/ui/grip'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlOrderedAt } from '../api/urls'
-import type { URLEntry, Instrument, Citation, LegalCategory, LegalElement, URLOffence } from '../api/types'
-import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, attachOffence, fetchOffencesByUrl, detachOffence, formatParsedCitation } from '../api/legal'
+import type { URLEntry, Instrument, Citation, LegalCategory, LegalElement, LegalSubElement, URLOffence } from '../api/types'
+import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, fetchSubElements, attachOffence, fetchOffencesByUrl, detachOffence, formatParsedCitation } from '../api/legal'
 import {
   Dialog,
   DialogContent,
@@ -72,6 +72,7 @@ export type StagedOffence = {
   citationId: number
   categoryId: number
   elementId?: number
+  subElementId?: number
   label: string
 }
 
@@ -104,11 +105,13 @@ const MultiOffencePicker = forwardRef<MultiOffencePickerHandle, {
   const [citations, setCitations] = useState<Citation[]>([])
   const [categories, setCategories] = useState<LegalCategory[]>([])
   const [elements, setElements] = useState<LegalElement[]>([])
+  const [subElements, setSubElements] = useState<LegalSubElement[]>([])
 
   const [instrumentId, setInstrumentId] = useState<number | ''>('')
   const [citationId, setCitationId] = useState<number | ''>('')
   const [categoryId, setCategoryId] = useState<number | ''>('')
   const [elementId, setElementId] = useState<number | ''>('')
+  const [subElementId, setSubElementId] = useState<number | ''>('')
 
   useEffect(() => { fetchInstruments().then(setInstruments) }, [])
   useEffect(() => {
@@ -123,9 +126,13 @@ const MultiOffencePicker = forwardRef<MultiOffencePickerHandle, {
     if (categoryId === '') { setElements([]); return }
     fetchElements(categoryId).then(setElements)
   }, [categoryId])
+  useEffect(() => {
+    if (elementId === '') { setSubElements([]); return }
+    fetchSubElements(elementId).then(setSubElements)
+  }, [elementId])
 
   const resetStaging = () => {
-    setInstrumentId(''); setCitationId(''); setCategoryId(''); setElementId('')
+    setInstrumentId(''); setCitationId(''); setCategoryId(''); setElementId(''); setSubElementId('')
   }
 
   const computePending = (): StagedOffence | null => {
@@ -133,9 +140,15 @@ const MultiOffencePicker = forwardRef<MultiOffencePickerHandle, {
     const citation = citations.find(c => c.id === citationId)
     const category = categories.find(c => c.id === categoryId)
     const element = elementId === '' ? undefined : elements.find(e => e.id === elementId)
+    const subElement = subElementId === '' ? undefined : subElements.find(se => se.id === subElementId)
     if (!citation || !category) return null
-    const label = `${formatParsedCitation(citation.parsed)} — ${category.name}${element ? ` (${element.name})` : ''}`
-    return { instrumentId, citationId, categoryId, elementId: elementId === '' ? undefined : elementId, label }
+    const label = `${formatParsedCitation(citation.parsed)} — ${category.name}${element ? ` (${element.name})` : ''}${subElement ? ` › ${subElement.name}` : ''}`
+    return {
+      instrumentId, citationId, categoryId,
+      elementId: elementId === '' ? undefined : elementId,
+      subElementId: subElementId === '' ? undefined : subElementId,
+      label,
+    }
   }
 
   const handleAdd = () => {
@@ -177,7 +190,7 @@ const MultiOffencePicker = forwardRef<MultiOffencePickerHandle, {
       <div className="flex flex-col" style={{ gap: 8 }}>
         <Select
           value={String(instrumentId)}
-          onValueChange={v => { setInstrumentId(v === '' ? '' : Number(v)); setCitationId(''); setCategoryId(''); setElementId('') }}
+          onValueChange={v => { setInstrumentId(v === '' ? '' : Number(v)); setCitationId(''); setCategoryId(''); setElementId(''); setSubElementId('') }}
           disabled={disabled}
         >
           <SelectTrigger aria-labelledby="offence-picker-label" placeholder="Instrument…" className="w-full" />
@@ -191,7 +204,7 @@ const MultiOffencePicker = forwardRef<MultiOffencePickerHandle, {
         {instrumentId !== '' && (
           <Select
             value={String(citationId)}
-            onValueChange={v => { setCitationId(v === '' ? '' : Number(v)); setCategoryId(''); setElementId('') }}
+            onValueChange={v => { setCitationId(v === '' ? '' : Number(v)); setCategoryId(''); setElementId(''); setSubElementId('') }}
             disabled={disabled}
           >
             <SelectTrigger aria-label="Citation" placeholder="Citation…" className="w-full" />
@@ -214,7 +227,7 @@ const MultiOffencePicker = forwardRef<MultiOffencePickerHandle, {
         {citationId !== '' && (
           <Select
             value={String(categoryId)}
-            onValueChange={v => { setCategoryId(v === '' ? '' : Number(v)); setElementId('') }}
+            onValueChange={v => { setCategoryId(v === '' ? '' : Number(v)); setElementId(''); setSubElementId('') }}
             disabled={disabled}
           >
             <SelectTrigger aria-label="Category" placeholder="Category…" className="w-full" />
@@ -229,7 +242,7 @@ const MultiOffencePicker = forwardRef<MultiOffencePickerHandle, {
         {categoryId !== '' && elements.length > 0 && (
           <Select
             value={String(elementId)}
-            onValueChange={v => setElementId(v === '' ? '' : Number(v))}
+            onValueChange={v => { setElementId(v === '' ? '' : Number(v)); setSubElementId('') }}
             disabled={disabled}
           >
             <SelectTrigger aria-label="Element" placeholder="Element (optional)…" className="w-full" />
@@ -237,6 +250,21 @@ const MultiOffencePicker = forwardRef<MultiOffencePickerHandle, {
               <SelectItem index={0} value="">No element</SelectItem>
               {elements.map((el, i) => (
                 <SelectItem key={el.id} index={i + 1} value={String(el.id)}>{el.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {elementId !== '' && subElements.length > 0 && (
+          <Select
+            value={String(subElementId)}
+            onValueChange={v => setSubElementId(v === '' ? '' : Number(v))}
+            disabled={disabled}
+          >
+            <SelectTrigger aria-label="Sub-Element" placeholder="Sub-Element (optional)…" className="w-full" />
+            <SelectContent>
+              <SelectItem index={0} value="">No sub-element</SelectItem>
+              {subElements.map((se, i) => (
+                <SelectItem key={se.id} index={i + 1} value={String(se.id)}>{se.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -283,7 +311,7 @@ function AddUrlDialog({
     try {
       await Promise.all(domains.map(d => createUrl(d)))
       await Promise.all(
-        domains.flatMap(d => allOffences.map(o => attachOffence(d, o.categoryId, o.elementId)))
+        domains.flatMap(d => allOffences.map(o => attachOffence(d, o.categoryId, o.elementId, o.subElementId)))
       )
       reset()
       onAdded()
@@ -393,7 +421,7 @@ function EditOffencesDialog({
     const added = next[next.length - 1]
     setError(null)
     try {
-      await attachOffence(url, added.categoryId, added.elementId)
+      await attachOffence(url, added.categoryId, added.elementId, added.subElementId)
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add offence')
@@ -411,7 +439,7 @@ function EditOffencesDialog({
     if (pending && url) {
       setError(null)
       try {
-        await attachOffence(url, pending.categoryId, pending.elementId)
+        await attachOffence(url, pending.categoryId, pending.elementId, pending.subElementId)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to add offence')
         return
@@ -433,7 +461,7 @@ function EditOffencesDialog({
           <ul className="offence-chip-list">
             {offences.map(o => (
               <li key={o.id} className="offence-chip">
-                <span>{formatParsedCitation(o.category.citation.parsed)} — {o.category.name}{o.element ? ` (${o.element.name})` : ''}</span>
+                <span>{formatParsedCitation(o.category.citation.parsed)} — {o.category.name}{o.element ? ` (${o.element.name})` : ''}{o.sub_element ? ` › ${o.sub_element.name}` : ''}</span>
                 <button
                   type="button"
                   className="screenshot-icon-btn"
