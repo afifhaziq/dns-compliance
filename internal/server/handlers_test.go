@@ -302,7 +302,11 @@ func (m *fullMockStore) ListDepartmentURLs(_ context.Context, departmentID uint)
 		}
 		for _, u := range m.urls {
 			if u.ID == du.URLID {
-				out = append(out, db.URLEntry{ID: u.ID, URL: u.URL, Enabled: du.Enabled, OrderedAt: du.OrderedAt, CreatedAt: u.CreatedAt})
+				out = append(out, db.URLEntry{
+					ID: u.ID, URL: u.URL, Enabled: du.Enabled, DueDate: du.DueDate,
+					Agency: du.Agency, ReferenceNumber: du.ReferenceNumber, RequestingDept: du.RequestingDept,
+					Status: du.Status, RequestedAt: du.RequestedAt, CreatedAt: u.CreatedAt,
+				})
 			}
 		}
 	}
@@ -333,10 +337,27 @@ func (m *fullMockStore) SetURLEnabled(_ context.Context, departmentID, urlID uin
 	return false, nil
 }
 
-func (m *fullMockStore) SetURLOrderedAt(_ context.Context, departmentID, urlID uint, orderedAt *time.Time) (bool, error) {
+func (m *fullMockStore) UpdateDepartmentURLFields(_ context.Context, departmentID, urlID uint, fields db.DepartmentURLFields) (bool, error) {
 	for i, du := range m.departmentURLs {
 		if du.DepartmentID == departmentID && du.URLID == urlID {
-			m.departmentURLs[i].OrderedAt = orderedAt
+			if fields.DueDate != nil {
+				m.departmentURLs[i].DueDate = *fields.DueDate
+			}
+			if fields.Agency != nil {
+				m.departmentURLs[i].Agency = *fields.Agency
+			}
+			if fields.ReferenceNumber != nil {
+				m.departmentURLs[i].ReferenceNumber = *fields.ReferenceNumber
+			}
+			if fields.RequestingDept != nil {
+				m.departmentURLs[i].RequestingDept = *fields.RequestingDept
+			}
+			if fields.Status != nil {
+				m.departmentURLs[i].Status = *fields.Status
+			}
+			if fields.RequestedAt != nil {
+				m.departmentURLs[i].RequestedAt = *fields.RequestedAt
+			}
 			return true, nil
 		}
 	}
@@ -2034,7 +2055,7 @@ func TestToggleURL_NotOnWatchlistReturns404(t *testing.T) {
 	}
 }
 
-func TestToggleURL_SetsOrderedAtWithoutTouchingEnabled(t *testing.T) {
+func TestToggleURL_SetsDueDateWithoutTouchingEnabled(t *testing.T) {
 	deptID := uint(1)
 	store := &fullMockStore{
 		urls:           []db.URL{{ID: 1, URL: "example.com"}},
@@ -2043,7 +2064,7 @@ func TestToggleURL_SetsOrderedAtWithoutTouchingEnabled(t *testing.T) {
 	cookie := deptCookie(store, deptID)
 	r := setupRouter(store, nil)
 
-	body, _ := json.Marshal(map[string]string{"ordered_at": "2026-01-15T00:00:00Z"})
+	body, _ := json.Marshal(map[string]string{"due_date": "2026-01-15T00:00:00Z"})
 	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
@@ -2054,14 +2075,14 @@ func TestToggleURL_SetsOrderedAtWithoutTouchingEnabled(t *testing.T) {
 		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
 	}
 	if !store.departmentURLs[0].Enabled {
-		t.Fatal("expected Enabled to remain untouched by an ordered_at-only body")
+		t.Fatal("expected Enabled to remain untouched by a due_date-only body")
 	}
-	if store.departmentURLs[0].OrderedAt == nil {
-		t.Fatal("expected ordered_at to be set")
+	if store.departmentURLs[0].DueDate == nil {
+		t.Fatal("expected due_date to be set")
 	}
 
 	// Clearing with an empty string
-	clearBody, _ := json.Marshal(map[string]string{"ordered_at": ""})
+	clearBody, _ := json.Marshal(map[string]string{"due_date": ""})
 	req2 := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(clearBody))
 	req2.Header.Set("Content-Type", "application/json")
 	req2.AddCookie(cookie)
@@ -2070,12 +2091,60 @@ func TestToggleURL_SetsOrderedAtWithoutTouchingEnabled(t *testing.T) {
 	if w2.Code != http.StatusNoContent {
 		t.Fatalf("want 204 on clear, got %d: %s", w2.Code, w2.Body.String())
 	}
-	if store.departmentURLs[0].OrderedAt != nil {
-		t.Fatal("expected ordered_at to be cleared by an empty string")
+	if store.departmentURLs[0].DueDate != nil {
+		t.Fatal("expected due_date to be cleared by an empty string")
 	}
 }
 
-func TestToggleURL_InvalidOrderedAtReturns400(t *testing.T) {
+func TestToggleURL_UpdatesCaseFieldsWithoutClobbering(t *testing.T) {
+	deptID := uint(1)
+	due := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
+	store := &fullMockStore{
+		urls:           []db.URL{{ID: 1, URL: "example.com"}},
+		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1, Enabled: true, DueDate: &due}},
+	}
+	cookie := deptCookie(store, deptID)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]string{"status": "uplift"})
+	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if store.departmentURLs[0].Status != "uplift" {
+		t.Fatalf("expected status to be set to uplift, got %q", store.departmentURLs[0].Status)
+	}
+	if store.departmentURLs[0].DueDate == nil || !store.departmentURLs[0].DueDate.Equal(due) {
+		t.Fatal("expected due_date to remain untouched by a status-only body")
+	}
+
+	body2, _ := json.Marshal(map[string]string{
+		"agency": "MCMC", "reference_number": "REF-123", "requesting_dept": "Ministry of X",
+	})
+	req2 := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body2))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.AddCookie(cookie)
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w2.Code, w2.Body.String())
+	}
+	du := store.departmentURLs[0]
+	if du.Agency != "MCMC" || du.ReferenceNumber != "REF-123" || du.RequestingDept != "Ministry of X" {
+		t.Fatalf("expected agency/reference_number/requesting_dept to be set, got %+v", du)
+	}
+	if du.Status != "uplift" {
+		t.Fatal("expected status from the previous request to remain untouched")
+	}
+}
+
+func TestToggleURL_InvalidStatusReturns400(t *testing.T) {
 	deptID := uint(1)
 	store := &fullMockStore{
 		urls:           []db.URL{{ID: 1, URL: "example.com"}},
@@ -2084,7 +2153,7 @@ func TestToggleURL_InvalidOrderedAtReturns400(t *testing.T) {
 	cookie := deptCookie(store, deptID)
 	r := setupRouter(store, nil)
 
-	body, _ := json.Marshal(map[string]string{"ordered_at": "not-a-date"})
+	body, _ := json.Marshal(map[string]string{"status": "bogus"})
 	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
@@ -2092,7 +2161,28 @@ func TestToggleURL_InvalidOrderedAtReturns400(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
-		t.Fatalf("want 400 for invalid ordered_at, got %d: %s", w.Code, w.Body.String())
+		t.Fatalf("want 400 for invalid status, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestToggleURL_InvalidDueDateReturns400(t *testing.T) {
+	deptID := uint(1)
+	store := &fullMockStore{
+		urls:           []db.URL{{ID: 1, URL: "example.com"}},
+		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1, Enabled: true}},
+	}
+	cookie := deptCookie(store, deptID)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]string{"due_date": "not-a-date"})
+	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for invalid due_date, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
