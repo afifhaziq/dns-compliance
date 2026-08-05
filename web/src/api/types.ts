@@ -46,7 +46,18 @@ export type GroupedResult = {
   latestScannedAt: string
 }
 
-export type URLEntry = { id: number; url: string; enabled: boolean; ordered_at?: string; created_at: string }
+export type URLEntry = {
+  id: number
+  url: string
+  enabled: boolean
+  due_date?: string
+  agency?: string
+  reference_number?: string
+  requesting_dept?: string
+  status?: string
+  requested_at?: string
+  created_at: string
+}
 
 export type Department = { id: number; name: string; created_at: string }
 
@@ -111,7 +122,7 @@ export type ISPTiming = {
   avg_days_to_block: number
   blocked_count: number
   still_open_count: number
-  with_order_date_count: number
+  with_due_date_count: number
   total_domains: number
   slowest: DomainTiming[]
 }

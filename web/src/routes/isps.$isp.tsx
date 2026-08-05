@@ -108,7 +108,7 @@ function ISPDetailPage() {
         </div>
       )}
       {/* Time to compliance */}
-      {!loading && timing && timing.with_order_date_count > 0 && (
+      {!loading && timing && timing.with_due_date_count > 0 && (
         <div className="dash-section">
           <p className="section-title mt-3 mb-3">Time to Compliance</p>
           <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
@@ -121,8 +121,8 @@ function ISPDetailPage() {
               <p className="dash-label">Still open</p>
             </div>
             <div>
-              <p className="server-count" style={{ color: 'var(--ink)' }}>{timing.with_order_date_count} / {timing.total_domains}</p>
-              <p className="dash-label">Domains with order date</p>
+              <p className="server-count" style={{ color: 'var(--ink)' }}>{timing.with_due_date_count} / {timing.total_domains}</p>
+              <p className="dash-label">Domains with due date</p>
             </div>
           </div>
         </div>
