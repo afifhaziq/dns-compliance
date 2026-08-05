@@ -906,30 +906,30 @@ func TestISPComplianceTiming_BlockedAndStillOpen(t *testing.T) {
 
 	blocked, _ := s.AddURLToWatchlist(ctx, dept.ID, "blocked.com")
 	stillOpen, _ := s.AddURLToWatchlist(ctx, dept.ID, "open.com")
-	noOrderDate, _ := s.AddURLToWatchlist(ctx, dept.ID, "noorder.com")
+	noDueDate, _ := s.AddURLToWatchlist(ctx, dept.ID, "noorder.com")
 
-	blockedOrder := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	openOrder := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	blockedOrderPtr, openOrderPtr := &blockedOrder, &openOrder
-	if _, err := s.UpdateDepartmentURLFields(ctx, dept.ID, blocked.ID, db.DepartmentURLFields{DueDate: &blockedOrderPtr}); err != nil {
+	blockedDueDate := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	openDueDate := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	blockedDueDatePtr, openDueDatePtr := &blockedDueDate, &openDueDate
+	if _, err := s.UpdateDepartmentURLFields(ctx, dept.ID, blocked.ID, db.DepartmentURLFields{DueDate: &blockedDueDatePtr}); err != nil {
 		t.Fatalf("UpdateDepartmentURLFields blocked: %v", err)
 	}
-	if _, err := s.UpdateDepartmentURLFields(ctx, dept.ID, stillOpen.ID, db.DepartmentURLFields{DueDate: &openOrderPtr}); err != nil {
+	if _, err := s.UpdateDepartmentURLFields(ctx, dept.ID, stillOpen.ID, db.DepartmentURLFields{DueDate: &openDueDatePtr}); err != nil {
 		t.Fatalf("UpdateDepartmentURLFields open: %v", err)
 	}
-	_ = noOrderDate
+	_ = noDueDate
 
-	// blocked.com: compliant 3 days after order
+	// blocked.com: compliant 3 days after its due date
 	if err := s.InsertResult(ctx, db.ScanResult{
 		ScanRunID: run.ID, URLID: blocked.ID, URLValue: blocked.URL, DNSServerID: srv.ID,
-		Compliant: true, ScannedAt: blockedOrder.AddDate(0, 0, 3),
+		Compliant: true, ScannedAt: blockedDueDate.AddDate(0, 0, 3),
 	}); err != nil {
 		t.Fatalf("InsertResult: %v", err)
 	}
 	// open.com: never compliant (still open) — no result inserted, or a non-compliant one
 	if err := s.InsertResult(ctx, db.ScanResult{
 		ScanRunID: run.ID, URLID: stillOpen.ID, URLValue: stillOpen.URL, DNSServerID: srv.ID,
-		Compliant: false, ScannedAt: openOrder.AddDate(0, 0, 1),
+		Compliant: false, ScannedAt: openDueDate.AddDate(0, 0, 1),
 	}); err != nil {
 		t.Fatalf("InsertResult: %v", err)
 	}
@@ -972,17 +972,17 @@ func TestISPComplianceTiming_NegativeClampedToZero(t *testing.T) {
 	run, _ := s.CreateScanRun(ctx, "manual")
 
 	u, _ := s.AddURLToWatchlist(ctx, dept.ID, "alreadyblocked.com")
-	// Compliant scan happened BEFORE the recorded order date.
+	// Compliant scan happened BEFORE the recorded due date.
 	early := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	orderedAt := early.AddDate(0, 0, 5)
+	dueDate := early.AddDate(0, 0, 5)
 	if err := s.InsertResult(ctx, db.ScanResult{
 		ScanRunID: run.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
 		Compliant: true, ScannedAt: early,
 	}); err != nil {
 		t.Fatalf("InsertResult: %v", err)
 	}
-	orderedAtPtr := &orderedAt
-	if _, err := s.UpdateDepartmentURLFields(ctx, dept.ID, u.ID, db.DepartmentURLFields{DueDate: &orderedAtPtr}); err != nil {
+	dueDatePtr := &dueDate
+	if _, err := s.UpdateDepartmentURLFields(ctx, dept.ID, u.ID, db.DepartmentURLFields{DueDate: &dueDatePtr}); err != nil {
 		t.Fatalf("UpdateDepartmentURLFields: %v", err)
 	}
 
@@ -990,10 +990,10 @@ func TestISPComplianceTiming_NegativeClampedToZero(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ISPComplianceTiming: %v", err)
 	}
-	// The only compliant scan predates the order date, so it's still "open"
-	// from the order's perspective (no valid block event recorded after it).
+	// The only compliant scan predates the due date, so it's still "open"
+	// from the due date's perspective (no valid block event recorded after it).
 	if timing.StillOpenCount != 1 || timing.BlockedCount != 0 {
-		t.Fatalf("expected still-open (pre-order compliant scan doesn't count), got blocked=%d open=%d", timing.BlockedCount, timing.StillOpenCount)
+		t.Fatalf("expected still-open (pre-due-date compliant scan doesn't count), got blocked=%d open=%d", timing.BlockedCount, timing.StillOpenCount)
 	}
 }
 
