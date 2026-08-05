@@ -43,11 +43,11 @@ export type DepartmentURLFields = {
 // UpdateDepartmentURLFields. Pass null on due_date/requested_at to clear them.
 export async function setUrlFields(id: number, fields: DepartmentURLFields): Promise<void> {
   const body: Record<string, string> = {}
-  if ('due_date' in fields) body.due_date = fields.due_date ?? ''
+  if (fields.due_date !== undefined) body.due_date = fields.due_date ?? ''
   if (fields.agency !== undefined) body.agency = fields.agency
   if (fields.reference_number !== undefined) body.reference_number = fields.reference_number
   if (fields.requesting_dept !== undefined) body.requesting_dept = fields.requesting_dept
   if (fields.status !== undefined) body.status = fields.status
-  if ('requested_at' in fields) body.requested_at = fields.requested_at ?? ''
+  if (fields.requested_at !== undefined) body.requested_at = fields.requested_at ?? ''
   await api.patch<void>(`/urls/${id}`, body)
 }

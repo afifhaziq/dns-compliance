@@ -301,14 +301,26 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 		hasFields = true
 	}
 	if body.Agency != nil {
+		if len(*body.Agency) > 255 {
+			writeError(w, http.StatusBadRequest, "agency too long, max 255 characters")
+			return
+		}
 		fields.Agency = body.Agency
 		hasFields = true
 	}
 	if body.ReferenceNumber != nil {
+		if len(*body.ReferenceNumber) > 255 {
+			writeError(w, http.StatusBadRequest, "reference_number too long, max 255 characters")
+			return
+		}
 		fields.ReferenceNumber = body.ReferenceNumber
 		hasFields = true
 	}
 	if body.RequestingDept != nil {
+		if len(*body.RequestingDept) > 255 {
+			writeError(w, http.StatusBadRequest, "requesting_dept too long, max 255 characters")
+			return
+		}
 		fields.RequestingDept = body.RequestingDept
 		hasFields = true
 	}

@@ -504,6 +504,18 @@ const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
 
 const PAGE_SIZE = 25
 
+// `<input type="datetime-local">` interprets its value in the browser's
+// local timezone, but `due_date` is stored as a UTC ISO string. Slicing the
+// UTC digits directly would feed local-timezone-formatted digits into a
+// local-timezone-interpreting input, silently shifting the displayed time by
+// the local UTC offset. Shift the Date by that offset first so the sliced
+// digits are local wall-clock time.
+function toLocalDatetimeInputValue(iso: string): string {
+  const d = new Date(iso)
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+  return local.toISOString().slice(0, 16)
+}
+
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: '—' },
   { value: 'requested', label: 'Requested' },
@@ -677,6 +689,7 @@ function URLsPage() {
                         className="form-input"
                         style={{ width: 120 }}
                         value={u.agency ?? ''}
+                        maxLength={255}
                         onFocus={e => handleTextFocus(u.id, 'agency', e.target.value)}
                         onChange={e => handleTextChange(u.id, 'agency', e.target.value)}
                         onBlur={() => handleTextBlur(u.id, 'agency')}
@@ -689,6 +702,7 @@ function URLsPage() {
                         className="form-input"
                         style={{ width: 120 }}
                         value={u.reference_number ?? ''}
+                        maxLength={255}
                         onFocus={e => handleTextFocus(u.id, 'reference_number', e.target.value)}
                         onChange={e => handleTextChange(u.id, 'reference_number', e.target.value)}
                         onBlur={() => handleTextBlur(u.id, 'reference_number')}
@@ -701,6 +715,7 @@ function URLsPage() {
                         className="form-input"
                         style={{ width: 140 }}
                         value={u.requesting_dept ?? ''}
+                        maxLength={255}
                         onFocus={e => handleTextFocus(u.id, 'requesting_dept', e.target.value)}
                         onChange={e => handleTextChange(u.id, 'requesting_dept', e.target.value)}
                         onBlur={() => handleTextBlur(u.id, 'requesting_dept')}
@@ -712,7 +727,7 @@ function URLsPage() {
                         value={u.status ?? ''}
                         onValueChange={v => handleStatusChange(u.id, v)}
                       >
-                        <SelectTrigger aria-label={`Status for ${u.url}`} className="w-full" />
+                        <SelectTrigger aria-label={`Status for ${u.url}`} placeholder="—" className="w-full" />
                         <SelectContent>
                           {STATUS_OPTIONS.map((opt, i) => (
                             <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
@@ -725,7 +740,7 @@ function URLsPage() {
                         type="datetime-local"
                         className="form-input"
                         style={{ width: 180 }}
-                        value={u.due_date ? u.due_date.slice(0, 16) : ''}
+                        value={u.due_date ? toLocalDatetimeInputValue(u.due_date) : ''}
                         onChange={e => handleDueDateChange(u.id, e.target.value)}
                         aria-label={`Due date for ${u.url}`}
                       />
