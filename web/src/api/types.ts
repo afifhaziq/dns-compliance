@@ -210,8 +210,17 @@ export type LegalElement = {
   created_at: string
 }
 
+// Named LegalSubElement (not SubElement) for the same DOM-shadowing reason
+// LegalElement avoids Element.
+export type LegalSubElement = {
+  id: number
+  element_id: number
+  name: string
+  created_at: string
+}
+
 // One row of GET /api/legal/offences/*url — a domain tagged with a specific
-// (Category, optional Element) offence.
+// (Category, optional Element, optional SubElement) offence.
 export type URLOffence = {
   id: number
   url_id: number
@@ -219,5 +228,7 @@ export type URLOffence = {
   category: LegalCategory
   element_id?: number
   element?: LegalElement
+  sub_element_id?: number
+  sub_element?: LegalSubElement
   recorded_at: string
 }
