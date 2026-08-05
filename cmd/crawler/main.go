@@ -459,11 +459,17 @@ func assignScreenshots(results []pipeline.SiteResult, shots map[string][]byte, e
 // still end up with two separately (and correctly) labeled images. Framing
 // only renders a local HTML wrapper (no navigation to the target site), so
 // repeating it once per DNS server is cheap — a single shared Chrome tab
-// handles every result sequentially. Each Frame call is bounded by ssTimeout
-// so a wedged Chrome tab can't hang this pass forever — this runs inside
-// StartSweep's blocking call in listen mode, and an unbounded hang here would
-// leave controlServer's "running" flag stuck true, permanently jamming every
-// future sweep.
+// handles every result sequentially.
+//
+// The whole pass shares one ssTimeout-bounded context rather than a fresh
+// WithTimeout per Frame call: chromedp lazily binds a tab's listener
+// lifetime to whichever context first triggers allocation, so cancelling a
+// per-call child context after the first Frame call tears down the shared
+// tab and makes every subsequent call fail with "context canceled" — this
+// was observed in manual testing (only the first DNS server's screenshot
+// got framed). A single bound still protects StartSweep's blocking call in
+// listen mode from hanging forever and leaving controlServer's "running"
+// flag stuck true.
 func frameScreenshots(ctx context.Context, results []pipeline.SiteResult, servers []serverEntry, capturedAts map[string]time.Time, ssTimeout time.Duration) {
 	if len(capturedAts) == 0 {
 		return
@@ -473,7 +479,9 @@ func frameScreenshots(ctx context.Context, results []pipeline.SiteResult, server
 		byName[s.name] = s
 	}
 
-	allocCtx, allocCancel := chromedp.NewExecAllocator(ctx, screenshot.AllocatorOptions...)
+	frameCtx, cancel := context.WithTimeout(ctx, ssTimeout)
+	defer cancel()
+	allocCtx, allocCancel := chromedp.NewExecAllocator(frameCtx, screenshot.AllocatorOptions...)
 	defer allocCancel()
 	tabCtx, tabCancel := chromedp.NewContext(allocCtx)
 	defer tabCancel()
@@ -487,9 +495,7 @@ func frameScreenshots(ctx context.Context, results []pipeline.SiteResult, server
 			continue
 		}
 		meta := byName[r.DNSServer]
-		frameCtx, cancel := context.WithTimeout(tabCtx, ssTimeout)
-		framed, err := screenshot.Frame(frameCtx, r.Screenshot, r.URL, capturedAt, meta.isp, meta.address)
-		cancel()
+		framed, err := screenshot.Frame(tabCtx, r.Screenshot, r.URL, capturedAt, meta.isp, meta.address)
 		if err != nil {
 			log.Printf("framing failed for %s (%s): %v", r.URL, r.DNSServer, err)
 			continue
