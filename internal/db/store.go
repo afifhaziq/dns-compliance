@@ -202,18 +202,23 @@ type LegalCitationStore interface {
 	ListElementsByCategory(ctx context.Context, categoryID uint) ([]Element, error)
 	CreateElement(ctx context.Context, el Element) (Element, error)
 	UpdateElement(ctx context.Context, id uint, name string) (Element, error)
-	DeleteElement(ctx context.Context, id uint) error // cascades to URLOffence
+	DeleteElement(ctx context.Context, id uint) error // cascades to SubElement/URLOffence
+
+	ListSubElementsByElement(ctx context.Context, elementID uint) ([]SubElement, error)
+	CreateSubElement(ctx context.Context, se SubElement) (SubElement, error)
+	UpdateSubElement(ctx context.Context, id uint, name string) (SubElement, error)
+	DeleteSubElement(ctx context.Context, id uint) error // cascades to URLOffence
 
 	// ListOffencesByURL preloads Category (and its parent Citation/
-	// Instrument) plus Element so a listing can render full context in one
-	// query. Keyed by urlValue, not urlID, matching the *url wildcard
-	// convention used by every other domain-scoped read.
+	// Instrument) plus Element and SubElement so a listing can render full
+	// context in one query. Keyed by urlValue, not urlID, matching the *url
+	// wildcard convention used by every other domain-scoped read.
 	ListOffencesByURL(ctx context.Context, urlValue string) ([]URLOffence, error)
 	// GetOffence preloads URL — used by the detach handler to resolve the
 	// owning department before deleting, since DELETE is keyed by the
 	// offence's own surrogate ID, not by URL. nil, nil if not found.
 	GetOffence(ctx context.Context, id uint) (*URLOffence, error)
-	AttachOffenceToURL(ctx context.Context, urlValue string, categoryID uint, elementID *uint) (URLOffence, error)
+	AttachOffenceToURL(ctx context.Context, urlValue string, categoryID uint, elementID *uint, subElementID *uint) (URLOffence, error)
 	DetachOffenceFromURL(ctx context.Context, id uint) error
 }
 

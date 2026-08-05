@@ -3,6 +3,7 @@ package server_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -242,5 +243,182 @@ func TestDetachOffence_OwningDepartmentSucceeds(t *testing.T) {
 	}
 	if len(store.urlOffences) != 0 {
 		t.Fatalf("expected offence to be removed, got %d rows", len(store.urlOffences))
+	}
+}
+
+func TestCreateSubElement_ForbiddenForNonAdmin(t *testing.T) {
+	store := &fullMockStore{}
+	store.categories = append(store.categories, db.Category{ID: 1, CitationID: 1, Name: "Harassment"})
+	store.elements = append(store.elements, db.Element{ID: 1, CategoryID: 1, Name: "Menacing"})
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+	body, _ := json.Marshal(map[string]any{"element_id": 1, "name": "Direct Threat"})
+	req := httptest.NewRequest(http.MethodPost, "/api/legal/subelements", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSubElementCRUD_AllowedForDeptAdmin(t *testing.T) {
+	store := &fullMockStore{}
+	store.categories = append(store.categories, db.Category{ID: 1, CitationID: 1, Name: "Harassment"})
+	store.elements = append(store.elements, db.Element{ID: 1, CategoryID: 1, Name: "Menacing"})
+	cookie := deptAdminCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	createBody, _ := json.Marshal(map[string]any{"element_id": 1, "name": "Direct Threat"})
+	req := httptest.NewRequest(http.MethodPost, "/api/legal/subelements", bytes.NewReader(createBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var created db.SubElement
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/legal/elements/1/subelements", nil)
+	listReq.AddCookie(cookie)
+	listW := httptest.NewRecorder()
+	r.ServeHTTP(listW, listReq)
+	if listW.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", listW.Code, listW.Body.String())
+	}
+	var listed []db.SubElement
+	if err := json.Unmarshal(listW.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(listed) != 1 || listed[0].Name != "Direct Threat" {
+		t.Fatalf("expected 1 sub-element named Direct Threat, got %+v", listed)
+	}
+
+	patchBody, _ := json.Marshal(map[string]string{"name": "Explicit Threat"})
+	patchReq := httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/api/legal/subelements/%d", created.ID), bytes.NewReader(patchBody))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchReq.AddCookie(cookie)
+	patchW := httptest.NewRecorder()
+	r.ServeHTTP(patchW, patchReq)
+	if patchW.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", patchW.Code, patchW.Body.String())
+	}
+
+	delReq := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/legal/subelements/%d", created.ID), nil)
+	delReq.AddCookie(cookie)
+	delW := httptest.NewRecorder()
+	r.ServeHTTP(delW, delReq)
+	if delW.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", delW.Code, delW.Body.String())
+	}
+}
+
+// seedOffenceWithSubElement is like seedOffence but also wires a SubElement
+// under the seeded Element and attaches the offence with it — a separate
+// helper (not a change to seedOffence) since seedOffence is already reused
+// by several tests above that don't need a sub-element.
+func seedOffenceWithSubElement(store *fullMockStore, departmentID uint) (urlValue string, offenceID uint) {
+	u := db.URL{ID: 1, URL: "example.com"}
+	store.urls = append(store.urls, u)
+	store.departmentURLs = append(store.departmentURLs, db.DepartmentURL{DepartmentID: departmentID, URLID: u.ID, Enabled: true})
+
+	instrument := db.Instrument{ID: 1, Type: "ACT", Jurisdiction: "FEDERAL", Number: "588", ShortTitle: "CMA 1998"}
+	store.instruments = append(store.instruments, instrument)
+	citation := db.Citation{ID: 1, InstrumentID: 1, RawText: "Seksyen 233(1)(a)", ParseConfidence: "OK"}
+	store.citations = append(store.citations, citation)
+	category := db.Category{ID: 1, CitationID: 1, Name: "Harassment"}
+	store.categories = append(store.categories, category)
+	element := db.Element{ID: 1, CategoryID: 1, Name: "Menacing"}
+	store.elements = append(store.elements, element)
+	subElement := db.SubElement{ID: 1, ElementID: 1, Name: "Direct Threat"}
+	store.subElements = append(store.subElements, subElement)
+
+	offence := db.URLOffence{ID: 1, URLID: u.ID, CategoryID: 1, ElementID: &element.ID, SubElementID: &subElement.ID}
+	store.urlOffences = append(store.urlOffences, offence)
+	return u.URL, offence.ID
+}
+
+func TestOffencesByURL_HydratesSubElement(t *testing.T) {
+	store := &fullMockStore{}
+	urlValue, _ := seedOffenceWithSubElement(store, 1)
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/legal/offences/"+urlValue, nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var offences []db.URLOffence
+	if err := json.Unmarshal(w.Body.Bytes(), &offences); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(offences) != 1 || offences[0].SubElement == nil || offences[0].SubElement.Name != "Direct Threat" {
+		t.Fatalf("expected hydrated SubElement, got %+v", offences)
+	}
+}
+
+func TestAttachOffence_WithSubElementID(t *testing.T) {
+	store := &fullMockStore{}
+	u := db.URL{ID: 1, URL: "example.com"}
+	store.urls = append(store.urls, u)
+	store.departmentURLs = append(store.departmentURLs, db.DepartmentURL{DepartmentID: 1, URLID: u.ID, Enabled: true})
+	store.categories = append(store.categories, db.Category{ID: 1, CitationID: 1, Name: "Harassment"})
+	store.elements = append(store.elements, db.Element{ID: 1, CategoryID: 1, Name: "Menacing"})
+	store.subElements = append(store.subElements, db.SubElement{ID: 1, ElementID: 1, Name: "Direct Threat"})
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]uint{"category_id": 1, "element_id": 1, "sub_element_id": 1})
+	req := httptest.NewRequest(http.MethodPost, "/api/legal/offences/example.com", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var offence db.URLOffence
+	if err := json.Unmarshal(w.Body.Bytes(), &offence); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if offence.SubElementID == nil || *offence.SubElementID != 1 {
+		t.Fatalf("expected SubElementID 1, got %v", offence.SubElementID)
+	}
+}
+
+func TestAttachOffence_SubElementWithoutElementRejected(t *testing.T) {
+	store := &fullMockStore{}
+	u := db.URL{ID: 1, URL: "example.com"}
+	store.urls = append(store.urls, u)
+	store.departmentURLs = append(store.departmentURLs, db.DepartmentURL{DepartmentID: 1, URLID: u.ID, Enabled: true})
+	store.categories = append(store.categories, db.Category{ID: 1, CitationID: 1, Name: "Harassment"})
+	store.elements = append(store.elements, db.Element{ID: 1, CategoryID: 1, Name: "Menacing"})
+	store.subElements = append(store.subElements, db.SubElement{ID: 1, ElementID: 1, Name: "Direct Threat"})
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]uint{"category_id": 1, "sub_element_id": 1})
+	req := httptest.NewRequest(http.MethodPost, "/api/legal/offences/example.com", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.urlOffences) != 0 {
+		t.Fatalf("expected no offence to be created, got %d rows", len(store.urlOffences))
 	}
 }

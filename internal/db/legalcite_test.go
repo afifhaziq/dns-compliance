@@ -219,7 +219,7 @@ func TestAttachAndListOffencesByURL(t *testing.T) {
 		t.Fatalf("CreateURL: %v", err)
 	}
 
-	offence, err := s.AttachOffenceToURL(ctx, "example.com", category.ID, &element.ID)
+	offence, err := s.AttachOffenceToURL(ctx, "example.com", category.ID, &element.ID, nil)
 	if err != nil {
 		t.Fatalf("AttachOffenceToURL: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestAttachOffenceToURL_NilElementAllowed(t *testing.T) {
 		t.Fatalf("CreateURL: %v", err)
 	}
 
-	offence, err := s.AttachOffenceToURL(ctx, "example.com", category.ID, nil)
+	offence, err := s.AttachOffenceToURL(ctx, "example.com", category.ID, nil, nil)
 	if err != nil {
 		t.Fatalf("AttachOffenceToURL: %v", err)
 	}
@@ -279,7 +279,7 @@ func TestDetachOffenceFromURL(t *testing.T) {
 	if _, err := s.CreateURL(ctx, "https://example.com"); err != nil {
 		t.Fatalf("CreateURL: %v", err)
 	}
-	offence, err := s.AttachOffenceToURL(ctx, "example.com", category.ID, &element.ID)
+	offence, err := s.AttachOffenceToURL(ctx, "example.com", category.ID, &element.ID, nil)
 	if err != nil {
 		t.Fatalf("AttachOffenceToURL: %v", err)
 	}
@@ -304,7 +304,7 @@ func TestDeleteInstrument_CascadesThroughWholeChain(t *testing.T) {
 	if _, err := s.CreateURL(ctx, "https://example.com"); err != nil {
 		t.Fatalf("CreateURL: %v", err)
 	}
-	if _, err := s.AttachOffenceToURL(ctx, "example.com", category.ID, &element.ID); err != nil {
+	if _, err := s.AttachOffenceToURL(ctx, "example.com", category.ID, &element.ID, nil); err != nil {
 		t.Fatalf("AttachOffenceToURL: %v", err)
 	}
 
@@ -342,7 +342,7 @@ func TestGetOffence_PreloadsURL(t *testing.T) {
 	if _, err := s.CreateURL(ctx, "https://example.com"); err != nil {
 		t.Fatalf("CreateURL: %v", err)
 	}
-	offence, err := s.AttachOffenceToURL(ctx, "example.com", category.ID, &element.ID)
+	offence, err := s.AttachOffenceToURL(ctx, "example.com", category.ID, &element.ID, nil)
 	if err != nil {
 		t.Fatalf("AttachOffenceToURL: %v", err)
 	}
@@ -417,5 +417,167 @@ func TestCategoryAndElementCRUD(t *testing.T) {
 	}
 	if len(categories) != 0 {
 		t.Fatalf("expected category to be gone, got %d", len(categories))
+	}
+}
+
+// seedCMA233WithSubElement extends seedCMA233 with one SubElement under the
+// Element it creates — a separate helper (not a signature change to
+// seedCMA233 itself) since seedCMA233 is already called by six existing
+// tests that destructure exactly 4 return values.
+func seedCMA233WithSubElement(t *testing.T, s db.Store, ctx context.Context) (db.Instrument, db.Citation, db.Category, db.Element, db.SubElement) {
+	t.Helper()
+	instrument, citation, category, element := seedCMA233(t, s, ctx)
+	subElement, err := s.CreateSubElement(ctx, db.SubElement{ElementID: element.ID, Name: "Direct Threat"})
+	if err != nil {
+		t.Fatalf("CreateSubElement: %v", err)
+	}
+	return instrument, citation, category, element, subElement
+}
+
+func TestAttachOffenceToURL_WithSubElement(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	_, _, category, element, subElement := seedCMA233WithSubElement(t, s, ctx)
+
+	if _, err := s.CreateURL(ctx, "https://example.com"); err != nil {
+		t.Fatalf("CreateURL: %v", err)
+	}
+
+	offence, err := s.AttachOffenceToURL(ctx, "example.com", category.ID, &element.ID, &subElement.ID)
+	if err != nil {
+		t.Fatalf("AttachOffenceToURL: %v", err)
+	}
+	if offence.SubElementID == nil || *offence.SubElementID != subElement.ID {
+		t.Fatalf("expected SubElementID %d, got %v", subElement.ID, offence.SubElementID)
+	}
+
+	offences, err := s.ListOffencesByURL(ctx, "example.com")
+	if err != nil {
+		t.Fatalf("ListOffencesByURL: %v", err)
+	}
+	if len(offences) != 1 {
+		t.Fatalf("expected 1 offence, got %d", len(offences))
+	}
+	if offences[0].SubElement == nil || offences[0].SubElement.Name != "Direct Threat" {
+		t.Fatalf("expected preloaded SubElement, got %+v", offences[0].SubElement)
+	}
+}
+
+func TestAttachOffenceToURL_NilSubElementAllowed(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	_, _, category, element, _ := seedCMA233WithSubElement(t, s, ctx)
+
+	if _, err := s.CreateURL(ctx, "https://example.com"); err != nil {
+		t.Fatalf("CreateURL: %v", err)
+	}
+
+	offence, err := s.AttachOffenceToURL(ctx, "example.com", category.ID, &element.ID, nil)
+	if err != nil {
+		t.Fatalf("AttachOffenceToURL: %v", err)
+	}
+	if offence.SubElementID != nil {
+		t.Fatalf("expected nil SubElementID, got %v", offence.SubElementID)
+	}
+
+	offences, err := s.ListOffencesByURL(ctx, "example.com")
+	if err != nil {
+		t.Fatalf("ListOffencesByURL: %v", err)
+	}
+	if len(offences) != 1 || offences[0].SubElement != nil {
+		t.Fatalf("expected 1 offence with nil SubElement, got %+v", offences)
+	}
+}
+
+func TestSubElementCRUD(t *testing.T) {
+	s := newCascadeTestStore(t)
+	ctx := context.Background()
+	_, _, _, element, subElement := seedCMA233WithSubElement(t, s, ctx)
+
+	updated, err := s.UpdateSubElement(ctx, subElement.ID, "Menacing Threat")
+	if err != nil {
+		t.Fatalf("UpdateSubElement: %v", err)
+	}
+	if updated.Name != "Menacing Threat" {
+		t.Fatalf("expected updated name, got %q", updated.Name)
+	}
+
+	second, err := s.CreateSubElement(ctx, db.SubElement{ElementID: element.ID, Name: "Implied Threat"})
+	if err != nil {
+		t.Fatalf("CreateSubElement: %v", err)
+	}
+
+	subElements, err := s.ListSubElementsByElement(ctx, element.ID)
+	if err != nil {
+		t.Fatalf("ListSubElementsByElement: %v", err)
+	}
+	if len(subElements) != 2 {
+		t.Fatalf("expected 2 sub-elements, got %d", len(subElements))
+	}
+
+	if err := s.DeleteSubElement(ctx, second.ID); err != nil {
+		t.Fatalf("DeleteSubElement: %v", err)
+	}
+	subElements, err = s.ListSubElementsByElement(ctx, element.ID)
+	if err != nil {
+		t.Fatalf("ListSubElementsByElement: %v", err)
+	}
+	if len(subElements) != 1 {
+		t.Fatalf("expected 1 sub-element after delete, got %d", len(subElements))
+	}
+}
+
+func TestDeleteElement_CascadesToSubElementAndOffence(t *testing.T) {
+	s := newCascadeTestStore(t)
+	ctx := context.Background()
+	_, _, category, element, subElement := seedCMA233WithSubElement(t, s, ctx)
+	if _, err := s.CreateURL(ctx, "https://example.com"); err != nil {
+		t.Fatalf("CreateURL: %v", err)
+	}
+	if _, err := s.AttachOffenceToURL(ctx, "example.com", category.ID, &element.ID, &subElement.ID); err != nil {
+		t.Fatalf("AttachOffenceToURL: %v", err)
+	}
+
+	if err := s.DeleteElement(ctx, element.ID); err != nil {
+		t.Fatalf("DeleteElement: %v", err)
+	}
+
+	subElements, err := s.ListSubElementsByElement(ctx, element.ID)
+	if err != nil {
+		t.Fatalf("ListSubElementsByElement: %v", err)
+	}
+	if len(subElements) != 0 {
+		t.Fatalf("expected sub-elements to cascade-delete with element, got %d", len(subElements))
+	}
+	offences, err := s.ListOffencesByURL(ctx, "example.com")
+	if err != nil {
+		t.Fatalf("ListOffencesByURL: %v", err)
+	}
+	if len(offences) != 0 {
+		t.Fatalf("expected url_offence to cascade-delete, got %d", len(offences))
+	}
+}
+
+func TestDeleteInstrument_CascadesThroughSubElement(t *testing.T) {
+	s := newCascadeTestStore(t)
+	ctx := context.Background()
+	instrument, _, category, element, subElement := seedCMA233WithSubElement(t, s, ctx)
+	if _, err := s.CreateURL(ctx, "https://example.com"); err != nil {
+		t.Fatalf("CreateURL: %v", err)
+	}
+	if _, err := s.AttachOffenceToURL(ctx, "example.com", category.ID, &element.ID, &subElement.ID); err != nil {
+		t.Fatalf("AttachOffenceToURL: %v", err)
+	}
+
+	if err := s.DeleteInstrument(ctx, instrument.ID); err != nil {
+		t.Fatalf("DeleteInstrument: %v", err)
+	}
+
+	subElements, err := s.ListSubElementsByElement(ctx, element.ID)
+	if err != nil {
+		t.Fatalf("ListSubElementsByElement: %v", err)
+	}
+	if len(subElements) != 0 {
+		t.Fatalf("expected sub-elements to cascade-delete through the whole chain, got %d", len(subElements))
 	}
 }

@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { Instrument, Citation, LegalCategory, LegalElement, URLOffence, LegalCitationParsed } from './types'
+import type { Instrument, Citation, LegalCategory, LegalElement, LegalSubElement, URLOffence, LegalCitationParsed } from './types'
 
 export async function fetchInstruments(): Promise<Instrument[]> {
   const data = await api.get<Instrument[]>('/legal/instruments')
@@ -99,6 +99,23 @@ export function deleteElement(id: number): Promise<void> {
   return api.delete<void>(`/legal/elements/${id}`)
 }
 
+export async function fetchSubElements(elementId: number): Promise<LegalSubElement[]> {
+  const data = await api.get<LegalSubElement[]>(`/legal/elements/${elementId}/subelements`)
+  return Array.isArray(data) ? data : []
+}
+
+export function createSubElement(elementId: number, name: string): Promise<LegalSubElement> {
+  return api.post<LegalSubElement>('/legal/subelements', { element_id: elementId, name })
+}
+
+export function updateSubElement(id: number, name: string): Promise<LegalSubElement> {
+  return api.patch<LegalSubElement>(`/legal/subelements/${id}`, { name })
+}
+
+export function deleteSubElement(id: number): Promise<void> {
+  return api.delete<void>(`/legal/subelements/${id}`)
+}
+
 // URL <-> offence linking (department-ownership-scoped server-side).
 
 export async function fetchOffencesByUrl(url: string): Promise<URLOffence[]> {
@@ -106,10 +123,11 @@ export async function fetchOffencesByUrl(url: string): Promise<URLOffence[]> {
   return Array.isArray(data) ? data : []
 }
 
-export function attachOffence(url: string, categoryId: number, elementId?: number): Promise<URLOffence> {
+export function attachOffence(url: string, categoryId: number, elementId?: number, subElementId?: number): Promise<URLOffence> {
   return api.post<URLOffence>(`/legal/offences/${encodeURIComponent(url)}`, {
     category_id: categoryId,
     element_id: elementId,
+    sub_element_id: subElementId,
   })
 }
 
