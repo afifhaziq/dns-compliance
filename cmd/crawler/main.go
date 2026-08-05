@@ -271,7 +271,7 @@ func runSweep(
 	// assignScreenshots so every DNS server's copy gets framed, not just the
 	// one raw capture per (url, resolvedIP).
 	if takeScreenshots {
-		frameScreenshots(ctx, allResults, servers, capturedAts)
+		frameScreenshots(ctx, allResults, servers, capturedAts, baseCfg.ScreenshotTimeout)
 	}
 
 	compliant, nonCompliant := 0, 0
@@ -459,8 +459,12 @@ func assignScreenshots(results []pipeline.SiteResult, shots map[string][]byte, e
 // still end up with two separately (and correctly) labeled images. Framing
 // only renders a local HTML wrapper (no navigation to the target site), so
 // repeating it once per DNS server is cheap — a single shared Chrome tab
-// handles every result sequentially.
-func frameScreenshots(ctx context.Context, results []pipeline.SiteResult, servers []serverEntry, capturedAts map[string]time.Time) {
+// handles every result sequentially. Each Frame call is bounded by ssTimeout
+// so a wedged Chrome tab can't hang this pass forever — this runs inside
+// StartSweep's blocking call in listen mode, and an unbounded hang here would
+// leave controlServer's "running" flag stuck true, permanently jamming every
+// future sweep.
+func frameScreenshots(ctx context.Context, results []pipeline.SiteResult, servers []serverEntry, capturedAts map[string]time.Time, ssTimeout time.Duration) {
 	if len(capturedAts) == 0 {
 		return
 	}
@@ -483,7 +487,9 @@ func frameScreenshots(ctx context.Context, results []pipeline.SiteResult, server
 			continue
 		}
 		meta := byName[r.DNSServer]
-		framed, err := screenshot.Frame(tabCtx, r.Screenshot, r.URL, capturedAt, meta.isp, meta.address)
+		frameCtx, cancel := context.WithTimeout(tabCtx, ssTimeout)
+		framed, err := screenshot.Frame(frameCtx, r.Screenshot, r.URL, capturedAt, meta.isp, meta.address)
+		cancel()
 		if err != nil {
 			log.Printf("framing failed for %s (%s): %v", r.URL, r.DNSServer, err)
 			continue

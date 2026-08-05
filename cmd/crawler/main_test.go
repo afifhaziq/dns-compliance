@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/afif/dns-tracking/internal/dnsconfig"
 	"github.com/afif/dns-tracking/internal/pipeline"
@@ -42,7 +43,7 @@ func TestFrameScreenshotsNoOpWhenNoCapturedAts(t *testing.T) {
 	results := []pipeline.SiteResult{
 		{URL: "https://example.com", ResolvedIP: "1.2.3.4", DNSServer: "Cloudflare DoT", Screenshot: []byte("fake-png")},
 	}
-	frameScreenshots(context.Background(), results, nil, nil)
+	frameScreenshots(context.Background(), results, nil, nil, 5*time.Second)
 
 	if string(results[0].Screenshot) != "fake-png" {
 		t.Errorf("expected screenshot bytes untouched, got %q", results[0].Screenshot)

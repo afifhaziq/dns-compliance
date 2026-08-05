@@ -225,6 +225,9 @@ func Frame(chromeCtx context.Context, pageBytes []byte, rawURL string, capturedA
 	if err := chromedp.Run(chromeCtx,
 		chromedp.Navigate(dataURL),
 		chromedp.ActionFunc(func(ctx context.Context) error {
+			if err := emulation.ClearDeviceMetricsOverride().Do(ctx); err != nil {
+				return err
+			}
 			_, _, contentSize, _, _, _, err := page.GetLayoutMetrics().Do(ctx)
 			if err != nil {
 				return err
