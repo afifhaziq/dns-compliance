@@ -2,7 +2,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRe
 import { createFileRoute } from '@tanstack/react-router'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { GripIcon } from '@/components/ui/grip'
-import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlOrderedAt } from '../api/urls'
+import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlFields } from '../api/urls'
 import type { URLEntry, Instrument, Citation, LegalCategory, LegalElement, URLOffence } from '../api/types'
 import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, attachOffence, fetchOffencesByUrl, detachOffence, formatParsedCitation } from '../api/legal'
 import {
@@ -470,12 +470,11 @@ function SkeletonRows() {
           <TableCell className="col-domain">
             <span className="skeleton" style={{ width: w, height: 14 }} />
           </TableCell>
-          <TableCell className="col-status">
-            <span className="skeleton" style={{ width: 90, height: 14 }} />
-          </TableCell>
-          <TableCell className="col-status">
-            <span className="skeleton" style={{ width: 90, height: 14 }} />
-          </TableCell>
+          {Array.from({ length: 6 }).map((_, j) => (
+            <TableCell key={j} className="col-status">
+              <span className="skeleton" style={{ width: 90, height: 14 }} />
+            </TableCell>
+          ))}
           <TableCell style={{ width: 52 }} />
           <TableCell className="col-evidence" />
         </TableRow>
@@ -505,6 +504,15 @@ const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
 
 const PAGE_SIZE = 25
 
+const STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: '—' },
+  { value: 'requested', label: 'Requested' },
+  { value: 'uplift', label: 'Uplift' },
+  { value: 'suspended', label: 'Suspended' },
+]
+
+type CaseTextField = 'agency' | 'reference_number' | 'requesting_dept'
+
 function URLsPage() {
   const [urls, setUrls] = useState<URLEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -513,6 +521,9 @@ function URLsPage() {
   const [deleteTarget, setDeleteTarget] = useState<URLEntry | null>(null)
   const [editOffencesTarget, setEditOffencesTarget] = useState<string | null>(null)
   const [page, setPage] = useState(1)
+  // Snapshots a text field's pre-edit value on focus so handleTextBlur can
+  // roll back to it if the commit fails.
+  const fieldOriginalRef = useRef<Record<string, string>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -537,14 +548,47 @@ function URLsPage() {
     }
   }, [])
 
-  const handleOrderedAtChange = useCallback(async (id: number, dateStr: string) => {
-    const previous = urls.find(u => u.id === id)?.ordered_at
-    const orderedAt = dateStr ? new Date(dateStr).toISOString() : null
-    setUrls(prev => prev.map(u => u.id === id ? { ...u, ordered_at: orderedAt ?? undefined } : u))
+  const handleDueDateChange = useCallback(async (id: number, dateStr: string) => {
+    const previous = urls.find(u => u.id === id)?.due_date
+    const dueDate = dateStr ? new Date(dateStr).toISOString() : null
+    setUrls(prev => prev.map(u => u.id === id ? { ...u, due_date: dueDate ?? undefined } : u))
     try {
-      await setUrlOrderedAt(id, orderedAt)
+      await setUrlFields(id, { due_date: dueDate })
     } catch {
-      setUrls(prev => prev.map(u => u.id === id ? { ...u, ordered_at: previous } : u))
+      setUrls(prev => prev.map(u => u.id === id ? { ...u, due_date: previous } : u))
+    }
+  }, [urls])
+
+  const handleStatusChange = useCallback(async (id: number, status: string) => {
+    const previous = urls.find(u => u.id === id)?.status
+    setUrls(prev => prev.map(u => u.id === id ? { ...u, status } : u))
+    try {
+      await setUrlFields(id, { status })
+    } catch {
+      setUrls(prev => prev.map(u => u.id === id ? { ...u, status: previous } : u))
+    }
+  }, [urls])
+
+  // Text fields commit on blur (not per keystroke) to avoid a PATCH per
+  // character — fieldOriginalRef snapshots the pre-edit value on focus so a
+  // failed commit can roll back to it.
+  const handleTextFocus = useCallback((id: number, field: CaseTextField, value: string) => {
+    fieldOriginalRef.current[`${id}:${field}`] = value
+  }, [])
+
+  const handleTextChange = useCallback((id: number, field: CaseTextField, value: string) => {
+    setUrls(prev => prev.map(u => u.id === id ? { ...u, [field]: value } : u))
+  }, [])
+
+  const handleTextBlur = useCallback(async (id: number, field: CaseTextField) => {
+    const key = `${id}:${field}`
+    const original = fieldOriginalRef.current[key] ?? ''
+    const current = urls.find(u => u.id === id)?.[field] ?? ''
+    if (current === original) return
+    try {
+      await setUrlFields(id, { [field]: current })
+    } catch {
+      setUrls(prev => prev.map(u => u.id === id ? { ...u, [field]: original } : u))
     }
   }, [urls])
 
@@ -594,7 +638,11 @@ function URLsPage() {
               <TableRow>
                 <TableHead className="col-domain th-left" scope="col">Domain</TableHead>
                 <TableHead className="col-status" scope="col">Added</TableHead>
-                <TableHead className="col-status" scope="col">Order Date</TableHead>
+                <TableHead className="col-status" scope="col">Agency</TableHead>
+                <TableHead className="col-status" scope="col">Reference No.</TableHead>
+                <TableHead className="col-status" scope="col">Requesting Dept.</TableHead>
+                <TableHead className="col-status" scope="col">Status</TableHead>
+                <TableHead className="col-status" scope="col">Due Date</TableHead>
                 <TableHead scope="col" style={{ width: 52, textAlign: 'center' }}>Scan</TableHead>
                 <TableHead className="col-evidence" scope="col" />
               </TableRow>
@@ -625,12 +673,61 @@ function URLsPage() {
                     </TableCell>
                     <TableCell className="col-status text-center">
                       <input
-                        type="date"
+                        type="text"
+                        className="form-input"
+                        style={{ width: 120 }}
+                        value={u.agency ?? ''}
+                        onFocus={e => handleTextFocus(u.id, 'agency', e.target.value)}
+                        onChange={e => handleTextChange(u.id, 'agency', e.target.value)}
+                        onBlur={() => handleTextBlur(u.id, 'agency')}
+                        aria-label={`Agency for ${u.url}`}
+                      />
+                    </TableCell>
+                    <TableCell className="col-status text-center">
+                      <input
+                        type="text"
+                        className="form-input"
+                        style={{ width: 120 }}
+                        value={u.reference_number ?? ''}
+                        onFocus={e => handleTextFocus(u.id, 'reference_number', e.target.value)}
+                        onChange={e => handleTextChange(u.id, 'reference_number', e.target.value)}
+                        onBlur={() => handleTextBlur(u.id, 'reference_number')}
+                        aria-label={`Reference number for ${u.url}`}
+                      />
+                    </TableCell>
+                    <TableCell className="col-status text-center">
+                      <input
+                        type="text"
                         className="form-input"
                         style={{ width: 140 }}
-                        value={u.ordered_at ? u.ordered_at.slice(0, 10) : ''}
-                        onChange={e => handleOrderedAtChange(u.id, e.target.value)}
-                        aria-label={`Order date for ${u.url}`}
+                        value={u.requesting_dept ?? ''}
+                        onFocus={e => handleTextFocus(u.id, 'requesting_dept', e.target.value)}
+                        onChange={e => handleTextChange(u.id, 'requesting_dept', e.target.value)}
+                        onBlur={() => handleTextBlur(u.id, 'requesting_dept')}
+                        aria-label={`Requesting department for ${u.url}`}
+                      />
+                    </TableCell>
+                    <TableCell className="col-status text-center">
+                      <Select
+                        value={u.status ?? ''}
+                        onValueChange={v => handleStatusChange(u.id, v)}
+                      >
+                        <SelectTrigger aria-label={`Status for ${u.url}`} className="w-full" />
+                        <SelectContent>
+                          {STATUS_OPTIONS.map((opt, i) => (
+                            <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="col-status text-center">
+                      <input
+                        type="datetime-local"
+                        className="form-input"
+                        style={{ width: 180 }}
+                        value={u.due_date ? u.due_date.slice(0, 16) : ''}
+                        onChange={e => handleDueDateChange(u.id, e.target.value)}
+                        aria-label={`Due date for ${u.url}`}
                       />
                     </TableCell>
                     <TableCell style={{ textAlign: 'center' }}>
