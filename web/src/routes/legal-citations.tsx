@@ -42,8 +42,8 @@ type LegalTreeRow = {
   children?: LegalTreeRow[]
 }
 
-// Eagerly walks the whole Instrument -> Citation -> Category -> Element
-// hierarchy into one nested tree so it can be rendered as a single indented
+// Eagerly walks the whole Instrument -> Citation -> Category -> Element ->
+// SubElement hierarchy into one nested tree so it can be rendered as a single indented
 // table via getSubRows — a reference catalog like this is small enough that
 // loading it all up front (rather than lazy-fetching per expand) is simpler
 // and keeps expand/collapse instant.
@@ -87,7 +87,7 @@ const DELETE_DESCRIPTIONS: Record<LegalKind, string> = {
   citation: 'Cascades to every category, element, sub-element, and recorded offence under this citation.',
   category: 'Cascades to every element, sub-element, and recorded offence under this category.',
   element: 'Cascades to every sub-element and recorded offence under this element.',
-  subelement: 'Removes this sub-element from any domain currently tagged with it.',
+  subelement: 'Deletes the recorded offence of any domain tagged with this sub-element.',
 }
 
 /* ─── Dialogs ─────────────────────────────────────────────────────────────── */
@@ -473,14 +473,14 @@ function ElementFormDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!category) return
+    if (!editing && !category) return
     if (!name.trim()) { setError('Name is required'); return }
     setLoading(true)
     setError(null)
     try {
       if (editing) {
         await updateElement(editing.id, name.trim())
-      } else {
+      } else if (category) {
         await createElement(category.id, name.trim())
       }
       reset()
@@ -548,14 +548,14 @@ function SubElementFormDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!element) return
+    if (!editing && !element) return
     if (!name.trim()) { setError('Name is required'); return }
     setLoading(true)
     setError(null)
     try {
       if (editing) {
         await updateSubElement(editing.id, name.trim())
-      } else {
+      } else if (element) {
         await createSubElement(element.id, name.trim())
       }
       reset()
@@ -838,9 +838,10 @@ function LegalCitationsPage() {
       {/* category is null here (not editCategoryTarget — unrelated state for
           the edit-category dialog above): LegalElement doesn't carry its
           parent Category, and the update payload doesn't need it either
-          (updateElement only takes id+name) — this only affects the
-          dialog's "Sub-category of ..." description line, which is simply
-          omitted for the edit case. */}
+          (updateElement only takes id+name). handleSubmit only requires
+          category when creating (editing is falsy), so this only affects
+          the dialog's "Sub-category of ..." description line, which is
+          simply omitted for the edit case. */}
       <ElementFormDialog open={editElementTarget !== null} onClose={() => setEditElementTarget(null)} onSaved={load} category={null} editing={editElementTarget} />
 
       <SubElementFormDialog open={addSubElementFor !== null} onClose={() => setAddSubElementFor(null)} onSaved={load} element={addSubElementFor} editing={null} />

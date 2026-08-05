@@ -396,3 +396,29 @@ func TestAttachOffence_WithSubElementID(t *testing.T) {
 		t.Fatalf("expected SubElementID 1, got %v", offence.SubElementID)
 	}
 }
+
+func TestAttachOffence_SubElementWithoutElementRejected(t *testing.T) {
+	store := &fullMockStore{}
+	u := db.URL{ID: 1, URL: "example.com"}
+	store.urls = append(store.urls, u)
+	store.departmentURLs = append(store.departmentURLs, db.DepartmentURL{DepartmentID: 1, URLID: u.ID, Enabled: true})
+	store.categories = append(store.categories, db.Category{ID: 1, CitationID: 1, Name: "Harassment"})
+	store.elements = append(store.elements, db.Element{ID: 1, CategoryID: 1, Name: "Menacing"})
+	store.subElements = append(store.subElements, db.SubElement{ID: 1, ElementID: 1, Name: "Direct Threat"})
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]uint{"category_id": 1, "sub_element_id": 1})
+	req := httptest.NewRequest(http.MethodPost, "/api/legal/offences/example.com", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.urlOffences) != 0 {
+		t.Fatalf("expected no offence to be created, got %d rows", len(store.urlOffences))
+	}
+}
