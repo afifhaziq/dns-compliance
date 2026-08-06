@@ -391,7 +391,7 @@ function AddUrlDialog({
             <label className="form-label" htmlFor="add-url-input">Domain</label>
             <textarea
               id="add-url-input"
-              className="form-input"
+              className="form-input form-input-strong"
               placeholder={'https://example.com\nhttps://example2.com'}
               value={value}
               onChange={e => setValue(e.target.value)}
@@ -480,7 +480,7 @@ function AddUrlDialog({
             <input
               id="add-reference-number"
               type="text"
-              className="form-input"
+              className="form-input form-input-strong"
               maxLength={255}
               value={referenceNumber}
               onChange={e => setReferenceNumber(e.target.value)}
@@ -714,7 +714,7 @@ function EditUrlDialog({
               <input
                 id="edit-reference-number"
                 type="text"
-                className="form-input"
+                className="form-input form-input-strong"
                 maxLength={255}
                 value={entry.reference_number ?? ''}
                 onFocus={e => onRefFocus(entry.id, e.target.value)}
@@ -740,6 +740,10 @@ function EditUrlDialog({
 
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric', month: 'short', year: 'numeric',
+})
+
+const DUE_DATE_FMT = new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
 })
 
 const PAGE_SIZE = 25
@@ -933,78 +937,31 @@ function URLsPage() {
     {
       id: 'agency',
       accessorFn: u => u.agency_id ?? '',
-      size: 150,
+      size: 130,
       header: 'Agency',
       meta: { headerTitle: 'Agency', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
-      cell: ({ row }) => {
-        const u = row.original
-        return (
-          <Select
-            value={String(u.agency_id ?? '')}
-            onValueChange={v => handleAgencyChange(u.id, v === '' ? null : Number(v))}
-          >
-            <SelectTrigger aria-label={`Agency for ${u.url}`} placeholder="—" className="w-full" />
-            <SelectContent>
-              <SelectItem index={0} value="">—</SelectItem>
-              {agencies.map((a, i) => (
-                <SelectItem key={a.id} index={i + 1} value={String(a.id)}>{a.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )
-      },
+      cell: ({ row }) => <span className="dns-name">{row.original.agency_name ?? '—'}</span>,
     },
     {
       id: 'reference_number',
       accessorFn: u => u.reference_number ?? '',
-      size: 150,
+      size: 130,
       header: 'Reference No.',
       meta: { headerTitle: 'Reference No.', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
-      cell: ({ row }) => {
-        const u = row.original
-        return (
-          <input
-            type="text"
-            className="form-input"
-            style={{ width: 120 }}
-            value={u.reference_number ?? ''}
-            maxLength={255}
-            onFocus={e => handleRefFocus(u.id, e.target.value)}
-            onChange={e => handleRefChange(u.id, e.target.value)}
-            onBlur={() => handleRefBlur(u.id)}
-            aria-label={`Reference number for ${u.url}`}
-          />
-        )
-      },
+      cell: ({ row }) => <span className="dns-name">{row.original.reference_number || '—'}</span>,
     },
     {
       id: 'requesting_dept',
       accessorFn: u => u.requesting_dept_id ?? '',
-      size: 160,
+      size: 140,
       header: 'Requesting Dept.',
       meta: { headerTitle: 'Requesting Dept.', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
-      cell: ({ row }) => {
-        const u = row.original
-        return (
-          <Select
-            value={String(u.requesting_dept_id ?? '')}
-            onValueChange={v => handleRequestingDeptChange(u.id, v === '' ? null : Number(v))}
-          >
-            <SelectTrigger aria-label={`Requesting department for ${u.url}`} placeholder="—" className="w-full" />
-            <SelectContent>
-              <SelectItem index={0} value="">—</SelectItem>
-              {departments.map((d, i) => (
-                <SelectItem key={d.id} index={i + 1} value={String(d.id)}>{d.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )
-      },
+      cell: ({ row }) => <span className="dns-name">{row.original.requesting_dept_name ?? '—'}</span>,
     },
     {
       id: 'status',
       accessorFn: u => u.status ?? '',
-      size: 140,
+      size: 110,
       header: 'Status',
       meta: {
         headerTitle: 'Status',
@@ -1012,24 +969,12 @@ function URLsPage() {
         cellClassName: 'col-status text-center',
         skeleton: <span className="skeleton" style={{ width: 90, height: 20, borderRadius: 4 }} />,
       },
-      cell: ({ row }) => {
-        const u = row.original
-        return (
-          <Select value={u.status ?? ''} onValueChange={v => handleStatusChange(u.id, v)}>
-            <SelectTrigger aria-label={`Status for ${u.url}`} placeholder="—" className="w-full" />
-            <SelectContent>
-              {STATUS_OPTIONS.map((opt, i) => (
-                <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )
-      },
+      cell: ({ row }) => <span className="dns-name">{STATUS_OPTIONS.find(o => o.value === row.original.status)?.label ?? '—'}</span>,
     },
     {
       id: 'due_date',
       accessorFn: u => u.due_date ?? '',
-      size: 240,
+      size: 170,
       header: ({ column }) => <SortableHeader column={column} title="Due Date" />,
       meta: {
         headerTitle: 'Due Date',
@@ -1038,26 +983,8 @@ function URLsPage() {
         skeleton: <span className="skeleton" style={{ width: 160, height: 20, borderRadius: 4 }} />,
       },
       cell: ({ row }) => {
-        const u = row.original
-        return (
-          <div className="flex items-center gap-2">
-            <DatePicker
-              value={u.due_date ? isoToLocalDate(u.due_date) : null}
-              onChange={date => handleDueDateChange(u.id, date)}
-              placeholder="Select date"
-              clearable
-            />
-            <input
-              type="time"
-              className="form-input"
-              style={{ width: 100 }}
-              value={u.due_date ? isoToLocalTimeStr(u.due_date) : ''}
-              onChange={e => handleDueTimeChange(u.id, e.target.value)}
-              disabled={!u.due_date}
-              aria-label={`Due time for ${u.url}`}
-            />
-          </div>
-        )
+        const { due_date } = row.original
+        return <span className="dns-name">{due_date ? DUE_DATE_FMT.format(new Date(due_date)) : '—'}</span>
       },
     },
     {
@@ -1109,7 +1036,7 @@ function URLsPage() {
         )
       },
     },
-  ], [agencies, departments, handleAgencyChange, handleRequestingDeptChange, handleStatusChange, handleDueDateChange, handleDueTimeChange, handleRefFocus, handleRefChange, handleRefBlur, handleToggle])
+  ], [handleToggle])
 
   const table = useReactTable({
     data: filtered,

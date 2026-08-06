@@ -1112,6 +1112,13 @@ th.th-left {
     focus:border-stone-muted placeholder:text-stone-muted;
 }
 
+/* .form-input's default border-stone-border reads as barely-there against
+   bg-background - opt in to the more visible stone-muted border for fields
+   that need to stand out on their own (not just on focus/hover). */
+.form-input-strong {
+  @apply border-stone-muted;
+}
+
 .form-select {
   @apply py-1.5 px-3 text-sm font-[inherit] text-foreground bg-background border border-stone-border rounded-lg w-full outline-none cursor-pointer
     transition-colors duration-150 ease-snappy focus:border-stone-muted;
