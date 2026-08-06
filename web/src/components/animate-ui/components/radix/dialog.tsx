@@ -1,5 +1,6 @@
 import { XIcon } from 'lucide-react';
 
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Dialog as DialogPrimitive,
   DialogContent as DialogContentPrimitive,
@@ -110,7 +111,7 @@ function DialogContent({
       <DialogOverlay />
       <DialogContentPrimitive
         className={cn(
-          'bg-background fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] max-h-[85vh] overflow-y-auto translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg sm:max-w-lg',
+          'bg-background fixed top-[50%] left-[50%] z-50 flex w-full max-w-[calc(100%-2rem)] max-h-[85vh] flex-col translate-x-[-50%] translate-y-[-50%] overflow-hidden rounded-lg border shadow-lg sm:max-w-lg',
           className,
         )}
         onPointerDownOutside={(e) => {
@@ -139,7 +140,9 @@ function DialogContent({
         }}
         {...props}
       >
-        {children}
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="grid gap-4 p-6">{children}</div>
+        </ScrollArea>
         {showCloseButton && (
           <DialogClosePrimitive className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4">
             <XIcon />
