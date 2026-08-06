@@ -142,7 +142,7 @@ export type MultiOffencePickerHandle = {
 // MCMC data cites domains under several sections joined by "dan"/"&"), so
 // this replaces the old single-selection OffencePicker. Reused by both
 // AddUrlDialog (staged offences applied to every domain on submit) and
-// EditOffencesDialog (each addition attaches immediately to one existing
+// EditUrlDialog (each addition attaches immediately to one existing
 // domain) — this component has no knowledge of which caller it's in.
 const MultiOffencePicker = forwardRef<MultiOffencePickerHandle, {
   value: StagedOffence[]
@@ -402,17 +402,77 @@ function AddUrlDialog({
             />
           </div>
 
-          <div className="form-field">
-            <label className="form-label" id="add-agency-label">Agency</label>
-            <Select value={String(agencyId)} onValueChange={v => setAgencyId(v === '' ? '' : Number(v))} disabled={loading}>
-              <SelectTrigger aria-labelledby="add-agency-label" placeholder="—" className="w-full" />
-              <SelectContent>
-                <SelectItem index={0} value="">—</SelectItem>
-                {agencies.map((a, i) => (
-                  <SelectItem key={a.id} index={i + 1} value={String(a.id)}>{a.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <MultiOffencePicker
+            ref={pickerRef}
+            value={offences}
+            onChange={setOffences}
+            disabled={loading}
+          />
+
+          <div className="form-row">
+            <div className="form-field">
+              <label className="form-label" id="add-agency-label">Agency</label>
+              <Select value={String(agencyId)} onValueChange={v => setAgencyId(v === '' ? '' : Number(v))} disabled={loading}>
+                <SelectTrigger aria-labelledby="add-agency-label" placeholder="—" className="w-full" />
+                <SelectContent>
+                  <SelectItem index={0} value="">—</SelectItem>
+                  {agencies.map((a, i) => (
+                    <SelectItem key={a.id} index={i + 1} value={String(a.id)}>{a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="form-field">
+              <label className="form-label" id="add-requesting-dept-label">Requesting Dept.</label>
+              <Select value={String(requestingDeptId)} onValueChange={v => setRequestingDeptId(v === '' ? '' : Number(v))} disabled={loading}>
+                <SelectTrigger aria-labelledby="add-requesting-dept-label" placeholder="—" className="w-full" />
+                <SelectContent>
+                  <SelectItem index={0} value="">—</SelectItem>
+                  {departments.map((d, i) => (
+                    <SelectItem key={d.id} index={i + 1} value={String(d.id)}>{d.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-field">
+              <label className="form-label" id="add-status-label">Status</label>
+              <Select value={status} onValueChange={setStatus} disabled={loading}>
+                <SelectTrigger aria-labelledby="add-status-label" placeholder="—" className="w-full" />
+                <SelectContent>
+                  {STATUS_OPTIONS.map((opt, i) => (
+                    <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="form-field">
+              <label className="form-label" htmlFor="add-due-date">Due Date</label>
+              <div className="flex items-center gap-2 min-w-0">
+                <DatePicker
+                  id="add-due-date"
+                  className="min-w-0 flex-1"
+                  value={dueDate}
+                  onChange={setDueDate}
+                  placeholder="Select date"
+                  disabled={loading}
+                  clearable
+                />
+                <input
+                  type="time"
+                  className="form-input shrink-0"
+                  style={{ width: 90 }}
+                  value={dueTime}
+                  onChange={e => setDueTime(e.target.value)}
+                  disabled={loading || !dueDate}
+                  aria-label="Due time"
+                />
+              </div>
+            </div>
           </div>
 
           <div className="form-field">
@@ -428,60 +488,6 @@ function AddUrlDialog({
             />
           </div>
 
-          <div className="form-field">
-            <label className="form-label" id="add-requesting-dept-label">Requesting Dept.</label>
-            <Select value={String(requestingDeptId)} onValueChange={v => setRequestingDeptId(v === '' ? '' : Number(v))} disabled={loading}>
-              <SelectTrigger aria-labelledby="add-requesting-dept-label" placeholder="—" className="w-full" />
-              <SelectContent>
-                <SelectItem index={0} value="">—</SelectItem>
-                {departments.map((d, i) => (
-                  <SelectItem key={d.id} index={i + 1} value={String(d.id)}>{d.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="form-field">
-            <label className="form-label" id="add-status-label">Status</label>
-            <Select value={status} onValueChange={setStatus} disabled={loading}>
-              <SelectTrigger aria-labelledby="add-status-label" placeholder="—" className="w-full" />
-              <SelectContent>
-                {STATUS_OPTIONS.map((opt, i) => (
-                  <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="form-field">
-            <label className="form-label" htmlFor="add-due-date">Due Date</label>
-            <div className="flex items-center gap-2">
-              <DatePicker
-                id="add-due-date"
-                value={dueDate}
-                onChange={setDueDate}
-                placeholder="Select date"
-                disabled={loading}
-                clearable
-              />
-              <input
-                type="time"
-                className="form-input"
-                style={{ width: 110 }}
-                value={dueTime}
-                onChange={e => setDueTime(e.target.value)}
-                disabled={loading || !dueDate}
-                aria-label="Due time"
-              />
-            </div>
-          </div>
-
-          <MultiOffencePicker
-            ref={pickerRef}
-            value={offences}
-            onChange={setOffences}
-            disabled={loading}
-          />
           {error && <p className="form-error">{error}</p>}
           <DialogFooter>
             <button type="button" className="btn-ghost" onClick={handleClose} disabled={loading}>
@@ -497,15 +503,36 @@ function AddUrlDialog({
   )
 }
 
-function EditOffencesDialog({
-  url,
+function EditUrlDialog({
+  entry,
   open,
   onClose,
+  agencies,
+  departments,
+  onAgencyChange,
+  onRequestingDeptChange,
+  onStatusChange,
+  onDueDateChange,
+  onDueTimeChange,
+  onRefFocus,
+  onRefChange,
+  onRefBlur,
 }: {
-  url: string | null
+  entry: URLEntry | null
   open: boolean
   onClose: () => void
+  agencies: Agency[]
+  departments: Department[]
+  onAgencyChange: (id: number, agencyId: number | null) => void
+  onRequestingDeptChange: (id: number, deptId: number | null) => void
+  onStatusChange: (id: number, status: string) => void
+  onDueDateChange: (id: number, date: Date | null) => void
+  onDueTimeChange: (id: number, timeStr: string) => void
+  onRefFocus: (id: number, value: string) => void
+  onRefChange: (id: number, value: string) => void
+  onRefBlur: (id: number) => void
 }) {
+  const url = entry?.url ?? null
   const [offences, setOffences] = useState<URLOffence[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -577,33 +604,127 @@ function EditOffencesDialog({
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) handleDone() }}>
-      <DialogContent showCloseButton={false} style={{ maxWidth: 440 }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: 560 }}>
         <DialogHeader>
-          <DialogTitle>Offences</DialogTitle>
+          <DialogTitle>Edit Domain</DialogTitle>
           <DialogDescription>{url}</DialogDescription>
         </DialogHeader>
-        {loading ? (
-          <p className="text-sm text-stone-muted">Loading…</p>
-        ) : offences.length > 0 ? (
-          <ul className="offence-chip-list">
-            {offences.map(o => (
-              <li key={o.id} className="offence-chip">
-                <span>{formatParsedCitation(o.category.citation.parsed)} — {o.category.name}{o.element ? ` (${o.element.name})` : ''}</span>
-                <button
-                  type="button"
-                  className="screenshot-icon-btn"
-                  onClick={() => handleRemove(o.id)}
-                  aria-label={`Remove offence ${o.category.name}`}
-                >
-                  <XIcon size={14} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-stone-muted mb-2">No offences attached yet.</p>
-        )}
+
+        <div className="form-field">
+          <label className="form-label" id="edit-offences-label">Offences</label>
+          {loading ? (
+            <p className="text-sm text-stone-muted">Loading…</p>
+          ) : offences.length > 0 ? (
+            <ul className="offence-chip-list">
+              {offences.map(o => (
+                <li key={o.id} className="offence-chip">
+                  <span>{formatParsedCitation(o.category.citation.parsed)} — {o.category.name}{o.element ? ` (${o.element.name})` : ''}</span>
+                  <button
+                    type="button"
+                    className="screenshot-icon-btn"
+                    onClick={() => handleRemove(o.id)}
+                    aria-label={`Remove offence ${o.category.name}`}
+                  >
+                    <XIcon size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-stone-muted mb-2">No offences attached yet.</p>
+          )}
+        </div>
         <MultiOffencePicker ref={pickerRef} value={staged} onChange={handleAddStaged} disabled={loading} />
+
+        {entry && (
+          <>
+            <div className="form-row">
+              <div className="form-field">
+                <label className="form-label" id="edit-agency-label">Agency</label>
+                <Select
+                  value={String(entry.agency_id ?? '')}
+                  onValueChange={v => onAgencyChange(entry.id, v === '' ? null : Number(v))}
+                >
+                  <SelectTrigger aria-labelledby="edit-agency-label" placeholder="—" className="w-full" />
+                  <SelectContent>
+                    <SelectItem index={0} value="">—</SelectItem>
+                    {agencies.map((a, i) => (
+                      <SelectItem key={a.id} index={i + 1} value={String(a.id)}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="form-field">
+                <label className="form-label" id="edit-requesting-dept-label">Requesting Dept.</label>
+                <Select
+                  value={String(entry.requesting_dept_id ?? '')}
+                  onValueChange={v => onRequestingDeptChange(entry.id, v === '' ? null : Number(v))}
+                >
+                  <SelectTrigger aria-labelledby="edit-requesting-dept-label" placeholder="—" className="w-full" />
+                  <SelectContent>
+                    <SelectItem index={0} value="">—</SelectItem>
+                    {departments.map((d, i) => (
+                      <SelectItem key={d.id} index={i + 1} value={String(d.id)}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-field">
+                <label className="form-label" id="edit-status-label">Status</label>
+                <Select value={entry.status ?? ''} onValueChange={v => onStatusChange(entry.id, v)}>
+                  <SelectTrigger aria-labelledby="edit-status-label" placeholder="—" className="w-full" />
+                  <SelectContent>
+                    {STATUS_OPTIONS.map((opt, i) => (
+                      <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="form-field">
+                <label className="form-label" htmlFor="edit-due-date">Due Date</label>
+                <div className="flex items-center gap-2 min-w-0">
+                  <DatePicker
+                    id="edit-due-date"
+                    className="min-w-0 flex-1"
+                    value={entry.due_date ? isoToLocalDate(entry.due_date) : null}
+                    onChange={date => onDueDateChange(entry.id, date)}
+                    placeholder="Select date"
+                    clearable
+                  />
+                  <input
+                    type="time"
+                    className="form-input shrink-0"
+                    style={{ width: 90 }}
+                    value={entry.due_date ? isoToLocalTimeStr(entry.due_date) : ''}
+                    onChange={e => onDueTimeChange(entry.id, e.target.value)}
+                    disabled={!entry.due_date}
+                    aria-label="Due time"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="form-field">
+              <label className="form-label" htmlFor="edit-reference-number">Reference No.</label>
+              <input
+                id="edit-reference-number"
+                type="text"
+                className="form-input"
+                maxLength={255}
+                value={entry.reference_number ?? ''}
+                onFocus={e => onRefFocus(entry.id, e.target.value)}
+                onChange={e => onRefChange(entry.id, e.target.value)}
+                onBlur={() => onRefBlur(entry.id)}
+              />
+            </div>
+          </>
+        )}
+
         {error && <p className="form-error">{error}</p>}
         <DialogFooter>
           <button type="button" className="btn-primary" onClick={handleDone}>
@@ -634,7 +755,10 @@ function URLsPage() {
   const [error, setError] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<URLEntry | null>(null)
-  const [editOffencesTarget, setEditOffencesTarget] = useState<string | null>(null)
+  // id, not a URLEntry snapshot, so the dialog re-reads the live row out of
+  // `urls` below and reflects its own edits (agency/status/etc.) immediately.
+  const [editTargetId, setEditTargetId] = useState<number | null>(null)
+  const editTarget = urls.find(u => u.id === editTargetId) ?? null
 
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<Filter<string>[]>([])
@@ -966,9 +1090,9 @@ function URLsPage() {
             <button
               type="button"
               className="screenshot-icon-btn"
-              onClick={() => setEditOffencesTarget(u.url)}
-              aria-label={`Edit offences for ${u.url}`}
-              title="Offences"
+              onClick={() => setEditTargetId(u.id)}
+              aria-label={`Edit ${u.url}`}
+              title="Edit"
             >
               <GripIcon size={16} />
             </button>
@@ -1075,10 +1199,20 @@ function URLsPage() {
         onCancel={() => setDeleteTarget(null)}
       />
 
-      <EditOffencesDialog
-        url={editOffencesTarget}
-        open={editOffencesTarget !== null}
-        onClose={() => setEditOffencesTarget(null)}
+      <EditUrlDialog
+        entry={editTarget}
+        open={editTargetId !== null}
+        onClose={() => setEditTargetId(null)}
+        agencies={agencies}
+        departments={departments}
+        onAgencyChange={handleAgencyChange}
+        onRequestingDeptChange={handleRequestingDeptChange}
+        onStatusChange={handleStatusChange}
+        onDueDateChange={handleDueDateChange}
+        onDueTimeChange={handleDueTimeChange}
+        onRefFocus={handleRefFocus}
+        onRefChange={handleRefChange}
+        onRefBlur={handleRefBlur}
       />
     </div>
   )

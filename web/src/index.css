@@ -1093,6 +1093,15 @@ th.th-left {
   @apply flex flex-col gap-2 mb-4;
 }
 
+/* Two form-fields side by side (e.g. Agency + Requesting Dept.) */
+.form-row {
+  @apply flex gap-3;
+}
+
+.form-row > .form-field {
+  @apply flex-1 min-w-0;
+}
+
 .form-label {
   @apply text-[13px] font-medium text-foreground;
 }
