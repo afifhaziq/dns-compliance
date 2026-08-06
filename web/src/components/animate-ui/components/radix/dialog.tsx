@@ -74,6 +74,7 @@ function DialogContent({
   children,
   showCloseButton = true,
   onPointerDownOutside,
+  onFocusOutside,
   onInteractOutside,
   ...props
 }: DialogContentProps) {
@@ -88,6 +89,10 @@ function DialogContent({
         onPointerDownOutside={(e) => {
           if (isIgnoredOutsideTarget(e)) { e.preventDefault(); return; }
           onPointerDownOutside?.(e);
+        }}
+        onFocusOutside={(e) => {
+          if (isIgnoredOutsideTarget(e)) { e.preventDefault(); return; }
+          onFocusOutside?.(e);
         }}
         onInteractOutside={(e) => {
           if (isIgnoredOutsideTarget(e)) { e.preventDefault(); return; }

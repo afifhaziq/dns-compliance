@@ -24,15 +24,18 @@ import { cn } from "@/lib/utils";
 const datePickerTriggerCornerClassName =
   "rounded-lg supports-[corner-shape:squircle]:corner-squircle supports-[corner-shape:squircle]:rounded-[11px]";
 
+// Matches .form-input (index.css) so the trigger sits visually alongside the
+// plain text/select fields in the same dialog instead of reading as a
+// different, generic (stock shadcn near-white/black) component.
 const datePickerInputShellClassName = cn(
-  "group flex w-full items-center border border-border bg-card text-left text-foreground text-sm transition-[border-color,box-shadow] focus-within:border-foreground/30 hover:border-foreground/30",
+  "group flex w-full items-center border border-stone-border bg-background text-left text-foreground text-sm transition-colors duration-150 ease-snappy focus-within:border-stone-muted hover:border-stone-muted",
   "[&:has(input:disabled)]:cursor-not-allowed [&:has(input:disabled)]:opacity-50",
   "[&:has(input[aria-invalid=true])]:border-destructive"
 );
 
 const datePickerInputClassName = cn(
   "min-w-0 flex-1 cursor-pointer truncate bg-transparent py-0 text-left font-medium tracking-tight outline-none focus-visible:outline-none",
-  "text-foreground placeholder:text-muted-foreground",
+  "text-foreground placeholder:text-stone-muted",
   "[-webkit-tap-highlight-color:transparent]"
 );
 
@@ -426,7 +429,7 @@ function DatePickerTrigger({
       <div className="relative flex min-w-0 flex-1 items-center">
         <CalendarIcon
           aria-hidden
-          className="pointer-events-none absolute left-0 h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground group-has-[input:disabled]:text-muted-foreground"
+          className="pointer-events-none absolute left-0 h-4 w-4 shrink-0 text-stone-muted transition-colors group-hover:text-foreground group-has-[input:disabled]:text-stone-muted"
         />
         <InputPrimitive
           aria-controls={open ? panelId : undefined}
@@ -483,7 +486,7 @@ function DatePickerTrigger({
       {clearable && selected && !disabled ? (
         <button
           aria-label="Clear selected date"
-          className="ml-1 flex h-7 w-7 shrink-0 items-center justify-center text-muted-foreground/60 transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
+          className="ml-1 flex h-7 w-7 shrink-0 items-center justify-center text-stone-muted transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
           onClick={onClear}
           onPointerDown={(event) => {
             event.stopPropagation();
