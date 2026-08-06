@@ -35,6 +35,7 @@ import { BrailleLoader } from '@/components/ui/braille-loader'
 import { ThinkingIndicator } from '@/components/ui/thinking-indicator'
 import { SortableHeader, StatusDot, EmptyIcon } from '@/components/results-table-parts'
 import { relativeTime } from '@/lib/relative-time'
+import { useGridPreference } from '@/hooks/use-grid-preference'
 
 export const Route = createFileRoute('/results/')({ component: ResultsPage })
 
@@ -154,6 +155,10 @@ function ResultsPage() {
   const [expanded, setExpanded] = useState<ExpandedState>({})
   const [sorting, setSorting] = useState<SortingState>([{ id: 'status', desc: true }])
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
+
+  // Only sorting is persisted here — unlike urls.tsx, this grid has no
+  // column-visibility toggle or adjustable page size to save.
+  const { ready: gridPrefReady } = useGridPreference('results', { sorting }, { setSorting })
 
   const [pendingScreenshotIds, setPendingScreenshotIds] = useState<Set<number>>(new Set())
   const [screenshotErrors, setScreenshotErrors] = useState<Record<number, string>>({})
@@ -465,6 +470,11 @@ function ResultsPage() {
 
   const pageCount = table.getPageCount()
 
+  // Holds the grid in its loading state until the saved sort order has been
+  // applied, so it renders once already sorted instead of flashing the
+  // default order first.
+  const gridLoading = loading || !gridPrefReady
+
   return (
     <div className="mx-20 mt-10">
       <div className="page-header">
@@ -512,7 +522,7 @@ function ResultsPage() {
           </div>
 
           <div className="results-wrap w-full">
-            {!loading && groups.length === 0 ? (
+            {!gridLoading && groups.length === 0 ? (
               <div className="empty-state">
                 <EmptyIcon />
                 <p className="empty-heading">No results yet</p>
@@ -520,7 +530,7 @@ function ResultsPage() {
                   No scan has been run. Use Run Scan to begin compliance monitoring.
                 </p>
               </div>
-            ) : !loading && filtered.length === 0 ? (
+            ) : !gridLoading && filtered.length === 0 ? (
               <div className="empty-state" style={{ padding: '3rem 0' }}>
                 <p className="empty-heading">No results match the current filters</p>
               </div>
@@ -528,7 +538,7 @@ function ResultsPage() {
               <DataGrid
                 table={table}
                 recordCount={filtered.length}
-                isLoading={loading}
+                isLoading={gridLoading}
                 onRowClick={row => { if (row.kind === 'domain') table.getRow(row.group.url).toggleExpanded() }}
                 rowClassName={row => row.kind === 'server' && !row.result.compliant ? 'violation-row' : undefined}
                 tableClassNames={{ base: 'results-table' }}

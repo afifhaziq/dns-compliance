@@ -236,3 +236,13 @@ export type URLOffence = {
   element?: LegalElement
   recorded_at: string
 }
+
+// GET/PUT /api/grid-preferences/{key} — a user's saved data-grid layout.
+// GET returns {} (all fields absent) when nothing has been saved yet.
+export type GridPreference = {
+  column_visibility?: Record<string, boolean>
+  sort_field?: string
+  sort_desc?: boolean
+  page_size?: number
+  updated_at?: string
+}

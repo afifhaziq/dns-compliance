@@ -695,6 +695,26 @@ func (s *postgresStore) DeleteISPLogo(ctx context.Context, isp string) error {
 	return s.db.WithContext(ctx).Delete(&ISPLogo{}, "isp = ?", isp).Error
 }
 
+func (s *postgresStore) GetGridPreference(ctx context.Context, userID uint, gridKey string) (*GridPreference, error) {
+	var pref GridPreference
+	err := s.db.WithContext(ctx).Where("user_id = ? AND grid_key = ?", userID, gridKey).First(&pref).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &pref, nil
+}
+
+func (s *postgresStore) SaveGridPreference(ctx context.Context, pref GridPreference) (GridPreference, error) {
+	err := s.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "grid_key"}},
+		DoUpdates: clause.AssignmentColumns([]string{"column_visibility", "sort_field", "sort_desc", "page_size", "updated_at"}),
+	}).Create(&pref).Error
+	return pref, err
+}
+
 func (s *postgresStore) GetScanInterval(ctx context.Context) (int, error) {
 	var settings ScanSettings
 	if err := s.db.WithContext(ctx).First(&settings, 1).Error; err != nil {

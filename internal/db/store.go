@@ -154,6 +154,14 @@ type ISPLogoStore interface {
 	DeleteISPLogo(ctx context.Context, isp string) error
 }
 
+// GridPreferenceStore holds each user's saved data-grid layout (column
+// visibility, sort, page size), keyed by (user, grid). Personal to the
+// calling user — no admin gating, ownership is implicit in the userID param.
+type GridPreferenceStore interface {
+	GetGridPreference(ctx context.Context, userID uint, gridKey string) (*GridPreference, error) // nil, nil if never saved
+	SaveGridPreference(ctx context.Context, pref GridPreference) (GridPreference, error)          // upsert by (user_id, grid_key)
+}
+
 // ScanSettingsStore holds the single admin-configurable scan cadence row.
 type ScanSettingsStore interface {
 	GetScanInterval(ctx context.Context) (int, error)
@@ -249,6 +257,7 @@ type Store interface {
 	CompliantIPStore
 	AgencyStore
 	ISPLogoStore
+	GridPreferenceStore
 	ScanSettingsStore
 	EnrichmentStore
 	LegalCitationStore

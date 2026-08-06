@@ -14,6 +14,7 @@ import { GripIcon } from '@/components/ui/grip'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlFields } from '../api/urls'
 import { fetchAgencies } from '../api/agencies'
 import { fetchDepartmentsOpen } from '../api/departments'
+import { useGridPreference } from '@/hooks/use-grid-preference'
 import type { URLEntry, Agency, Department, Instrument, Citation, LegalCategory, LegalElement, URLOffence } from '../api/types'
 import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, attachOffence, fetchOffencesByUrl, detachOffence, formatParsedCitation } from '../api/legal'
 import {
@@ -748,6 +749,16 @@ function URLsPage() {
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
 
+  const { ready: gridPrefReady } = useGridPreference(
+    'urls',
+    { sorting, columnVisibility, pageSize: pagination.pageSize },
+    {
+      setSorting,
+      setColumnVisibility,
+      setPageSize: pageSize => setPagination(p => ({ ...p, pageSize })),
+    }
+  )
+
   // Snapshots the reference-number field's pre-edit value on focus so a
   // failed blur-commit can roll back to it.
   const refOriginalRef = useRef<Record<number, string>>({})
@@ -1019,6 +1030,11 @@ function URLsPage() {
     getPaginationRowModel: getPaginationRowModel(),
   })
 
+  // Holds the grid in its loading state until the saved column
+  // visibility/sort/page-size layout has been applied, so it renders once
+  // already in its final shape instead of flashing plain defaults first.
+  const gridLoading = loading || !gridPrefReady
+
   return (
     <div className="mx-20 mt-10">
       <div className="page-header">
@@ -1037,7 +1053,7 @@ function URLsPage() {
           <p className="error-message">{error}</p>
           <button className="btn-primary" onClick={load}>Retry</button>
         </div>
-      ) : !loading && urls.length === 0 ? (
+      ) : !gridLoading && urls.length === 0 ? (
         <div className="empty-state">
           <EmptyIcon />
           <p className="empty-heading">No domains yet</p>
@@ -1062,13 +1078,13 @@ function URLsPage() {
           </div>
 
           <div className="results-wrap w-full">
-            {!loading && filtered.length === 0 ? (
+            {!gridLoading && filtered.length === 0 ? (
               <div className="empty-state" style={{ padding: '3rem 0' }}>
                 <p className="empty-heading">No domains match the current filters</p>
               </div>
             ) : (
-              <DataGrid table={table} recordCount={filtered.length} isLoading={loading} tableClassNames={{ base: 'results-table' }}>
-                <DataGridContainer className="overflow-visible">
+              <DataGrid table={table} recordCount={filtered.length} isLoading={gridLoading} tableClassNames={{ base: 'results-table' }}>
+                <DataGridContainer className="overflow-visible mb-5">
                   <DataGridTable />
                 </DataGridContainer>
                 <DataGridPagination sizes={[10, 25, 50, 100]} />

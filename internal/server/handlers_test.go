@@ -35,6 +35,7 @@ type fullMockStore struct {
 	favicons       []db.Favicon
 	subdomainScans []db.SubdomainScan
 	ispLogos       []db.ISPLogo
+	gridPrefs      []db.GridPreference
 	agencies       []db.Agency
 	instruments    []db.Instrument
 	citations      []db.Citation
@@ -530,6 +531,26 @@ func (m *fullMockStore) DeleteISPLogo(_ context.Context, isp string) error {
 		}
 	}
 	return nil
+}
+
+func (m *fullMockStore) GetGridPreference(_ context.Context, userID uint, gridKey string) (*db.GridPreference, error) {
+	for _, p := range m.gridPrefs {
+		if p.UserID == userID && p.GridKey == gridKey {
+			return &p, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *fullMockStore) SaveGridPreference(_ context.Context, pref db.GridPreference) (db.GridPreference, error) {
+	for i, p := range m.gridPrefs {
+		if p.UserID == pref.UserID && p.GridKey == pref.GridKey {
+			m.gridPrefs[i] = pref
+			return pref, nil
+		}
+	}
+	m.gridPrefs = append(m.gridPrefs, pref)
+	return pref, nil
 }
 
 func (m *fullMockStore) ListInstruments(_ context.Context) ([]db.Instrument, error) {
@@ -2678,6 +2699,91 @@ func TestDeleteISPLogo_HandlesEscapedName(t *testing.T) {
 	}
 	if len(store.ispLogos) != 0 {
 		t.Fatalf("expected the ISP logo to be deleted, got %d remaining: %+v", len(store.ispLogos), store.ispLogos)
+	}
+}
+
+func TestGetGridPreference_NeverSaved_ReturnsEmpty(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/grid-preferences/urls", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if w.Body.String() != "{}\n" {
+		t.Fatalf("expected empty object, got %s", w.Body.String())
+	}
+}
+
+func TestGetGridPreference_UnknownKey_BadRequest(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/grid-preferences/not-a-real-grid", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSaveGridPreference_RoundTrip(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body := `{"column_visibility":{"agency":false},"sort_field":"status","sort_desc":true,"page_size":50}`
+	req := httptest.NewRequest(http.MethodPut, "/api/grid-preferences/urls", bytes.NewReader([]byte(body)))
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/grid-preferences/urls", nil)
+	getReq.AddCookie(cookie)
+	getW := httptest.NewRecorder()
+	r.ServeHTTP(getW, getReq)
+
+	var pref db.GridPreference
+	if err := json.Unmarshal(getW.Body.Bytes(), &pref); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if pref.SortField != "status" || !pref.SortDesc || pref.PageSize != 50 {
+		t.Fatalf("unexpected preference after round trip: %+v", pref)
+	}
+	if visible, ok := pref.ColumnVisibility["agency"]; !ok || visible {
+		t.Fatalf("expected agency column hidden, got %+v", pref.ColumnVisibility)
+	}
+}
+
+func TestSaveGridPreference_ScopedPerUser(t *testing.T) {
+	store := &fullMockStore{}
+	cookieA := deptCookie(store, 1)
+	cookieB := deptCookie(store, 2)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/grid-preferences/urls", bytes.NewReader([]byte(`{"page_size":100}`)))
+	req.AddCookie(cookieA)
+	r.ServeHTTP(httptest.NewRecorder(), req)
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/grid-preferences/urls", nil)
+	getReq.AddCookie(cookieB)
+	getW := httptest.NewRecorder()
+	r.ServeHTTP(getW, getReq)
+
+	if getW.Body.String() != "{}\n" {
+		t.Fatalf("expected user B to see no saved preference, got %s", getW.Body.String())
 	}
 }
 

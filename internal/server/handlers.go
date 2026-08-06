@@ -612,6 +612,73 @@ func (h *Handlers) URLsRequestedThisMonth(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]int{"count": count})
 }
 
+// Grid preferences — a data grid's saved column visibility/sort/page-size
+// layout, personal to the calling user (no admin gate; ownership is
+// implicit in the session's user ID, not a request param). gridKey is
+// restricted to a known allowlist rather than accepting any client-supplied
+// string, since it's just an internal identifier for which grid this is,
+// not user-facing data.
+var validGridKeys = map[string]bool{"urls": true, "results": true}
+
+func (h *Handlers) GetGridPreference(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	key := chi.URLParam(r, "key")
+	if !validGridKeys[key] {
+		writeError(w, http.StatusBadRequest, "unknown grid key")
+		return
+	}
+	pref, err := h.store.GetGridPreference(r.Context(), user.ID, key)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	if pref == nil {
+		writeJSON(w, http.StatusOK, map[string]any{})
+		return
+	}
+	writeJSON(w, http.StatusOK, pref)
+}
+
+func (h *Handlers) SaveGridPreference(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	key := chi.URLParam(r, "key")
+	if !validGridKeys[key] {
+		writeError(w, http.StatusBadRequest, "unknown grid key")
+		return
+	}
+	var body struct {
+		ColumnVisibility map[string]bool `json:"column_visibility"`
+		SortField        string          `json:"sort_field"`
+		SortDesc         bool            `json:"sort_desc"`
+		PageSize         int             `json:"page_size"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	pref, err := h.store.SaveGridPreference(r.Context(), db.GridPreference{
+		UserID:           user.ID,
+		GridKey:          key,
+		ColumnVisibility: body.ColumnVisibility,
+		SortField:        body.SortField,
+		SortDesc:         body.SortDesc,
+		PageSize:         body.PageSize,
+	})
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, pref)
+}
+
 // urlParamFromRequest unescapes the `*url` wildcard path segment and
 // normalizes it to the same bare-hostname form scan_results.url_value stores
 // (see urlnorm.Normalize). Handlers that match against url_value directly —

@@ -183,6 +183,23 @@ type ISPLogo struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// GridPreference persists one user's saved layout (column visibility, sort
+// column/direction, page size) for a named data grid, so it survives a
+// reload or a switch to another device instead of resetting every session.
+// Keyed by (UserID, GridKey) since one user can have a different layout per
+// grid (e.g. the watchlist grid vs the results grid). OnDelete:CASCADE since
+// a preference has no meaning once its owning user is gone.
+type GridPreference struct {
+	UserID           uint            `gorm:"primaryKey;autoIncrement:false" json:"-"`
+	GridKey          string          `gorm:"primaryKey" json:"-"`
+	User             User            `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
+	ColumnVisibility map[string]bool `gorm:"type:jsonb;serializer:json" json:"column_visibility"`
+	SortField        string          `json:"sort_field"`
+	SortDesc         bool            `json:"sort_desc"`
+	PageSize         int             `json:"page_size"`
+	UpdatedAt        time.Time       `json:"updated_at"`
+}
+
 type ScanRun struct {
 	ID          uint       `gorm:"primaryKey" json:"id"`
 	TriggeredBy string     `json:"triggered_by"` // "scheduled", "manual", "screenshot"

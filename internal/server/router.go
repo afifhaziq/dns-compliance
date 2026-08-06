@@ -49,6 +49,11 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Patch("/urls/{id}", h.ToggleURL)
 			r.Get("/urls/requested-count", h.URLsRequestedThisMonth)
 
+			// Personal per-user data-grid layout (column visibility/sort/page
+			// size) — no admin gate, scoped to the calling user via session.
+			r.Get("/grid-preferences/{key}", h.GetGridPreference)
+			r.Put("/grid-preferences/{key}", h.SaveGridPreference)
+
 			// DNS servers are global/shared — every authenticated role can
 			// view them (results reference them by name); only mutating the
 			// set is admin-only, gated below.
