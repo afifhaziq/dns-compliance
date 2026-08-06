@@ -222,8 +222,8 @@ func (h *Handlers) RemoveFromWatchlist(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// urlStatusAllowed is the server-side allow-list for DepartmentURL.Status —
-// a free string column (not a DB enum), matching this codebase's existing
+// urlStatusAllowed is the server-side allow-list for URL.Status — a free
+// string column (not a DB enum), matching this codebase's existing
 // string-enum convention (Instrument.Type, ScanRun.Status, etc). "" clears
 // the field.
 var urlStatusAllowed = map[string]bool{"": true, "requested": true, "uplift": true, "suspended": true}
@@ -243,9 +243,13 @@ func parseOptionalRFC3339(s string) (*time.Time, error) {
 
 // ToggleURL updates a URL in the caller's department watchlist: the enabled
 // flag and/or the optional case-metadata fields (due date, agency,
-// reference number, requesting department, status, requested-at). Does not
-// affect other departments watching the same domain. Only fields present in
-// the body are touched — omit a key to leave it untouched.
+// reference number, requesting department, status, requested-at). Enabled
+// is department-scoped (only affects the caller's own watchlist entry); the
+// case-metadata fields are global on the URL row (see db.URL's doc
+// comment) — editing them is visible to every department watching the same
+// domain. Both still require the caller's department to actually be
+// watching the URL (enforced by SetURLEnabled/UpdateURLCaseFields). Only
+// fields present in the body are touched — omit a key to leave it untouched.
 func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
 	if !ok {
@@ -266,13 +270,15 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Enabled *bool `json:"enabled"`
 		// DueDate/RequestedAt are RFC3339 when setting a value, or "" to
-		// clear. Omit the key entirely to leave the field untouched.
-		DueDate         *string `json:"due_date"`
-		Agency          *string `json:"agency"`
-		ReferenceNumber *string `json:"reference_number"`
-		RequestingDept  *string `json:"requesting_dept"`
-		Status          *string `json:"status"`
-		RequestedAt     *string `json:"requested_at"`
+		// clear. AgencyID/RequestingDeptID are real IDs when setting, or 0
+		// to clear (0 is never a real row id). Omit any key entirely to
+		// leave that field untouched.
+		DueDate          *string `json:"due_date"`
+		AgencyID         *uint   `json:"agency_id"`
+		ReferenceNumber  *string `json:"reference_number"`
+		RequestingDeptID *uint   `json:"requesting_dept_id"`
+		Status           *string `json:"status"`
+		RequestedAt      *string `json:"requested_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
@@ -289,7 +295,7 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 		found = found || f
 	}
 
-	var fields db.DepartmentURLFields
+	var fields db.URLCaseFields
 	hasFields := false
 	if body.DueDate != nil {
 		dueDate, err := parseOptionalRFC3339(*body.DueDate)
@@ -300,12 +306,12 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 		fields.DueDate = &dueDate
 		hasFields = true
 	}
-	if body.Agency != nil {
-		if len(*body.Agency) > 255 {
-			writeError(w, http.StatusBadRequest, "agency too long, max 255 characters")
-			return
+	if body.AgencyID != nil {
+		var agencyID *uint
+		if *body.AgencyID != 0 {
+			agencyID = body.AgencyID
 		}
-		fields.Agency = body.Agency
+		fields.AgencyID = &agencyID
 		hasFields = true
 	}
 	if body.ReferenceNumber != nil {
@@ -316,12 +322,12 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 		fields.ReferenceNumber = body.ReferenceNumber
 		hasFields = true
 	}
-	if body.RequestingDept != nil {
-		if len(*body.RequestingDept) > 255 {
-			writeError(w, http.StatusBadRequest, "requesting_dept too long, max 255 characters")
-			return
+	if body.RequestingDeptID != nil {
+		var deptID *uint
+		if *body.RequestingDeptID != 0 {
+			deptID = body.RequestingDeptID
 		}
-		fields.RequestingDept = body.RequestingDept
+		fields.RequestingDeptID = &deptID
 		hasFields = true
 	}
 	if body.Status != nil {
@@ -342,7 +348,7 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 		hasFields = true
 	}
 	if hasFields {
-		f, err := h.store.UpdateDepartmentURLFields(r.Context(), *user.DepartmentID, uint(id), fields)
+		f, err := h.store.UpdateURLCaseFields(r.Context(), *user.DepartmentID, uint(id), fields)
 		if err != nil {
 			writeInternalError(w, err)
 			return

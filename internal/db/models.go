@@ -19,9 +19,46 @@ type DNSServer struct {
 // URL.URL is expected to already be normalized (bare lowercase hostname,
 // see internal/urlnorm) by the time it reaches the database — normalization
 // happens in the handler/store layer, not via a DB trigger.
+//
+// URL also carries the domain's legal case metadata — one case per domain,
+// not one per watching department, since e.g. two departments watching the
+// same domain share the same takedown order. This mirrors how
+// DomainWhois/SubdomainScan/IPInfo are already keyed by domain/IP, not
+// department. Editing these fields is therefore visible to every department
+// watching the domain (last-write-wins) — see UpdateURLCaseFields for the
+// department-ownership check that still gates who's allowed to write.
 type URL struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	URL       string    `gorm:"uniqueIndex;not null" json:"url"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// DueDate is the takedown-order SLA deadline (carries time-of-day — some
+	// orders require blocking within 6h/24h).
+	DueDate *time.Time `json:"due_date,omitempty"`
+	// AgencyID is nullable (a domain may have no case yet) and
+	// OnDelete:SET NULL — deleting an Agency must not cascade-delete the URL.
+	AgencyID *uint   `gorm:"index" json:"agency_id,omitempty"`
+	Agency   *Agency `gorm:"foreignKey:AgencyID;constraint:OnDelete:SET NULL" json:"agency,omitempty"`
+	// ReferenceNumber is free text (Excel-sourced case metadata).
+	ReferenceNumber string `json:"reference_number,omitempty"`
+	// RequestingDeptID FKs to the app's own RBAC Department model.
+	RequestingDeptID *uint       `gorm:"index" json:"requesting_dept_id,omitempty"`
+	RequestingDept   *Department `gorm:"foreignKey:RequestingDeptID;constraint:OnDelete:SET NULL" json:"requesting_dept,omitempty"`
+	// Status is requested | uplift | suspended, validated server-side
+	// (internal/server/handlers.go) — independent of the derived Compliant
+	// field; blocked/not-blocked already comes from scan results.
+	Status      string     `json:"status,omitempty"`
+	RequestedAt *time.Time `json:"requested_at,omitempty"`
+}
+
+// Agency is an admin-managed lookup table for the government agency behind
+// a takedown request — replaces an earlier free-text Agency column. Read
+// open to any authenticated role; create/delete gated to admin-or-dept-admin
+// (see router.go), matching the DNS-server/ISP-logo/legal-catalog pattern
+// rather than the stricter super-admin-only Department/CompliantIP pattern.
+type Agency struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Name      string    `gorm:"uniqueIndex;not null" json:"name"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -55,64 +92,56 @@ type Session struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// DepartmentURL links a department's watchlist to a shared URL row. Removing
-// a domain from a watchlist only deletes this row — it never touches URL or
-// ScanResult, so scan history is preserved even once no department watches
-// a domain anymore. Its OnDelete:CASCADE only fires on the admin-only
-// "purge a domain" path that deletes the URL row itself.
+// DepartmentURL links a department's watchlist to a shared URL row. Carries
+// no case metadata — that's global on URL now (see URL's doc comment).
+// Removing a domain from a watchlist only deletes this row — it never
+// touches URL or ScanResult, so scan history is preserved even once no
+// department watches a domain anymore. Its OnDelete:CASCADE only fires on
+// the admin-only "purge a domain" path that deletes the URL row itself.
 type DepartmentURL struct {
-	DepartmentID uint   `gorm:"primaryKey;autoIncrement:false" json:"department_id"`
-	URLID        uint   `gorm:"primaryKey;autoIncrement:false" json:"url_id"`
-	URL          URL    `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
-	Enabled      bool   `gorm:"not null;default:true" json:"enabled"`
-	// DueDate is the takedown-order SLA deadline (carries time-of-day —
-	// some orders require blocking within 6h/24h). Renamed from OrderedAt;
-	// see internal/db/db.go's Connect for the column-rename migration.
-	DueDate *time.Time `json:"due_date,omitempty"`
-	// Agency/ReferenceNumber/RequestingDept/Status/RequestedAt are
-	// Excel-sourced case metadata, per-department-per-URL — plain columns,
-	// no admin-curated lookup table. RequestingDept is deliberately free
-	// text (e.g. a ministry name), distinct from the app's own CMOD/CRD
-	// RBAC Department model.
-	Agency          string `json:"agency,omitempty"`
-	ReferenceNumber string `json:"reference_number,omitempty"`
-	RequestingDept  string `json:"requesting_dept,omitempty"`
-	// Status is requested | uplift | suspended, validated server-side
-	// (internal/server/handlers.go) — independent of the derived Compliant
-	// field; blocked/not-blocked already comes from scan results.
-	Status      string     `json:"status,omitempty"`
-	RequestedAt *time.Time `json:"requested_at,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
+	DepartmentID uint      `gorm:"primaryKey;autoIncrement:false" json:"department_id"`
+	URLID        uint      `gorm:"primaryKey;autoIncrement:false" json:"url_id"`
+	URL          URL       `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
+	Enabled      bool      `gorm:"not null;default:true" json:"enabled"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
-// DepartmentURLFields is a partial update for one department's watchlist
-// entry. Every field is optional (nil = leave untouched) — one flexible
-// update path instead of a SetURLX method per column. DueDate/RequestedAt
-// are double pointers so "clear" (set to NULL) is distinguishable from "not
-// present in this update": outer nil = don't touch, outer non-nil pointing
-// at a nil inner = clear, outer non-nil pointing at &t = set.
-type DepartmentURLFields struct {
-	DueDate         **time.Time
-	Agency          *string
-	ReferenceNumber *string
-	RequestingDept  *string
-	Status          *string
-	RequestedAt     **time.Time
+// URLCaseFields is a partial update to a URL's case metadata. Every field is
+// optional (nil = leave untouched) — one flexible update path instead of a
+// SetURLX method per column. DueDate/RequestedAt/AgencyID/RequestingDeptID
+// are double pointers so "clear" is distinguishable from "not present in
+// this update": outer nil = don't touch, outer non-nil pointing at a nil
+// inner = clear, outer non-nil pointing at &v = set. AgencyID/RequestingDeptID
+// need the same three-state contract as the two date fields — unlike a
+// string, an ID has no natural empty-value sentinel to mean "clear".
+type URLCaseFields struct {
+	DueDate          **time.Time
+	AgencyID         **uint
+	ReferenceNumber  *string
+	RequestingDeptID **uint
+	Status           *string
+	RequestedAt      **time.Time
 }
 
-// URLEntry is the department-scoped view of a URL, carrying the watchlist
-// case-management fields the shared URL model does not have.
+// URLEntry is the department-scoped watchlist row shape returned to the
+// frontend: URL's case-metadata fields plus DepartmentURL's Enabled.
+// AgencyName/RequestingDeptName are denormalized in so the frontend doesn't
+// need to cross-reference the Agency/Department lists just to render a
+// cell; AgencyID/RequestingDeptID are included too since the inline-edit
+// dropdowns need the raw id to preselect the current option.
 type URLEntry struct {
-	ID              uint       `json:"id"`
-	URL             string     `json:"url"`
-	Enabled         bool       `json:"enabled"`
-	DueDate         *time.Time `json:"due_date,omitempty"`
-	Agency          string     `json:"agency,omitempty"`
-	ReferenceNumber string     `json:"reference_number,omitempty"`
-	RequestingDept  string     `json:"requesting_dept,omitempty"`
-	Status          string     `json:"status,omitempty"`
-	RequestedAt     *time.Time `json:"requested_at,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
+	ID                 uint       `json:"id"`
+	URL                string     `json:"url"`
+	Enabled            bool       `json:"enabled"`
+	DueDate            *time.Time `json:"due_date,omitempty"`
+	AgencyID           *uint      `json:"agency_id,omitempty"`
+	AgencyName         string     `json:"agency_name,omitempty"`
+	ReferenceNumber    string     `json:"reference_number,omitempty"`
+	RequestingDeptID   *uint      `json:"requesting_dept_id,omitempty"`
+	RequestingDeptName string     `json:"requesting_dept_name,omitempty"`
+	Status             string     `json:"status,omitempty"`
+	RequestedAt        *time.Time `json:"requested_at,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
 }
 
 // ScanSettings is a single-row (ID 1) table holding the admin-configurable

@@ -227,28 +227,35 @@ func TestBackfillURLValues_HandlesMultipleBatches(t *testing.T) {
 	}
 }
 
-// legacyDepartmentURL mimics the pre-rename DepartmentURL shape (ordered_at,
-// not due_date) to simulate an already-deployed database's schema before
-// this migration runs.
+// legacyDepartmentURL mimics the shape DepartmentURL had earlier today (case
+// metadata columns still on department_urls, before it moved to urls) to
+// simulate an already-migrated dev database's schema before this newer
+// migration runs.
 type legacyDepartmentURL struct {
-	DepartmentID uint `gorm:"primaryKey;autoIncrement:false"`
-	URLID        uint `gorm:"primaryKey;autoIncrement:false"`
-	Enabled      bool `gorm:"not null;default:true"`
-	OrderedAt    *time.Time
-	CreatedAt    time.Time
+	DepartmentID    uint `gorm:"primaryKey;autoIncrement:false"`
+	URLID           uint `gorm:"primaryKey;autoIncrement:false"`
+	Enabled         bool `gorm:"not null;default:true"`
+	DueDate         *time.Time
+	Agency          string
+	ReferenceNumber string
+	RequestingDept  string
+	Status          string
+	RequestedAt     *time.Time
+	CreatedAt       time.Time
 }
 
 func (legacyDepartmentURL) TableName() string { return "department_urls" }
 
-// TestConnect_RenamesOrderedAtToDueDate simulates an existing deployment: a
-// department_urls table with the old ordered_at column, seeded with data.
-// db.Connect must rename the column (not drop/recreate it) so the data
-// survives under due_date.
-func TestConnect_RenamesOrderedAtToDueDate(t *testing.T) {
+// TestConnect_DropsObsoleteDepartmentURLCaseColumns simulates a dev database
+// still on the earlier-today shape: department_urls carrying the six
+// case-metadata columns. db.Connect must drop them (this feature was never
+// deployed with real data, so this is a plain drop, not a data-preserving
+// migration) and AutoMigrate the same fields onto urls instead.
+func TestConnect_DropsObsoleteDepartmentURLCaseColumns(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "migrate.db")
 
 	// Build the old schema directly (bypassing db.Connect, which only knows
-	// about the current — already renamed — struct) and seed a row.
+	// about the current — already-moved — struct) and seed a row.
 	oldDB, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open old schema db: %v", err)
@@ -257,7 +264,7 @@ func TestConnect_RenamesOrderedAtToDueDate(t *testing.T) {
 		t.Fatalf("migrate legacy schema: %v", err)
 	}
 	seeded := time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC)
-	if err := oldDB.Create(&legacyDepartmentURL{DepartmentID: 1, URLID: 1, Enabled: true, OrderedAt: &seeded}).Error; err != nil {
+	if err := oldDB.Create(&legacyDepartmentURL{DepartmentID: 1, URLID: 1, Enabled: true, DueDate: &seeded, Status: "requested"}).Error; err != nil {
 		t.Fatalf("seed legacy row: %v", err)
 	}
 	oldSQLDB, err := oldDB.DB()
@@ -268,33 +275,33 @@ func TestConnect_RenamesOrderedAtToDueDate(t *testing.T) {
 		t.Fatalf("close old connection: %v", err)
 	}
 
-	// Reopen through the real db.Connect, which must detect ordered_at,
-	// rename it to due_date, then AutoMigrate the rest of the current
-	// schema (including the new case-metadata columns) on top.
+	// Reopen through the real db.Connect, which must drop the six obsolete
+	// columns from department_urls and AutoMigrate the current schema
+	// (including the new urls case-metadata columns and the agencies table).
 	newDB, err := db.Connect(sqlite.Open(dbPath))
 	if err != nil {
 		t.Fatalf("db.Connect: %v", err)
 	}
 
-	var got struct{ DueDate *time.Time }
-	if err := newDB.Table("department_urls").
-		Select("due_date").
-		Where("department_id = ? AND url_id = ?", 1, 1).
-		Scan(&got).Error; err != nil {
-		t.Fatalf("query due_date: %v", err)
+	for _, col := range []string{"due_date", "agency", "reference_number", "requesting_dept", "status", "requested_at"} {
+		if newDB.Migrator().HasColumn(&db.DepartmentURL{}, col) {
+			t.Fatalf("expected department_urls.%s to be dropped", col)
+		}
 	}
-	if got.DueDate == nil || !got.DueDate.Equal(seeded) {
-		t.Fatalf("expected due_date to carry over the seeded ordered_at value, got %+v", got.DueDate)
+	for _, col := range []string{"due_date", "agency_id", "reference_number", "requesting_dept_id", "status", "requested_at"} {
+		if !newDB.Migrator().HasColumn(&db.URL{}, col) {
+			t.Fatalf("expected urls.%s to exist", col)
+		}
 	}
-	if newDB.Migrator().HasColumn(&db.DepartmentURL{}, "ordered_at") {
-		t.Fatal("expected ordered_at column to be gone after rename")
+	if !newDB.Migrator().HasTable(&db.Agency{}) {
+		t.Fatal("expected agencies table to exist")
 	}
 }
 
-// TestConnect_RenameIsIdempotent runs db.Connect twice against the same
+// TestConnect_DropIsIdempotent runs db.Connect twice against the same
 // already-migrated database (the normal case for every restart after the
-// first) and confirms it doesn't error or touch existing due_date data.
-func TestConnect_RenameIsIdempotent(t *testing.T) {
+// first) and confirms it doesn't error the second time.
+func TestConnect_DropIsIdempotent(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "migrate_idempotent.db")
 
 	firstDB, err := db.Connect(sqlite.Open(dbPath))
@@ -302,8 +309,8 @@ func TestConnect_RenameIsIdempotent(t *testing.T) {
 		t.Fatalf("first db.Connect: %v", err)
 	}
 	due := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
-	if err := firstDB.Table("department_urls").Create(map[string]interface{}{
-		"department_id": 1, "url_id": 1, "enabled": true, "due_date": due,
+	if err := firstDB.Table("urls").Create(map[string]interface{}{
+		"url": "idempotent.com", "due_date": due,
 	}).Error; err != nil {
 		t.Fatalf("seed row: %v", err)
 	}
@@ -320,13 +327,28 @@ func TestConnect_RenameIsIdempotent(t *testing.T) {
 		t.Fatalf("second db.Connect: %v", err)
 	}
 	var got struct{ DueDate *time.Time }
-	if err := secondDB.Table("department_urls").
+	if err := secondDB.Table("urls").
 		Select("due_date").
-		Where("department_id = ? AND url_id = ?", 1, 1).
+		Where("url = ?", "idempotent.com").
 		Scan(&got).Error; err != nil {
 		t.Fatalf("query due_date: %v", err)
 	}
 	if got.DueDate == nil || !got.DueDate.Equal(due) {
 		t.Fatalf("expected due_date to survive a second Connect call, got %+v", got.DueDate)
+	}
+}
+
+// TestConnect_FreshDBSkipsDropEntirely covers a brand-new database that
+// never had the legacy department_urls columns — the HasColumn guards
+// should all be false and no DropColumn call attempted.
+func TestConnect_FreshDBSkipsDropEntirely(t *testing.T) {
+	newDB, err := db.Connect(sqlite.Open(":memory:"))
+	if err != nil {
+		t.Fatalf("db.Connect: %v", err)
+	}
+	for _, col := range []string{"due_date", "agency", "reference_number", "requesting_dept", "status", "requested_at"} {
+		if newDB.Migrator().HasColumn(&db.DepartmentURL{}, col) {
+			t.Fatalf("fresh DB should never have department_urls.%s", col)
+		}
 	}
 }

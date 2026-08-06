@@ -14,7 +14,8 @@ import {
   setScanInterval,
   type ScanSchedule,
 } from '../api/admin'
-import type { CompliantIP, Department, User } from '../api/types'
+import { fetchAgencies, createAgency, deleteAgency } from '../api/agencies'
+import type { Agency, CompliantIP, Department, User } from '../api/types'
 import {
   Dialog,
   DialogContent,
@@ -31,7 +32,7 @@ import { Slider } from '@/components/ui/slider'
 import { XIcon } from '@/components/ui/x'
 import { useAuth } from './__root'
 
-const ADMIN_TABS = ['departments', 'users', 'ip', 'scan-settings'] as const
+const ADMIN_TABS = ['departments', 'users', 'ip', 'agencies', 'scan-settings'] as const
 type AdminTab = typeof ADMIN_TABS[number]
 
 export const Route = createFileRoute('/admin/')({
@@ -106,6 +107,79 @@ function AddDepartmentDialog({
             </button>
             <button type="submit" className="btn-primary" disabled={loading}>
               {loading ? 'Adding…' : 'Add Department'}
+            </button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ─── Add Agency Dialog ──────────────────────────────────────────────────── */
+
+function AddAgencyDialog({
+  open,
+  onClose,
+  onAdded,
+}: {
+  open: boolean
+  onClose: () => void
+  onAdded: () => void
+}) {
+  const [name, setName] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const reset = () => { setName(''); setError(null) }
+  const handleClose = () => { reset(); onClose() }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim()) { setError('Name is required'); return }
+    setLoading(true)
+    setError(null)
+    try {
+      await createAgency(name.trim())
+      reset()
+      onAdded()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add agency')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: 400 }}>
+        <DialogHeader>
+          <DialogTitle>Add Agency</DialogTitle>
+          <DialogDescription>
+            Agencies appear in the Agency dropdown when adding or editing a domain's case details.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit}>
+          <div className="form-field">
+            <label className="form-label" htmlFor="agency-name-input">Name</label>
+            <input
+              id="agency-name-input"
+              className="form-input"
+              type="text"
+              placeholder="e.g. MCMC"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              autoFocus
+              disabled={loading}
+            />
+          </div>
+          {error && <p className="form-error">{error}</p>}
+          <DialogFooter>
+            <button type="button" className="btn-ghost" onClick={handleClose} disabled={loading}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={loading}>
+              {loading ? 'Adding…' : 'Add Agency'}
             </button>
           </DialogFooter>
         </form>
@@ -478,31 +552,39 @@ function AdminPage() {
   const [departments, setDepartments] = useState<Department[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [compliantIPs, setCompliantIPs] = useState<CompliantIP[]>([])
+  const [agencies, setAgencies] = useState<Agency[]>([])
   const [scanSchedule, setScanSchedule] = useState<ScanSchedule | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addDeptOpen, setAddDeptOpen] = useState(false)
   const [addUserOpen, setAddUserOpen] = useState(false)
   const [addIPOpen, setAddIPOpen] = useState(false)
+  const [addAgencyOpen, setAddAgencyOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
   const [deleteIPTarget, setDeleteIPTarget] = useState<CompliantIP | null>(null)
+  const [deleteAgencyTarget, setDeleteAgencyTarget] = useState<Agency | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       setError(null)
+      // Agencies are readable by both roles (admin-or-dept-admin manageable,
+      // unlike Departments/Compliant-IPs/scan interval, which stay
+      // super-admin-only server-side — a department admin would just get a
+      // 403 fetching those).
       if (me?.is_admin) {
-        // Departments/Compliant-IPs/scan interval stay super-admin-only
-        // server-side — a department admin would just get a 403 fetching them.
-        const [d, u, ips, schedule] = await Promise.all([
-          fetchDepartments(), fetchUsers(), fetchCompliantIPs(), fetchScanInterval(),
+        const [d, u, ips, schedule, a] = await Promise.all([
+          fetchDepartments(), fetchUsers(), fetchCompliantIPs(), fetchScanInterval(), fetchAgencies(),
         ])
         setDepartments(d)
         setUsers(u)
         setCompliantIPs(ips)
         setScanSchedule(schedule)
+        setAgencies(a)
       } else {
-        setUsers(await fetchUsers())
+        const [u, a] = await Promise.all([fetchUsers(), fetchAgencies()])
+        setUsers(u)
+        setAgencies(a)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load admin data')
@@ -539,6 +621,13 @@ function AdminPage() {
     load()
   }
 
+  const handleDeleteAgency = async () => {
+    if (!deleteAgencyTarget) return
+    await deleteAgency(deleteAgencyTarget.id)
+    setDeleteAgencyTarget(null)
+    load()
+  }
+
   return (
     <div className="mx-20 mt-10">
       <div className="page-header">
@@ -565,6 +654,7 @@ function AdminPage() {
             <TabsTrigger value="departments">Departments</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="ip">IP</TabsTrigger>
+            <TabsTrigger value="agencies">Agencies</TabsTrigger>
             <TabsTrigger value="scan-settings">Scan Settings</TabsTrigger>
           </TabsList>
 
@@ -695,6 +785,53 @@ function AdminPage() {
             )}
           </TabsContent>
 
+          <TabsContent value="agencies">
+            <div className='mb-4'>
+              <div className="page-header" style={{ marginBottom: 12 }}>
+                <h2 className="section-title">Agencies</h2>
+                <p className="page-subtitle" style={{ marginLeft: 8 }}>Manage the Agency dropdown offered when adding or editing a domain's case details</p>
+                <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddAgencyOpen(true)}>
+                  + Add Agency
+                </button>
+              </div>
+              <Table className="results-table" aria-label="Agencies">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="col-domain th-left" scope="col">Name</TableHead>
+                    <TableHead className="col-status" scope="col">Added</TableHead>
+                    <TableHead className="col-evidence" scope="col" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {agencies.map(a => (
+                    <TableRow key={a.id} className="admin-row">
+                      <TableCell className="col-domain">{a.name}</TableCell>
+                      <TableCell className="col-status">{DATE_FMT.format(new Date(a.created_at))}</TableCell>
+                      <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
+                        <button
+                          type="button"
+                          className="screenshot-icon-btn"
+                          onClick={() => setDeleteAgencyTarget(a)}
+                          aria-label={`Delete ${a.name}`}
+                          title="Delete"
+                        >
+                          <XIcon size={16} />
+                        </button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {agencies.length === 0 && !loading && (
+                    <TableRow>
+                      <TableCell colSpan={3} style={{ textAlign: 'center', color: 'var(--stone-muted)', padding: '16px 0' }}>
+                        No agencies configured
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </TabsContent>
+
           <TabsContent value="scan-settings">
             {me?.is_admin && scanSchedule !== null ? (
               <ScanSettingsSection value={scanSchedule} onSaved={setScanSchedule} />
@@ -714,6 +851,7 @@ function AdminPage() {
         callerIsSuperAdmin={!!me?.is_admin}
       />
       <AddCompliantIPDialog open={addIPOpen} onClose={() => setAddIPOpen(false)} onAdded={load} />
+      <AddAgencyDialog open={addAgencyOpen} onClose={() => setAddAgencyOpen(false)} onAdded={load} />
       <DeleteConfirmDialog
         open={deleteTarget !== null}
         itemLabel={deleteTarget?.username ?? ''}
@@ -726,6 +864,13 @@ function AdminPage() {
         description="Scans will no longer classify this IP as compliant."
         onConfirm={handleDeleteIP}
         onCancel={() => setDeleteIPTarget(null)}
+      />
+      <DeleteConfirmDialog
+        open={deleteAgencyTarget !== null}
+        itemLabel={deleteAgencyTarget?.name ?? ''}
+        description="Domains currently assigned to this agency will show a blank Agency instead."
+        onConfirm={handleDeleteAgency}
+        onCancel={() => setDeleteAgencyTarget(null)}
       />
     </div>
   )

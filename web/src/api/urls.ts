@@ -29,24 +29,26 @@ export async function setUrlEnabled(id: number, enabled: boolean): Promise<void>
   await api.patch<void>(`/urls/${id}`, { enabled })
 }
 
-export type DepartmentURLFields = {
+export type URLCaseFields = {
   due_date?: string | null
-  agency?: string
+  agency_id?: number | null
   reference_number?: string
-  requesting_dept?: string
+  requesting_dept_id?: number | null
   status?: string
   requested_at?: string | null
 }
 
-// Partial update of the case-metadata fields on one watchlist entry — only
-// keys present in `fields` are sent, mirroring the backend's
-// UpdateDepartmentURLFields. Pass null on due_date/requested_at to clear them.
-export async function setUrlFields(id: number, fields: DepartmentURLFields): Promise<void> {
-  const body: Record<string, string> = {}
+// Partial update of a URL's case-metadata fields (global per domain, not
+// per department — see backend db.URL's doc comment) — only keys present in
+// `fields` are sent, mirroring the backend's UpdateURLCaseFields. Pass null
+// to clear a field: due_date/requested_at clear via "", agency_id/
+// requesting_dept_id clear via 0 (never a real row id).
+export async function setUrlFields(id: number, fields: URLCaseFields): Promise<void> {
+  const body: Record<string, string | number> = {}
   if (fields.due_date !== undefined) body.due_date = fields.due_date ?? ''
-  if (fields.agency !== undefined) body.agency = fields.agency
+  if (fields.agency_id !== undefined) body.agency_id = fields.agency_id ?? 0
   if (fields.reference_number !== undefined) body.reference_number = fields.reference_number
-  if (fields.requesting_dept !== undefined) body.requesting_dept = fields.requesting_dept
+  if (fields.requesting_dept_id !== undefined) body.requesting_dept_id = fields.requesting_dept_id ?? 0
   if (fields.status !== undefined) body.status = fields.status
   if (fields.requested_at !== undefined) body.requested_at = fields.requested_at ?? ''
   await api.patch<void>(`/urls/${id}`, body)

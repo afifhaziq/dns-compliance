@@ -504,8 +504,13 @@ func (s *postgresStore) ListDepartmentURLs(ctx context.Context, departmentID uin
 	var entries []URLEntry
 	err := s.db.WithContext(ctx).
 		Table("urls").
-		Select("urls.id, urls.url, urls.created_at, du.enabled, du.due_date, du.agency, du.reference_number, du.requesting_dept, du.status, du.requested_at").
+		Select(`urls.id, urls.url, urls.created_at, du.enabled,
+			urls.due_date, urls.agency_id, agencies.name as agency_name,
+			urls.reference_number, urls.requesting_dept_id, departments.name as requesting_dept_name,
+			urls.status, urls.requested_at`).
 		Joins("JOIN department_urls du ON du.url_id = urls.id AND du.department_id = ?", departmentID).
+		Joins("LEFT JOIN agencies ON agencies.id = urls.agency_id").
+		Joins("LEFT JOIN departments ON departments.id = urls.requesting_dept_id").
 		Order("urls.created_at asc").
 		Scan(&entries).Error
 	return entries, err
@@ -543,23 +548,35 @@ func (s *postgresStore) SetURLEnabled(ctx context.Context, departmentID, urlID u
 	return res.RowsAffected > 0, res.Error
 }
 
-// UpdateDepartmentURLFields applies a partial update to one department's
-// watchlist entry's case-metadata fields — only non-nil fields in `fields`
-// are touched, via one map-based UPDATE rather than one setter method per
-// column.
-func (s *postgresStore) UpdateDepartmentURLFields(ctx context.Context, departmentID, urlID uint, fields DepartmentURLFields) (bool, error) {
+// UpdateURLCaseFields applies a partial update to a URL's case-metadata
+// fields — only non-nil fields in `fields` are touched, via one map-based
+// UPDATE rather than one setter method per column. The write target (URL)
+// is shared across every department watching the domain, so — unlike the
+// old department-scoped UPDATE this replaces — authorization can't fall out
+// of the WHERE clause anymore; ownership is checked explicitly first.
+func (s *postgresStore) UpdateURLCaseFields(ctx context.Context, departmentID, urlID uint, fields URLCaseFields) (bool, error) {
+	var count int64
+	if err := s.db.WithContext(ctx).Model(&DepartmentURL{}).
+		Where("department_id = ? AND url_id = ?", departmentID, urlID).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	if count == 0 {
+		return false, nil
+	}
+
 	updates := map[string]interface{}{}
 	if fields.DueDate != nil {
 		updates["due_date"] = *fields.DueDate
 	}
-	if fields.Agency != nil {
-		updates["agency"] = *fields.Agency
+	if fields.AgencyID != nil {
+		updates["agency_id"] = *fields.AgencyID
 	}
 	if fields.ReferenceNumber != nil {
 		updates["reference_number"] = *fields.ReferenceNumber
 	}
-	if fields.RequestingDept != nil {
-		updates["requesting_dept"] = *fields.RequestingDept
+	if fields.RequestingDeptID != nil {
+		updates["requesting_dept_id"] = *fields.RequestingDeptID
 	}
 	if fields.Status != nil {
 		updates["status"] = *fields.Status
@@ -568,12 +585,9 @@ func (s *postgresStore) UpdateDepartmentURLFields(ctx context.Context, departmen
 		updates["requested_at"] = *fields.RequestedAt
 	}
 	if len(updates) == 0 {
-		return false, nil
+		return true, nil // owned, but nothing in the body to apply
 	}
-	res := s.db.WithContext(ctx).
-		Model(&DepartmentURL{}).
-		Where("department_id = ? AND url_id = ?", departmentID, urlID).
-		Updates(updates)
+	res := s.db.WithContext(ctx).Model(&URL{}).Where("id = ?", urlID).Updates(updates)
 	return res.RowsAffected > 0, res.Error
 }
 
@@ -647,6 +661,20 @@ func (s *postgresStore) CreateCompliantIP(ctx context.Context, address, note str
 
 func (s *postgresStore) DeleteCompliantIP(ctx context.Context, id uint) error {
 	return s.db.WithContext(ctx).Delete(&CompliantIP{}, id).Error
+}
+
+func (s *postgresStore) ListAgencies(ctx context.Context) ([]Agency, error) {
+	var agencies []Agency
+	return agencies, s.db.WithContext(ctx).Order("name asc").Find(&agencies).Error
+}
+
+func (s *postgresStore) CreateAgency(ctx context.Context, name string) (Agency, error) {
+	a := Agency{Name: name}
+	return a, s.db.WithContext(ctx).Create(&a).Error
+}
+
+func (s *postgresStore) DeleteAgency(ctx context.Context, id uint) error {
+	return s.db.WithContext(ctx).Delete(&Agency{}, id).Error
 }
 
 func (s *postgresStore) ListISPLogos(ctx context.Context) ([]ISPLogo, error) {
@@ -1075,34 +1103,31 @@ func (s *postgresStore) ResurfacedDomainsForDepartment(ctx context.Context, depa
 // scoped to one department's watchlist. Aggregated in Go, following the same
 // SQLite-portability reasoning as dailyTrend/DailyComplianceByURL.
 func (s *postgresStore) ispComplianceTiming(ctx context.Context, isp string, departmentID *uint) (ISPTimingResult, error) {
-	// Plain (non-aggregated) column read, reduced to a min-per-url_id map in
-	// Go: SQLite's driver can't scan a SQL MIN() of a datetime column
-	// directly into time.Time, so the reduction happens here instead.
+	// DueDate is a single value per URL (case metadata is global, not
+	// per-department — see URL's doc comment), so there's no per-department
+	// min-reduction to do anymore. When department-scoped, the join to
+	// department_urls only narrows *which* domains count toward this
+	// department's aggregate (the denominator) — it can't introduce
+	// duplicate rows per url_id, since (department_id, url_id) is a
+	// composite primary key.
 	type deptURLDueRow struct {
 		URLID   uint
 		DueDate time.Time
 	}
 	dueQuery := s.db.WithContext(ctx).
-		Table("department_urls").
-		Select("url_id, due_date").
-		Where("due_date IS NOT NULL")
+		Table("urls").
+		Select("urls.id as url_id, urls.due_date").
+		Where("urls.due_date IS NOT NULL")
 	if departmentID != nil {
-		dueQuery = dueQuery.Where("department_id = ?", *departmentID)
+		dueQuery = dueQuery.Joins("JOIN department_urls du ON du.url_id = urls.id AND du.department_id = ?", *departmentID)
 	}
-	var deptURLDueRows []deptURLDueRow
-	if err := dueQuery.Scan(&deptURLDueRows).Error; err != nil {
+	var dueRows []deptURLDueRow
+	if err := dueQuery.Scan(&dueRows).Error; err != nil {
 		return ISPTimingResult{}, err
 	}
-	dueDateByURL := make(map[uint]time.Time, len(deptURLDueRows))
-	for _, r := range deptURLDueRows {
-		existing, ok := dueDateByURL[r.URLID]
-		if !ok || r.DueDate.Before(existing) {
-			dueDateByURL[r.URLID] = r.DueDate
-		}
-	}
-	dueRows := make([]deptURLDueRow, 0, len(dueDateByURL))
-	for urlID, dueDate := range dueDateByURL {
-		dueRows = append(dueRows, deptURLDueRow{URLID: urlID, DueDate: dueDate})
+	dueDateByURL := make(map[uint]time.Time, len(dueRows))
+	for _, r := range dueRows {
+		dueDateByURL[r.URLID] = r.DueDate
 	}
 
 	// Total monitored domains in this scope — the denominator for the

@@ -55,6 +55,14 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Get("/dns-servers", h.ListDNSServers)
 			r.Get("/dns-servers/{id}/uptime", h.ServerUptime)
 
+			// Agency and Department (read) are the same kind of shared/global
+			// reference data — open to any authenticated role for the
+			// Agency/Requesting-Dept dropdowns on the watchlist page; only
+			// mutating agencies is admin-gated (below), and Department's own
+			// mutation route stays super-admin-only, untouched.
+			r.Get("/agencies", h.ListAgencies)
+			r.Get("/departments", h.ListDepartmentsOpen)
+
 			r.With(scanLimit).Post("/scan", h.TriggerScan)
 			r.Get("/scan/status", h.ScanStatus)
 			r.Get("/scan/progress", h.ScanProgress)
@@ -109,6 +117,8 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 				r.Post("/dns-servers/test", h.TestDNSServer)
 				r.Post("/admin/isp-logos", h.UpsertISPLogo)
 				r.Delete("/admin/isp-logos/*", h.DeleteISPLogo)
+				r.Post("/admin/agencies", h.CreateAgency)
+				r.Delete("/admin/agencies/{id}", h.DeleteAgency)
 
 				r.Post("/legal/instruments", h.CreateInstrument)
 				r.Patch("/legal/instruments/{id}", h.UpdateInstrument)

@@ -51,13 +51,17 @@ export type URLEntry = {
   url: string
   enabled: boolean
   due_date?: string
-  agency?: string
+  agency_id?: number
+  agency_name?: string
   reference_number?: string
-  requesting_dept?: string
+  requesting_dept_id?: number
+  requesting_dept_name?: string
   status?: string
   requested_at?: string
   created_at: string
 }
+
+export type Agency = { id: number; name: string; created_at: string }
 
 export type Department = { id: number; name: string; created_at: string }
 

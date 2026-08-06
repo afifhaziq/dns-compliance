@@ -1,9 +1,20 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import {
+  type ColumnDef,
+  type SortingState,
+  type PaginationState,
+  type VisibilityState,
+  getCoreRowModel,
+  getSortedRowModel,
+  getPaginationRowModel,
+  useReactTable,
+} from '@tanstack/react-table'
 import { GripIcon } from '@/components/ui/grip'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlFields } from '../api/urls'
-import type { URLEntry, Instrument, Citation, LegalCategory, LegalElement, URLOffence } from '../api/types'
+import { fetchAgencies } from '../api/agencies'
+import { fetchDepartmentsOpen } from '../api/departments'
+import type { URLEntry, Agency, Department, Instrument, Citation, LegalCategory, LegalElement, URLOffence } from '../api/types'
 import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, attachOffence, fetchOffencesByUrl, detachOffence, formatParsedCitation } from '../api/legal'
 import {
   Dialog,
@@ -17,7 +28,14 @@ import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/r-switch'
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { Input } from '@/components/ui/input'
+import { DatePicker } from '@/components/ui/date-picker'
+import { DataGrid, DataGridContainer } from '@/components/reui/data-grid/data-grid'
+import { DataGridTable } from '@/components/reui/data-grid/data-grid-table'
+import { DataGridColumnVisibility } from '@/components/reui/data-grid/data-grid-column-visibility'
+import { DataGridPagination } from '@/components/reui/data-grid/data-grid-pagination'
+import { Filters, type Filter, type FilterFieldConfig } from '@/components/reui/filters'
+import { SortableHeader, EmptyIcon } from '@/components/results-table-parts'
 import { XIcon } from '@/components/ui/x'
 import { FaviconSearch } from '@/components/unlumen-ui/favicon-search'
 import { faviconApiUrl } from '../api/domain'
@@ -27,6 +45,7 @@ import {
   PreviewLinkCardPanel,
   PreviewLinkCardImage,
 } from '@/components/animate-ui/components/base/preview-link-card'
+import { useAuth } from './__root'
 
 /* ─── Quick Add (single domain, favicon preview) ─────────────────────────── */
 
@@ -64,6 +83,36 @@ function QuickAddFavicon({ onAdded }: { onAdded: () => void }) {
 }
 
 export const Route = createFileRoute('/urls')({ component: URLsPage })
+
+/* ─── Case metadata (shared by the Add Domain form + inline table cells) ─── */
+
+const STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: '—' },
+  { value: 'requested', label: 'Requested' },
+  { value: 'uplift', label: 'Uplift' },
+  { value: 'suspended', label: 'Suspended' },
+]
+
+// due_date carries an SLA time-of-day (some takedown orders require blocking
+// within 6h/24h) but @iconiq/date-picker is date-only, so it's paired with a
+// plain <input type="time">. DatePicker deals in real Date objects (not ISO
+// strings), and date-fns' format() already reads a Date's LOCAL
+// year/month/day — so unlike the old datetime-local input, there's no manual
+// UTC-offset shifting needed here: new Date(iso) and the local Date/time
+// constructor below are both correct by construction.
+function isoToLocalDate(iso: string): Date {
+  return new Date(iso)
+}
+
+function isoToLocalTimeStr(iso: string): string {
+  const d = new Date(iso)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function combineLocalDateAndTime(date: Date, timeStr: string): string {
+  const [hh, mm] = (timeStr || '00:00').split(':').map(Number)
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), hh || 0, mm || 0).toISOString()
+}
 
 /* ─── Add Domain Dialog ──────────────────────────────────────────────────── */
 
@@ -255,19 +304,40 @@ function AddUrlDialog({
   open,
   onClose,
   onAdded,
+  agencies,
+  departments,
+  defaultDepartmentId,
 }: {
   open: boolean
   onClose: () => void
   onAdded: () => void
+  agencies: Agency[]
+  departments: Department[]
+  defaultDepartmentId: number | null
 }) {
   const [value, setValue] = useState('')
   const [offences, setOffences] = useState<StagedOffence[]>([])
+  const [agencyId, setAgencyId] = useState<number | ''>('')
+  const [referenceNumber, setReferenceNumber] = useState('')
+  const [requestingDeptId, setRequestingDeptId] = useState<number | ''>('')
+  const [status, setStatus] = useState('')
+  const [dueDate, setDueDate] = useState<Date | null>(null)
+  const [dueTime, setDueTime] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const pickerRef = useRef<MultiOffencePickerHandle>(null)
 
+  // Requesting Dept defaults to the current user's own department, but stays
+  // changeable — reset it whenever the dialog reopens (a stale value from a
+  // previous open shouldn't linger) or once the department list arrives.
+  useEffect(() => {
+    if (open) setRequestingDeptId(defaultDepartmentId ?? '')
+  }, [open, defaultDepartmentId])
+
   const reset = () => {
     setValue(''); setOffences([]); setError(null)
+    setAgencyId(''); setReferenceNumber(''); setRequestingDeptId(defaultDepartmentId ?? '')
+    setStatus(''); setDueDate(null); setDueTime('')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -278,13 +348,23 @@ function AddUrlDialog({
     // in the picker — otherwise it's silently dropped rather than attached.
     const pending = pickerRef.current?.flush()
     const allOffences = pending ? [...offences, pending] : offences
+
+    const caseFields: Parameters<typeof setUrlFields>[1] = {}
+    if (agencyId !== '') caseFields.agency_id = agencyId
+    if (referenceNumber.trim()) caseFields.reference_number = referenceNumber.trim()
+    if (requestingDeptId !== '') caseFields.requesting_dept_id = requestingDeptId
+    if (status) caseFields.status = status
+    if (dueDate) caseFields.due_date = combineLocalDateAndTime(dueDate, dueTime)
+    const hasCaseFields = Object.keys(caseFields).length > 0
+
     setLoading(true)
     setError(null)
     try {
-      await Promise.all(domains.map(d => createUrl(d)))
-      await Promise.all(
-        domains.flatMap(d => allOffences.map(o => attachOffence(d, o.categoryId, o.elementId)))
-      )
+      const created = await Promise.all(domains.map(d => createUrl(d)))
+      await Promise.all([
+        ...created.flatMap(u => allOffences.map(o => attachOffence(u.url, o.categoryId, o.elementId))),
+        ...(hasCaseFields ? created.map(u => setUrlFields(u.id, caseFields)) : []),
+      ])
       reset()
       onAdded()
       onClose()
@@ -299,11 +379,11 @@ function AddUrlDialog({
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
-      <DialogContent showCloseButton={false} style={{ maxWidth: 440 }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: 560 }}>
         <DialogHeader>
           <DialogTitle>Add Domain</DialogTitle>
           <DialogDescription>
-            Enter one or more domains or full URLs to monitor for DNS compliance. Full URLs will have their domain automatically extracted. You can add multiple entries at once, just put each one on a new line.
+            Enter one or more domains or full URLs to monitor for DNS compliance. Full URLs will have their domain automatically extracted. You can add multiple entries at once, just put each one on a new line. Case details below (if any) apply to every domain added.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -321,6 +401,81 @@ function AddUrlDialog({
               style={{ resize: 'vertical', fontFamily: 'inherit' }}
             />
           </div>
+
+          <div className="form-field">
+            <label className="form-label" id="add-agency-label">Agency</label>
+            <Select value={String(agencyId)} onValueChange={v => setAgencyId(v === '' ? '' : Number(v))} disabled={loading}>
+              <SelectTrigger aria-labelledby="add-agency-label" placeholder="—" className="w-full" />
+              <SelectContent>
+                <SelectItem index={0} value="">—</SelectItem>
+                {agencies.map((a, i) => (
+                  <SelectItem key={a.id} index={i + 1} value={String(a.id)}>{a.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="form-field">
+            <label className="form-label" htmlFor="add-reference-number">Reference No.</label>
+            <input
+              id="add-reference-number"
+              type="text"
+              className="form-input"
+              maxLength={255}
+              value={referenceNumber}
+              onChange={e => setReferenceNumber(e.target.value)}
+              disabled={loading}
+            />
+          </div>
+
+          <div className="form-field">
+            <label className="form-label" id="add-requesting-dept-label">Requesting Dept.</label>
+            <Select value={String(requestingDeptId)} onValueChange={v => setRequestingDeptId(v === '' ? '' : Number(v))} disabled={loading}>
+              <SelectTrigger aria-labelledby="add-requesting-dept-label" placeholder="—" className="w-full" />
+              <SelectContent>
+                <SelectItem index={0} value="">—</SelectItem>
+                {departments.map((d, i) => (
+                  <SelectItem key={d.id} index={i + 1} value={String(d.id)}>{d.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="form-field">
+            <label className="form-label" id="add-status-label">Status</label>
+            <Select value={status} onValueChange={setStatus} disabled={loading}>
+              <SelectTrigger aria-labelledby="add-status-label" placeholder="—" className="w-full" />
+              <SelectContent>
+                {STATUS_OPTIONS.map((opt, i) => (
+                  <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="form-field">
+            <label className="form-label" htmlFor="add-due-date">Due Date</label>
+            <div className="flex items-center gap-2">
+              <DatePicker
+                id="add-due-date"
+                value={dueDate}
+                onChange={setDueDate}
+                placeholder="Select date"
+                disabled={loading}
+                clearable
+              />
+              <input
+                type="time"
+                className="form-input"
+                style={{ width: 110 }}
+                value={dueTime}
+                onChange={e => setDueTime(e.target.value)}
+                disabled={loading || !dueDate}
+                aria-label="Due time"
+              />
+            </div>
+          </div>
+
           <MultiOffencePicker
             ref={pickerRef}
             value={offences}
@@ -460,42 +615,6 @@ function EditOffencesDialog({
   )
 }
 
-/* ─── Skeleton ───────────────────────────────────────────────────────────── */
-
-function SkeletonRows() {
-  return (
-    <>
-      {[200, 160, 240].map((w, i) => (
-        <TableRow key={i} className="skeleton-row">
-          <TableCell className="col-domain">
-            <span className="skeleton" style={{ width: w, height: 14 }} />
-          </TableCell>
-          {Array.from({ length: 6 }).map((_, j) => (
-            <TableCell key={j} className="col-status">
-              <span className="skeleton" style={{ width: 90, height: 14 }} />
-            </TableCell>
-          ))}
-          <TableCell style={{ width: 52 }} />
-          <TableCell className="col-evidence" />
-        </TableRow>
-      ))}
-    </>
-  )
-}
-
-/* ─── Empty Icon ─────────────────────────────────────────────────────────── */
-
-function EmptyIcon() {
-  return (
-    <svg className="empty-icon" width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-      <rect x="8" y="4" width="24" height="32" rx="2" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M32 4L40 12V36C40 37.1 39.1 38 38 38H32" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M40 12H32V4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M14 18H26M14 24H22" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  )
-}
-
 /* ─── URLs Page ──────────────────────────────────────────────────────────── */
 
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
@@ -504,44 +623,37 @@ const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
 
 const PAGE_SIZE = 25
 
-// `<input type="datetime-local">` interprets its value in the browser's
-// local timezone, but `due_date` is stored as a UTC ISO string. Slicing the
-// UTC digits directly would feed local-timezone-formatted digits into a
-// local-timezone-interpreting input, silently shifting the displayed time by
-// the local UTC offset. Shift the Date by that offset first so the sliced
-// digits are local wall-clock time.
-function toLocalDatetimeInputValue(iso: string): string {
-  const d = new Date(iso)
-  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
-  return local.toISOString().slice(0, 16)
-}
-
-const STATUS_OPTIONS: { value: string; label: string }[] = [
-  { value: '', label: '—' },
-  { value: 'requested', label: 'Requested' },
-  { value: 'uplift', label: 'Uplift' },
-  { value: 'suspended', label: 'Suspended' },
-]
-
-type CaseTextField = 'agency' | 'reference_number' | 'requesting_dept'
+const IS_ONLY = [{ value: 'is', label: 'is' }]
 
 function URLsPage() {
+  const { me } = useAuth()
   const [urls, setUrls] = useState<URLEntry[]>([])
+  const [agencies, setAgencies] = useState<Agency[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<URLEntry | null>(null)
   const [editOffencesTarget, setEditOffencesTarget] = useState<string | null>(null)
-  const [page, setPage] = useState(1)
-  // Snapshots a text field's pre-edit value on focus so handleTextBlur can
-  // roll back to it if the commit fails.
-  const fieldOriginalRef = useRef<Record<string, string>>({})
+
+  const [search, setSearch] = useState('')
+  const [filters, setFilters] = useState<Filter<string>[]>([])
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+
+  // Snapshots the reference-number field's pre-edit value on focus so a
+  // failed blur-commit can roll back to it.
+  const refOriginalRef = useRef<Record<number, string>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       setError(null)
-      setUrls(await fetchUrls())
+      const [u, a, d] = await Promise.all([fetchUrls(), fetchAgencies(), fetchDepartmentsOpen()])
+      setUrls(u)
+      setAgencies(a)
+      setDepartments(d)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load domains')
     } finally {
@@ -560,47 +672,70 @@ function URLsPage() {
     }
   }, [])
 
-  const handleDueDateChange = useCallback(async (id: number, dateStr: string) => {
-    const previous = urls.find(u => u.id === id)?.due_date
-    const dueDate = dateStr ? new Date(dateStr).toISOString() : null
-    setUrls(prev => prev.map(u => u.id === id ? { ...u, due_date: dueDate ?? undefined } : u))
+  // Generic case-field commit: optimistic local update, roll back to the
+  // previous URLEntry snapshot on failure. Shared by every select-style
+  // field (agency, requesting dept, status) and the date-picker/time pair.
+  const commitField = useCallback(async (id: number, patch: Partial<URLEntry>, body: Parameters<typeof setUrlFields>[1]) => {
+    const previous = urls.find(u => u.id === id)
+    setUrls(prev => prev.map(u => u.id === id ? { ...u, ...patch } : u))
     try {
-      await setUrlFields(id, { due_date: dueDate })
+      await setUrlFields(id, body)
     } catch {
-      setUrls(prev => prev.map(u => u.id === id ? { ...u, due_date: previous } : u))
+      if (previous) setUrls(prev => prev.map(u => u.id === id ? previous : u))
     }
   }, [urls])
 
-  const handleStatusChange = useCallback(async (id: number, status: string) => {
-    const previous = urls.find(u => u.id === id)?.status
-    setUrls(prev => prev.map(u => u.id === id ? { ...u, status } : u))
-    try {
-      await setUrlFields(id, { status })
-    } catch {
-      setUrls(prev => prev.map(u => u.id === id ? { ...u, status: previous } : u))
+  const handleAgencyChange = useCallback((id: number, agencyId: number | null) => {
+    const agency = agencies.find(a => a.id === agencyId)
+    commitField(id, { agency_id: agencyId ?? undefined, agency_name: agency?.name }, { agency_id: agencyId })
+  }, [agencies, commitField])
+
+  const handleRequestingDeptChange = useCallback((id: number, deptId: number | null) => {
+    const dept = departments.find(d => d.id === deptId)
+    commitField(id, { requesting_dept_id: deptId ?? undefined, requesting_dept_name: dept?.name }, { requesting_dept_id: deptId })
+  }, [departments, commitField])
+
+  const handleStatusChange = useCallback((id: number, status: string) => {
+    commitField(id, { status }, { status })
+  }, [commitField])
+
+  const handleDueDateChange = useCallback((id: number, date: Date | null) => {
+    if (!date) {
+      commitField(id, { due_date: undefined }, { due_date: null })
+      return
     }
-  }, [urls])
+    const existing = urls.find(u => u.id === id)?.due_date
+    const timeStr = existing ? isoToLocalTimeStr(existing) : '00:00'
+    const combined = combineLocalDateAndTime(date, timeStr)
+    commitField(id, { due_date: combined }, { due_date: combined })
+  }, [urls, commitField])
 
-  // Text fields commit on blur (not per keystroke) to avoid a PATCH per
-  // character — fieldOriginalRef snapshots the pre-edit value on focus so a
-  // failed commit can roll back to it.
-  const handleTextFocus = useCallback((id: number, field: CaseTextField, value: string) => {
-    fieldOriginalRef.current[`${id}:${field}`] = value
+  const handleDueTimeChange = useCallback((id: number, timeStr: string) => {
+    const existing = urls.find(u => u.id === id)?.due_date
+    const date = existing ? isoToLocalDate(existing) : new Date()
+    const combined = combineLocalDateAndTime(date, timeStr)
+    commitField(id, { due_date: combined }, { due_date: combined })
+  }, [urls, commitField])
+
+  // Reference number commits on blur (not per keystroke) to avoid a PATCH
+  // per character — refOriginalRef snapshots the pre-edit value on focus so
+  // a failed commit can roll back to it.
+  const handleRefFocus = useCallback((id: number, value: string) => {
+    refOriginalRef.current[id] = value
   }, [])
 
-  const handleTextChange = useCallback((id: number, field: CaseTextField, value: string) => {
-    setUrls(prev => prev.map(u => u.id === id ? { ...u, [field]: value } : u))
+  const handleRefChange = useCallback((id: number, value: string) => {
+    setUrls(prev => prev.map(u => u.id === id ? { ...u, reference_number: value } : u))
   }, [])
 
-  const handleTextBlur = useCallback(async (id: number, field: CaseTextField) => {
-    const key = `${id}:${field}`
-    const original = fieldOriginalRef.current[key] ?? ''
-    const current = urls.find(u => u.id === id)?.[field] ?? ''
+  const handleRefBlur = useCallback(async (id: number) => {
+    const original = refOriginalRef.current[id] ?? ''
+    const current = urls.find(u => u.id === id)?.reference_number ?? ''
     if (current === original) return
     try {
-      await setUrlFields(id, { [field]: current })
+      await setUrlFields(id, { reference_number: current })
     } catch {
-      setUrls(prev => prev.map(u => u.id === id ? { ...u, [field]: original } : u))
+      setUrls(prev => prev.map(u => u.id === id ? { ...u, reference_number: original } : u))
     }
   }, [urls])
 
@@ -611,12 +746,258 @@ function URLsPage() {
     load()
   }
 
-  const totalPages = Math.max(1, Math.ceil(urls.length / PAGE_SIZE))
-  const currentPage = Math.min(page, totalPages)
-  const paginated = useMemo(
-    () => urls.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
-    [urls, currentPage],
-  )
+  const filterFields = useMemo<FilterFieldConfig<string>[]>(() => [
+    { key: 'status', label: 'Status', type: 'select', operators: IS_ONLY, options: STATUS_OPTIONS.filter(o => o.value).map(o => ({ value: o.value, label: o.label })) },
+    { key: 'requesting_dept', label: 'Requesting Dept.', type: 'select', operators: IS_ONLY, options: departments.map(d => ({ value: String(d.id), label: d.name })) },
+    { key: 'agency', label: 'Agency', type: 'select', operators: IS_ONLY, options: agencies.map(a => ({ value: String(a.id), label: a.name })) },
+  ], [agencies, departments])
+
+  const statusFilter = filters.find(f => f.field === 'status')?.values[0]
+  const deptFilter = filters.find(f => f.field === 'requesting_dept')?.values[0]
+  const agencyFilter = filters.find(f => f.field === 'agency')?.values[0]
+
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    return urls.filter(u =>
+      (!query || u.url.toLowerCase().includes(query)) &&
+      (!statusFilter || u.status === statusFilter) &&
+      (!deptFilter || String(u.requesting_dept_id ?? '') === deptFilter) &&
+      (!agencyFilter || String(u.agency_id ?? '') === agencyFilter)
+    )
+  }, [urls, search, statusFilter, deptFilter, agencyFilter])
+
+  useEffect(() => { setPagination(p => ({ ...p, pageIndex: 0 })) }, [search, statusFilter, deptFilter, agencyFilter])
+
+  const columns = useMemo<ColumnDef<URLEntry>[]>(() => [
+    {
+      id: 'domain',
+      accessorFn: u => u.url,
+      header: ({ column }) => <SortableHeader column={column} title="Domain" />,
+      enableHiding: false,
+      size: 280,
+      meta: {
+        headerTitle: 'Domain',
+        headerClassName: 'col-domain th-left',
+        cellClassName: 'col-domain',
+        skeleton: <span className="skeleton" style={{ width: 200, height: 14 }} />,
+      },
+      cell: ({ row }) => {
+        const u = row.original
+        return (
+          <PreviewLinkCard href={u.url}>
+            <PreviewLinkCardTrigger>
+              <span className="hostname flex items-center gap-2 min-w-0">
+                <img src={faviconApiUrl(u.url)} alt="" width={16} height={16} className="shrink-0" onError={e => { e.currentTarget.style.visibility = 'hidden' }} />
+                {u.url}
+              </span>
+            </PreviewLinkCardTrigger>
+            <PreviewLinkCardPanel>
+              <PreviewLinkCardImage />
+            </PreviewLinkCardPanel>
+          </PreviewLinkCard>
+        )
+      },
+    },
+    {
+      id: 'created_at',
+      accessorFn: u => u.created_at,
+      size: 110,
+      header: ({ column }) => <SortableHeader column={column} title="Added" />,
+      meta: { headerTitle: 'Added', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => <span className="dns-name">{DATE_FMT.format(new Date(row.original.created_at))}</span>,
+    },
+    {
+      id: 'agency',
+      accessorFn: u => u.agency_id ?? '',
+      size: 150,
+      header: 'Agency',
+      meta: { headerTitle: 'Agency', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => {
+        const u = row.original
+        return (
+          <Select
+            value={String(u.agency_id ?? '')}
+            onValueChange={v => handleAgencyChange(u.id, v === '' ? null : Number(v))}
+          >
+            <SelectTrigger aria-label={`Agency for ${u.url}`} placeholder="—" className="w-full" />
+            <SelectContent>
+              <SelectItem index={0} value="">—</SelectItem>
+              {agencies.map((a, i) => (
+                <SelectItem key={a.id} index={i + 1} value={String(a.id)}>{a.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )
+      },
+    },
+    {
+      id: 'reference_number',
+      accessorFn: u => u.reference_number ?? '',
+      size: 150,
+      header: 'Reference No.',
+      meta: { headerTitle: 'Reference No.', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => {
+        const u = row.original
+        return (
+          <input
+            type="text"
+            className="form-input"
+            style={{ width: 120 }}
+            value={u.reference_number ?? ''}
+            maxLength={255}
+            onFocus={e => handleRefFocus(u.id, e.target.value)}
+            onChange={e => handleRefChange(u.id, e.target.value)}
+            onBlur={() => handleRefBlur(u.id)}
+            aria-label={`Reference number for ${u.url}`}
+          />
+        )
+      },
+    },
+    {
+      id: 'requesting_dept',
+      accessorFn: u => u.requesting_dept_id ?? '',
+      size: 160,
+      header: 'Requesting Dept.',
+      meta: { headerTitle: 'Requesting Dept.', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => {
+        const u = row.original
+        return (
+          <Select
+            value={String(u.requesting_dept_id ?? '')}
+            onValueChange={v => handleRequestingDeptChange(u.id, v === '' ? null : Number(v))}
+          >
+            <SelectTrigger aria-label={`Requesting department for ${u.url}`} placeholder="—" className="w-full" />
+            <SelectContent>
+              <SelectItem index={0} value="">—</SelectItem>
+              {departments.map((d, i) => (
+                <SelectItem key={d.id} index={i + 1} value={String(d.id)}>{d.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )
+      },
+    },
+    {
+      id: 'status',
+      accessorFn: u => u.status ?? '',
+      size: 140,
+      header: 'Status',
+      meta: {
+        headerTitle: 'Status',
+        headerClassName: 'col-status',
+        cellClassName: 'col-status text-center',
+        skeleton: <span className="skeleton" style={{ width: 90, height: 20, borderRadius: 4 }} />,
+      },
+      cell: ({ row }) => {
+        const u = row.original
+        return (
+          <Select value={u.status ?? ''} onValueChange={v => handleStatusChange(u.id, v)}>
+            <SelectTrigger aria-label={`Status for ${u.url}`} placeholder="—" className="w-full" />
+            <SelectContent>
+              {STATUS_OPTIONS.map((opt, i) => (
+                <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )
+      },
+    },
+    {
+      id: 'due_date',
+      accessorFn: u => u.due_date ?? '',
+      size: 240,
+      header: ({ column }) => <SortableHeader column={column} title="Due Date" />,
+      meta: {
+        headerTitle: 'Due Date',
+        headerClassName: 'col-status',
+        cellClassName: 'col-status text-center',
+        skeleton: <span className="skeleton" style={{ width: 160, height: 20, borderRadius: 4 }} />,
+      },
+      cell: ({ row }) => {
+        const u = row.original
+        return (
+          <div className="flex items-center gap-2">
+            <DatePicker
+              value={u.due_date ? isoToLocalDate(u.due_date) : null}
+              onChange={date => handleDueDateChange(u.id, date)}
+              placeholder="Select date"
+              clearable
+            />
+            <input
+              type="time"
+              className="form-input"
+              style={{ width: 100 }}
+              value={u.due_date ? isoToLocalTimeStr(u.due_date) : ''}
+              onChange={e => handleDueTimeChange(u.id, e.target.value)}
+              disabled={!u.due_date}
+              aria-label={`Due time for ${u.url}`}
+            />
+          </div>
+        )
+      },
+    },
+    {
+      id: 'enabled',
+      header: 'Scan',
+      enableHiding: false,
+      size: 70,
+      meta: { headerClassName: 'th-center', cellClassName: 'text-center' },
+      cell: ({ row }) => {
+        const u = row.original
+        return (
+          <Switch
+            checked={u.enabled}
+            onCheckedChange={checked => handleToggle(u.id, checked)}
+            aria-label={`${u.enabled ? 'Disable' : 'Enable'} ${u.url} in scan`}
+          />
+        )
+      },
+    },
+    {
+      id: 'actions',
+      header: '',
+      enableHiding: false,
+      size: 90,
+      meta: { headerClassName: 'col-evidence', cellClassName: 'col-evidence text-right' },
+      cell: ({ row }) => {
+        const u = row.original
+        return (
+          <div className="flex items-center justify-end gap-1">
+            <button
+              type="button"
+              className="screenshot-icon-btn"
+              onClick={() => setEditOffencesTarget(u.url)}
+              aria-label={`Edit offences for ${u.url}`}
+              title="Offences"
+            >
+              <GripIcon size={16} />
+            </button>
+            <button
+              type="button"
+              className="screenshot-icon-btn"
+              onClick={() => setDeleteTarget(u)}
+              aria-label={`Delete ${u.url}`}
+              title="Delete"
+            >
+              <XIcon size={16} />
+            </button>
+          </div>
+        )
+      },
+    },
+  ], [agencies, departments, handleAgencyChange, handleRequestingDeptChange, handleStatusChange, handleDueDateChange, handleDueTimeChange, handleRefFocus, handleRefChange, handleRefBlur, handleToggle])
+
+  const table = useReactTable({
+    data: filtered,
+    columns,
+    state: { sorting, pagination, columnVisibility },
+    onSortingChange: setSorting,
+    onPaginationChange: setPagination,
+    onColumnVisibilityChange: setColumnVisibility,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+  })
 
   return (
     <div className="mx-20 mt-10">
@@ -631,184 +1012,59 @@ function URLsPage() {
         </div>
       </div>
 
-      <div className="results-wrap">
-        {error ? (
-          <div className="error-state">
-            <p className="error-message">{error}</p>
-            <button className="btn-primary" onClick={load}>Retry</button>
+      {error ? (
+        <div className="error-state">
+          <p className="error-message">{error}</p>
+          <button className="btn-primary" onClick={load}>Retry</button>
+        </div>
+      ) : !loading && urls.length === 0 ? (
+        <div className="empty-state">
+          <EmptyIcon />
+          <p className="empty-heading">No domains yet</p>
+          <p className="empty-body">Add a domain to start monitoring DNS compliance.</p>
+          <button className="btn-primary" onClick={() => setAddOpen(true)}>Add Domain</button>
+        </div>
+      ) : (
+        <div className="flex flex-col items-stretch w-full gap-4 mt-4">
+          <div className="filter-bar flex flex-row items-center justify-start gap-4 w-full">
+            <Input
+              type="search"
+              placeholder="Search domain..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="max-w-64"
+              aria-label="Search domain"
+            />
+            <Filters filters={filters} fields={filterFields} onChange={setFilters} />
+            <div style={{ marginLeft: 'auto' }}>
+              <DataGridColumnVisibility table={table} trigger={<Button variant="outline">Columns</Button>} />
+            </div>
           </div>
-        ) : !loading && urls.length === 0 ? (
-          <div className="empty-state">
-            <EmptyIcon />
-            <p className="empty-heading">No domains yet</p>
-            <p className="empty-body">Add a domain to start monitoring DNS compliance.</p>
-            <button className="btn-primary" onClick={() => setAddOpen(true)}>Add Domain</button>
+
+          <div className="results-wrap w-full">
+            {!loading && filtered.length === 0 ? (
+              <div className="empty-state" style={{ padding: '3rem 0' }}>
+                <p className="empty-heading">No domains match the current filters</p>
+              </div>
+            ) : (
+              <DataGrid table={table} recordCount={filtered.length} isLoading={loading} tableClassNames={{ base: 'results-table' }}>
+                <DataGridContainer className="overflow-visible">
+                  <DataGridTable />
+                </DataGridContainer>
+                <DataGridPagination sizes={[10, 25, 50, 100]} />
+              </DataGrid>
+            )}
           </div>
-        ) : (
-          <Table className="results-table" aria-label="Monitored domains">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="col-domain th-left" scope="col">Domain</TableHead>
-                <TableHead className="col-status" scope="col">Added</TableHead>
-                <TableHead className="col-status" scope="col">Agency</TableHead>
-                <TableHead className="col-status" scope="col">Reference No.</TableHead>
-                <TableHead className="col-status" scope="col">Requesting Dept.</TableHead>
-                <TableHead className="col-status" scope="col">Status</TableHead>
-                <TableHead className="col-status" scope="col">Due Date</TableHead>
-                <TableHead scope="col" style={{ width: 52, textAlign: 'center' }}>Scan</TableHead>
-                <TableHead className="col-evidence" scope="col" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <SkeletonRows />
-              ) : (
-                paginated.map(u => (
-                  <TableRow key={u.id} className="url-row">
-                    <TableCell className="col-domain">
-                      <PreviewLinkCard href={u.url}>
-                        <PreviewLinkCardTrigger>
-                          <span className="hostname flex items-center gap-2">
-                            <img src={faviconApiUrl(u.url)} alt="" width={16} height={16} className="shrink-0" onError={e => { e.currentTarget.style.visibility = 'hidden' }} />
-                            {u.url}
-                          </span>
-                        </PreviewLinkCardTrigger>
-                        <PreviewLinkCardPanel>
-                          <PreviewLinkCardImage />
-                        </PreviewLinkCardPanel>
-                      </PreviewLinkCard>
-                    </TableCell>
-                    <TableCell className="col-status text-center">
-                      <span className="dns-name">
-                        {DATE_FMT.format(new Date(u.created_at))}
-                      </span>
-                    </TableCell>
-                    <TableCell className="col-status text-center">
-                      <input
-                        type="text"
-                        className="form-input"
-                        style={{ width: 120 }}
-                        value={u.agency ?? ''}
-                        maxLength={255}
-                        onFocus={e => handleTextFocus(u.id, 'agency', e.target.value)}
-                        onChange={e => handleTextChange(u.id, 'agency', e.target.value)}
-                        onBlur={() => handleTextBlur(u.id, 'agency')}
-                        aria-label={`Agency for ${u.url}`}
-                      />
-                    </TableCell>
-                    <TableCell className="col-status text-center">
-                      <input
-                        type="text"
-                        className="form-input"
-                        style={{ width: 120 }}
-                        value={u.reference_number ?? ''}
-                        maxLength={255}
-                        onFocus={e => handleTextFocus(u.id, 'reference_number', e.target.value)}
-                        onChange={e => handleTextChange(u.id, 'reference_number', e.target.value)}
-                        onBlur={() => handleTextBlur(u.id, 'reference_number')}
-                        aria-label={`Reference number for ${u.url}`}
-                      />
-                    </TableCell>
-                    <TableCell className="col-status text-center">
-                      <input
-                        type="text"
-                        className="form-input"
-                        style={{ width: 140 }}
-                        value={u.requesting_dept ?? ''}
-                        maxLength={255}
-                        onFocus={e => handleTextFocus(u.id, 'requesting_dept', e.target.value)}
-                        onChange={e => handleTextChange(u.id, 'requesting_dept', e.target.value)}
-                        onBlur={() => handleTextBlur(u.id, 'requesting_dept')}
-                        aria-label={`Requesting department for ${u.url}`}
-                      />
-                    </TableCell>
-                    <TableCell className="col-status text-center">
-                      <Select
-                        value={u.status ?? ''}
-                        onValueChange={v => handleStatusChange(u.id, v)}
-                      >
-                        <SelectTrigger aria-label={`Status for ${u.url}`} placeholder="—" className="w-full" />
-                        <SelectContent>
-                          {STATUS_OPTIONS.map((opt, i) => (
-                            <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell className="col-status text-center">
-                      <input
-                        type="datetime-local"
-                        className="form-input"
-                        style={{ width: 180 }}
-                        value={u.due_date ? toLocalDatetimeInputValue(u.due_date) : ''}
-                        onChange={e => handleDueDateChange(u.id, e.target.value)}
-                        aria-label={`Due date for ${u.url}`}
-                      />
-                    </TableCell>
-                    <TableCell style={{ textAlign: 'center' }}>
-                      <Switch
-                        checked={u.enabled}
-                        onCheckedChange={checked => handleToggle(u.id, checked)}
-                        aria-label={`${u.enabled ? 'Disable' : 'Enable'} ${u.url} in scan`}
-                      />
-                    </TableCell>
-                    <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          type="button"
-                          className="screenshot-icon-btn"
-                          onClick={() => setEditOffencesTarget(u.url)}
-                          aria-label={`Edit offences for ${u.url}`}
-                          title="Offences"
-                        >
-                          <GripIcon size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          className="screenshot-icon-btn"
-                          onClick={() => setDeleteTarget(u)}
-                          aria-label={`Delete ${u.url}`}
-                          title="Delete"
-                        >
-                          <XIcon size={16} />
-                        </button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        )}
-        {!loading && totalPages > 1 && (
-          <div className="pagination">
-            <span className="pagination-label">Page {currentPage} of {totalPages}</span>
-            <button
-              type="button"
-              className="pagination-btn"
-              onClick={() => setPage(p => p - 1)}
-              disabled={currentPage <= 1}
-              aria-label="Previous page"
-            >
-              <ChevronLeftIcon className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              className="pagination-btn"
-              onClick={() => setPage(p => p + 1)}
-              disabled={currentPage >= totalPages}
-              aria-label="Next page"
-            >
-              <ChevronRightIcon className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <AddUrlDialog
         open={addOpen}
         onClose={() => setAddOpen(false)}
         onAdded={load}
+        agencies={agencies}
+        departments={departments}
+        defaultDepartmentId={me?.department_id ?? null}
       />
 
       <DeleteConfirmDialog

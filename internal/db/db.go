@@ -24,20 +24,26 @@ func Connect(dialector gorm.Dialector) (*gorm.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening db: %w", err)
 	}
-	// DepartmentURL.OrderedAt was renamed to DueDate. AutoMigrate only adds
-	// columns matching current struct tags — it never renames or drops — so
-	// without this, an already-deployed instance would silently orphan the
-	// column and its data (a new empty due_date column, stale ordered_at).
-	// Idempotent: a no-op once due_date exists, including on a fresh DB
-	// where ordered_at never existed either.
-	if database.Migrator().HasColumn(&DepartmentURL{}, "ordered_at") && !database.Migrator().HasColumn(&DepartmentURL{}, "due_date") {
-		if err := database.Migrator().RenameColumn(&DepartmentURL{}, "ordered_at", "due_date"); err != nil {
-			return nil, fmt.Errorf("renaming ordered_at to due_date: %w", err)
+	// The case-metadata columns (due_date, agency, reference_number,
+	// requesting_dept, status, requested_at) moved off DepartmentURL onto
+	// URL — a domain has one legal case, not one per watching department.
+	// AutoMigrate only adds columns matching current struct tags, it never
+	// drops ones that used to exist — without this, an already-migrated dev
+	// DB would keep six dead columns on department_urls forever. This
+	// branch has never been deployed with real data, so this is a plain
+	// idempotent drop, not a data-preserving copy: a no-op once the columns
+	// are gone, including on a fresh DB where they never existed.
+	for _, col := range []string{"due_date", "agency", "reference_number", "requesting_dept", "status", "requested_at"} {
+		if database.Migrator().HasColumn(&DepartmentURL{}, col) {
+			if err := database.Migrator().DropColumn(&DepartmentURL{}, col); err != nil {
+				return nil, fmt.Errorf("dropping department_urls.%s: %w", col, err)
+			}
 		}
 	}
 	if err := database.AutoMigrate(
 		&Department{}, &User{}, &Session{}, &DNSServer{}, &URL{}, &DepartmentURL{}, &ScanRun{}, &ScanResult{}, &CompliantIP{}, &DomainWhois{}, &IPInfo{}, &Favicon{}, &ScanSettings{}, &SubdomainScan{}, &ISPLogo{},
 		&Instrument{}, &Citation{}, &Category{}, &Element{}, &URLOffence{},
+		&Agency{},
 	); err != nil {
 		return nil, fmt.Errorf("migrating schema: %w", err)
 	}

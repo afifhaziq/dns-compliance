@@ -35,6 +35,7 @@ type fullMockStore struct {
 	favicons       []db.Favicon
 	subdomainScans []db.SubdomainScan
 	ispLogos       []db.ISPLogo
+	agencies       []db.Agency
 	instruments    []db.Instrument
 	citations      []db.Citation
 	categories     []db.Category
@@ -302,11 +303,26 @@ func (m *fullMockStore) ListDepartmentURLs(_ context.Context, departmentID uint)
 		}
 		for _, u := range m.urls {
 			if u.ID == du.URLID {
-				out = append(out, db.URLEntry{
-					ID: u.ID, URL: u.URL, Enabled: du.Enabled, DueDate: du.DueDate,
-					Agency: du.Agency, ReferenceNumber: du.ReferenceNumber, RequestingDept: du.RequestingDept,
-					Status: du.Status, RequestedAt: du.RequestedAt, CreatedAt: u.CreatedAt,
-				})
+				entry := db.URLEntry{
+					ID: u.ID, URL: u.URL, Enabled: du.Enabled, DueDate: u.DueDate,
+					AgencyID: u.AgencyID, ReferenceNumber: u.ReferenceNumber, RequestingDeptID: u.RequestingDeptID,
+					Status: u.Status, RequestedAt: u.RequestedAt, CreatedAt: u.CreatedAt,
+				}
+				if u.AgencyID != nil {
+					for _, a := range m.agencies {
+						if a.ID == *u.AgencyID {
+							entry.AgencyName = a.Name
+						}
+					}
+				}
+				if u.RequestingDeptID != nil {
+					for _, d := range m.departments {
+						if d.ID == *u.RequestingDeptID {
+							entry.RequestingDeptName = d.Name
+						}
+					}
+				}
+				out = append(out, entry)
 			}
 		}
 	}
@@ -337,31 +353,64 @@ func (m *fullMockStore) SetURLEnabled(_ context.Context, departmentID, urlID uin
 	return false, nil
 }
 
-func (m *fullMockStore) UpdateDepartmentURLFields(_ context.Context, departmentID, urlID uint, fields db.DepartmentURLFields) (bool, error) {
-	for i, du := range m.departmentURLs {
+// UpdateURLCaseFields mirrors postgresStore's ownership-check-then-write
+// contract: the case fields live on the shared URL row, but a write is only
+// allowed once departmentID is confirmed to be watching urlID.
+func (m *fullMockStore) UpdateURLCaseFields(_ context.Context, departmentID, urlID uint, fields db.URLCaseFields) (bool, error) {
+	owns := false
+	for _, du := range m.departmentURLs {
 		if du.DepartmentID == departmentID && du.URLID == urlID {
+			owns = true
+			break
+		}
+	}
+	if !owns {
+		return false, nil
+	}
+	for i, u := range m.urls {
+		if u.ID == urlID {
 			if fields.DueDate != nil {
-				m.departmentURLs[i].DueDate = *fields.DueDate
+				m.urls[i].DueDate = *fields.DueDate
 			}
-			if fields.Agency != nil {
-				m.departmentURLs[i].Agency = *fields.Agency
+			if fields.AgencyID != nil {
+				m.urls[i].AgencyID = *fields.AgencyID
 			}
 			if fields.ReferenceNumber != nil {
-				m.departmentURLs[i].ReferenceNumber = *fields.ReferenceNumber
+				m.urls[i].ReferenceNumber = *fields.ReferenceNumber
 			}
-			if fields.RequestingDept != nil {
-				m.departmentURLs[i].RequestingDept = *fields.RequestingDept
+			if fields.RequestingDeptID != nil {
+				m.urls[i].RequestingDeptID = *fields.RequestingDeptID
 			}
 			if fields.Status != nil {
-				m.departmentURLs[i].Status = *fields.Status
+				m.urls[i].Status = *fields.Status
 			}
 			if fields.RequestedAt != nil {
-				m.departmentURLs[i].RequestedAt = *fields.RequestedAt
+				m.urls[i].RequestedAt = *fields.RequestedAt
 			}
 			return true, nil
 		}
 	}
-	return false, nil
+	return true, nil
+}
+
+func (m *fullMockStore) ListAgencies(_ context.Context) ([]db.Agency, error) {
+	return m.agencies, nil
+}
+
+func (m *fullMockStore) CreateAgency(_ context.Context, name string) (db.Agency, error) {
+	a := db.Agency{ID: uint(len(m.agencies) + 1), Name: name, CreatedAt: time.Now()}
+	m.agencies = append(m.agencies, a)
+	return a, nil
+}
+
+func (m *fullMockStore) DeleteAgency(_ context.Context, id uint) error {
+	for i, a := range m.agencies {
+		if a.ID == id {
+			m.agencies = append(m.agencies[:i], m.agencies[i+1:]...)
+			return nil
+		}
+	}
+	return nil
 }
 
 func (m *fullMockStore) RemoveURLFromWatchlist(_ context.Context, departmentID, urlID uint) (bool, error) {
@@ -2077,7 +2126,7 @@ func TestToggleURL_SetsDueDateWithoutTouchingEnabled(t *testing.T) {
 	if !store.departmentURLs[0].Enabled {
 		t.Fatal("expected Enabled to remain untouched by a due_date-only body")
 	}
-	if store.departmentURLs[0].DueDate == nil {
+	if store.urls[0].DueDate == nil {
 		t.Fatal("expected due_date to be set")
 	}
 
@@ -2091,7 +2140,7 @@ func TestToggleURL_SetsDueDateWithoutTouchingEnabled(t *testing.T) {
 	if w2.Code != http.StatusNoContent {
 		t.Fatalf("want 204 on clear, got %d: %s", w2.Code, w2.Body.String())
 	}
-	if store.departmentURLs[0].DueDate != nil {
+	if store.urls[0].DueDate != nil {
 		t.Fatal("expected due_date to be cleared by an empty string")
 	}
 }
@@ -2100,8 +2149,10 @@ func TestToggleURL_UpdatesCaseFieldsWithoutClobbering(t *testing.T) {
 	deptID := uint(1)
 	due := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
 	store := &fullMockStore{
-		urls:           []db.URL{{ID: 1, URL: "example.com"}},
-		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1, Enabled: true, DueDate: &due}},
+		urls:           []db.URL{{ID: 1, URL: "example.com", DueDate: &due}},
+		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1, Enabled: true}},
+		agencies:       []db.Agency{{ID: 7, Name: "MCMC"}},
+		departments:    []db.Department{{ID: 9, Name: "Ministry of X"}},
 	}
 	cookie := deptCookie(store, deptID)
 	r := setupRouter(store, nil)
@@ -2116,15 +2167,15 @@ func TestToggleURL_UpdatesCaseFieldsWithoutClobbering(t *testing.T) {
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
 	}
-	if store.departmentURLs[0].Status != "uplift" {
-		t.Fatalf("expected status to be set to uplift, got %q", store.departmentURLs[0].Status)
+	if store.urls[0].Status != "uplift" {
+		t.Fatalf("expected status to be set to uplift, got %q", store.urls[0].Status)
 	}
-	if store.departmentURLs[0].DueDate == nil || !store.departmentURLs[0].DueDate.Equal(due) {
+	if store.urls[0].DueDate == nil || !store.urls[0].DueDate.Equal(due) {
 		t.Fatal("expected due_date to remain untouched by a status-only body")
 	}
 
-	body2, _ := json.Marshal(map[string]string{
-		"agency": "MCMC", "reference_number": "REF-123", "requesting_dept": "Ministry of X",
+	body2, _ := json.Marshal(map[string]interface{}{
+		"agency_id": 7, "reference_number": "REF-123", "requesting_dept_id": 9,
 	})
 	req2 := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body2))
 	req2.Header.Set("Content-Type", "application/json")
@@ -2135,12 +2186,62 @@ func TestToggleURL_UpdatesCaseFieldsWithoutClobbering(t *testing.T) {
 	if w2.Code != http.StatusNoContent {
 		t.Fatalf("want 204, got %d: %s", w2.Code, w2.Body.String())
 	}
-	du := store.departmentURLs[0]
-	if du.Agency != "MCMC" || du.ReferenceNumber != "REF-123" || du.RequestingDept != "Ministry of X" {
-		t.Fatalf("expected agency/reference_number/requesting_dept to be set, got %+v", du)
+	u := store.urls[0]
+	if u.AgencyID == nil || *u.AgencyID != 7 || u.ReferenceNumber != "REF-123" || u.RequestingDeptID == nil || *u.RequestingDeptID != 9 {
+		t.Fatalf("expected agency_id/reference_number/requesting_dept_id to be set, got %+v", u)
 	}
-	if du.Status != "uplift" {
+	if u.Status != "uplift" {
 		t.Fatal("expected status from the previous request to remain untouched")
+	}
+}
+
+// TestToggleURL_ClearsAgencyAndRequestingDept exercises the 0-sentinel
+// clear path for the two ID fields (0 is never a real row id).
+func TestToggleURL_ClearsAgencyAndRequestingDept(t *testing.T) {
+	deptID := uint(1)
+	agencyID, deptRefID := uint(7), uint(9)
+	store := &fullMockStore{
+		urls:           []db.URL{{ID: 1, URL: "example.com", AgencyID: &agencyID, RequestingDeptID: &deptRefID}},
+		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1, Enabled: true}},
+	}
+	cookie := deptCookie(store, deptID)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]interface{}{"agency_id": 0, "requesting_dept_id": 0})
+	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if store.urls[0].AgencyID != nil || store.urls[0].RequestingDeptID != nil {
+		t.Fatalf("expected agency_id/requesting_dept_id to be cleared, got %+v", store.urls[0])
+	}
+}
+
+// TestToggleURL_CaseFieldsNotOnWatchlistReturns404 is the handler-level
+// counterpart to the store's ownership test: a department that does not
+// watch this URL must not be able to edit its (now-global) case fields.
+func TestToggleURL_CaseFieldsNotOnWatchlistReturns404(t *testing.T) {
+	store := &fullMockStore{urls: []db.URL{{ID: 1, URL: "example.com"}}}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]string{"status": "requested"})
+	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("want 404 for case-field edit on a URL not on this department's watchlist, got %d", w.Code)
+	}
+	if store.urls[0].Status != "" {
+		t.Fatalf("expected URL to remain untouched, got status=%q", store.urls[0].Status)
 	}
 }
 
@@ -2577,6 +2678,126 @@ func TestDeleteISPLogo_HandlesEscapedName(t *testing.T) {
 	}
 	if len(store.ispLogos) != 0 {
 		t.Fatalf("expected the ISP logo to be deleted, got %d remaining: %+v", len(store.ispLogos), store.ispLogos)
+	}
+}
+
+func TestListAgencies_AllowedForNonAdmin(t *testing.T) {
+	store := &fullMockStore{agencies: []db.Agency{{ID: 1, Name: "MCMC"}}}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agencies", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var agencies []db.Agency
+	if err := json.Unmarshal(w.Body.Bytes(), &agencies); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(agencies) != 1 || agencies[0].Name != "MCMC" {
+		t.Fatalf("unexpected agencies: %+v", agencies)
+	}
+}
+
+func TestCreateAgency_ForbiddenForNonAdmin(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]string{"name": "MCMC"})
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/agencies", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestCreateAgency_AllowedForDeptAdmin confirms Agency mutations sit in the
+// requireAnyAdmin group (like DNS servers/ISP logos), not the stricter
+// requireAdmin group Department/CompliantIP use — a deliberate deviation
+// from that precedent, easy to regress if "fixed" back to match it later.
+func TestCreateAgency_AllowedForDeptAdmin(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := deptAdminCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]string{"name": "MCMC"})
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/agencies", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateAgency_RequiresName(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]string{})
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/agencies", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when name is missing, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDeleteAgency_AllowedForDeptAdmin(t *testing.T) {
+	store := &fullMockStore{agencies: []db.Agency{{ID: 1, Name: "MCMC"}}}
+	cookie := deptAdminCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/admin/agencies/1", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.agencies) != 0 {
+		t.Fatalf("expected the agency to be deleted, got %d remaining: %+v", len(store.agencies), store.agencies)
+	}
+}
+
+// TestListDepartmentsOpen_AllowedForNonAdmin proves the new GET
+// /api/departments route is genuinely open (unlike the existing
+// super-admin-only GET /api/admin/departments it sits alongside).
+func TestListDepartmentsOpen_AllowedForNonAdmin(t *testing.T) {
+	store := &fullMockStore{departments: []db.Department{{ID: 1, Name: "CMOD"}}}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/departments", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var departments []db.Department
+	if err := json.Unmarshal(w.Body.Bytes(), &departments); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(departments) != 1 || departments[0].Name != "CMOD" {
+		t.Fatalf("unexpected departments: %+v", departments)
 	}
 }
 
