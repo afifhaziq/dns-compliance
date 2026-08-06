@@ -226,6 +226,7 @@
 /* ─── Dark Mode ──────────────────────────────────────────────────────────── */
 
 html.dark {
+  color-scheme: dark;
   --ink: var(--pal-magenta-bloom);
   --ink-hover: color-mix(in srgb, var(--pal-magenta-bloom) 75%, var(--pal-ghost-white) 25%);
   --ink-active: color-mix(in srgb, var(--pal-magenta-bloom) 92%, var(--pal-black) 8%);
@@ -372,6 +373,10 @@ html.dark {
 
   html {
     @apply font-sans antialiased;
+    /* Native form controls (e.g. <input type="time">'s spinner/clock icon)
+       otherwise always render in the browser's light chrome regardless of
+       our own theme, reading as an off-theme white patch in dark mode. */
+    color-scheme: light;
   }
 
   body {

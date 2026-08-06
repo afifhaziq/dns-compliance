@@ -57,14 +57,16 @@ type DialogContentProps = DialogContentPrimitiveProps & {
 };
 
 // Elements portalled to document.body by components other than this Dialog
-// (e.g. our custom Select's popover) live outside the DialogContent DOM
-// subtree even though they render visually on top of it. Radix's dismissable
-// layer only checks DOM containment, so without this it treats any click
-// inside one of those portals as an "outside" interaction and closes the
-// dialog before the click can register — see the Select popover's
-// data-slot="select-content" marker.
+// (e.g. our custom Select's popover, or the date-picker's calendar panel)
+// live outside the DialogContent DOM subtree even though they render
+// visually on top of it. Radix's dismissable layer only checks DOM
+// containment, so without this it treats any click inside one of those
+// portals as an "outside" interaction and closes the dialog before the
+// click (a date/option selection) can register.
 function isIgnoredOutsideTarget(event: { target: EventTarget | null }) {
-  return !!(event.target as HTMLElement | null)?.closest('[data-slot="select-content"]');
+  return !!(event.target as HTMLElement | null)?.closest(
+    '[data-slot="select-content"], [data-slot="date-picker-panel"]'
+  );
 }
 
 function DialogContent({

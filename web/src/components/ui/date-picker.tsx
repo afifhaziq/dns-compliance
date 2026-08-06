@@ -556,6 +556,7 @@ function DatePickerPanel({
         "fixed z-50",
         !(open && panelPlacement) && "pointer-events-none"
       )}
+      data-slot="date-picker-panel"
       id={panelId}
       initial={false}
       ref={panelRef}
@@ -754,7 +755,7 @@ export const AnimatedDatePicker = forwardRef<HTMLInputElement, DatePickerProps>(
 
     const panelTransition = reduceMotion
       ? { duration: 0 }
-      : { type: "spring" as const, stiffness: 260, damping: 28 };
+      : { type: "spring" as const, stiffness: 140, damping: 24 };
 
     const panel = (
       <DatePickerPanel
