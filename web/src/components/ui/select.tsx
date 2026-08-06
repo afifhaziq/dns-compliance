@@ -465,7 +465,20 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
             initial={{ opacity: 0, y: -4, scaleY: 0.96 }}
             animate={{ opacity: 1, y: 0, scaleY: 1 }}
             transition={spring.fast}
-            style={{ transformOrigin: "top center" }}
+            // position: relative + rounded/clip so the edge cues below can be
+            // absolutely positioned *siblings* of the scrollable list rather
+            // than descendants of it — an out-of-flow descendant still
+            // contributes to its scroll container's scrollable-overflow
+            // region even at opacity 0 (a "sticky, zero-size anchor" doesn't
+            // actually keep it out of that calculation), which was inflating
+            // scrollHeight past clientHeight and forcing a scrollbar to
+            // render even for a one-item list that never needed to scroll.
+            style={{
+              transformOrigin: "top center",
+              position: "relative",
+              overflow: "hidden",
+              borderRadius: 12,
+            }}
           >
           <div
             ref={(node) => {
@@ -596,15 +609,13 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
               )}
             </AnimatePresence>
 
-            {/* Cues fade toward the menu's own bg-stone-panel background. */}
-            {scrollFade && <ScrollEdgeCue edge="top" visible={edges.top} />}
-
             {children}
-
-            {scrollFade && (
-              <ScrollEdgeCue edge="bottom" visible={edges.bottom} />
-            )}
           </div>
+          {/* Cues fade toward the menu's own bg-stone-panel background.
+              Siblings of the scrollable list (mode="absolute"), not
+              descendants — see the position:relative comment above. */}
+          {scrollFade && <ScrollEdgeCue edge="top" visible={edges.top} mode="absolute" />}
+          {scrollFade && <ScrollEdgeCue edge="bottom" visible={edges.bottom} mode="absolute" />}
           </motion.div>
         </div>
       </SelectContentContext.Provider>,
