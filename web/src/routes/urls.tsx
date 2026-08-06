@@ -316,8 +316,8 @@ function AddUrlDialog({
   const [agencyId, setAgencyId] = useState<number | ''>('')
   const [referenceNumber, setReferenceNumber] = useState('')
   const [requestingDeptId, setRequestingDeptId] = useState<number | ''>('')
-  const [status, setStatus] = useState('')
-  const [dueDurationHours, setDueDurationHours] = useState('')
+  const [status, setStatus] = useState('requested')
+  const [dueDurationHours, setDueDurationHours] = useState('24')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const pickerRef = useRef<MultiOffencePickerHandle>(null)
@@ -332,7 +332,7 @@ function AddUrlDialog({
   const reset = () => {
     setValue(''); setOffences([]); setError(null)
     setAgencyId(''); setReferenceNumber(''); setRequestingDeptId(defaultDepartmentId ?? '')
-    setStatus(''); setDueDurationHours('')
+    setStatus('requested'); setDueDurationHours('24')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -433,7 +433,7 @@ function AddUrlDialog({
           </div>
 
           <div className="form-row">
-            <div className="form-field" style={{ flex: '0 1 35%' }}>
+            <div className="form-field">
               <label className="form-label" id="add-status-label">Status</label>
               <Select value={status} onValueChange={setStatus} disabled={loading}>
                 <SelectTrigger aria-labelledby="add-status-label" placeholder="—" className="w-full" />
@@ -654,7 +654,7 @@ function EditUrlDialog({
             </div>
 
             <div className="form-row">
-              <div className="form-field" style={{ flex: '0 1 35%' }}>
+              <div className="form-field">
                 <label className="form-label" id="edit-status-label">Status</label>
                 <Select value={entry.status ?? ''} onValueChange={v => onStatusChange(entry.id, v)}>
                   <SelectTrigger aria-labelledby="edit-status-label" placeholder="—" className="w-full" />
@@ -715,8 +715,13 @@ const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric', month: 'short', year: 'numeric',
 })
 
+// Explicit timeZone so the deadline reads the same regardless of the
+// viewing browser's OS timezone — matches the backend's own hardcoded
+// Asia/Kuala_Lumpur reporting convention (see postgresStore's
+// reportingLocation) rather than leaving it to an implicit local default.
 const DUE_DATE_FMT = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  timeZone: 'Asia/Kuala_Lumpur',
 })
 
 const PAGE_SIZE = 25
