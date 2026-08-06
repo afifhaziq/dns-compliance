@@ -575,7 +575,14 @@ function DatePickerPanel({
       aria-modal="true"
       className={cn(
         "fixed z-50",
-        !(open && panelPlacement) && "pointer-events-none"
+        // Radix's modal Dialog sets `pointer-events: none` on <body> while
+        // open, re-enabling it only on its own DialogContent node. This
+        // panel portals to document.body as a sibling, not a descendant, of
+        // DialogContent, so it inherits the disabled state and becomes
+        // invisible to hit testing - clicks fall through to whatever's
+        // underneath in the dialog's layout - unless explicitly punched
+        // back through here. Same fix as select.tsx's popover.
+        open && panelPlacement ? "pointer-events-auto" : "pointer-events-none"
       )}
       data-slot="date-picker-panel"
       id={panelId}
