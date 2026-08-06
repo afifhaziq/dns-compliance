@@ -56,6 +56,9 @@ type DialogContentProps = DialogContentPrimitiveProps & {
   showCloseButton?: boolean;
 };
 
+const IGNORED_OUTSIDE_SELECTOR =
+  '[data-slot="select-content"], [data-slot="date-picker-panel"]';
+
 // Elements portalled to document.body by components other than this Dialog
 // (e.g. our custom Select's popover, or the date-picker's calendar panel)
 // live outside the DialogContent DOM subtree even though they render
@@ -63,10 +66,34 @@ type DialogContentProps = DialogContentPrimitiveProps & {
 // containment, so without this it treats any click inside one of those
 // portals as an "outside" interaction and closes the dialog before the
 // click (a date/option selection) can register.
-function isIgnoredOutsideTarget(event: { target: EventTarget | null }) {
-  return !!(event.target as HTMLElement | null)?.closest(
-    '[data-slot="select-content"], [data-slot="date-picker-panel"]'
-  );
+//
+// event.target alone isn't reliable here: by the time this fires, other
+// document-level pointerdown-outside listeners (the date-picker's own) or
+// an in-flight re-render can leave it pointing at a node that doesn't match
+// what's actually on screen for this gesture. Prefer geometry - is the
+// pointer physically over one of those portalled panels? - when the event
+// carries coordinates (pointerdown does; focus events don't), since that
+// can't be fooled by target-resolution quirks the way DOM containment can.
+function isIgnoredOutsideTarget(event: {
+  target: EventTarget | null;
+  clientX?: number;
+  clientY?: number;
+}) {
+  if (typeof event.clientX === "number" && typeof event.clientY === "number") {
+    const panels = document.querySelectorAll<HTMLElement>(IGNORED_OUTSIDE_SELECTOR);
+    for (const panel of panels) {
+      const rect = panel.getBoundingClientRect();
+      if (
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom
+      ) {
+        return true;
+      }
+    }
+  }
+  return !!(event.target as HTMLElement | null)?.closest(IGNORED_OUTSIDE_SELECTOR);
 }
 
 function DialogContent({
@@ -87,15 +114,27 @@ function DialogContent({
           className,
         )}
         onPointerDownOutside={(e) => {
-          if (isIgnoredOutsideTarget(e)) { e.preventDefault(); return; }
+          const original = e.detail.originalEvent;
+          if (isIgnoredOutsideTarget({ target: e.target, clientX: original.clientX, clientY: original.clientY })) {
+            e.preventDefault();
+            return;
+          }
           onPointerDownOutside?.(e);
         }}
         onFocusOutside={(e) => {
-          if (isIgnoredOutsideTarget(e)) { e.preventDefault(); return; }
+          if (isIgnoredOutsideTarget({ target: e.target })) { e.preventDefault(); return; }
           onFocusOutside?.(e);
         }}
         onInteractOutside={(e) => {
-          if (isIgnoredOutsideTarget(e)) { e.preventDefault(); return; }
+          const original = e.detail.originalEvent;
+          const coords =
+            'clientX' in original
+              ? { clientX: original.clientX, clientY: original.clientY }
+              : {};
+          if (isIgnoredOutsideTarget({ target: e.target, ...coords })) {
+            e.preventDefault();
+            return;
+          }
           onInteractOutside?.(e);
         }}
         {...props}

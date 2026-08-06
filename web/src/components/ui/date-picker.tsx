@@ -268,6 +268,24 @@ function useDismissiblePanel({
       const target = event.target as Node;
       if (rootRef.current?.contains(target)) return;
       if (panelRef.current?.contains(target)) return;
+      // DOM-containment can miss a click that visually landed inside the
+      // panel: this listener fires on every pointerdown document-wide, and
+      // by the time it runs, other pointerdown-outside listeners (e.g. the
+      // enclosing Dialog's) or an in-flight re-render can leave event.target
+      // pointing at a node that no longer matches what's on screen for this
+      // gesture. Falling back to geometry - is the pointer physically over
+      // the panel's current box? - can't be fooled by that: it doesn't rely
+      // on target/composedPath resolution at all.
+      const panelRect = panelRef.current?.getBoundingClientRect();
+      if (
+        panelRect &&
+        event.clientX >= panelRect.left &&
+        event.clientX <= panelRect.right &&
+        event.clientY >= panelRect.top &&
+        event.clientY <= panelRect.bottom
+      ) {
+        return;
+      }
       setOpenState(false);
     };
 
