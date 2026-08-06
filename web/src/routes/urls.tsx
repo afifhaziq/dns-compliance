@@ -29,7 +29,6 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/r-switch'
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
-import { DatePicker } from '@/components/ui/date-picker'
 import { DataGrid, DataGridContainer } from '@/components/reui/data-grid/data-grid'
 import { DataGridTable } from '@/components/reui/data-grid/data-grid-table'
 import { DataGridColumnVisibility } from '@/components/reui/data-grid/data-grid-column-visibility'
@@ -93,25 +92,22 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'suspended', label: 'Suspended' },
 ]
 
-// due_date carries an SLA time-of-day (some takedown orders require blocking
-// within 6h/24h) but @iconiq/date-picker is date-only, so it's paired with a
-// plain <input type="time">. DatePicker deals in real Date objects (not ISO
-// strings), and date-fns' format() already reads a Date's LOCAL
-// year/month/day — so unlike the old datetime-local input, there's no manual
-// UTC-offset shifting needed here: new Date(iso) and the local Date/time
-// constructor below are both correct by construction.
-function isoToLocalDate(iso: string): Date {
-  return new Date(iso)
-}
+// due_date is the ISP's block deadline (some takedown orders require
+// blocking within 6h/24h), but rather than picking a calendar date+time by
+// hand, the case owner picks how long from now the ISP has — the computed
+// deadline (now + duration) is what actually gets stored in due_date, same
+// field ISPTiming already measures against.
+const DUE_DATE_DURATION_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: '—' },
+  { value: '6', label: '6 hours' },
+  { value: '24', label: '24 hours' },
+  { value: '48', label: '48 hours' },
+  { value: '72', label: '72 hours' },
+  { value: '168', label: '7 days' },
+]
 
-function isoToLocalTimeStr(iso: string): string {
-  const d = new Date(iso)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
-function combineLocalDateAndTime(date: Date, timeStr: string): string {
-  const [hh, mm] = (timeStr || '00:00').split(':').map(Number)
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), hh || 0, mm || 0).toISOString()
+function dueDateFromDurationHours(hours: number): string {
+  return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString()
 }
 
 /* ─── Add Domain Dialog ──────────────────────────────────────────────────── */
@@ -321,8 +317,7 @@ function AddUrlDialog({
   const [referenceNumber, setReferenceNumber] = useState('')
   const [requestingDeptId, setRequestingDeptId] = useState<number | ''>('')
   const [status, setStatus] = useState('')
-  const [dueDate, setDueDate] = useState<Date | null>(null)
-  const [dueTime, setDueTime] = useState('')
+  const [dueDurationHours, setDueDurationHours] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const pickerRef = useRef<MultiOffencePickerHandle>(null)
@@ -337,7 +332,7 @@ function AddUrlDialog({
   const reset = () => {
     setValue(''); setOffences([]); setError(null)
     setAgencyId(''); setReferenceNumber(''); setRequestingDeptId(defaultDepartmentId ?? '')
-    setStatus(''); setDueDate(null); setDueTime('')
+    setStatus(''); setDueDurationHours('')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -354,7 +349,7 @@ function AddUrlDialog({
     if (referenceNumber.trim()) caseFields.reference_number = referenceNumber.trim()
     if (requestingDeptId !== '') caseFields.requesting_dept_id = requestingDeptId
     if (status) caseFields.status = status
-    if (dueDate) caseFields.due_date = combineLocalDateAndTime(dueDate, dueTime)
+    if (dueDurationHours) caseFields.due_date = dueDateFromDurationHours(Number(dueDurationHours))
     const hasCaseFields = Object.keys(caseFields).length > 0
 
     setLoading(true)
@@ -438,7 +433,7 @@ function AddUrlDialog({
           </div>
 
           <div className="form-row">
-            <div className="form-field">
+            <div className="form-field" style={{ flex: '0 1 35%' }}>
               <label className="form-label" id="add-status-label">Status</label>
               <Select value={status} onValueChange={setStatus} disabled={loading}>
                 <SelectTrigger aria-labelledby="add-status-label" placeholder="—" className="w-full" />
@@ -451,27 +446,15 @@ function AddUrlDialog({
             </div>
 
             <div className="form-field">
-              <label className="form-label" htmlFor="add-due-date">Due Date</label>
-              <div className="flex items-center gap-2 min-w-0">
-                <DatePicker
-                  id="add-due-date"
-                  className="min-w-0 flex-1"
-                  value={dueDate}
-                  onChange={setDueDate}
-                  placeholder="Select date"
-                  disabled={loading}
-                  clearable
-                />
-                <input
-                  type="time"
-                  className="form-input shrink-0"
-                  style={{ width: 90 }}
-                  value={dueTime}
-                  onChange={e => setDueTime(e.target.value)}
-                  disabled={loading || !dueDate}
-                  aria-label="Due time"
-                />
-              </div>
+              <label className="form-label" id="add-due-date-label">Time to Block</label>
+              <Select value={dueDurationHours} onValueChange={setDueDurationHours} disabled={loading}>
+                <SelectTrigger aria-labelledby="add-due-date-label" placeholder="—" className="w-full" />
+                <SelectContent>
+                  {DUE_DATE_DURATION_OPTIONS.map((opt, i) => (
+                    <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -512,8 +495,7 @@ function EditUrlDialog({
   onAgencyChange,
   onRequestingDeptChange,
   onStatusChange,
-  onDueDateChange,
-  onDueTimeChange,
+  onDueDurationChange,
   onRefFocus,
   onRefChange,
   onRefBlur,
@@ -526,8 +508,7 @@ function EditUrlDialog({
   onAgencyChange: (id: number, agencyId: number | null) => void
   onRequestingDeptChange: (id: number, deptId: number | null) => void
   onStatusChange: (id: number, status: string) => void
-  onDueDateChange: (id: number, date: Date | null) => void
-  onDueTimeChange: (id: number, timeStr: string) => void
+  onDueDurationChange: (id: number, durationHours: string) => void
   onRefFocus: (id: number, value: string) => void
   onRefChange: (id: number, value: string) => void
   onRefBlur: (id: number) => void
@@ -673,7 +654,7 @@ function EditUrlDialog({
             </div>
 
             <div className="form-row">
-              <div className="form-field">
+              <div className="form-field" style={{ flex: '0 1 35%' }}>
                 <label className="form-label" id="edit-status-label">Status</label>
                 <Select value={entry.status ?? ''} onValueChange={v => onStatusChange(entry.id, v)}>
                   <SelectTrigger aria-labelledby="edit-status-label" placeholder="—" className="w-full" />
@@ -686,26 +667,18 @@ function EditUrlDialog({
               </div>
 
               <div className="form-field">
-                <label className="form-label" htmlFor="edit-due-date">Due Date</label>
-                <div className="flex items-center gap-2 min-w-0">
-                  <DatePicker
-                    id="edit-due-date"
-                    className="min-w-0 flex-1"
-                    value={entry.due_date ? isoToLocalDate(entry.due_date) : null}
-                    onChange={date => onDueDateChange(entry.id, date)}
-                    placeholder="Select date"
-                    clearable
-                  />
-                  <input
-                    type="time"
-                    className="form-input shrink-0"
-                    style={{ width: 90 }}
-                    value={entry.due_date ? isoToLocalTimeStr(entry.due_date) : ''}
-                    onChange={e => onDueTimeChange(entry.id, e.target.value)}
-                    disabled={!entry.due_date}
-                    aria-label="Due time"
-                  />
-                </div>
+                <label className="form-label" id="edit-due-date-label">Time to Block</label>
+                <Select value="" onValueChange={v => onDueDurationChange(entry.id, v)}>
+                  <SelectTrigger aria-labelledby="edit-due-date-label" placeholder="—" className="w-full" />
+                  <SelectContent>
+                    {DUE_DATE_DURATION_OPTIONS.map((opt, i) => (
+                      <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {entry.due_date && (
+                  <p className="text-xs text-stone-muted">Deadline: {DUE_DATE_FMT.format(new Date(entry.due_date))}</p>
+                )}
               </div>
             </div>
 
@@ -827,23 +800,14 @@ function URLsPage() {
     commitField(id, { status }, { status })
   }, [commitField])
 
-  const handleDueDateChange = useCallback((id: number, date: Date | null) => {
-    if (!date) {
+  const handleDueDurationChange = useCallback((id: number, durationHours: string) => {
+    if (!durationHours) {
       commitField(id, { due_date: undefined }, { due_date: null })
       return
     }
-    const existing = urls.find(u => u.id === id)?.due_date
-    const timeStr = existing ? isoToLocalTimeStr(existing) : '00:00'
-    const combined = combineLocalDateAndTime(date, timeStr)
+    const combined = dueDateFromDurationHours(Number(durationHours))
     commitField(id, { due_date: combined }, { due_date: combined })
-  }, [urls, commitField])
-
-  const handleDueTimeChange = useCallback((id: number, timeStr: string) => {
-    const existing = urls.find(u => u.id === id)?.due_date
-    const date = existing ? isoToLocalDate(existing) : new Date()
-    const combined = combineLocalDateAndTime(date, timeStr)
-    commitField(id, { due_date: combined }, { due_date: combined })
-  }, [urls, commitField])
+  }, [commitField])
 
   // Reference number commits on blur (not per keystroke) to avoid a PATCH
   // per character — refOriginalRef snapshots the pre-edit value on focus so
@@ -1135,8 +1099,7 @@ function URLsPage() {
         onAgencyChange={handleAgencyChange}
         onRequestingDeptChange={handleRequestingDeptChange}
         onStatusChange={handleStatusChange}
-        onDueDateChange={handleDueDateChange}
-        onDueTimeChange={handleDueTimeChange}
+        onDueDurationChange={handleDueDurationChange}
         onRefFocus={handleRefFocus}
         onRefChange={handleRefChange}
         onRefBlur={handleRefBlur}
