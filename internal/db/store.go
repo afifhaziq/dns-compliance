@@ -152,6 +152,15 @@ type AgencyStore interface {
 	DeleteAgency(ctx context.Context, id uint) error
 }
 
+// DueDatePresetStore is the admin/dept-admin-managed list of "Time to
+// Block" duration options — same read-open/write-gated shape as
+// AgencyStore, not department-scoped.
+type DueDatePresetStore interface {
+	ListDueDatePresets(ctx context.Context) ([]DueDatePreset, error)
+	CreateDueDatePreset(ctx context.Context, label string, hours int) (DueDatePreset, error)
+	DeleteDueDatePreset(ctx context.Context, id uint) error
+}
+
 // ISPLogoStore is the admin-managed ISP name → logo URL lookup, rendered on
 // the Overview page's ISPBentoGrid.
 type ISPLogoStore interface {
@@ -288,6 +297,7 @@ type Store interface {
 	SessionStore
 	CompliantIPStore
 	AgencyStore
+	DueDatePresetStore
 	ISPLogoStore
 	GridPreferenceStore
 	ScanSettingsStore

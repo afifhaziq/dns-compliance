@@ -67,6 +67,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			// mutation route stays super-admin-only, untouched.
 			r.Get("/agencies", h.ListAgencies)
 			r.Get("/departments", h.ListDepartmentsOpen)
+			r.Get("/due-date-presets", h.ListDueDatePresets)
 
 			r.With(scanLimit).Post("/scan", h.TriggerScan)
 			r.Get("/scan/status", h.ScanStatus)
@@ -128,6 +129,8 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 				r.Delete("/admin/isp-logos/*", h.DeleteISPLogo)
 				r.Post("/admin/agencies", h.CreateAgency)
 				r.Delete("/admin/agencies/{id}", h.DeleteAgency)
+				r.Post("/due-date-presets", h.CreateDueDatePreset)
+				r.Delete("/due-date-presets/{id}", h.DeleteDueDatePreset)
 
 				r.Post("/legal/instruments", h.CreateInstrument)
 				r.Patch("/legal/instruments/{id}", h.UpdateInstrument)

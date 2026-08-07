@@ -689,6 +689,20 @@ func (s *postgresStore) DeleteAgency(ctx context.Context, id uint) error {
 	return s.db.WithContext(ctx).Delete(&Agency{}, id).Error
 }
 
+func (s *postgresStore) ListDueDatePresets(ctx context.Context) ([]DueDatePreset, error) {
+	var presets []DueDatePreset
+	return presets, s.db.WithContext(ctx).Order("hours asc").Find(&presets).Error
+}
+
+func (s *postgresStore) CreateDueDatePreset(ctx context.Context, label string, hours int) (DueDatePreset, error) {
+	p := DueDatePreset{Label: label, Hours: hours}
+	return p, s.db.WithContext(ctx).Create(&p).Error
+}
+
+func (s *postgresStore) DeleteDueDatePreset(ctx context.Context, id uint) error {
+	return s.db.WithContext(ctx).Delete(&DueDatePreset{}, id).Error
+}
+
 func (s *postgresStore) ListISPLogos(ctx context.Context) ([]ISPLogo, error) {
 	var logos []ISPLogo
 	return logos, s.db.WithContext(ctx).Order("isp").Find(&logos).Error

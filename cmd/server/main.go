@@ -88,6 +88,10 @@ func main() {
 		log.Printf("seed scan interval: %v", err)
 	}
 
+	if err := db.SeedDueDatePresets(gormDB); err != nil {
+		log.Printf("seed due date presets: %v", err)
+	}
+
 	store := db.NewStore(gormDB)
 
 	// Bootstrap admin — without this, a fresh deployment has no way to log

@@ -37,6 +37,7 @@ type fullMockStore struct {
 	ispLogos       []db.ISPLogo
 	gridPrefs      []db.GridPreference
 	agencies       []db.Agency
+	dueDatePresets []db.DueDatePreset
 	instruments    []db.Instrument
 	citations      []db.Citation
 	categories     []db.Category
@@ -410,6 +411,26 @@ func (m *fullMockStore) DeleteAgency(_ context.Context, id uint) error {
 	for i, a := range m.agencies {
 		if a.ID == id {
 			m.agencies = append(m.agencies[:i], m.agencies[i+1:]...)
+			return nil
+		}
+	}
+	return nil
+}
+
+func (m *fullMockStore) ListDueDatePresets(_ context.Context) ([]db.DueDatePreset, error) {
+	return m.dueDatePresets, nil
+}
+
+func (m *fullMockStore) CreateDueDatePreset(_ context.Context, label string, hours int) (db.DueDatePreset, error) {
+	p := db.DueDatePreset{ID: uint(len(m.dueDatePresets) + 1), Label: label, Hours: hours, CreatedAt: time.Now()}
+	m.dueDatePresets = append(m.dueDatePresets, p)
+	return p, nil
+}
+
+func (m *fullMockStore) DeleteDueDatePreset(_ context.Context, id uint) error {
+	for i, p := range m.dueDatePresets {
+		if p.ID == id {
+			m.dueDatePresets = append(m.dueDatePresets[:i], m.dueDatePresets[i+1:]...)
 			return nil
 		}
 	}
@@ -3039,6 +3060,103 @@ func TestDeleteAgency_AllowedForDeptAdmin(t *testing.T) {
 	}
 	if len(store.agencies) != 0 {
 		t.Fatalf("expected the agency to be deleted, got %d remaining: %+v", len(store.agencies), store.agencies)
+	}
+}
+
+func TestListDueDatePresets_AllowedForNonAdmin(t *testing.T) {
+	store := &fullMockStore{dueDatePresets: []db.DueDatePreset{{ID: 1, Label: "24 hours", Hours: 24}}}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/due-date-presets", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var presets []db.DueDatePreset
+	if err := json.Unmarshal(w.Body.Bytes(), &presets); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(presets) != 1 || presets[0].Hours != 24 {
+		t.Fatalf("unexpected presets: %+v", presets)
+	}
+}
+
+func TestCreateDueDatePreset_ForbiddenForNonAdmin(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]any{"label": "12 hours", "hours": 12})
+	req := httptest.NewRequest(http.MethodPost, "/api/due-date-presets", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateDueDatePreset_AllowedForDeptAdmin(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := deptAdminCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]any{"label": "12 hours", "hours": 12})
+	req := httptest.NewRequest(http.MethodPost, "/api/due-date-presets", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateDueDatePreset_RequiresLabelAndPositiveHours(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	for _, body := range []map[string]any{
+		{"label": "", "hours": 12},
+		{"label": "12 hours", "hours": 0},
+		{"label": "12 hours", "hours": -1},
+	} {
+		b, _ := json.Marshal(body)
+		req := httptest.NewRequest(http.MethodPost, "/api/due-date-presets", bytes.NewReader(b))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(cookie)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("body %+v: expected 400, got %d: %s", body, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestDeleteDueDatePreset_AllowedForDeptAdmin(t *testing.T) {
+	store := &fullMockStore{dueDatePresets: []db.DueDatePreset{{ID: 1, Label: "24 hours", Hours: 24}}}
+	cookie := deptAdminCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/due-date-presets/1", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.dueDatePresets) != 0 {
+		t.Fatalf("expected the preset to be deleted, got %d remaining: %+v", len(store.dueDatePresets), store.dueDatePresets)
 	}
 }
 

@@ -62,6 +62,19 @@ type Agency struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// DueDatePreset is an admin/dept-admin-managed duration option shown in the
+// watchlist's "Time to Block" picker (urls.tsx) — e.g. Label "24 hours",
+// Hours 24; the picker computes the actual due_date as now+Hours at
+// selection time. Shared/global like Agency/DNSServer, not
+// department-scoped. Read open to any authenticated role; create/delete
+// gated to admin-or-dept-admin (see router.go), same pattern as Agency.
+type DueDatePreset struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Label     string    `gorm:"not null" json:"label"`
+	Hours     int       `gorm:"not null" json:"hours"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type Department struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	Name      string    `gorm:"uniqueIndex;not null" json:"name"` // "CMOD", "CRD", ...
