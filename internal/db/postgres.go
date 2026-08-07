@@ -591,6 +591,18 @@ func (s *postgresStore) UpdateURLCaseFields(ctx context.Context, departmentID, u
 	return res.RowsAffected > 0, res.Error
 }
 
+// DepartmentIDsWatchingURL returns every department with a DepartmentURL
+// row for urlID, regardless of Enabled — a disabled watch still means that
+// department cares about the domain's case metadata (due date etc.), just
+// not its scan sweep inclusion.
+func (s *postgresStore) DepartmentIDsWatchingURL(ctx context.Context, urlID uint) ([]uint, error) {
+	var ids []uint
+	err := s.db.WithContext(ctx).Model(&DepartmentURL{}).
+		Where("url_id = ?", urlID).
+		Pluck("department_id", &ids).Error
+	return ids, err
+}
+
 // ListWatchedURLs returns every URL enabled by at least one department —
 // the set the scheduled/manual scan sweep should actually scan. A URL
 // disabled by all watching departments is excluded.

@@ -372,15 +372,19 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		found = found || f
-		// TODO(url-compliance-case-fields): DueDate is now global on the URL
-		// row (shared across every department watching it), but this only
-		// reschedules the calling department's own due-date task — a second
-		// department also watching this URL won't get a scheduled check for
-		// a date it didn't set itself. Revisit once product decides whether
-		// due-date notifications should follow the URL or stay per-department.
+		// DueDate is global on the URL row (shared across every department
+		// watching it), so a change fans out to every watching department's
+		// own scheduled due-date task, not just the one that made this PATCH.
 		if f && dueDateTouched && h.notify != nil {
-			if err := h.notify.RescheduleDueDate(*user.DepartmentID, uint(id), newDueDate); err != nil {
-				log.Printf("notify: reschedule due-date task for department=%d url=%d: %v", *user.DepartmentID, id, err)
+			deptIDs, err := h.store.DepartmentIDsWatchingURL(r.Context(), uint(id))
+			if err != nil {
+				log.Printf("notify: list departments watching url=%d: %v", id, err)
+				deptIDs = []uint{*user.DepartmentID} // fall back to at least the caller's own task
+			}
+			for _, deptID := range deptIDs {
+				if err := h.notify.RescheduleDueDate(deptID, uint(id), newDueDate); err != nil {
+					log.Printf("notify: reschedule due-date task for department=%d url=%d: %v", deptID, id, err)
+				}
 			}
 		}
 	}

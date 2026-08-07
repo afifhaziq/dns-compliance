@@ -481,6 +481,16 @@ func (m *fullMockStore) URLOwnedByDepartment(_ context.Context, departmentID uin
 	return false, nil
 }
 
+func (m *fullMockStore) DepartmentIDsWatchingURL(_ context.Context, urlID uint) ([]uint, error) {
+	var ids []uint
+	for _, du := range m.departmentURLs {
+		if du.URLID == urlID {
+			ids = append(ids, du.DepartmentID)
+		}
+	}
+	return ids, nil
+}
+
 func (m *fullMockStore) CountDepartmentURLsSince(_ context.Context, since time.Time) (int, error) {
 	count := 0
 	for _, du := range m.departmentURLs {
@@ -3138,6 +3148,52 @@ func TestToggleURL_ReschedulesDueDateTask(t *testing.T) {
 	}
 	if call.dueDate == nil {
 		t.Fatal("expected a non-nil due date")
+	}
+}
+
+func TestToggleURL_ReschedulesDueDateTaskForEveryWatchingDepartment(t *testing.T) {
+	deptA, deptB := uint(1), uint(2)
+	store := &fullMockStore{
+		urls: []db.URL{{ID: 1, URL: "example.com"}},
+		departmentURLs: []db.DepartmentURL{
+			{DepartmentID: deptA, URLID: 1, Enabled: true},
+			{DepartmentID: deptB, URLID: 1, Enabled: true},
+		},
+	}
+	cookie := deptCookie(store, deptA)
+	notifier := &fakeNotifier{}
+	r := chi.NewRouter()
+	server.RegisterRoutes(r, store, nil, nil, false, nil, nil, nil, nil, nil, notifier)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		req.Header.Set("X-Requested-With", "fetch")
+		r.ServeHTTP(w, req)
+	})
+
+	body, _ := json.Marshal(map[string]string{"due_date": "2026-01-15T00:00:00Z"})
+	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+
+	notifier.mu.Lock()
+	defer notifier.mu.Unlock()
+	if len(notifier.calls) != 2 {
+		t.Fatalf("expected 2 RescheduleDueDate calls (one per watching department), got %d: %+v", len(notifier.calls), notifier.calls)
+	}
+	seen := map[uint]bool{}
+	for _, call := range notifier.calls {
+		if call.urlID != 1 || call.dueDate == nil {
+			t.Fatalf("unexpected call args: %+v", call)
+		}
+		seen[call.departmentID] = true
+	}
+	if !seen[deptA] || !seen[deptB] {
+		t.Fatalf("expected reschedule calls for both departments, got %+v", notifier.calls)
 	}
 }
 
