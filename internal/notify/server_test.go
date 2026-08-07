@@ -160,6 +160,33 @@ func TestHandleDueDateCheck_TriggerErrorPropagates(t *testing.T) {
 	}
 }
 
+func TestHandleDueDateCheck_NoResultsReturnsErrorNotFalseNotification(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	dept, _ := store.CreateDepartment(ctx, "DueDept4")
+	u, _ := store.AddURLToWatchlist(ctx, dept.ID, "due-check-noresults.com")
+
+	// afterTrigger intentionally inserts nothing — simulates a scan that ran
+	// but produced zero results (e.g. crawler down, or all DNS servers
+	// disabled).
+	trig := &fakeTriggerer{afterTrigger: func() {}}
+	s := NewServer("unused:0", store, trig)
+	payload, _ := json.Marshal(dueDatePayload{DepartmentID: dept.ID, URLID: u.ID})
+	task := asynq.NewTask(TypeDueDateCheck, payload)
+
+	if err := s.handleDueDateCheck(ctx, task); err == nil {
+		t.Fatal("expected an error when the scan produces zero results — so asynq retries instead of recording a false verdict")
+	}
+
+	_, total, err := store.ListNotificationsForDepartment(ctx, 1, 10, dept.ID)
+	if err != nil {
+		t.Fatalf("ListNotificationsForDepartment: %v", err)
+	}
+	if total != 0 {
+		t.Fatalf("expected no notification to be created, got %d", total)
+	}
+}
+
 func TestHandleResurfacedSweep_NotifiesOnceAndDedupsOnRerun(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()

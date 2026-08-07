@@ -3,6 +3,7 @@ package notify
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
@@ -111,6 +112,11 @@ func (s *Server) handleDueDateCheck(ctx context.Context, t *asynq.Task) error {
 	results, err := s.store.ResultsByURL(ctx, u.URL, before, time.Now())
 	if err != nil {
 		return err
+	}
+	if len(results) == 0 {
+		// No verdict to report — don't record a false "still violating"
+		// notification. Returning an error lets asynq retry.
+		return fmt.Errorf("due-date scan for %s produced no results", u.URL)
 	}
 
 	compliant := len(results) > 0
