@@ -325,7 +325,7 @@ function RootLayout() {
       await triggerScan()
       setScanning(true)
       setProgress(null) // clear the previous run's tally instead of showing it until the first SSE push
-      navigate({ to: '/results' })
+      navigate({ to: '/results', search: { tab: 'latest' } })
     } catch (err) {
       console.error('Scan trigger failed:', err)
     }
@@ -338,7 +338,7 @@ function RootLayout() {
       await triggerScan(normalizedUrls)
       setScanning(true)
       setProgress(null) // clear the previous run's tally instead of showing it until the first SSE push
-      navigate({ to: '/results' })
+      navigate({ to: '/results', search: { tab: 'latest' } })
     } catch (err) {
       console.error('Targeted scan trigger failed:', err)
     }

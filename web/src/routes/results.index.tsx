@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import {
   type ColumnDef,
   type ExpandedState,
   type SortingState,
   type PaginationState,
+  type VisibilityState,
   getCoreRowModel,
   getSortedRowModel,
   getExpandedRowModel,
@@ -16,7 +17,9 @@ import { GripIcon } from '@/components/ui/grip'
 import { ChevronRight } from '@/components/ui/chevron-right'
 import { fetchResults, groupResults, lastScanTime } from '../api/results'
 import { fetchScanStatus, isScanning, triggerScreenshot } from '../api/scan'
-import type { GroupedResult, ScanResult } from '../api/types'
+import { fetchDomainSummaries, fetchDomainServerSummaries } from '../api/domains'
+import { fetchDnsServers } from '../api/dns-servers'
+import type { GroupedResult, ScanResult, DomainSummary, DomainServerSummary, DNSServer } from '../api/types'
 import { useScan } from './__root'
 import {
   PreviewLinkCard,
@@ -24,47 +27,39 @@ import {
   PreviewLinkCardPanel,
   PreviewLinkCardImage,
 } from '@/components/animate-ui/components/base/preview-link-card'
-import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogTitle } from '@/components/animate-ui/components/radix/dialog'
 import { Progress, ProgressTrack } from '@/components/animate-ui/components/base/progress'
 import { AnimatedNumber } from '@/components/ui/animated-number'
-import { Filters, type Filter, type FilterFieldConfig } from '@/components/reui/filters'
 import { DataGrid, DataGridContainer } from '@/components/reui/data-grid/data-grid'
 import { DataGridTable, DataGridTableRowExpand } from '@/components/reui/data-grid/data-grid-table'
+import { DataGridColumnVisibility } from '@/components/reui/data-grid/data-grid-column-visibility'
 import { BrailleLoader } from '@/components/ui/braille-loader'
 import { ThinkingIndicator } from '@/components/ui/thinking-indicator'
+import { Button } from '@/components/ui/button'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/motion/tabs'
 import { SortableHeader, StatusDot, EmptyIcon } from '@/components/results-table-parts'
+import { ScanFilterBar } from '@/components/scan-filter-bar'
+import type { Filter } from '@/components/reui/filters'
 import { relativeTime } from '@/lib/relative-time'
 import { useGridPreference } from '@/hooks/use-grid-preference'
 
-export const Route = createFileRoute('/results/')({ component: ResultsPage })
+const RESULTS_TABS = ['latest', 'all-time'] as const
+type ResultsTab = typeof RESULTS_TABS[number]
 
-/* ─── Types ──────────────────────────────────────────────────────────────── */
-
-type StatusFilter = 'violations' | 'compliant'
+export const Route = createFileRoute('/results/')({
+  component: ResultsPage,
+  validateSearch: (search: Record<string, unknown>): { tab: ResultsTab } => ({
+    tab: RESULTS_TABS.includes(search.tab as ResultsTab) ? (search.tab as ResultsTab) : 'latest',
+  }),
+})
 
 const PAGE_SIZE = 25
 
-// Single "is" operator only — these fields are single-value pickers, not
-// full is/is-not/empty builders, so there's nothing else to implement.
-const IS_ONLY = [{ value: 'is', label: 'is' }]
-
-const STATUS_FIELD: FilterFieldConfig<string> = {
-  key: 'status',
-  label: 'Status',
-  type: 'select',
-  operators: IS_ONLY,
-  options: [
-    { value: 'violations', label: 'Violations' },
-    { value: 'compliant', label: 'Compliant' },
-  ],
-}
-
-/* ─── Tree rows (domain parent + per-DNS-server children) ──────────────── */
-// Replaces the old expand-to-reveal-a-nested-<Table> pattern with real
-// tree rows via getExpandedRowModel/subRows, so per-server rows share the
-// same column set (and DataGridTableRowExpand's depth indent) as the domain
-// row instead of a bespoke, headerless inner table.
+/* ─── Latest Scan tab: tree rows (domain parent + per-DNS-server children) ─
+   Real tree rows via getExpandedRowModel/subRows, so per-server rows share
+   the same column set (and DataGridTableRowExpand's depth indent) as the
+   domain row instead of a bespoke, headerless inner table. */
 
 type DomainRow = { kind: 'domain'; group: GroupedResult; subRows: ServerRow[] }
 type ServerRow = { kind: 'server'; result: ScanResult }
@@ -141,9 +136,9 @@ function ServerEvidenceCell({
   return <span className="empty-cell" aria-label="No screenshot">—</span>
 }
 
-/* ─── Results Page ───────────────────────────────────────────────────────── */
+/* ─── Latest Scan tab ─────────────────────────────────────────────────────── */
 
-function ResultsPage() {
+function LatestScanTab() {
   const { scanning, refreshSignal, progress } = useScan()
 
   const [results, setResults] = useState<ScanResult[]>([])
@@ -155,9 +150,12 @@ function ResultsPage() {
   const [expanded, setExpanded] = useState<ExpandedState>({})
   const [sorting, setSorting] = useState<SortingState>([{ id: 'status', desc: true }])
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
+  // Session-only, not persisted (unlike sorting below) — mirrors urls.tsx's
+  // column-visibility toggle.
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
 
-  // Only sorting is persisted here — unlike urls.tsx, this grid has no
-  // column-visibility toggle or adjustable page size to save.
+  // Only sorting is persisted here — unlike urls.tsx, this grid doesn't
+  // persist column visibility or page size.
   const { ready: gridPrefReady } = useGridPreference('results', { sorting }, { setSorting })
 
   const [pendingScreenshotIds, setPendingScreenshotIds] = useState<Set<number>>(new Set())
@@ -236,21 +234,9 @@ function ResultsPage() {
     return Array.from(seen.values()).sort()
   }, [groups])
 
-  const filterFields = useMemo(() => {
-    const fields: FilterFieldConfig<string>[] = [STATUS_FIELD]
-    if (dnsServers.length > 1) {
-      fields.push({
-        key: 'dns_server',
-        label: 'DNS Server',
-        type: 'select',
-        operators: IS_ONLY,
-        options: dnsServers.map(name => ({ value: name, label: name })),
-      })
-    }
-    return fields
-  }, [dnsServers])
+  const dnsServerOptions = useMemo(() => dnsServers.map(name => ({ value: name, label: name })), [dnsServers])
 
-  const statusFilter = filters.find(f => f.field === 'status')?.values[0] as StatusFilter | undefined
+  const statusFilter = filters.find(f => f.field === 'status')?.values[0] as 'violations' | 'compliant' | undefined
   const dnsFilter = filters.find(f => f.field === 'dns_server')?.values[0] as string | undefined
 
   const filtered = useMemo(() => {
@@ -297,6 +283,7 @@ function ResultsPage() {
       header: () => null,
       size: 30,
       enableSorting: false,
+      enableHiding: false,
       meta: {
         headerClassName: 'col-expand',
         cellClassName: 'col-expand',
@@ -312,7 +299,9 @@ function ResultsPage() {
       id: 'domain',
       accessorFn: r => r.kind === 'domain' ? r.group.hostname : r.result.dns_server.name,
       header: ({ column }) => <SortableHeader column={column} title="Domain" />,
+      enableHiding: false,
       meta: {
+        headerTitle: 'Domain',
         headerClassName: 'col-domain th-left',
         cellClassName: 'col-domain',
         skeleton: <span className="skeleton" style={{ width: 180, height: 14 }} />,
@@ -340,6 +329,7 @@ function ResultsPage() {
       accessorFn: r => r.kind === 'domain' ? r.group.violationCount : (r.result.compliant ? 0 : 1),
       header: ({ column }) => <SortableHeader column={column} title="Status" />,
       meta: {
+        headerTitle: 'Status',
         headerClassName: 'col-status th-left',
         cellClassName: 'col-status',
         skeleton: <span className="skeleton" style={{ width: 100, height: 20, borderRadius: 4 }} />,
@@ -382,7 +372,7 @@ function ResultsPage() {
       id: 'lastScanned',
       accessorFn: r => r.kind === 'domain' ? r.group.latestScannedAt : r.result.scanned_at,
       header: ({ column }) => <SortableHeader column={column} title="Last scanned" />,
-      meta: { headerClassName: 'col-last-scanned th-left', cellClassName: 'col-last-scanned' },
+      meta: { headerTitle: 'Last scanned', headerClassName: 'col-last-scanned th-left', cellClassName: 'col-last-scanned' },
       cell: ({ row }) => {
         const at = row.original.kind === 'domain' ? row.original.group.latestScannedAt : row.original.result.scanned_at
         return at ? (
@@ -396,6 +386,7 @@ function ResultsPage() {
       id: 'actions',
       header: 'Actions',
       enableSorting: false,
+      enableHiding: false,
       meta: { headerClassName: 'col-evidence th-center', cellClassName: 'col-evidence text-center' },
       cell: ({ row }) => {
         const original = row.original
@@ -454,10 +445,11 @@ function ResultsPage() {
   const table = useReactTable({
     data: treeData,
     columns,
-    state: { expanded, sorting, pagination },
+    state: { expanded, sorting, pagination, columnVisibility },
     onExpandedChange: setExpanded,
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
+    onColumnVisibilityChange: setColumnVisibility,
     getRowId: r => r.kind === 'domain' ? r.group.url : `sr:${r.result.id}`,
     getSubRows: r => r.kind === 'domain' ? r.subRows : undefined,
     getRowCanExpand: row => row.original.kind === 'domain',
@@ -476,16 +468,13 @@ function ResultsPage() {
   const gridLoading = loading || !gridPrefReady
 
   return (
-    <div className="mx-20 mt-10">
-      <div className="page-header">
-        <h1 className="page-title">Compliance Results</h1>
-        {!loading && lastScan && (
-          <p className="page-subtitle">Last scan: {lastScan}</p>
-        )}
-      </div>
+    <>
+      {!loading && lastScan && (
+        <p className="page-subtitle mb-2">Last scan: {lastScan}</p>
+      )}
 
       {scanning && (
-        <div className="scan-banner mt-2 flex items-center gap-4">
+        <div className="scan-banner mb-2 flex items-center gap-4">
           <ThinkingIndicator className="p-0" />
           {scanProgress && (
             <Progress
@@ -508,18 +497,18 @@ function ResultsPage() {
           <button className="btn-primary" onClick={load}>Retry</button>
         </div>
       ) : (
-        <div className="flex flex-col items-stretch w-full gap-4 mt-4">
-          <div className="filter-bar flex flex-row items-center justify-start gap-4 w-full">
-            <Input
-              type="search"
-              placeholder="Search domain..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="max-w-64"
-              aria-label="Search domain"
-            />
-            <Filters filters={filters} fields={filterFields} onChange={setFilters} />
-          </div>
+        <div className="flex flex-col items-stretch w-full gap-4">
+          <ScanFilterBar
+            search={search}
+            onSearchChange={setSearch}
+            filters={filters}
+            onFiltersChange={setFilters}
+            dnsServerOptions={dnsServerOptions}
+          >
+            <div style={{ marginLeft: 'auto' }}>
+              <DataGridColumnVisibility table={table} trigger={<Button variant="outline">Columns</Button>} />
+            </div>
+          </ScanFilterBar>
 
           <div className="results-wrap w-full">
             {!gridLoading && groups.length === 0 ? (
@@ -589,6 +578,368 @@ function ResultsPage() {
           )}
         </DialogContent>
       </Dialog>
+    </>
+  )
+}
+
+/* ─── All Time tab: server breakdown (expanded nested table) ────────────── */
+
+function DomainServerBreakdown({ domain }: { domain: string }) {
+  const navigate = useNavigate()
+  const [servers, setServers] = useState<DomainServerSummary[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchDomainServerSummaries(domain)
+      .then(res => { if (!cancelled) setServers(res) })
+      .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load server breakdown') })
+    return () => { cancelled = true }
+  }, [domain])
+
+  if (error) {
+    return <p className="error-message p-4">{error}</p>
+  }
+  if (!servers) {
+    return (
+      <div className="flex items-center justify-center p-4">
+        <BrailleLoader variant="typing" fontSize={13} />
+      </div>
+    )
+  }
+  if (servers.length === 0) {
+    return <p className="empty-cell p-4">No per-server history</p>
+  }
+
+  return (
+    <Table className="results-table" aria-label={`Per-DNS-server history for ${domain}`}>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="th-left" scope="col">DNS Server</TableHead>
+          <TableHead className="th-left" scope="col">ISP</TableHead>
+          <TableHead className="th-left" scope="col">Address</TableHead>
+          <TableHead className="col-status th-left" scope="col">Compliance</TableHead>
+          <TableHead className="col-scan-id th-left" scope="col">Total Scans</TableHead>
+          <TableHead className="col-last-scanned th-left" scope="col">Last Scanned</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {servers.map(s => {
+          const pct = s.total_scans > 0 ? Math.round((s.compliant_scans / s.total_scans) * 100) : 0
+          return (
+            <TableRow
+              key={s.dns_server_id}
+              className="sub-row cursor-pointer hover:bg-stone-panel transition-colors duration-150 ease-snappy"
+              onClick={() => navigate({
+                to: '/domain/$url',
+                params: { url: domain },
+                search: { tab: 'history', server: s.dns_server_name },
+              })}
+            >
+              <TableCell><span className="dns-name">{s.dns_server_name}</span></TableCell>
+              <TableCell className="text-stone-muted text-[0.8rem]">{s.isp}</TableCell>
+              <TableCell><span className="dns-server-addr">{s.address}</span></TableCell>
+              <TableCell className="col-status">
+                <div className="server-bar-wrap">
+                  <div className="server-bar" role="presentation">
+                    <div className="server-bar-fill" style={{ width: `${pct}%` }} />
+                  </div>
+                  <span className="server-count">{pct}%</span>
+                </div>
+              </TableCell>
+              <TableCell className="col-scan-id">{s.total_scans}</TableCell>
+              <TableCell className="col-last-scanned">
+                <span title={new Date(s.last_scanned_at).toLocaleString()}>{relativeTime(s.last_scanned_at)}</span>
+              </TableCell>
+            </TableRow>
+          )
+        })}
+      </TableBody>
+    </Table>
+  )
+}
+
+const allTimeSkeletonWidths = [180, 90, 60, 100]
+
+const allTimeColumns: ColumnDef<DomainSummary>[] = [
+  {
+    id: 'expand',
+    header: () => null,
+    size: 30,
+    enableHiding: false,
+    meta: {
+      headerClassName: 'col-expand',
+      cellClassName: 'col-expand',
+      expandedContent: (row: DomainSummary) => <DomainServerBreakdown domain={row.url} />,
+    },
+    cell: ({ row }) => (
+      <button
+        type="button"
+        className="expand-btn"
+        onClick={e => { e.stopPropagation(); row.getToggleExpandedHandler()() }}
+        aria-expanded={row.getIsExpanded()}
+        aria-label={`${row.getIsExpanded() ? 'Collapse' : 'Expand'} per-server breakdown for ${row.original.url}`}
+      >
+        <ChevronRight className={`expand-icon${row.getIsExpanded() ? ' expanded' : ''}`} />
+      </button>
+    ),
+  },
+  {
+    accessorKey: 'url',
+    header: 'Domain',
+    enableHiding: false,
+    meta: {
+      headerClassName: 'col-domain th-left',
+      cellClassName: 'col-domain pl-4',
+      skeleton: <span className="skeleton" style={{ width: allTimeSkeletonWidths[0], height: 14 }} />,
+    },
+    cell: ({ getValue }) => <span className="hostname">{getValue<string>()}</span>,
+  },
+  {
+    id: 'compliance',
+    header: 'Compliance',
+    meta: {
+      headerClassName: 'col-status th-left',
+      cellClassName: 'col-status pl-4',
+      skeleton: <span className="skeleton" style={{ width: allTimeSkeletonWidths[1], height: 20, borderRadius: 4 }} />,
+    },
+    cell: ({ row }) => {
+      const { total_scans, compliant_scans } = row.original
+      const pct = total_scans > 0 ? Math.round((compliant_scans / total_scans) * 100) : 0
+      return (
+        <div className="server-bar-wrap">
+          <div className="server-bar" role="presentation">
+            <div className="server-bar-fill" style={{ width: `${pct}%` }} />
+          </div>
+          <span className="server-count">{pct}%</span>
+        </div>
+      )
+    },
+  },
+  {
+    accessorKey: 'total_scans',
+    header: 'Total Scans',
+    meta: {
+      headerClassName: 'col-scan-id th-left',
+      cellClassName: 'col-scan-id pl-4',
+      skeleton: <span className="skeleton" style={{ width: allTimeSkeletonWidths[2], height: 14 }} />,
+    },
+  },
+  {
+    accessorKey: 'last_scanned_at',
+    header: 'Last Scanned',
+    meta: {
+      headerClassName: 'col-last-scanned th-left',
+      cellClassName: 'col-last-scanned pl-4',
+      skeleton: <span className="skeleton" style={{ width: allTimeSkeletonWidths[3], height: 14 }} />,
+    },
+    cell: ({ getValue }) => {
+      const value = getValue<string>()
+      return <span title={new Date(value).toLocaleString()}>{relativeTime(value)}</span>
+    },
+  },
+  {
+    id: 'actions',
+    header: 'Actions',
+    enableHiding: false,
+    meta: {
+      headerClassName: 'col-evidence th-center',
+      cellClassName: 'col-evidence text-center',
+    },
+    cell: ({ row }) => (
+      <Link
+        to="/domain/$url"
+        params={{ url: row.original.url }}
+        search={{ tab: 'overview' }}
+        className="btn-row-history"
+        aria-label={`View overview for ${row.original.url}`}
+        onClick={e => e.stopPropagation()}
+      >
+        <GripIcon className="btn-row-history-icon" size={16} />
+      </Link>
+    ),
+  },
+]
+
+/* ─── All Time tab ────────────────────────────────────────────────────────── */
+
+function AllTimeTab() {
+  const navigate = useNavigate()
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [dnsServers, setDnsServers] = useState<DNSServer[]>([])
+  const [filters, setFilters] = useState<Filter<string>[]>([])
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+
+  const [domains, setDomains] = useState<DomainSummary[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
+  const [expanded, setExpanded] = useState<ExpandedState>({})
+
+  useEffect(() => { fetchDnsServers().then(setDnsServers).catch(() => {}) }, [])
+
+  // Debounced so every keystroke doesn't fire a request — the search hits
+  // fetchDomainSummaries's server-side `q` param, unlike Latest Scan's
+  // client-side filter.
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(handle)
+  }, [search])
+
+  const dnsServerOptions = useMemo(() => dnsServers.map(s => ({ value: String(s.id), label: s.name })), [dnsServers])
+
+  const statusFilter = filters.find(f => f.field === 'status')?.values[0] as 'compliant' | 'violations' | undefined
+  const dnsServerFilterValue = filters.find(f => f.field === 'dns_server')?.values[0]
+  const dnsServerId = dnsServerFilterValue ? Number(dnsServerFilterValue) : undefined
+
+  useEffect(() => { setPagination(p => ({ ...p, pageIndex: 0 })) }, [statusFilter, dnsServerId, debouncedSearch])
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetchDomainSummaries(pagination.pageIndex + 1, pagination.pageSize, {
+      status: statusFilter,
+      dnsServerId,
+      search: debouncedSearch || undefined,
+    })
+      .then(res => {
+        if (cancelled) return
+        setDomains(res.domains)
+        setTotal(res.total)
+        setError(null)
+      })
+      .catch(err => {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : 'Failed to load domains')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [pagination.pageIndex, pagination.pageSize, statusFilter, dnsServerId, debouncedSearch])
+
+  const pageCount = useMemo(() => Math.max(1, Math.ceil(total / pagination.pageSize)), [total, pagination.pageSize])
+
+  const table = useReactTable({
+    data: domains,
+    columns: allTimeColumns,
+    state: { pagination, expanded, columnVisibility },
+    onPaginationChange: setPagination,
+    onExpandedChange: setExpanded,
+    onColumnVisibilityChange: setColumnVisibility,
+    manualPagination: true,
+    pageCount,
+    getRowCanExpand: () => true,
+    getCoreRowModel: getCoreRowModel(),
+    getRowId: row => row.url,
+  })
+
+  const goToDomain = (domain: string) =>
+    navigate({ to: '/domain/$url', params: { url: domain }, search: { tab: 'overview' } })
+
+  const hasActiveFilter = Boolean(statusFilter || dnsServerId || debouncedSearch)
+
+  return (
+    <div className="flex flex-col items-stretch w-full gap-4">
+      <ScanFilterBar
+        search={search}
+        onSearchChange={setSearch}
+        filters={filters}
+        onFiltersChange={setFilters}
+        dnsServerOptions={dnsServerOptions}
+      >
+        <div style={{ marginLeft: 'auto' }}>
+          <DataGridColumnVisibility table={table} trigger={<Button variant="outline">Columns</Button>} />
+        </div>
+      </ScanFilterBar>
+
+      {error ? (
+        <div className="error-state">
+          <p className="error-message">{error}</p>
+        </div>
+      ) : !loading && domains.length === 0 ? (
+        <div className="empty-state" style={{ padding: '3rem 0' }}>
+          <EmptyIcon />
+          <p className="empty-heading">{hasActiveFilter ? 'No domains match the current filters' : 'No scan history yet'}</p>
+          <p className="empty-body">
+            {hasActiveFilter
+              ? 'Try clearing a filter to widen the search.'
+              : "Domains will appear here once they've been scanned at least once."}
+          </p>
+        </div>
+      ) : (
+        <div className="results-wrap w-full">
+          <DataGrid
+            table={table}
+            recordCount={total}
+            isLoading={loading}
+            onRowClick={row => goToDomain(row.url)}
+            tableClassNames={{ base: 'results-table' }}
+          >
+            <DataGridContainer>
+              <DataGridTable />
+            </DataGridContainer>
+          </DataGrid>
+          {!loading && pageCount > 1 && (
+            <div className="pagination">
+              <span className="pagination-label">Page {pagination.pageIndex + 1} of {pageCount}</span>
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => table.previousPage()}
+                disabled={!table.getCanPreviousPage()}
+                aria-label="Previous page"
+              >
+                <ChevronLeftIcon className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => table.nextPage()}
+                disabled={!table.getCanNextPage()}
+                aria-label="Next page"
+              >
+                <ChevronRightIcon className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ─── Results Page (tab shell) ───────────────────────────────────────────── */
+
+function ResultsPage() {
+  const { tab } = Route.useSearch()
+  const navigate = useNavigate()
+
+  return (
+    <div className="mx-20 mt-10">
+      <div className="page-header">
+        <h1 className="page-title">Compliance Results</h1>
+      </div>
+
+      <Tabs
+        value={tab}
+        onValueChange={next => navigate({ to: '/results', search: { tab: next as ResultsTab } })}
+        variant="underline"
+      >
+        <TabsList>
+          <TabsTrigger value="latest">Latest Scan</TabsTrigger>
+          <TabsTrigger value="all-time">All Time</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="latest">
+          <LatestScanTab />
+        </TabsContent>
+        <TabsContent value="all-time">
+          <AllTimeTab />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
