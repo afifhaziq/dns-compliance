@@ -32,10 +32,11 @@ type Handlers struct {
 	subfinderFetch subfinder.Fetcher // nil disables the lazy on-add + refresh subdomain enumeration (e.g. in tests)
 	ipFetch        ipinfo.Fetcher    // nil disables the on-demand hosting-info refresh (e.g. in tests)
 	netnameFetch   whois.IPFetcher   // nil disables the NetName/abuse-email half of a hosting-info refresh
+	notify         dueDateRescheduler // nil disables due-date task scheduling (e.g. in tests that don't care)
 }
 
-func NewHandlers(store db.Store, scanner *Scanner, broadcaster *Broadcaster, whoisFetch whois.Fetcher, faviconFetch favicon.Fetcher, subfinderFetch subfinder.Fetcher, ipFetch ipinfo.Fetcher, netnameFetch whois.IPFetcher) *Handlers {
-	return &Handlers{store: store, scanner: scanner, broadcaster: broadcaster, whoisFetch: whoisFetch, faviconFetch: faviconFetch, subfinderFetch: subfinderFetch, ipFetch: ipFetch, netnameFetch: netnameFetch}
+func NewHandlers(store db.Store, scanner *Scanner, broadcaster *Broadcaster, whoisFetch whois.Fetcher, faviconFetch favicon.Fetcher, subfinderFetch subfinder.Fetcher, ipFetch ipinfo.Fetcher, netnameFetch whois.IPFetcher, notify dueDateRescheduler) *Handlers {
+	return &Handlers{store: store, scanner: scanner, broadcaster: broadcaster, whoisFetch: whoisFetch, faviconFetch: faviconFetch, subfinderFetch: subfinderFetch, ipFetch: ipFetch, netnameFetch: netnameFetch, notify: notify}
 }
 
 func buildProgressPayload(ctx context.Context, store db.Store) ([]byte, error) {
@@ -74,6 +75,17 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 func writeInternalError(w http.ResponseWriter, err error) {
 	log.Printf("internal error: %v", err)
 	writeError(w, http.StatusInternalServerError, "internal error")
+}
+
+// dueDateRescheduler is the subset of internal/notify.Enqueuer ToggleURL and
+// RemoveFromWatchlist need, narrowed to a local interface (same pattern as
+// Scanner's crawlerClient) so this package never imports internal/notify and
+// handler tests can inject a fake instead of a real asynq/Redis client.
+// TODO(url-compliance-case-fields): rename the callers' "ordered date"
+// language to "due date" once that branch's DepartmentURL.OrderedAt ->
+// DueDate rename merges.
+type dueDateRescheduler interface {
+	RescheduleDueDate(departmentID, urlID uint, dueDate *time.Time) error
 }
 
 // URLs (department watchlist scope — every user including admin is scoped to
@@ -219,6 +231,11 @@ func (h *Handlers) RemoveFromWatchlist(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "url not on this department's watchlist")
 		return
 	}
+	if h.notify != nil {
+		if err := h.notify.RescheduleDueDate(*user.DepartmentID, uint(id), nil); err != nil {
+			log.Printf("notify: cancel due-date task for department=%d url=%d: %v", *user.DepartmentID, id, err)
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -279,6 +296,11 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		found = found || f
+		if f && h.notify != nil {
+			if err := h.notify.RescheduleDueDate(*user.DepartmentID, uint(id), orderedAt); err != nil {
+				log.Printf("notify: reschedule due-date task for department=%d url=%d: %v", *user.DepartmentID, id, err)
+			}
+		}
 	}
 	if !found {
 		writeError(w, http.StatusNotFound, "url not on this department's watchlist")

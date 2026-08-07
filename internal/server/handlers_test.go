@@ -835,6 +835,16 @@ func (m *fullMockStore) GetURLByValue(_ context.Context, urlValue string) (*db.U
 	return nil, nil
 }
 
+func (m *fullMockStore) GetURLByID(_ context.Context, id uint) (*db.URL, error) {
+	for _, u := range m.urls {
+		if u.ID == id {
+			uCopy := u
+			return &uCopy, nil
+		}
+	}
+	return nil, nil
+}
+
 func (m *fullMockStore) GetDomainWhois(ctx context.Context, urlValue string) (*db.DomainWhois, error) {
 	u, err := m.GetURLByValue(ctx, urlValue)
 	if err != nil {
@@ -951,6 +961,32 @@ func (m *fullMockStore) UpsertSubdomainScan(_ context.Context, s db.SubdomainSca
 	return nil
 }
 
+// NotificationStore stubs for tests
+func (m *fullMockStore) CreateNotification(_ context.Context, n db.Notification) (db.Notification, error) {
+	return n, nil
+}
+func (m *fullMockStore) ListNotifications(_ context.Context, page, pageSize int) ([]db.Notification, int, error) {
+	return nil, 0, nil
+}
+func (m *fullMockStore) ListNotificationsForDepartment(_ context.Context, page, pageSize int, departmentID uint) ([]db.Notification, int, error) {
+	return nil, 0, nil
+}
+func (m *fullMockStore) UnreadCount(_ context.Context) (int, error) {
+	return 0, nil
+}
+func (m *fullMockStore) UnreadCountForDepartment(_ context.Context, departmentID uint) (int, error) {
+	return 0, nil
+}
+func (m *fullMockStore) GetNotification(_ context.Context, id uint) (*db.Notification, error) {
+	return nil, nil
+}
+func (m *fullMockStore) MarkNotificationRead(_ context.Context, id uint) error {
+	return nil
+}
+func (m *fullMockStore) HasRecentResurfacedNotification(_ context.Context, departmentID uint, urlValue string, sinceResurfacedAt time.Time) (bool, error) {
+	return false, nil
+}
+
 var _ db.Store = (*fullMockStore)(nil)
 
 func setupRouter(store db.Store, sc *server.Scanner) http.Handler {
@@ -958,7 +994,7 @@ func setupRouter(store db.Store, sc *server.Scanner) http.Handler {
 	// whoisFetch/subfinderFetch/ipFetch/netnameFetch are nil — the lazy
 	// on-add fetch goroutines never run in tests, so no test hits the
 	// network or shells out.
-	server.RegisterRoutes(r, store, sc, nil, false, nil, nil, nil, nil, nil)
+	server.RegisterRoutes(r, store, sc, nil, false, nil, nil, nil, nil, nil, nil)
 	// Handler tests exercise business logic, not the CSRF header check
 	// itself (client.ts is what's responsible for sending it in practice),
 	// so inject it here rather than at every httptest.NewRequest call site.
@@ -2514,5 +2550,96 @@ func TestFaviconByURLNormalizesCacheKey(t *testing.T) {
 	}
 	if len(store.favicons) != 1 {
 		t.Fatalf("expected no second favicon row, got %d", len(store.favicons))
+	}
+}
+
+type rescheduleCall struct {
+	departmentID, urlID uint
+	dueDate              *time.Time
+}
+
+type fakeNotifier struct {
+	mu    sync.Mutex
+	calls []rescheduleCall
+}
+
+func (f *fakeNotifier) RescheduleDueDate(departmentID, urlID uint, dueDate *time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, rescheduleCall{departmentID, urlID, dueDate})
+	return nil
+}
+
+func TestToggleURL_ReschedulesDueDateTask(t *testing.T) {
+	deptID := uint(1)
+	store := &fullMockStore{
+		urls:           []db.URL{{ID: 1, URL: "example.com"}},
+		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1, Enabled: true}},
+	}
+	cookie := deptCookie(store, deptID)
+	notifier := &fakeNotifier{}
+	r := chi.NewRouter()
+	server.RegisterRoutes(r, store, nil, nil, false, nil, nil, nil, nil, nil, notifier)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		req.Header.Set("X-Requested-With", "fetch")
+		r.ServeHTTP(w, req)
+	})
+
+	body, _ := json.Marshal(map[string]string{"ordered_at": "2026-01-15T00:00:00Z"})
+	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+
+	notifier.mu.Lock()
+	defer notifier.mu.Unlock()
+	if len(notifier.calls) != 1 {
+		t.Fatalf("expected 1 RescheduleDueDate call, got %d", len(notifier.calls))
+	}
+	call := notifier.calls[0]
+	if call.departmentID != deptID || call.urlID != 1 {
+		t.Fatalf("unexpected call args: %+v", call)
+	}
+	if call.dueDate == nil {
+		t.Fatal("expected a non-nil due date")
+	}
+}
+
+func TestRemoveFromWatchlist_CancelsDueDateTask(t *testing.T) {
+	deptID := uint(1)
+	store := &fullMockStore{
+		urls:           []db.URL{{ID: 1, URL: "example.com"}},
+		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1, Enabled: true}},
+	}
+	cookie := deptCookie(store, deptID)
+	notifier := &fakeNotifier{}
+	r := chi.NewRouter()
+	server.RegisterRoutes(r, store, nil, nil, false, nil, nil, nil, nil, nil, notifier)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		req.Header.Set("X-Requested-With", "fetch")
+		r.ServeHTTP(w, req)
+	})
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/urls/1", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+
+	notifier.mu.Lock()
+	defer notifier.mu.Unlock()
+	if len(notifier.calls) != 1 {
+		t.Fatalf("expected 1 RescheduleDueDate call, got %d", len(notifier.calls))
+	}
+	if notifier.calls[0].dueDate != nil {
+		t.Fatal("expected a nil due date on removal (cancel-only)")
 	}
 }
