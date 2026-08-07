@@ -93,6 +93,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Get("/notifications/unread-count", h.UnreadNotificationCount)
 			r.Patch("/notifications/{id}/read", h.MarkNotificationRead)
 			r.Delete("/notifications/{id}", h.DeleteNotification)
+			r.Delete("/notifications", h.ClearAllNotifications)
 			r.Get("/domains", h.DomainSummaries)
 			r.Get("/domains/*", h.DomainServerSummaries)
 			r.Get("/isp-logos", h.ListISPLogos)

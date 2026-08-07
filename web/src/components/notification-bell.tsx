@@ -3,7 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { BellIcon } from '@/components/ui/bell'
 import { XIcon } from '@/components/ui/x'
 import { relativeTime } from '@/lib/relative-time'
-import { fetchUnreadCount, fetchNotifications, markNotificationRead, deleteNotification } from '@/api/notifications'
+import { fetchUnreadCount, fetchNotifications, markNotificationRead, deleteNotification, clearAllNotifications } from '@/api/notifications'
 import type { Notification } from '@/api/types'
 
 const POLL_MS = 30000
@@ -72,6 +72,21 @@ export function NotificationBell() {
     }
   }
 
+  // Clears every notification the caller can see (their department's, or
+  // everything for an admin — see ClearAllNotifications), not just the
+  // dropdown's first-10 page.
+  const handleClearAll = async () => {
+    const previous = items
+    setItems([])
+    setUnread(0)
+    try {
+      await clearAllNotifications()
+    } catch {
+      setItems(previous)
+      refreshCount()
+    }
+  }
+
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
       <button
@@ -103,39 +118,56 @@ export function NotificationBell() {
           {items.length === 0 ? (
             <p style={{ padding: 16, fontSize: '0.85rem', opacity: 0.6 }}>No notifications yet.</p>
           ) : (
-            items.map(n => (
+            <>
               <div
-                key={n.id}
-                className="flex items-stretch bg-transparent hover:bg-stone-panel transition-colors duration-100"
-                style={{ borderBottom: '1px solid var(--stone-border, rgba(0,0,0,0.08))', opacity: n.read_at ? 0.6 : 1 }}
+                style={{
+                  display: 'flex', justifyContent: 'flex-end', padding: '6px 8px',
+                  borderBottom: '1px solid var(--stone-border, rgba(0,0,0,0.08))',
+                }}
               >
                 <button
                   type="button"
-                  onClick={() => handleClick(n)}
-                  className="flex-1 min-w-0 text-left px-3 py-2 text-sm bg-transparent border-none cursor-pointer font-[inherit]"
+                  onClick={handleClearAll}
+                  className="btn-ghost"
+                  style={{ fontSize: '0.75rem', padding: '2px 8px', height: 'auto' }}
                 >
-                  <div style={{ fontWeight: 600 }}>{n.url}</div>
-                  <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>
-                    {n.type === 'resurfaced'
-                      ? 'Resurfaced — blocked domain is resolving again'
-                      : `Due-date scan: ${n.compliant ? 'compliant' : 'still violating'}`}
-                  </div>
-                  <div style={{ fontSize: '0.7rem', opacity: 0.5, marginTop: 2 }}>
-                    {n.scan_run_id != null && `Scan #${n.scan_run_id} · `}
-                    {relativeTime(n.scanned_at ?? n.created_at)}
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  onClick={e => handleDelete(e, n)}
-                  aria-label={`Dismiss notification for ${n.url}`}
-                  className="screenshot-icon-btn"
-                  style={{ alignSelf: 'center', marginRight: 8, flexShrink: 0 }}
-                >
-                  <XIcon size={14} />
+                  Clear all
                 </button>
               </div>
-            ))
+              {items.map(n => (
+                <div
+                  key={n.id}
+                  className="flex items-stretch bg-transparent hover:bg-stone-panel transition-colors duration-100"
+                  style={{ borderBottom: '1px solid var(--stone-border, rgba(0,0,0,0.08))', opacity: n.read_at ? 0.6 : 1 }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleClick(n)}
+                    className="flex-1 min-w-0 text-left px-3 py-2 text-sm bg-transparent border-none cursor-pointer font-[inherit]"
+                  >
+                    <div style={{ fontWeight: 600 }}>{n.url}</div>
+                    <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+                      {n.type === 'resurfaced'
+                        ? 'Resurfaced — blocked domain is resolving again'
+                        : `Due-date scan: ${n.compliant ? 'compliant' : 'still violating'}`}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', opacity: 0.5, marginTop: 2 }}>
+                      {n.scan_run_id != null && `Scan #${n.scan_run_id} · `}
+                      {relativeTime(n.scanned_at ?? n.created_at)}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={e => handleDelete(e, n)}
+                    aria-label={`Dismiss notification for ${n.url}`}
+                    className="screenshot-icon-btn"
+                    style={{ alignSelf: 'center', marginRight: 8, flexShrink: 0 }}
+                  >
+                    <XIcon size={14} />
+                  </button>
+                </div>
+              ))}
+            </>
           )}
         </div>
       )}

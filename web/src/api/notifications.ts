@@ -21,3 +21,7 @@ export async function markNotificationRead(id: number): Promise<void> {
 export async function deleteNotification(id: number): Promise<void> {
   await api.delete<void>(`/notifications/${id}`)
 }
+
+export async function clearAllNotifications(): Promise<void> {
+  await api.delete<void>('/notifications')
+}

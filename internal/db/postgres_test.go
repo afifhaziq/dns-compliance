@@ -1967,6 +1967,40 @@ func TestNotifications_CreateListUnreadMarkRead(t *testing.T) {
 	}
 }
 
+func TestClearAllNotifications_DepartmentScopedVsGlobal(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	deptA, _ := s.CreateDepartment(ctx, "ClearDeptA")
+	deptB, _ := s.CreateDepartment(ctx, "ClearDeptB")
+	uA, _ := s.AddURLToWatchlist(ctx, deptA.ID, "clear-a.com")
+	uB, _ := s.AddURLToWatchlist(ctx, deptB.ID, "clear-b.com")
+
+	if _, err := s.CreateNotification(ctx, db.Notification{DepartmentID: deptA.ID, URLID: uA.ID, URLValue: uA.URL, Type: "resurfaced"}); err != nil {
+		t.Fatalf("CreateNotification A: %v", err)
+	}
+	if _, err := s.CreateNotification(ctx, db.Notification{DepartmentID: deptB.ID, URLID: uB.ID, URLValue: uB.URL, Type: "resurfaced"}); err != nil {
+		t.Fatalf("CreateNotification B: %v", err)
+	}
+
+	if err := s.ClearAllNotificationsForDepartment(ctx, deptA.ID); err != nil {
+		t.Fatalf("ClearAllNotificationsForDepartment: %v", err)
+	}
+	if _, total, _ := s.ListNotificationsForDepartment(ctx, 1, 10, deptA.ID); total != 0 {
+		t.Fatalf("expected deptA cleared, got total=%d", total)
+	}
+	if _, total, _ := s.ListNotificationsForDepartment(ctx, 1, 10, deptB.ID); total != 1 {
+		t.Fatalf("expected deptB untouched, got total=%d", total)
+	}
+
+	if err := s.ClearAllNotifications(ctx); err != nil {
+		t.Fatalf("ClearAllNotifications: %v", err)
+	}
+	if _, total, _ := s.ListNotifications(ctx, 1, 10); total != 0 {
+		t.Fatalf("expected everything cleared globally, got total=%d", total)
+	}
+}
+
 func TestNotifications_GetNotificationReturnsNilForUnknownID(t *testing.T) {
 	s := newTestStore(t)
 	got, err := s.GetNotification(context.Background(), 999999)

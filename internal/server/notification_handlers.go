@@ -74,6 +74,31 @@ func (h *Handlers) UnreadNotificationCount(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, map[string]int{"count": count})
 }
 
+// ClearAllNotifications — DELETE /api/notifications, bulk-dismiss. Same
+// admin-global/department-scoped branch shape as ListNotifications.
+func (h *Handlers) ClearAllNotifications(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	var err error
+	if user.IsAdmin {
+		err = h.store.ClearAllNotifications(r.Context())
+	} else {
+		if user.DepartmentID == nil {
+			writeError(w, http.StatusForbidden, "user has no department")
+			return
+		}
+		err = h.store.ClearAllNotificationsForDepartment(r.Context(), *user.DepartmentID)
+	}
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ownedNotificationID parses the {id} URL param and 404s (not 403) unless
 // it belongs to the caller's own department (or the caller is admin) —
 // matching the requireDomainOwnership convention used by /api/results etc.,

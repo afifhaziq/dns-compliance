@@ -1529,6 +1529,24 @@ func (s *postgresStore) DeleteNotification(ctx context.Context, id uint) error {
 	return s.db.WithContext(ctx).Delete(&Notification{}, id).Error
 }
 
+func (s *postgresStore) ClearAllNotifications(ctx context.Context) error {
+	return s.clearAllNotifications(ctx, nil)
+}
+
+func (s *postgresStore) ClearAllNotificationsForDepartment(ctx context.Context, departmentID uint) error {
+	return s.clearAllNotifications(ctx, &departmentID)
+}
+
+func (s *postgresStore) clearAllNotifications(ctx context.Context, departmentID *uint) error {
+	q := s.db.WithContext(ctx)
+	if departmentID != nil {
+		q = q.Where("department_id = ?", *departmentID)
+	} else {
+		q = q.Where("1 = 1") // GORM refuses a conditionless bulk delete; this is a deliberate "all rows".
+	}
+	return q.Delete(&Notification{}).Error
+}
+
 func (s *postgresStore) HasRecentResurfacedNotification(ctx context.Context, departmentID uint, urlValue string, sinceResurfacedAt time.Time) (bool, error) {
 	var count int64
 	err := s.db.WithContext(ctx).Model(&Notification{}).

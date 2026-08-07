@@ -273,6 +273,12 @@ type NotificationStore interface {
 	GetNotification(ctx context.Context, id uint) (*Notification, error) // nil, nil if not found
 	MarkNotificationRead(ctx context.Context, id uint) error
 	DeleteNotification(ctx context.Context, id uint) error // dismiss; ownership is checked by the caller before invoking this
+	// ClearAllNotifications/ForDepartment bulk-dismiss — same admin-global vs
+	// department-scoped split as ListNotifications/UnreadCount, so "Clear
+	// all" clears exactly the set the caller can currently see, not just
+	// the dropdown's first page.
+	ClearAllNotifications(ctx context.Context) error
+	ClearAllNotificationsForDepartment(ctx context.Context, departmentID uint) error
 
 	// HasRecentResurfacedNotification is the dedup check for the periodic
 	// resurfaced sweep: true if a "resurfaced" notification for

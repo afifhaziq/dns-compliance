@@ -1222,6 +1222,22 @@ func (m *fullMockStore) DeleteNotification(_ context.Context, id uint) error {
 	return nil
 }
 
+func (m *fullMockStore) ClearAllNotifications(_ context.Context) error {
+	m.notifications = nil
+	return nil
+}
+
+func (m *fullMockStore) ClearAllNotificationsForDepartment(_ context.Context, departmentID uint) error {
+	var kept []db.Notification
+	for _, n := range m.notifications {
+		if n.DepartmentID != departmentID {
+			kept = append(kept, n)
+		}
+	}
+	m.notifications = kept
+	return nil
+}
+
 func (m *fullMockStore) HasRecentResurfacedNotification(_ context.Context, departmentID uint, urlValue string, since time.Time) (bool, error) {
 	for _, n := range m.notifications {
 		if n.DepartmentID == departmentID && n.URLValue == urlValue && n.Type == "resurfaced" && !n.CreatedAt.Before(since) {
@@ -3504,5 +3520,54 @@ func TestDeleteNotification_Success(t *testing.T) {
 	}
 	if len(store.notifications) != 0 {
 		t.Fatalf("expected the notification to be deleted, got %d remaining", len(store.notifications))
+	}
+}
+
+func TestClearAllNotifications_OnlyClearsOwnDepartment(t *testing.T) {
+	deptA, deptB := uint(1), uint(2)
+	store := &fullMockStore{
+		notifications: []db.Notification{
+			{ID: 1, DepartmentID: deptA, URLValue: "a.com", Type: "resurfaced"},
+			{ID: 2, DepartmentID: deptA, URLValue: "a2.com", Type: "due_date_reached"},
+			{ID: 3, DepartmentID: deptB, URLValue: "b.com", Type: "resurfaced"},
+		},
+	}
+	cookie := deptCookie(store, deptA)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/notifications", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.notifications) != 1 || store.notifications[0].DepartmentID != deptB {
+		t.Fatalf("expected only deptB's notification to survive, got %+v", store.notifications)
+	}
+}
+
+func TestClearAllNotifications_AdminClearsEverything(t *testing.T) {
+	deptA, deptB := uint(1), uint(2)
+	store := &fullMockStore{
+		notifications: []db.Notification{
+			{ID: 1, DepartmentID: deptA, URLValue: "a.com", Type: "resurfaced"},
+			{ID: 2, DepartmentID: deptB, URLValue: "b.com", Type: "resurfaced"},
+		},
+	}
+	cookie := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/notifications", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.notifications) != 0 {
+		t.Fatalf("expected every notification cleared for an admin, got %+v", store.notifications)
 	}
 }
