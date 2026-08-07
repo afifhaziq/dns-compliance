@@ -15,7 +15,7 @@ import {
 import { Camera, Image as ImageIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { GripIcon } from '@/components/ui/grip'
 import { ChevronRight } from '@/components/ui/chevron-right'
-import { fetchResults, groupResults, lastScanTime } from '../api/results'
+import { fetchResults, groupResults } from '../api/results'
 import { fetchScanStatus, isScanning, triggerScreenshot } from '../api/scan'
 import { fetchDomainSummaries, fetchDomainServerSummaries } from '../api/domains'
 import { fetchDnsServers } from '../api/dns-servers'
@@ -224,7 +224,6 @@ function LatestScanTab() {
   }, [load])
 
   const groups = useMemo(() => groupResults(results), [results])
-  const lastScan = useMemo(() => lastScanTime(groups), [groups])
 
   const dnsServers = useMemo(() => {
     const seen = new Map<string, string>()
@@ -445,6 +444,7 @@ function LatestScanTab() {
   const table = useReactTable({
     data: treeData,
     columns,
+    initialState: { columnPinning: { right: ['actions'] } },
     state: { expanded, sorting, pagination, columnVisibility },
     onExpandedChange: setExpanded,
     onSortingChange: setSorting,
@@ -469,10 +469,6 @@ function LatestScanTab() {
 
   return (
     <>
-      {!loading && lastScan && (
-        <p className="page-subtitle mb-2">Last scan: {lastScan}</p>
-      )}
-
       {scanning && (
         <div className="scan-banner mb-2 flex items-center gap-4">
           <ThinkingIndicator className="p-0" />
@@ -825,6 +821,7 @@ function AllTimeTab() {
   const table = useReactTable({
     data: domains,
     columns: allTimeColumns,
+    initialState: { columnPinning: { right: ['actions'] } },
     state: { pagination, expanded, columnVisibility },
     onPaginationChange: setPagination,
     onExpandedChange: setExpanded,
