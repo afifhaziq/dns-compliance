@@ -319,12 +319,12 @@ type NotificationDetails map[string]any
 // pattern: URLID cascades on URL purge, URLValue is the read/query key so
 // list/dedup queries don't need a join.
 type Notification struct {
-	ID           uint                `gorm:"primaryKey" json:"id"`
-	DepartmentID uint                `gorm:"not null;index:idx_notifications_dept_read,priority:1" json:"department_id"`
-	URLID        uint                `gorm:"not null;index" json:"url_id"`
-	URL          URL                 `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
-	URLValue     string              `gorm:"not null;index" json:"url"`
-	Type         string              `gorm:"not null" json:"type"` // "resurfaced" | "due_date_reached"
+	ID           uint   `gorm:"primaryKey" json:"id"`
+	DepartmentID uint   `gorm:"not null;index:idx_notifications_dept_read,priority:1" json:"department_id"`
+	URLID        uint   `gorm:"not null;index" json:"url_id"`
+	URL          URL    `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
+	URLValue     string `gorm:"not null;index" json:"url"`
+	Type         string `gorm:"not null" json:"type"` // "resurfaced" | "due_date_reached"
 	// Compliant is always nil for "resurfaced" (the type itself is the
 	// signal) and always set for "due_date_reached" (the scan outcome).
 	Compliant *bool               `json:"compliant,omitempty"`
@@ -377,7 +377,7 @@ type Instrument struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
 	Type         string    `gorm:"not null;index" json:"type"`         // ACT, ORDINANCE, ENACTMENT, SUBSIDIARY, CONSTITUTION
 	Jurisdiction string    `gorm:"not null;index" json:"jurisdiction"` // FEDERAL, or a state name
-	Number       string    `gorm:"not null;default:''" json:"number"` // "588", "A1220", "No. 9 of 1995" — always a string, amendment/state formats break plain int. May be "" — plenty of instruments (older pre-1968-revision Acts, most state Enactments) have no commonly cited official number
+	Number       string    `gorm:"not null;default:''" json:"number"`  // "588", "A1220", "No. 9 of 1995" — always a string, amendment/state formats break plain int. May be "" — plenty of instruments (older pre-1968-revision Acts, most state Enactments) have no commonly cited official number
 	Year         *int      `json:"year,omitempty"`
 	ShortTitle   string    `gorm:"not null" json:"short_title"`
 	CreatedAt    time.Time `json:"created_at"`
