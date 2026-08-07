@@ -276,6 +276,49 @@ func (h *Handlers) DeleteAgency(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Due Date Presets — the "Time to Block" duration options on the watchlist
+// page (urls.tsx). Read open to any authenticated role; create/delete
+// gated to admin-or-dept-admin, same pattern as Agency above.
+
+func (h *Handlers) ListDueDatePresets(w http.ResponseWriter, r *http.Request) {
+	presets, err := h.store.ListDueDatePresets(r.Context())
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, presets)
+}
+
+func (h *Handlers) CreateDueDatePreset(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Label string `json:"label"`
+		Hours int    `json:"hours"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Label == "" || body.Hours <= 0 {
+		writeError(w, http.StatusBadRequest, "label is required and hours must be positive")
+		return
+	}
+	p, err := h.store.CreateDueDatePreset(r.Context(), body.Label, body.Hours)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, p)
+}
+
+func (h *Handlers) DeleteDueDatePreset(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := h.store.DeleteDueDatePreset(r.Context(), uint(id)); err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ISP Logos
 
 func (h *Handlers) ListISPLogos(w http.ResponseWriter, r *http.Request) {

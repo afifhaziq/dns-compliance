@@ -62,6 +62,19 @@ type Agency struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// DueDatePreset is an admin/dept-admin-managed duration option shown in the
+// watchlist's "Time to Block" picker (urls.tsx) — e.g. Label "24 hours",
+// Hours 24; the picker computes the actual due_date as now+Hours at
+// selection time. Shared/global like Agency/DNSServer, not
+// department-scoped. Read open to any authenticated role; create/delete
+// gated to admin-or-dept-admin (see router.go), same pattern as Agency.
+type DueDatePreset struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Label     string    `gorm:"not null" json:"label"`
+	Hours     int       `gorm:"not null" json:"hours"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type Department struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	Name      string    `gorm:"uniqueIndex;not null" json:"name"` // "CMOD", "CRD", ...
@@ -389,6 +402,40 @@ type ResurfacedDomain struct {
 	AffectedServers []ResurfacedServerEntry `json:"affected_servers"`
 }
 
+// NotificationDetails is a free-form per-notification-type payload (e.g.
+// resurfaced's affected-server list, due_date_reached's per-server
+// breakdown) — stored as jsonb via GORM's json serializer, same pattern
+// Citation.Parsed already uses.
+type NotificationDetails map[string]any
+
+// Notification is a queued alert for a department about a domain event —
+// either a resurfaced (compliant->violating) regression or a due-date scan
+// outcome. URLID/URLValue mirror ScanResult's dual FK+denormalized-value
+// pattern: URLID cascades on URL purge, URLValue is the read/query key so
+// list/dedup queries don't need a join.
+type Notification struct {
+	ID           uint   `gorm:"primaryKey" json:"id"`
+	DepartmentID uint   `gorm:"not null;index:idx_notifications_dept_read,priority:1" json:"department_id"`
+	URLID        uint   `gorm:"not null;index" json:"url_id"`
+	URL          URL    `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
+	URLValue     string `gorm:"not null;index" json:"url"`
+	Type         string `gorm:"not null" json:"type"` // "resurfaced" | "due_date_reached"
+	// Compliant is always nil for "resurfaced" (the type itself is the
+	// signal) and always set for "due_date_reached" (the scan outcome).
+	Compliant *bool               `json:"compliant,omitempty"`
+	Details   NotificationDetails `gorm:"type:jsonb;serializer:json" json:"details,omitempty"`
+	// ScanRunID/ScannedAt record which scan produced this notification.
+	// "due_date_reached" always sets both (one targeted Trigger call is
+	// always exactly one ScanRun). "resurfaced" sets only ScannedAt (the
+	// flip time) — a resurfacing event can span servers checked in
+	// different scan runs, so there's no single ScanRunID to attribute it
+	// to.
+	ScanRunID *uint      `json:"scan_run_id,omitempty"`
+	ScannedAt *time.Time `json:"scanned_at,omitempty"`
+	ReadAt    *time.Time `gorm:"index:idx_notifications_dept_read,priority:2" json:"read_at,omitempty"`
+	CreatedAt time.Time  `gorm:"index" json:"created_at"`
+}
+
 // DomainSummaryFilter narrows ListDomainSummaries/ForDepartment — every
 // field is optional (zero value = no filter). Search matches a substring of
 // the domain; DNSServerID, when set, also restricts the aggregate counts to
@@ -433,7 +480,7 @@ type Instrument struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
 	Type         string    `gorm:"not null;index" json:"type"`         // ACT, ORDINANCE, ENACTMENT, SUBSIDIARY, CONSTITUTION
 	Jurisdiction string    `gorm:"not null;index" json:"jurisdiction"` // FEDERAL, or a state name
-	Number       string    `gorm:"not null;default:''" json:"number"` // "588", "A1220", "No. 9 of 1995" — always a string, amendment/state formats break plain int. May be "" — plenty of instruments (older pre-1968-revision Acts, most state Enactments) have no commonly cited official number
+	Number       string    `gorm:"not null;default:''" json:"number"`  // "588", "A1220", "No. 9 of 1995" — always a string, amendment/state formats break plain int. May be "" — plenty of instruments (older pre-1968-revision Acts, most state Enactments) have no commonly cited official number
 	Year         *int      `json:"year,omitempty"`
 	ShortTitle   string    `gorm:"not null" json:"short_title"`
 	CreatedAt    time.Time `json:"created_at"`

@@ -27,15 +27,16 @@ type Handlers struct {
 	store          db.Store
 	scanner        *Scanner
 	broadcaster    *Broadcaster
-	whoisFetch     whois.Fetcher     // nil disables the lazy on-add fetch (e.g. in tests)
-	faviconFetch   favicon.Fetcher   // nil disables on-demand favicon fetching (e.g. in tests)
-	subfinderFetch subfinder.Fetcher // nil disables the lazy on-add + refresh subdomain enumeration (e.g. in tests)
-	ipFetch        ipinfo.Fetcher    // nil disables the on-demand hosting-info refresh (e.g. in tests)
-	netnameFetch   whois.IPFetcher   // nil disables the NetName/abuse-email half of a hosting-info refresh
+	whoisFetch     whois.Fetcher      // nil disables the lazy on-add fetch (e.g. in tests)
+	faviconFetch   favicon.Fetcher    // nil disables on-demand favicon fetching (e.g. in tests)
+	subfinderFetch subfinder.Fetcher  // nil disables the lazy on-add + refresh subdomain enumeration (e.g. in tests)
+	ipFetch        ipinfo.Fetcher     // nil disables the on-demand hosting-info refresh (e.g. in tests)
+	netnameFetch   whois.IPFetcher    // nil disables the NetName/abuse-email half of a hosting-info refresh
+	notify         dueDateRescheduler // nil disables due-date task scheduling (e.g. in tests that don't care)
 }
 
-func NewHandlers(store db.Store, scanner *Scanner, broadcaster *Broadcaster, whoisFetch whois.Fetcher, faviconFetch favicon.Fetcher, subfinderFetch subfinder.Fetcher, ipFetch ipinfo.Fetcher, netnameFetch whois.IPFetcher) *Handlers {
-	return &Handlers{store: store, scanner: scanner, broadcaster: broadcaster, whoisFetch: whoisFetch, faviconFetch: faviconFetch, subfinderFetch: subfinderFetch, ipFetch: ipFetch, netnameFetch: netnameFetch}
+func NewHandlers(store db.Store, scanner *Scanner, broadcaster *Broadcaster, whoisFetch whois.Fetcher, faviconFetch favicon.Fetcher, subfinderFetch subfinder.Fetcher, ipFetch ipinfo.Fetcher, netnameFetch whois.IPFetcher, notify dueDateRescheduler) *Handlers {
+	return &Handlers{store: store, scanner: scanner, broadcaster: broadcaster, whoisFetch: whoisFetch, faviconFetch: faviconFetch, subfinderFetch: subfinderFetch, ipFetch: ipFetch, netnameFetch: netnameFetch, notify: notify}
 }
 
 func buildProgressPayload(ctx context.Context, store db.Store) ([]byte, error) {
@@ -74,6 +75,14 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 func writeInternalError(w http.ResponseWriter, err error) {
 	log.Printf("internal error: %v", err)
 	writeError(w, http.StatusInternalServerError, "internal error")
+}
+
+// dueDateRescheduler is the subset of internal/notify.Enqueuer ToggleURL and
+// RemoveFromWatchlist need, narrowed to a local interface (same pattern as
+// Scanner's crawlerClient) so this package never imports internal/notify and
+// handler tests can inject a fake instead of a real asynq/Redis client.
+type dueDateRescheduler interface {
+	RescheduleDueDate(departmentID, urlID uint, dueDate *time.Time) error
 }
 
 // URLs (department watchlist scope — every user including admin is scoped to
@@ -219,6 +228,11 @@ func (h *Handlers) RemoveFromWatchlist(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "url not on this department's watchlist")
 		return
 	}
+	if h.notify != nil {
+		if err := h.notify.RescheduleDueDate(*user.DepartmentID, uint(id), nil); err != nil {
+			log.Printf("notify: cancel due-date task for department=%d url=%d: %v", *user.DepartmentID, id, err)
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -297,6 +311,8 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 
 	var fields db.URLCaseFields
 	hasFields := false
+	var newDueDate *time.Time
+	dueDateTouched := false
 	if body.DueDate != nil {
 		dueDate, err := parseOptionalRFC3339(*body.DueDate)
 		if err != nil {
@@ -305,6 +321,8 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 		}
 		fields.DueDate = &dueDate
 		hasFields = true
+		newDueDate = dueDate
+		dueDateTouched = true
 	}
 	if body.AgencyID != nil {
 		var agencyID *uint
@@ -354,6 +372,21 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		found = found || f
+		// DueDate is global on the URL row (shared across every department
+		// watching it), so a change fans out to every watching department's
+		// own scheduled due-date task, not just the one that made this PATCH.
+		if f && dueDateTouched && h.notify != nil {
+			deptIDs, err := h.store.DepartmentIDsWatchingURL(r.Context(), uint(id))
+			if err != nil {
+				log.Printf("notify: list departments watching url=%d: %v", id, err)
+				deptIDs = []uint{*user.DepartmentID} // fall back to at least the caller's own task
+			}
+			for _, deptID := range deptIDs {
+				if err := h.notify.RescheduleDueDate(deptID, uint(id), newDueDate); err != nil {
+					log.Printf("notify: reschedule due-date task for department=%d url=%d: %v", deptID, id, err)
+				}
+			}
+		}
 	}
 
 	if !found {

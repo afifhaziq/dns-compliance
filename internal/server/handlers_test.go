@@ -37,12 +37,14 @@ type fullMockStore struct {
 	ispLogos       []db.ISPLogo
 	gridPrefs      []db.GridPreference
 	agencies       []db.Agency
+	dueDatePresets []db.DueDatePreset
 	instruments    []db.Instrument
 	citations      []db.Citation
 	categories     []db.Category
 	elements       []db.Element
 	subElements    []db.SubElement
 	urlOffences    []db.URLOffence
+	notifications  []db.Notification
 	scheduleMu     sync.Mutex // guards the three fields below; the scheduler goroutine reads them concurrently with test/handler writes
 	scanInterval   int
 	scanEnabled    bool
@@ -415,6 +417,26 @@ func (m *fullMockStore) DeleteAgency(_ context.Context, id uint) error {
 	return nil
 }
 
+func (m *fullMockStore) ListDueDatePresets(_ context.Context) ([]db.DueDatePreset, error) {
+	return m.dueDatePresets, nil
+}
+
+func (m *fullMockStore) CreateDueDatePreset(_ context.Context, label string, hours int) (db.DueDatePreset, error) {
+	p := db.DueDatePreset{ID: uint(len(m.dueDatePresets) + 1), Label: label, Hours: hours, CreatedAt: time.Now()}
+	m.dueDatePresets = append(m.dueDatePresets, p)
+	return p, nil
+}
+
+func (m *fullMockStore) DeleteDueDatePreset(_ context.Context, id uint) error {
+	for i, p := range m.dueDatePresets {
+		if p.ID == id {
+			m.dueDatePresets = append(m.dueDatePresets[:i], m.dueDatePresets[i+1:]...)
+			return nil
+		}
+	}
+	return nil
+}
+
 func (m *fullMockStore) RemoveURLFromWatchlist(_ context.Context, departmentID, urlID uint) (bool, error) {
 	for i, du := range m.departmentURLs {
 		if du.DepartmentID == departmentID && du.URLID == urlID {
@@ -478,6 +500,16 @@ func (m *fullMockStore) URLOwnedByDepartment(_ context.Context, departmentID uin
 		}
 	}
 	return false, nil
+}
+
+func (m *fullMockStore) DepartmentIDsWatchingURL(_ context.Context, urlID uint) ([]uint, error) {
+	var ids []uint
+	for _, du := range m.departmentURLs {
+		if du.URLID == urlID {
+			ids = append(ids, du.DepartmentID)
+		}
+	}
+	return ids, nil
 }
 
 func (m *fullMockStore) CountDepartmentURLsSince(_ context.Context, since time.Time) (int, error) {
@@ -981,6 +1013,16 @@ func (m *fullMockStore) GetURLByValue(_ context.Context, urlValue string) (*db.U
 	return nil, nil
 }
 
+func (m *fullMockStore) GetURLByID(_ context.Context, id uint) (*db.URL, error) {
+	for _, u := range m.urls {
+		if u.ID == id {
+			uCopy := u
+			return &uCopy, nil
+		}
+	}
+	return nil, nil
+}
+
 func (m *fullMockStore) GetDomainWhois(ctx context.Context, urlValue string) (*db.DomainWhois, error) {
 	u, err := m.GetURLByValue(ctx, urlValue)
 	if err != nil {
@@ -1097,6 +1139,114 @@ func (m *fullMockStore) UpsertSubdomainScan(_ context.Context, s db.SubdomainSca
 	return nil
 }
 
+// NotificationStore implementations for tests
+func (m *fullMockStore) CreateNotification(_ context.Context, n db.Notification) (db.Notification, error) {
+	n.ID = uint(len(m.notifications) + 1)
+	n.CreatedAt = time.Now()
+	m.notifications = append(m.notifications, n)
+	return n, nil
+}
+
+func (m *fullMockStore) ListNotifications(_ context.Context, page, pageSize int) ([]db.Notification, int, error) {
+	return m.listNotifications(page, pageSize, nil)
+}
+
+func (m *fullMockStore) ListNotificationsForDepartment(_ context.Context, page, pageSize int, departmentID uint) ([]db.Notification, int, error) {
+	return m.listNotifications(page, pageSize, &departmentID)
+}
+
+func (m *fullMockStore) listNotifications(page, pageSize int, departmentID *uint) ([]db.Notification, int, error) {
+	var filtered []db.Notification
+	for _, n := range m.notifications {
+		if departmentID == nil || n.DepartmentID == *departmentID {
+			filtered = append(filtered, n)
+		}
+	}
+	total := len(filtered)
+	start := (page - 1) * pageSize
+	if start > total {
+		start = total
+	}
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+	return filtered[start:end], total, nil
+}
+
+func (m *fullMockStore) UnreadCount(_ context.Context) (int, error) {
+	return m.unreadCount(nil), nil
+}
+
+func (m *fullMockStore) UnreadCountForDepartment(_ context.Context, departmentID uint) (int, error) {
+	return m.unreadCount(&departmentID), nil
+}
+
+func (m *fullMockStore) unreadCount(departmentID *uint) int {
+	count := 0
+	for _, n := range m.notifications {
+		if n.ReadAt == nil && (departmentID == nil || n.DepartmentID == *departmentID) {
+			count++
+		}
+	}
+	return count
+}
+
+func (m *fullMockStore) GetNotification(_ context.Context, id uint) (*db.Notification, error) {
+	for i := range m.notifications {
+		if m.notifications[i].ID == id {
+			return &m.notifications[i], nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *fullMockStore) MarkNotificationRead(_ context.Context, id uint) error {
+	for i := range m.notifications {
+		if m.notifications[i].ID == id {
+			now := time.Now()
+			m.notifications[i].ReadAt = &now
+			return nil
+		}
+	}
+	return nil
+}
+
+func (m *fullMockStore) DeleteNotification(_ context.Context, id uint) error {
+	for i, n := range m.notifications {
+		if n.ID == id {
+			m.notifications = append(m.notifications[:i], m.notifications[i+1:]...)
+			return nil
+		}
+	}
+	return nil
+}
+
+func (m *fullMockStore) ClearAllNotifications(_ context.Context) error {
+	m.notifications = nil
+	return nil
+}
+
+func (m *fullMockStore) ClearAllNotificationsForDepartment(_ context.Context, departmentID uint) error {
+	var kept []db.Notification
+	for _, n := range m.notifications {
+		if n.DepartmentID != departmentID {
+			kept = append(kept, n)
+		}
+	}
+	m.notifications = kept
+	return nil
+}
+
+func (m *fullMockStore) HasRecentResurfacedNotification(_ context.Context, departmentID uint, urlValue string, since time.Time) (bool, error) {
+	for _, n := range m.notifications {
+		if n.DepartmentID == departmentID && n.URLValue == urlValue && n.Type == "resurfaced" && !n.CreatedAt.Before(since) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 var _ db.Store = (*fullMockStore)(nil)
 
 func setupRouter(store db.Store, sc *server.Scanner) http.Handler {
@@ -1104,7 +1254,7 @@ func setupRouter(store db.Store, sc *server.Scanner) http.Handler {
 	// whoisFetch/subfinderFetch/ipFetch/netnameFetch are nil — the lazy
 	// on-add fetch goroutines never run in tests, so no test hits the
 	// network or shells out.
-	server.RegisterRoutes(r, store, sc, nil, false, nil, nil, nil, nil, nil)
+	server.RegisterRoutes(r, store, sc, nil, false, nil, nil, nil, nil, nil, nil)
 	// Handler tests exercise business logic, not the CSRF header check
 	// itself (client.ts is what's responsible for sending it in practice),
 	// so inject it here rather than at every httptest.NewRequest call site.
@@ -1153,6 +1303,8 @@ func deptAdminCookie(store *fullMockStore, departmentID uint) *http.Cookie {
 		DepartmentID: &departmentID,
 	})
 }
+
+func ptrTime(t time.Time) *time.Time { return &t }
 
 func TestListURLsEmpty(t *testing.T) {
 	store := &fullMockStore{}
@@ -2937,6 +3089,103 @@ func TestDeleteAgency_AllowedForDeptAdmin(t *testing.T) {
 	}
 }
 
+func TestListDueDatePresets_AllowedForNonAdmin(t *testing.T) {
+	store := &fullMockStore{dueDatePresets: []db.DueDatePreset{{ID: 1, Label: "24 hours", Hours: 24}}}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/due-date-presets", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var presets []db.DueDatePreset
+	if err := json.Unmarshal(w.Body.Bytes(), &presets); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(presets) != 1 || presets[0].Hours != 24 {
+		t.Fatalf("unexpected presets: %+v", presets)
+	}
+}
+
+func TestCreateDueDatePreset_ForbiddenForNonAdmin(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]any{"label": "12 hours", "hours": 12})
+	req := httptest.NewRequest(http.MethodPost, "/api/due-date-presets", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateDueDatePreset_AllowedForDeptAdmin(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := deptAdminCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]any{"label": "12 hours", "hours": 12})
+	req := httptest.NewRequest(http.MethodPost, "/api/due-date-presets", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateDueDatePreset_RequiresLabelAndPositiveHours(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	for _, body := range []map[string]any{
+		{"label": "", "hours": 12},
+		{"label": "12 hours", "hours": 0},
+		{"label": "12 hours", "hours": -1},
+	} {
+		b, _ := json.Marshal(body)
+		req := httptest.NewRequest(http.MethodPost, "/api/due-date-presets", bytes.NewReader(b))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(cookie)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("body %+v: expected 400, got %d: %s", body, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestDeleteDueDatePreset_AllowedForDeptAdmin(t *testing.T) {
+	store := &fullMockStore{dueDatePresets: []db.DueDatePreset{{ID: 1, Label: "24 hours", Hours: 24}}}
+	cookie := deptAdminCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/due-date-presets/1", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.dueDatePresets) != 0 {
+		t.Fatalf("expected the preset to be deleted, got %d remaining: %+v", len(store.dueDatePresets), store.dueDatePresets)
+	}
+}
+
 // TestListDepartmentsOpen_AllowedForNonAdmin proves the new GET
 // /api/departments route is genuinely open (unlike the existing
 // super-admin-only GET /api/admin/departments it sits alongside).
@@ -2986,5 +3235,339 @@ func TestFaviconByURLNormalizesCacheKey(t *testing.T) {
 	}
 	if len(store.favicons) != 1 {
 		t.Fatalf("expected no second favicon row, got %d", len(store.favicons))
+	}
+}
+
+type rescheduleCall struct {
+	departmentID, urlID uint
+	dueDate             *time.Time
+}
+
+type fakeNotifier struct {
+	mu    sync.Mutex
+	calls []rescheduleCall
+}
+
+func (f *fakeNotifier) RescheduleDueDate(departmentID, urlID uint, dueDate *time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, rescheduleCall{departmentID, urlID, dueDate})
+	return nil
+}
+
+func TestToggleURL_ReschedulesDueDateTask(t *testing.T) {
+	deptID := uint(1)
+	store := &fullMockStore{
+		urls:           []db.URL{{ID: 1, URL: "example.com"}},
+		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1, Enabled: true}},
+	}
+	cookie := deptCookie(store, deptID)
+	notifier := &fakeNotifier{}
+	r := chi.NewRouter()
+	server.RegisterRoutes(r, store, nil, nil, false, nil, nil, nil, nil, nil, notifier)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		req.Header.Set("X-Requested-With", "fetch")
+		r.ServeHTTP(w, req)
+	})
+
+	body, _ := json.Marshal(map[string]string{"due_date": "2026-01-15T00:00:00Z"})
+	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+
+	notifier.mu.Lock()
+	defer notifier.mu.Unlock()
+	if len(notifier.calls) != 1 {
+		t.Fatalf("expected 1 RescheduleDueDate call, got %d", len(notifier.calls))
+	}
+	call := notifier.calls[0]
+	if call.departmentID != deptID || call.urlID != 1 {
+		t.Fatalf("unexpected call args: %+v", call)
+	}
+	if call.dueDate == nil {
+		t.Fatal("expected a non-nil due date")
+	}
+}
+
+func TestToggleURL_ReschedulesDueDateTaskForEveryWatchingDepartment(t *testing.T) {
+	deptA, deptB := uint(1), uint(2)
+	store := &fullMockStore{
+		urls: []db.URL{{ID: 1, URL: "example.com"}},
+		departmentURLs: []db.DepartmentURL{
+			{DepartmentID: deptA, URLID: 1, Enabled: true},
+			{DepartmentID: deptB, URLID: 1, Enabled: true},
+		},
+	}
+	cookie := deptCookie(store, deptA)
+	notifier := &fakeNotifier{}
+	r := chi.NewRouter()
+	server.RegisterRoutes(r, store, nil, nil, false, nil, nil, nil, nil, nil, notifier)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		req.Header.Set("X-Requested-With", "fetch")
+		r.ServeHTTP(w, req)
+	})
+
+	body, _ := json.Marshal(map[string]string{"due_date": "2026-01-15T00:00:00Z"})
+	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+
+	notifier.mu.Lock()
+	defer notifier.mu.Unlock()
+	if len(notifier.calls) != 2 {
+		t.Fatalf("expected 2 RescheduleDueDate calls (one per watching department), got %d: %+v", len(notifier.calls), notifier.calls)
+	}
+	seen := map[uint]bool{}
+	for _, call := range notifier.calls {
+		if call.urlID != 1 || call.dueDate == nil {
+			t.Fatalf("unexpected call args: %+v", call)
+		}
+		seen[call.departmentID] = true
+	}
+	if !seen[deptA] || !seen[deptB] {
+		t.Fatalf("expected reschedule calls for both departments, got %+v", notifier.calls)
+	}
+}
+
+func TestRemoveFromWatchlist_CancelsDueDateTask(t *testing.T) {
+	deptID := uint(1)
+	store := &fullMockStore{
+		urls:           []db.URL{{ID: 1, URL: "example.com"}},
+		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1, Enabled: true}},
+	}
+	cookie := deptCookie(store, deptID)
+	notifier := &fakeNotifier{}
+	r := chi.NewRouter()
+	server.RegisterRoutes(r, store, nil, nil, false, nil, nil, nil, nil, nil, notifier)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		req.Header.Set("X-Requested-With", "fetch")
+		r.ServeHTTP(w, req)
+	})
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/urls/1", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+
+	notifier.mu.Lock()
+	defer notifier.mu.Unlock()
+	if len(notifier.calls) != 1 {
+		t.Fatalf("expected 1 RescheduleDueDate call, got %d", len(notifier.calls))
+	}
+	if notifier.calls[0].dueDate != nil {
+		t.Fatal("expected a nil due date on removal (cancel-only)")
+	}
+}
+
+func TestListNotifications_ScopesToOwnDepartment(t *testing.T) {
+	deptA, deptB := uint(1), uint(2)
+	store := &fullMockStore{
+		notifications: []db.Notification{
+			{ID: 1, DepartmentID: deptA, URLValue: "a.com", Type: "resurfaced"},
+			{ID: 2, DepartmentID: deptB, URLValue: "b.com", Type: "resurfaced"},
+		},
+	}
+	cookie := deptCookie(store, deptA)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/notifications", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Notifications []db.Notification `json:"notifications"`
+		Total         int               `json:"total"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Total != 1 || len(body.Notifications) != 1 || body.Notifications[0].URLValue != "a.com" {
+		t.Fatalf("expected only deptA's notification, got %+v", body)
+	}
+}
+
+func TestUnreadNotificationCount(t *testing.T) {
+	deptA := uint(1)
+	store := &fullMockStore{
+		notifications: []db.Notification{
+			{ID: 1, DepartmentID: deptA, URLValue: "a.com", Type: "resurfaced"},
+			{ID: 2, DepartmentID: deptA, URLValue: "b.com", Type: "resurfaced", ReadAt: ptrTime(time.Now())},
+		},
+	}
+	cookie := deptCookie(store, deptA)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/notifications/unread-count", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Count int `json:"count"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &body)
+	if body.Count != 1 {
+		t.Fatalf("expected count 1, got %d", body.Count)
+	}
+}
+
+func TestMarkNotificationRead_404sForOtherDepartment(t *testing.T) {
+	deptA, deptB := uint(1), uint(2)
+	store := &fullMockStore{
+		notifications: []db.Notification{
+			{ID: 1, DepartmentID: deptB, URLValue: "b.com", Type: "resurfaced"},
+		},
+	}
+	cookie := deptCookie(store, deptA)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/notifications/1/read", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("want 404 for another department's notification, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestMarkNotificationRead_Success(t *testing.T) {
+	deptA := uint(1)
+	store := &fullMockStore{
+		notifications: []db.Notification{
+			{ID: 1, DepartmentID: deptA, URLValue: "a.com", Type: "resurfaced"},
+		},
+	}
+	cookie := deptCookie(store, deptA)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/notifications/1/read", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if store.notifications[0].ReadAt == nil {
+		t.Fatal("expected ReadAt to be set")
+	}
+}
+
+func TestDeleteNotification_404sForOtherDepartment(t *testing.T) {
+	deptA, deptB := uint(1), uint(2)
+	store := &fullMockStore{
+		notifications: []db.Notification{
+			{ID: 1, DepartmentID: deptB, URLValue: "b.com", Type: "resurfaced"},
+		},
+	}
+	cookie := deptCookie(store, deptA)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/notifications/1", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("want 404 for another department's notification, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.notifications) != 1 {
+		t.Fatalf("expected the other department's notification to survive, got %d remaining", len(store.notifications))
+	}
+}
+
+func TestDeleteNotification_Success(t *testing.T) {
+	deptA := uint(1)
+	store := &fullMockStore{
+		notifications: []db.Notification{
+			{ID: 1, DepartmentID: deptA, URLValue: "a.com", Type: "resurfaced"},
+		},
+	}
+	cookie := deptCookie(store, deptA)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/notifications/1", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.notifications) != 0 {
+		t.Fatalf("expected the notification to be deleted, got %d remaining", len(store.notifications))
+	}
+}
+
+func TestClearAllNotifications_OnlyClearsOwnDepartment(t *testing.T) {
+	deptA, deptB := uint(1), uint(2)
+	store := &fullMockStore{
+		notifications: []db.Notification{
+			{ID: 1, DepartmentID: deptA, URLValue: "a.com", Type: "resurfaced"},
+			{ID: 2, DepartmentID: deptA, URLValue: "a2.com", Type: "due_date_reached"},
+			{ID: 3, DepartmentID: deptB, URLValue: "b.com", Type: "resurfaced"},
+		},
+	}
+	cookie := deptCookie(store, deptA)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/notifications", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.notifications) != 1 || store.notifications[0].DepartmentID != deptB {
+		t.Fatalf("expected only deptB's notification to survive, got %+v", store.notifications)
+	}
+}
+
+func TestClearAllNotifications_AdminClearsEverything(t *testing.T) {
+	deptA, deptB := uint(1), uint(2)
+	store := &fullMockStore{
+		notifications: []db.Notification{
+			{ID: 1, DepartmentID: deptA, URLValue: "a.com", Type: "resurfaced"},
+			{ID: 2, DepartmentID: deptB, URLValue: "b.com", Type: "resurfaced"},
+		},
+	}
+	cookie := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/notifications", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.notifications) != 0 {
+		t.Fatalf("expected every notification cleared for an admin, got %+v", store.notifications)
 	}
 }

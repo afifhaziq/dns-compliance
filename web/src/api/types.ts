@@ -63,6 +63,10 @@ export type URLEntry = {
 
 export type Agency = { id: number; name: string; created_at: string }
 
+// A "Time to Block" duration option on the watchlist page — admin/dept-admin
+// managed, see CLAUDE.md's Notifications section.
+export type DueDatePreset = { id: number; label: string; hours: number; created_at: string }
+
 export type Department = { id: number; name: string; created_at: string }
 
 export type User = {
@@ -247,6 +251,25 @@ export type URLOffence = {
   sub_element?: LegalSubElement
   recorded_at: string
 }
+
+export type Notification = {
+  id: number
+  department_id: number
+  url_id: number
+  url: string
+  type: 'resurfaced' | 'due_date_reached'
+  compliant?: boolean
+  details?: Record<string, unknown>
+  // scan_run_id is only set for "due_date_reached" (one targeted Trigger
+  // call is always exactly one ScanRun); "resurfaced" can span servers
+  // checked in different runs, so it only carries scanned_at (the flip time).
+  scan_run_id?: number
+  scanned_at?: string
+  read_at?: string
+  created_at: string
+}
+
+export type NotificationsResponse = { notifications: Notification[]; total: number }
 
 // GET/PUT /api/grid-preferences/{key} — a user's saved data-grid layout.
 // GET returns {} (all fields absent) when nothing has been saved yet.

@@ -43,7 +43,7 @@ func Connect(dialector gorm.Dialector) (*gorm.DB, error) {
 	if err := database.AutoMigrate(
 		&Department{}, &User{}, &Session{}, &DNSServer{}, &URL{}, &DepartmentURL{}, &ScanRun{}, &ScanResult{}, &CompliantIP{}, &DomainWhois{}, &IPInfo{}, &Favicon{}, &ScanSettings{}, &SubdomainScan{}, &ISPLogo{},
 		&Instrument{}, &Citation{}, &Category{}, &Element{}, &SubElement{}, &URLOffence{},
-		&Agency{}, &GridPreference{},
+		&Agency{}, &DueDatePreset{}, &GridPreference{}, &Notification{},
 	); err != nil {
 		return nil, fmt.Errorf("migrating schema: %w", err)
 	}
@@ -70,6 +70,26 @@ func SeedDepartments(database *gorm.DB) error {
 		return nil
 	}
 	return database.Create(&[]Department{{Name: "CMOD"}, {Name: "CRD"}, {Name: "Admin"}}).Error
+}
+
+// SeedDueDatePresets inserts the original hardcoded "Time to Block" duration
+// options (6/24/48/72 hours, 7 days) if the due_date_presets table is
+// empty, so existing installs see the same choices they always did before
+// this became admin/dept-admin-configurable. After the first boot, the
+// watchlist page's own management dialog is authoritative.
+func SeedDueDatePresets(database *gorm.DB) error {
+	var count int64
+	database.Model(&DueDatePreset{}).Count(&count)
+	if count > 0 {
+		return nil
+	}
+	return database.Create(&[]DueDatePreset{
+		{Label: "6 hours", Hours: 6},
+		{Label: "24 hours", Hours: 24},
+		{Label: "48 hours", Hours: 48},
+		{Label: "72 hours", Hours: 72},
+		{Label: "7 days", Hours: 168},
+	}).Error
 }
 
 // SeedScanInterval creates the single ScanSettings row from the --interval

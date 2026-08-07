@@ -591,6 +591,18 @@ func (s *postgresStore) UpdateURLCaseFields(ctx context.Context, departmentID, u
 	return res.RowsAffected > 0, res.Error
 }
 
+// DepartmentIDsWatchingURL returns every department with a DepartmentURL
+// row for urlID, regardless of Enabled — a disabled watch still means that
+// department cares about the domain's case metadata (due date etc.), just
+// not its scan sweep inclusion.
+func (s *postgresStore) DepartmentIDsWatchingURL(ctx context.Context, urlID uint) ([]uint, error) {
+	var ids []uint
+	err := s.db.WithContext(ctx).Model(&DepartmentURL{}).
+		Where("url_id = ?", urlID).
+		Pluck("department_id", &ids).Error
+	return ids, err
+}
+
 // ListWatchedURLs returns every URL enabled by at least one department —
 // the set the scheduled/manual scan sweep should actually scan. A URL
 // disabled by all watching departments is excluded.
@@ -675,6 +687,20 @@ func (s *postgresStore) CreateAgency(ctx context.Context, name string) (Agency, 
 
 func (s *postgresStore) DeleteAgency(ctx context.Context, id uint) error {
 	return s.db.WithContext(ctx).Delete(&Agency{}, id).Error
+}
+
+func (s *postgresStore) ListDueDatePresets(ctx context.Context) ([]DueDatePreset, error) {
+	var presets []DueDatePreset
+	return presets, s.db.WithContext(ctx).Order("hours asc").Find(&presets).Error
+}
+
+func (s *postgresStore) CreateDueDatePreset(ctx context.Context, label string, hours int) (DueDatePreset, error) {
+	p := DueDatePreset{Label: label, Hours: hours}
+	return p, s.db.WithContext(ctx).Create(&p).Error
+}
+
+func (s *postgresStore) DeleteDueDatePreset(ctx context.Context, id uint) error {
+	return s.db.WithContext(ctx).Delete(&DueDatePreset{}, id).Error
 }
 
 func (s *postgresStore) ListISPLogos(ctx context.Context) ([]ISPLogo, error) {
@@ -1305,6 +1331,17 @@ func (s *postgresStore) GetURLByValue(ctx context.Context, urlValue string) (*UR
 	return &u, nil
 }
 
+func (s *postgresStore) GetURLByID(ctx context.Context, id uint) (*URL, error) {
+	var u URL
+	if err := s.db.WithContext(ctx).First(&u, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &u, nil
+}
+
 // GetDomainWhois looks up the cached RDAP row for urlValue. Returns
 // nil, nil (not an error) both when the URL is unknown and when it's known
 // but has never been fetched — callers can't distinguish the two, which
@@ -1418,4 +1455,102 @@ func (s *postgresStore) UpsertFavicon(ctx context.Context, fav Favicon) error {
 	return s.db.WithContext(ctx).
 		Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "domain"}}, UpdateAll: true}).
 		Create(&fav).Error
+}
+
+func (s *postgresStore) CreateNotification(ctx context.Context, n Notification) (Notification, error) {
+	return n, s.db.WithContext(ctx).Create(&n).Error
+}
+
+func (s *postgresStore) ListNotifications(ctx context.Context, page, pageSize int) ([]Notification, int, error) {
+	return s.listNotifications(ctx, page, pageSize, nil)
+}
+
+func (s *postgresStore) ListNotificationsForDepartment(ctx context.Context, page, pageSize int, departmentID uint) ([]Notification, int, error) {
+	return s.listNotifications(ctx, page, pageSize, &departmentID)
+}
+
+func (s *postgresStore) listNotifications(ctx context.Context, page, pageSize int, departmentID *uint) ([]Notification, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 25
+	}
+	q := s.db.WithContext(ctx).Model(&Notification{})
+	if departmentID != nil {
+		q = q.Where("department_id = ?", *departmentID)
+	}
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var rows []Notification
+	err := q.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&rows).Error
+	return rows, int(total), err
+}
+
+func (s *postgresStore) UnreadCount(ctx context.Context) (int, error) {
+	return s.unreadCount(ctx, nil)
+}
+
+func (s *postgresStore) UnreadCountForDepartment(ctx context.Context, departmentID uint) (int, error) {
+	return s.unreadCount(ctx, &departmentID)
+}
+
+func (s *postgresStore) unreadCount(ctx context.Context, departmentID *uint) (int, error) {
+	q := s.db.WithContext(ctx).Model(&Notification{}).Where("read_at IS NULL")
+	if departmentID != nil {
+		q = q.Where("department_id = ?", *departmentID)
+	}
+	var count int64
+	err := q.Count(&count).Error
+	return int(count), err
+}
+
+func (s *postgresStore) GetNotification(ctx context.Context, id uint) (*Notification, error) {
+	var n Notification
+	if err := s.db.WithContext(ctx).First(&n, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &n, nil
+}
+
+func (s *postgresStore) MarkNotificationRead(ctx context.Context, id uint) error {
+	return s.db.WithContext(ctx).
+		Model(&Notification{}).
+		Where("id = ?", id).
+		Update("read_at", time.Now()).Error
+}
+
+func (s *postgresStore) DeleteNotification(ctx context.Context, id uint) error {
+	return s.db.WithContext(ctx).Delete(&Notification{}, id).Error
+}
+
+func (s *postgresStore) ClearAllNotifications(ctx context.Context) error {
+	return s.clearAllNotifications(ctx, nil)
+}
+
+func (s *postgresStore) ClearAllNotificationsForDepartment(ctx context.Context, departmentID uint) error {
+	return s.clearAllNotifications(ctx, &departmentID)
+}
+
+func (s *postgresStore) clearAllNotifications(ctx context.Context, departmentID *uint) error {
+	q := s.db.WithContext(ctx)
+	if departmentID != nil {
+		q = q.Where("department_id = ?", *departmentID)
+	} else {
+		q = q.Where("1 = 1") // GORM refuses a conditionless bulk delete; this is a deliberate "all rows".
+	}
+	return q.Delete(&Notification{}).Error
+}
+
+func (s *postgresStore) HasRecentResurfacedNotification(ctx context.Context, departmentID uint, urlValue string, sinceResurfacedAt time.Time) (bool, error) {
+	var count int64
+	err := s.db.WithContext(ctx).Model(&Notification{}).
+		Where("department_id = ? AND url_value = ? AND type = ? AND created_at >= ?", departmentID, urlValue, "resurfaced", sinceResurfacedAt).
+		Count(&count).Error
+	return count > 0, err
 }

@@ -17,8 +17,8 @@ import (
 // nil to disable the lazy on-watchlist-add WHOIS/subdomain fetch, on-demand
 // favicon fetch, or on-demand hosting-info refresh (tests pass nil so they
 // never hit the network or shell out).
-func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster *Broadcaster, cookieSecure bool, whoisFetch whois.Fetcher, faviconFetch favicon.Fetcher, subfinderFetch subfinder.Fetcher, ipFetch ipinfo.Fetcher, netnameFetch whois.IPFetcher) {
-	h := NewHandlers(store, scanner, broadcaster, whoisFetch, faviconFetch, subfinderFetch, ipFetch, netnameFetch)
+func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster *Broadcaster, cookieSecure bool, whoisFetch whois.Fetcher, faviconFetch favicon.Fetcher, subfinderFetch subfinder.Fetcher, ipFetch ipinfo.Fetcher, netnameFetch whois.IPFetcher, notify dueDateRescheduler) {
+	h := NewHandlers(store, scanner, broadcaster, whoisFetch, faviconFetch, subfinderFetch, ipFetch, netnameFetch, notify)
 	ah := NewAuthHandlers(store, cookieSecure)
 
 	r.Use(middleware.Logger)
@@ -67,6 +67,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			// mutation route stays super-admin-only, untouched.
 			r.Get("/agencies", h.ListAgencies)
 			r.Get("/departments", h.ListDepartmentsOpen)
+			r.Get("/due-date-presets", h.ListDueDatePresets)
 
 			r.With(scanLimit).Post("/scan", h.TriggerScan)
 			r.Get("/scan/status", h.ScanStatus)
@@ -88,6 +89,11 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Get("/isps/{isp}/timing", h.ISPTiming)
 			r.Get("/trend", h.NationalTrend)
 			r.Get("/resurfaced", h.ResurfacedDomains)
+			r.Get("/notifications", h.ListNotifications)
+			r.Get("/notifications/unread-count", h.UnreadNotificationCount)
+			r.Patch("/notifications/{id}/read", h.MarkNotificationRead)
+			r.Delete("/notifications/{id}", h.DeleteNotification)
+			r.Delete("/notifications", h.ClearAllNotifications)
 			r.Get("/domains", h.DomainSummaries)
 			r.Get("/domains/*", h.DomainServerSummaries)
 			r.Get("/isp-logos", h.ListISPLogos)
@@ -125,6 +131,8 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 				r.Delete("/admin/isp-logos/*", h.DeleteISPLogo)
 				r.Post("/admin/agencies", h.CreateAgency)
 				r.Delete("/admin/agencies/{id}", h.DeleteAgency)
+				r.Post("/due-date-presets", h.CreateDueDatePreset)
+				r.Delete("/due-date-presets/{id}", h.DeleteDueDatePreset)
 
 				r.Post("/legal/instruments", h.CreateInstrument)
 				r.Patch("/legal/instruments/{id}", h.UpdateInstrument)

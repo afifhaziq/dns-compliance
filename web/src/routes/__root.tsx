@@ -25,6 +25,7 @@ import { fetchMe, logout as apiLogout } from '../api/auth'
 import { fetchUrls } from '../api/urls'
 import type { User, URLEntry } from '../api/types'
 import { ThemeSwitch } from '../components/theme-switch'
+import { NotificationBell } from '../components/notification-bell'
 import { GlassNavbar, LogoutButton } from '../components/aicanvas/glass-navbar'
 import { IconBar, IconBarItem } from '@/components/ui/icon-bar'
 import { Zap, Crosshair, X, Plus } from 'lucide-react'
@@ -396,6 +397,7 @@ function RootLayout() {
                   className="bg-transparent hover:bg-primary hover:text-white"
                 />
               </IconBar>
+              <NotificationBell />
               <ThemeSwitch className="bg-transparent"/>
               <LogoutButton />
             </>

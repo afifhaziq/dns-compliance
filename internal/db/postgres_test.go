@@ -1734,6 +1734,56 @@ func TestListAndCreateAgencies(t *testing.T) {
 	}
 }
 
+func TestListDueDatePresets_OrderedByHoursAscending(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := s.CreateDueDatePreset(ctx, "7 days", 168); err != nil {
+		t.Fatalf("CreateDueDatePreset: %v", err)
+	}
+	if _, err := s.CreateDueDatePreset(ctx, "6 hours", 6); err != nil {
+		t.Fatalf("CreateDueDatePreset: %v", err)
+	}
+	if _, err := s.CreateDueDatePreset(ctx, "24 hours", 24); err != nil {
+		t.Fatalf("CreateDueDatePreset: %v", err)
+	}
+
+	presets, err := s.ListDueDatePresets(ctx)
+	if err != nil {
+		t.Fatalf("ListDueDatePresets: %v", err)
+	}
+	if len(presets) != 3 {
+		t.Fatalf("expected 3 presets, got %d: %+v", len(presets), presets)
+	}
+	gotHours := []int{presets[0].Hours, presets[1].Hours, presets[2].Hours}
+	wantHours := []int{6, 24, 168}
+	for i := range wantHours {
+		if gotHours[i] != wantHours[i] {
+			t.Fatalf("expected hours ordered %v, got %v", wantHours, gotHours)
+		}
+	}
+}
+
+func TestDeleteDueDatePreset_RemovesIt(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	p, err := s.CreateDueDatePreset(ctx, "24 hours", 24)
+	if err != nil {
+		t.Fatalf("CreateDueDatePreset: %v", err)
+	}
+	if err := s.DeleteDueDatePreset(ctx, p.ID); err != nil {
+		t.Fatalf("DeleteDueDatePreset: %v", err)
+	}
+	presets, err := s.ListDueDatePresets(ctx)
+	if err != nil {
+		t.Fatalf("ListDueDatePresets: %v", err)
+	}
+	if len(presets) != 0 {
+		t.Fatalf("expected the preset to be deleted, got %+v", presets)
+	}
+}
+
 func TestCreateAgency_DuplicateNameErrors(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -1843,5 +1893,175 @@ func TestDeleteExpiredSessions(t *testing.T) {
 
 	if got, _ := s.GetSession(ctx, "live"); got == nil {
 		t.Fatal("live session should have survived")
+	}
+}
+
+func TestNotifications_CreateListUnreadMarkRead(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	dept, _ := s.CreateDepartment(ctx, "NotifyDept")
+	u, _ := s.AddURLToWatchlist(ctx, dept.ID, "notify-flow.com")
+
+	n, err := s.CreateNotification(ctx, db.Notification{
+		DepartmentID: dept.ID,
+		URLID:        u.ID,
+		URLValue:     u.URL,
+		Type:         "resurfaced",
+		Details:      db.NotificationDetails{"note": "test"},
+	})
+	if err != nil {
+		t.Fatalf("CreateNotification: %v", err)
+	}
+	if n.ID == 0 {
+		t.Fatal("expected a non-zero ID after create")
+	}
+
+	list, total, err := s.ListNotificationsForDepartment(ctx, 1, 10, dept.ID)
+	if err != nil {
+		t.Fatalf("ListNotificationsForDepartment: %v", err)
+	}
+	if total != 1 || len(list) != 1 {
+		t.Fatalf("expected 1 notification, got total=%d len=%d", total, len(list))
+	}
+	if list[0].Details["note"] != "test" {
+		t.Fatalf("expected details to round-trip, got %+v", list[0].Details)
+	}
+
+	count, err := s.UnreadCountForDepartment(ctx, dept.ID)
+	if err != nil {
+		t.Fatalf("UnreadCountForDepartment: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected unread count 1, got %d", count)
+	}
+
+	got, err := s.GetNotification(ctx, n.ID)
+	if err != nil || got == nil {
+		t.Fatalf("GetNotification: got=%v err=%v", got, err)
+	}
+	if got.ReadAt != nil {
+		t.Fatal("expected ReadAt nil before marking read")
+	}
+
+	if err := s.MarkNotificationRead(ctx, n.ID); err != nil {
+		t.Fatalf("MarkNotificationRead: %v", err)
+	}
+	count, err = s.UnreadCountForDepartment(ctx, dept.ID)
+	if err != nil {
+		t.Fatalf("UnreadCountForDepartment after read: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected unread count 0 after marking read, got %d", count)
+	}
+
+	// Admin-global scope sees the same row.
+	globalTotal := 0
+	if _, total, err := s.ListNotifications(ctx, 1, 10); err != nil {
+		t.Fatalf("ListNotifications: %v", err)
+	} else {
+		globalTotal = total
+	}
+	if globalTotal != 1 {
+		t.Fatalf("expected global total 1, got %d", globalTotal)
+	}
+}
+
+func TestClearAllNotifications_DepartmentScopedVsGlobal(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	deptA, _ := s.CreateDepartment(ctx, "ClearDeptA")
+	deptB, _ := s.CreateDepartment(ctx, "ClearDeptB")
+	uA, _ := s.AddURLToWatchlist(ctx, deptA.ID, "clear-a.com")
+	uB, _ := s.AddURLToWatchlist(ctx, deptB.ID, "clear-b.com")
+
+	if _, err := s.CreateNotification(ctx, db.Notification{DepartmentID: deptA.ID, URLID: uA.ID, URLValue: uA.URL, Type: "resurfaced"}); err != nil {
+		t.Fatalf("CreateNotification A: %v", err)
+	}
+	if _, err := s.CreateNotification(ctx, db.Notification{DepartmentID: deptB.ID, URLID: uB.ID, URLValue: uB.URL, Type: "resurfaced"}); err != nil {
+		t.Fatalf("CreateNotification B: %v", err)
+	}
+
+	if err := s.ClearAllNotificationsForDepartment(ctx, deptA.ID); err != nil {
+		t.Fatalf("ClearAllNotificationsForDepartment: %v", err)
+	}
+	if _, total, _ := s.ListNotificationsForDepartment(ctx, 1, 10, deptA.ID); total != 0 {
+		t.Fatalf("expected deptA cleared, got total=%d", total)
+	}
+	if _, total, _ := s.ListNotificationsForDepartment(ctx, 1, 10, deptB.ID); total != 1 {
+		t.Fatalf("expected deptB untouched, got total=%d", total)
+	}
+
+	if err := s.ClearAllNotifications(ctx); err != nil {
+		t.Fatalf("ClearAllNotifications: %v", err)
+	}
+	if _, total, _ := s.ListNotifications(ctx, 1, 10); total != 0 {
+		t.Fatalf("expected everything cleared globally, got total=%d", total)
+	}
+}
+
+func TestNotifications_GetNotificationReturnsNilForUnknownID(t *testing.T) {
+	s := newTestStore(t)
+	got, err := s.GetNotification(context.Background(), 999999)
+	if err != nil {
+		t.Fatalf("GetNotification: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("expected nil for unknown id, got %+v", got)
+	}
+}
+
+func TestHasRecentResurfacedNotification(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	dept, _ := s.CreateDepartment(ctx, "DedupDept")
+	u, _ := s.AddURLToWatchlist(ctx, dept.ID, "dedup.com")
+
+	resurfacedAt := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+
+	has, err := s.HasRecentResurfacedNotification(ctx, dept.ID, u.URL, resurfacedAt)
+	if err != nil {
+		t.Fatalf("HasRecentResurfacedNotification (none yet): %v", err)
+	}
+	if has {
+		t.Fatal("expected false before any notification exists")
+	}
+
+	if _, err := s.CreateNotification(ctx, db.Notification{
+		DepartmentID: dept.ID, URLID: u.ID, URLValue: u.URL, Type: "resurfaced",
+	}); err != nil {
+		t.Fatalf("CreateNotification: %v", err)
+	}
+
+	has, err = s.HasRecentResurfacedNotification(ctx, dept.ID, u.URL, resurfacedAt)
+	if err != nil {
+		t.Fatalf("HasRecentResurfacedNotification (after create): %v", err)
+	}
+	if !has {
+		t.Fatal("expected true — the just-created row's CreatedAt is after resurfacedAt (2026-07-02)")
+	}
+}
+
+func TestGetURLByID(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	dept, _ := s.CreateDepartment(ctx, "GetByIDDept")
+	u, _ := s.AddURLToWatchlist(ctx, dept.ID, "get-by-id.com")
+
+	got, err := s.GetURLByID(ctx, u.ID)
+	if err != nil || got == nil {
+		t.Fatalf("GetURLByID: got=%v err=%v", got, err)
+	}
+	if got.URL != "get-by-id.com" {
+		t.Fatalf("expected get-by-id.com, got %q", got.URL)
+	}
+
+	missing, err := s.GetURLByID(ctx, 999999)
+	if err != nil {
+		t.Fatalf("GetURLByID (missing): %v", err)
+	}
+	if missing != nil {
+		t.Fatalf("expected nil for unknown id, got %+v", missing)
 	}
 }

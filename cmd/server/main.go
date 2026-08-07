@@ -16,6 +16,7 @@ import (
 	"github.com/afif/dns-tracking/internal/favicon"
 	"github.com/afif/dns-tracking/internal/grpcauth"
 	"github.com/afif/dns-tracking/internal/ipinfo"
+	"github.com/afif/dns-tracking/internal/notify"
 	"github.com/afif/dns-tracking/internal/server"
 	"github.com/afif/dns-tracking/internal/storage"
 	"github.com/afif/dns-tracking/internal/subfinder"
@@ -49,6 +50,7 @@ func main() {
 	tlsCert := flag.String("tls-cert", envOr("TLS_CERT", ""), "PEM path to this binary's leaf certificate; enables mTLS when set together with --tls-key and --tls-ca")
 	tlsKey := flag.String("tls-key", envOr("TLS_KEY", ""), "PEM path to the private key for --tls-cert")
 	tlsCA := flag.String("tls-ca", envOr("TLS_CA", ""), "PEM path to the CA that signed both binaries' certificates")
+	redisAddr := flag.String("redis-addr", envOr("REDIS_ADDR", "localhost:6379"), "Redis address for the notification task queue (host:port)")
 	flag.Parse()
 
 	// Connect to PostgreSQL and run AutoMigrate.
@@ -84,6 +86,10 @@ func main() {
 
 	if err := db.SeedScanInterval(gormDB, *intervalMin); err != nil {
 		log.Printf("seed scan interval: %v", err)
+	}
+
+	if err := db.SeedDueDatePresets(gormDB); err != nil {
+		log.Printf("seed due date presets: %v", err)
 	}
 
 	store := db.NewStore(gormDB)
@@ -147,6 +153,16 @@ func main() {
 	defer crawlerConn.Close()
 	sc := server.NewScanner(pb.NewCrawlerControlClient(crawlerConn), *crawlerToken, store, broadcaster)
 
+	// Notification center: Redis + asynq task queue for the resurfaced-
+	// domain periodic sweep and per-domain due-date one-shot scans. See
+	// docs/superpowers/specs/2026-08-04-notifications-design.md.
+	notifyEnqueuer := notify.NewEnqueuer(*redisAddr)
+	notifySrv := notify.NewServer(*redisAddr, store, sc)
+	if err := notifySrv.Start(); err != nil {
+		log.Fatalf("notify: %v", err)
+	}
+	defer notifySrv.Shutdown()
+
 	// gRPC server — receives scan results from the crawler.
 	grpcLis, err := net.Listen("tcp", *grpcAddr)
 	if err != nil {
@@ -189,7 +205,7 @@ func main() {
 		subfinderFetch = subfinder.NewFetcher(*subfinderPath)
 	}
 	r := chi.NewRouter()
-	server.RegisterRoutes(r, store, sc, broadcaster, *cookieSecure, whois.Fetch, favicon.Fetch, subfinderFetch, ipFetch, whois.FetchIP)
+	server.RegisterRoutes(r, store, sc, broadcaster, *cookieSecure, whois.Fetch, favicon.Fetch, subfinderFetch, ipFetch, whois.FetchIP, notifyEnqueuer)
 
 	httpSrv := &http.Server{Addr: *httpAddr, Handler: r}
 	go func() {

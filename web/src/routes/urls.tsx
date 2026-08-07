@@ -14,8 +14,9 @@ import { GripIcon } from '@/components/ui/grip'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlFields } from '../api/urls'
 import { fetchAgencies } from '../api/agencies'
 import { fetchDepartmentsOpen } from '../api/departments'
+import { fetchDueDatePresets, createDueDatePreset, deleteDueDatePreset } from '../api/due-date-presets'
 import { useGridPreference } from '@/hooks/use-grid-preference'
-import type { URLEntry, Agency, Department, Instrument, Citation, LegalCategory, LegalElement, LegalSubElement, URLOffence } from '../api/types'
+import type { URLEntry, Agency, Department, DueDatePreset, Instrument, Citation, LegalCategory, LegalElement, LegalSubElement, URLOffence } from '../api/types'
 import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, fetchSubElements, attachOffence, fetchOffencesByUrl, detachOffence, formatParsedCitation } from '../api/legal'
 import {
   Dialog,
@@ -97,15 +98,18 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
 // blocking within 6h/24h), but rather than picking a calendar date+time by
 // hand, the case owner picks how long from now the ISP has — the computed
 // deadline (now + duration) is what actually gets stored in due_date, same
-// field ISPTiming already measures against.
-const DUE_DATE_DURATION_OPTIONS: { value: string; label: string }[] = [
-  { value: '', label: '—' },
-  { value: '6', label: '6 hours' },
-  { value: '24', label: '24 hours' },
-  { value: '48', label: '48 hours' },
-  { value: '72', label: '72 hours' },
-  { value: '168', label: '7 days' },
-]
+// field ISPTiming already measures against. The duration list itself is
+// admin/dept-admin-configurable (DueDatePreset, see ManageDueDatePresetsDialog
+// below) rather than hardcoded, seeded on first boot with the original
+// 6h/24h/48h/72h/7-day options.
+//
+// Keyed by hours (not preset id) since that's what dueDateFromDurationHours
+// actually needs — two presets sharing the same hours with different labels
+// would be indistinguishable once selected, an accepted edge case for a
+// simple duration list.
+function dueDateOptionsFrom(presets: DueDatePreset[]): { value: string; label: string }[] {
+  return [{ value: '', label: '—' }, ...presets.map(p => ({ value: String(p.hours), label: p.label }))]
+}
 
 function dueDateFromDurationHours(hours: number): string {
   return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString()
@@ -331,6 +335,7 @@ function AddUrlDialog({
   onAdded,
   agencies,
   departments,
+  duePresets,
   defaultDepartmentId,
 }: {
   open: boolean
@@ -338,6 +343,7 @@ function AddUrlDialog({
   onAdded: () => void
   agencies: Agency[]
   departments: Department[]
+  duePresets: DueDatePreset[]
   defaultDepartmentId: number | null
 }) {
   const [value, setValue] = useState('')
@@ -479,7 +485,7 @@ function AddUrlDialog({
               <Select value={dueDurationHours} onValueChange={setDueDurationHours} disabled={loading}>
                 <SelectTrigger aria-labelledby="add-due-date-label" placeholder="—" className="w-full" />
                 <SelectContent>
-                  {DUE_DATE_DURATION_OPTIONS.map((opt, i) => (
+                  {dueDateOptionsFrom(duePresets).map((opt, i) => (
                     <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
                   ))}
                 </SelectContent>
@@ -521,6 +527,7 @@ function EditUrlDialog({
   onClose,
   agencies,
   departments,
+  duePresets,
   onAgencyChange,
   onRequestingDeptChange,
   onStatusChange,
@@ -534,6 +541,7 @@ function EditUrlDialog({
   onClose: () => void
   agencies: Agency[]
   departments: Department[]
+  duePresets: DueDatePreset[]
   onAgencyChange: (id: number, agencyId: number | null) => void
   onRequestingDeptChange: (id: number, deptId: number | null) => void
   onStatusChange: (id: number, status: string) => void
@@ -700,7 +708,7 @@ function EditUrlDialog({
                 <Select value="" onValueChange={v => onDueDurationChange(entry.id, v)}>
                   <SelectTrigger aria-labelledby="edit-due-date-label" placeholder="—" className="w-full" />
                   <SelectContent>
-                    {DUE_DATE_DURATION_OPTIONS.map((opt, i) => (
+                    {dueDateOptionsFrom(duePresets).map((opt, i) => (
                       <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -757,14 +765,132 @@ const PAGE_SIZE = 25
 
 const IS_ONLY = [{ value: 'is', label: 'is' }]
 
+/* ─── Manage Due-Date Presets Dialog (admin/dept-admin only) ────────────── */
+
+function ManageDueDatePresetsDialog({
+  open,
+  onClose,
+  presets,
+  onChanged,
+}: {
+  open: boolean
+  onClose: () => void
+  presets: DueDatePreset[]
+  onChanged: (presets: DueDatePreset[]) => void
+}) {
+  const [label, setLabel] = useState('')
+  const [hours, setHours] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const h = Number(hours)
+    if (!label.trim() || !h || h <= 0) {
+      setError('Label and a positive number of hours are required')
+      return
+    }
+    setLoading(true)
+    setError(null)
+    try {
+      const created = await createDueDatePreset(label.trim(), h)
+      onChanged([...presets, created].sort((a, b) => a.hours - b.hours))
+      setLabel(''); setHours('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add duration')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDelete = async (id: number) => {
+    const previous = presets
+    onChanged(presets.filter(p => p.id !== id))
+    try {
+      await deleteDueDatePreset(id)
+    } catch {
+      onChanged(previous)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) onClose() }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: 420 }}>
+        <DialogHeader>
+          <DialogTitle>Time-to-Block Durations</DialogTitle>
+          <DialogDescription>
+            Options shown in the "Time to Block" picker when setting a domain's due date. Changes apply department-wide.
+          </DialogDescription>
+        </DialogHeader>
+
+        {presets.length > 0 ? (
+          <ul className="offence-chip-list">
+            {presets.map(p => (
+              <li key={p.id} className="offence-chip">
+                <span>{p.label} ({p.hours}h)</span>
+                <button
+                  type="button"
+                  className="screenshot-icon-btn"
+                  onClick={() => handleDelete(p.id)}
+                  aria-label={`Remove duration ${p.label}`}
+                >
+                  <XIcon size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-stone-muted mb-2">No durations configured yet.</p>
+        )}
+
+        <form onSubmit={handleAdd} className="form-row" style={{ alignItems: 'flex-end' }}>
+          <div className="form-field">
+            <label className="form-label" htmlFor="preset-label">Label</label>
+            <input
+              id="preset-label"
+              type="text"
+              className="form-input form-input-strong"
+              placeholder="e.g. 12 hours"
+              value={label}
+              onChange={e => setLabel(e.target.value)}
+              disabled={loading}
+            />
+          </div>
+          <div className="form-field" style={{ maxWidth: 100 }}>
+            <label className="form-label" htmlFor="preset-hours">Hours</label>
+            <input
+              id="preset-hours"
+              type="number"
+              min={1}
+              className="form-input form-input-strong"
+              value={hours}
+              onChange={e => setHours(e.target.value)}
+              disabled={loading}
+            />
+          </div>
+          <button type="submit" className="btn-primary" disabled={loading}>Add</button>
+        </form>
+
+        {error && <p className="form-error">{error}</p>}
+        <DialogFooter>
+          <button type="button" className="btn-primary" onClick={onClose}>Done</button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function URLsPage() {
   const { me } = useAuth()
+  const canManage = me?.is_admin || me?.is_dept_admin
   const [urls, setUrls] = useState<URLEntry[]>([])
   const [agencies, setAgencies] = useState<Agency[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
+  const [duePresets, setDuePresets] = useState<DueDatePreset[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
+  const [managePresetsOpen, setManagePresetsOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<URLEntry | null>(null)
   // id, not a URLEntry snapshot, so the dialog re-reads the live row out of
   // `urls` below and reflects its own edits (agency/status/etc.) immediately.
@@ -795,10 +921,11 @@ function URLsPage() {
     setLoading(true)
     try {
       setError(null)
-      const [u, a, d] = await Promise.all([fetchUrls(), fetchAgencies(), fetchDepartmentsOpen()])
+      const [u, a, d, p] = await Promise.all([fetchUrls(), fetchAgencies(), fetchDepartmentsOpen(), fetchDueDatePresets()])
       setUrls(u)
       setAgencies(a)
       setDepartments(d)
+      setDuePresets(p)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load domains')
     } finally {
@@ -1070,6 +1197,11 @@ function URLsPage() {
         <p className="page-subtitle">{!loading && `${urls.length} monitored`}</p>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <QuickAddFavicon onAdded={load} />
+          {canManage && (
+            <Button variant="outline" onClick={() => setManagePresetsOpen(true)}>
+              Time-to-Block Durations
+            </Button>
+          )}
           <Button onClick={() => setAddOpen(true)}>
             + Add Domain
           </Button>
@@ -1128,6 +1260,7 @@ function URLsPage() {
         onAdded={load}
         agencies={agencies}
         departments={departments}
+        duePresets={duePresets}
         defaultDepartmentId={me?.department_id ?? null}
       />
 
@@ -1145,6 +1278,7 @@ function URLsPage() {
         onClose={() => setEditTargetId(null)}
         agencies={agencies}
         departments={departments}
+        duePresets={duePresets}
         onAgencyChange={handleAgencyChange}
         onRequestingDeptChange={handleRequestingDeptChange}
         onStatusChange={handleStatusChange}
@@ -1152,6 +1286,13 @@ function URLsPage() {
         onRefFocus={handleRefFocus}
         onRefChange={handleRefChange}
         onRefBlur={handleRefBlur}
+      />
+
+      <ManageDueDatePresetsDialog
+        open={managePresetsOpen}
+        onClose={() => setManagePresetsOpen(false)}
+        presets={duePresets}
+        onChanged={setDuePresets}
       />
     </div>
   )

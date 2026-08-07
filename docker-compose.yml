@@ -12,10 +12,13 @@ services:
       MINIO_BUCKET: "screenshots"
       CRAWLER_ADDR: "crawler:50052"
       CRAWLER_TOKEN: "${CRAWLER_TOKEN}"
+      REDIS_ADDR: "redis:6379"
     depends_on:
       minio:
         condition: service_started
       crawler:
+        condition: service_started
+      redis:
         condition: service_started
     restart: unless-stopped
 
@@ -52,5 +55,13 @@ services:
       mc anonymous set public local/screenshots
       "
 
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+
 volumes:
   miniodata:
+  redisdata:

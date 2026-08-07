@@ -14,10 +14,11 @@ type URLStore interface {
 	CreateURL(ctx context.Context, rawURL string) (URL, error)
 	DeleteURL(ctx context.Context, id uint) error                     // admin-only hard purge; cascades to ScanResult
 	GetURLByValue(ctx context.Context, urlValue string) (*URL, error) // nil, nil if urlValue is unknown
+	GetURLByID(ctx context.Context, id uint) (*URL, error)            // nil, nil if id is unknown
 
 	ListDepartmentURLs(ctx context.Context, departmentID uint) ([]URLEntry, error)
 	AddURLToWatchlist(ctx context.Context, departmentID uint, rawURL string) (URL, error)
-	RemoveURLFromWatchlist(ctx context.Context, departmentID, urlID uint) (bool, error)                // false if no row was deleted (not on that watchlist)
+	RemoveURLFromWatchlist(ctx context.Context, departmentID, urlID uint) (bool, error)      // false if no row was deleted (not on that watchlist)
 	SetURLEnabled(ctx context.Context, departmentID, urlID uint, enabled bool) (bool, error) // false if the URL is not on that watchlist
 	// UpdateURLCaseFields writes to the shared URL row (case metadata is
 	// global, see URL's doc comment) but only after verifying departmentID
@@ -26,9 +27,14 @@ type URLStore interface {
 	// falling out of a WHERE clause. Only non-nil fields in `fields` are
 	// applied; false if the URL is not on that department's watchlist.
 	UpdateURLCaseFields(ctx context.Context, departmentID, urlID uint, fields URLCaseFields) (bool, error)
-	ListWatchedURLs(ctx context.Context) ([]URL, error)                                                // urls with >=1 enabled DepartmentURL row — used by the scan sweep
-	ListUnassignedURLs(ctx context.Context) ([]URL, error)                                             // admin view: urls with 0 DepartmentURL rows
+	ListWatchedURLs(ctx context.Context) ([]URL, error)    // urls with >=1 enabled DepartmentURL row — used by the scan sweep
+	ListUnassignedURLs(ctx context.Context) ([]URL, error) // admin view: urls with 0 DepartmentURL rows
 	URLOwnedByDepartment(ctx context.Context, departmentID uint, urlValue string) (bool, error)
+	// DepartmentIDsWatchingURL returns every department with a DepartmentURL
+	// row for urlID (regardless of Enabled) — used to fan a global-on-URL
+	// case-field change (e.g. DueDate) out to every department that watches
+	// it, not just the one that made the PATCH.
+	DepartmentIDsWatchingURL(ctx context.Context, urlID uint) ([]uint, error)
 
 	// Watchlist activity — counts DepartmentURL rows (watchlist "requests")
 	// created since a given time; used for the "requested this month" stat.
@@ -146,6 +152,15 @@ type AgencyStore interface {
 	DeleteAgency(ctx context.Context, id uint) error
 }
 
+// DueDatePresetStore is the admin/dept-admin-managed list of "Time to
+// Block" duration options — same read-open/write-gated shape as
+// AgencyStore, not department-scoped.
+type DueDatePresetStore interface {
+	ListDueDatePresets(ctx context.Context) ([]DueDatePreset, error)
+	CreateDueDatePreset(ctx context.Context, label string, hours int) (DueDatePreset, error)
+	DeleteDueDatePreset(ctx context.Context, id uint) error
+}
+
 // ISPLogoStore is the admin-managed ISP name → logo URL lookup, rendered on
 // the Overview page's ISPBentoGrid.
 type ISPLogoStore interface {
@@ -159,7 +174,7 @@ type ISPLogoStore interface {
 // calling user — no admin gating, ownership is implicit in the userID param.
 type GridPreferenceStore interface {
 	GetGridPreference(ctx context.Context, userID uint, gridKey string) (*GridPreference, error) // nil, nil if never saved
-	SaveGridPreference(ctx context.Context, pref GridPreference) (GridPreference, error)          // upsert by (user_id, grid_key)
+	SaveGridPreference(ctx context.Context, pref GridPreference) (GridPreference, error)         // upsert by (user_id, grid_key)
 }
 
 // ScanSettingsStore holds the single admin-configurable scan cadence row.
@@ -244,6 +259,34 @@ type LegalCitationStore interface {
 	DetachOffenceFromURL(ctx context.Context, id uint) error
 }
 
+// NotificationStore covers the notification-center table — same
+// admin-global/department-scoped read pattern as ResultStore's
+// ListDomainSummaries/ForDepartment. CreateNotification and
+// HasRecentResurfacedNotification are called only from internal/notify's
+// task handlers, not from any HTTP handler directly.
+type NotificationStore interface {
+	CreateNotification(ctx context.Context, n Notification) (Notification, error)
+	ListNotifications(ctx context.Context, page, pageSize int) ([]Notification, int, error)
+	ListNotificationsForDepartment(ctx context.Context, page, pageSize int, departmentID uint) ([]Notification, int, error)
+	UnreadCount(ctx context.Context) (int, error)
+	UnreadCountForDepartment(ctx context.Context, departmentID uint) (int, error)
+	GetNotification(ctx context.Context, id uint) (*Notification, error) // nil, nil if not found
+	MarkNotificationRead(ctx context.Context, id uint) error
+	DeleteNotification(ctx context.Context, id uint) error // dismiss; ownership is checked by the caller before invoking this
+	// ClearAllNotifications/ForDepartment bulk-dismiss — same admin-global vs
+	// department-scoped split as ListNotifications/UnreadCount, so "Clear
+	// all" clears exactly the set the caller can currently see, not just
+	// the dropdown's first page.
+	ClearAllNotifications(ctx context.Context) error
+	ClearAllNotificationsForDepartment(ctx context.Context, departmentID uint) error
+
+	// HasRecentResurfacedNotification is the dedup check for the periodic
+	// resurfaced sweep: true if a "resurfaced" notification for
+	// (departmentID, urlValue) already has CreatedAt >= sinceResurfacedAt,
+	// meaning this specific regression event was already notified.
+	HasRecentResurfacedNotification(ctx context.Context, departmentID uint, urlValue string, sinceResurfacedAt time.Time) (bool, error)
+}
+
 // Store is the full persistence port — the union of every aggregate-scoped
 // store above. Multi-aggregate consumers (Handlers, Scanner) depend on this.
 // A consumer that only ever touches one aggregate should depend on that
@@ -261,9 +304,11 @@ type Store interface {
 	SessionStore
 	CompliantIPStore
 	AgencyStore
+	DueDatePresetStore
 	ISPLogoStore
 	GridPreferenceStore
 	ScanSettingsStore
 	EnrichmentStore
 	LegalCitationStore
+	NotificationStore
 }
