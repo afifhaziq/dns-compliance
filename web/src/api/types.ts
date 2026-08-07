@@ -221,3 +221,17 @@ export type URLOffence = {
   element?: LegalElement
   recorded_at: string
 }
+
+export type Notification = {
+  id: number
+  department_id: number
+  url_id: number
+  url: string
+  type: 'resurfaced' | 'due_date_reached'
+  compliant?: boolean
+  details?: Record<string, unknown>
+  read_at?: string
+  created_at: string
+}
+
+export type NotificationsResponse = { notifications: Notification[]; total: number }
