@@ -603,6 +603,16 @@ html.dark {
   @apply w-max min-w-full border-collapse border border-stone-border rounded-lg overflow-hidden text-sm;
 }
 
+/* Column pinning (position: sticky on th/td) resolves against the nearest
+   ancestor with overflow != visible - .results-table's own overflow-hidden
+   above makes the (non-scrolling) table itself that ancestor instead of the
+   actually-scrolling .results-wrap container, so a pinned column silently
+   never sticks. Opt out here on the (few) tables that pin columns; every
+   other .results-table consumer keeps the corner-radius clip untouched. */
+.results-table--pinned {
+  overflow: visible;
+}
+
 .results-table th {
   @apply py-2 px-4 text-[11px] font-semibold tracking-[0.06em] uppercase text-stone-muted text-center border-b border-stone-border;
 }

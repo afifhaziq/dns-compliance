@@ -444,7 +444,7 @@ function LatestScanTab() {
   const table = useReactTable({
     data: treeData,
     columns,
-    initialState: { columnPinning: { right: ['actions'] } },
+    initialState: { columnPinning: { left: ['expand', 'domain'], right: ['actions'] } },
     state: { expanded, sorting, pagination, columnVisibility },
     onExpandedChange: setExpanded,
     onSortingChange: setSorting,
@@ -526,9 +526,10 @@ function LatestScanTab() {
                 isLoading={gridLoading}
                 onRowClick={row => { if (row.kind === 'domain') table.getRow(row.group.url).toggleExpanded() }}
                 rowClassName={row => row.kind === 'server' && !row.result.compliant ? 'violation-row' : undefined}
-                tableClassNames={{ base: 'results-table' }}
+                tableClassNames={{ base: 'results-table results-table--pinned' }}
+                tableLayout={{ columnsPinnable: true }}
               >
-                <DataGridContainer className="overflow-visible">
+                <DataGridContainer className="overflow-x-auto overflow-y-visible">
                   <DataGridTable />
                 </DataGridContainer>
               </DataGrid>
@@ -821,7 +822,7 @@ function AllTimeTab() {
   const table = useReactTable({
     data: domains,
     columns: allTimeColumns,
-    initialState: { columnPinning: { right: ['actions'] } },
+    initialState: { columnPinning: { left: ['expand', 'url'], right: ['actions'] } },
     state: { pagination, expanded, columnVisibility },
     onPaginationChange: setPagination,
     onExpandedChange: setExpanded,
@@ -873,9 +874,10 @@ function AllTimeTab() {
             recordCount={total}
             isLoading={loading}
             onRowClick={row => goToDomain(row.url)}
-            tableClassNames={{ base: 'results-table' }}
+            tableClassNames={{ base: 'results-table results-table--pinned' }}
+            tableLayout={{ columnsPinnable: true }}
           >
-            <DataGridContainer>
+            <DataGridContainer className="overflow-x-auto overflow-y-hidden">
               <DataGridTable />
             </DataGridContainer>
           </DataGrid>
