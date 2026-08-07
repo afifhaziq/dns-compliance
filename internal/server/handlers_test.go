@@ -2614,7 +2614,7 @@ func TestFaviconByURLNormalizesCacheKey(t *testing.T) {
 
 type rescheduleCall struct {
 	departmentID, urlID uint
-	dueDate              *time.Time
+	dueDate             *time.Time
 }
 
 type fakeNotifier struct {
@@ -2724,7 +2724,7 @@ func TestListNotifications_ScopesToOwnDepartment(t *testing.T) {
 	}
 	var body struct {
 		Notifications []db.Notification `json:"notifications"`
-		Total         int                `json:"total"`
+		Total         int               `json:"total"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode: %v", err)

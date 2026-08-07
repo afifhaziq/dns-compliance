@@ -27,11 +27,11 @@ type Handlers struct {
 	store          db.Store
 	scanner        *Scanner
 	broadcaster    *Broadcaster
-	whoisFetch     whois.Fetcher     // nil disables the lazy on-add fetch (e.g. in tests)
-	faviconFetch   favicon.Fetcher   // nil disables on-demand favicon fetching (e.g. in tests)
-	subfinderFetch subfinder.Fetcher // nil disables the lazy on-add + refresh subdomain enumeration (e.g. in tests)
-	ipFetch        ipinfo.Fetcher    // nil disables the on-demand hosting-info refresh (e.g. in tests)
-	netnameFetch   whois.IPFetcher   // nil disables the NetName/abuse-email half of a hosting-info refresh
+	whoisFetch     whois.Fetcher      // nil disables the lazy on-add fetch (e.g. in tests)
+	faviconFetch   favicon.Fetcher    // nil disables on-demand favicon fetching (e.g. in tests)
+	subfinderFetch subfinder.Fetcher  // nil disables the lazy on-add + refresh subdomain enumeration (e.g. in tests)
+	ipFetch        ipinfo.Fetcher     // nil disables the on-demand hosting-info refresh (e.g. in tests)
+	netnameFetch   whois.IPFetcher    // nil disables the NetName/abuse-email half of a hosting-info refresh
 	notify         dueDateRescheduler // nil disables due-date task scheduling (e.g. in tests that don't care)
 }
 
