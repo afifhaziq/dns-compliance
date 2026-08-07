@@ -865,7 +865,7 @@ function DataGridTableHeadRowCell<TData>({
         props.tableLayout?.columnsPinnable &&
           column.getCanPin() &&
           cn(
-            "data-pinned:bg-stone-panel data-outer-pinned-col:bg-clip-padding data-pinned:isolate",
+            "data-pinned:bg-background data-outer-pinned-col:bg-clip-padding data-pinned:isolate",
             "[&[data-pinned=left][data-last-col=left]]:shadow-[inset_-1px_0_0_0_var(--border)] [&[data-pinned=right]:last-child_div.cursor-col-resize:last-child]:opacity-0 [&[data-pinned=right][data-last-col=right]]:shadow-[inset_1px_0_0_0_var(--border)]",
             "[&:not([data-pinned]):has(+[data-pinned])_div.cursor-col-resize:last-child]:opacity-0 [&[data-last-col=left]_div.cursor-col-resize:last-child]:opacity-0"
           ),
