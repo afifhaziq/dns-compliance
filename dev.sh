@@ -17,7 +17,7 @@ cleanup() {
   [[ -n "$SERVER_PID" ]]  && { kill -- -"$SERVER_PID"  2>/dev/null || kill "$SERVER_PID"  2>/dev/null || true; }
   [[ -n "$VITE_PID" ]]    && { kill -- -"$VITE_PID"    2>/dev/null || kill "$VITE_PID"    2>/dev/null || true; }
   [[ -n "$CRAWLER_PID" ]] && { kill -- -"$CRAWLER_PID" 2>/dev/null || kill "$CRAWLER_PID" 2>/dev/null || true; }
-  docker compose -f docker-compose.yml -f docker-compose.dev.yml stop postgres minio
+  docker compose -f docker-compose.yml -f docker-compose.dev.yml stop postgres minio redis
 }
 trap cleanup EXIT INT TERM
 
@@ -28,6 +28,15 @@ echo "==> Starting PostgreSQL..."
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres
 echo -n "    Waiting for postgres"
 until docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T postgres pg_isready -U postgres -q 2>/dev/null; do
+  echo -n "."
+  sleep 1
+done
+echo " ready"
+
+echo "==> Starting Redis..."
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d redis
+echo -n "    Waiting for Redis"
+until docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T redis redis-cli ping 2>/dev/null | grep -q PONG; do
   echo -n "."
   sleep 1
 done
@@ -55,6 +64,7 @@ go run ./cmd/server/ \
   --grpc-addr :50051 \
   --crawler-addr localhost:50052 \
   --crawler-token "$CRAWLER_TOKEN" \
+  --redis-addr localhost:6379 \
   --subfinder-path "$(go env GOPATH)/bin/subfinder" \
   --cookie-secure=false \
   --bootstrap-admin-username admin \

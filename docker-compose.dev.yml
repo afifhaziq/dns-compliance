@@ -3,8 +3,11 @@ services:
     environment:
       DB_URL: "host=postgres user=postgres password=postgres dbname=dns_compliance port=5432 sslmode=disable"
       COOKIE_SECURE: "false"
+      REDIS_ADDR: "redis:6379"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   postgres:
@@ -23,5 +26,19 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   pgdata:
+  redisdata:
