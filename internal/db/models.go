@@ -424,8 +424,16 @@ type Notification struct {
 	// signal) and always set for "due_date_reached" (the scan outcome).
 	Compliant *bool               `json:"compliant,omitempty"`
 	Details   NotificationDetails `gorm:"type:jsonb;serializer:json" json:"details,omitempty"`
-	ReadAt    *time.Time          `gorm:"index:idx_notifications_dept_read,priority:2" json:"read_at,omitempty"`
-	CreatedAt time.Time           `gorm:"index" json:"created_at"`
+	// ScanRunID/ScannedAt record which scan produced this notification.
+	// "due_date_reached" always sets both (one targeted Trigger call is
+	// always exactly one ScanRun). "resurfaced" sets only ScannedAt (the
+	// flip time) — a resurfacing event can span servers checked in
+	// different scan runs, so there's no single ScanRunID to attribute it
+	// to.
+	ScanRunID *uint      `json:"scan_run_id,omitempty"`
+	ScannedAt *time.Time `json:"scanned_at,omitempty"`
+	ReadAt    *time.Time `gorm:"index:idx_notifications_dept_read,priority:2" json:"read_at,omitempty"`
+	CreatedAt time.Time  `gorm:"index" json:"created_at"`
 }
 
 // DomainSummaryFilter narrows ListDomainSummaries/ForDepartment — every

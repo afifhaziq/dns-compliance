@@ -272,6 +272,7 @@ type NotificationStore interface {
 	UnreadCountForDepartment(ctx context.Context, departmentID uint) (int, error)
 	GetNotification(ctx context.Context, id uint) (*Notification, error) // nil, nil if not found
 	MarkNotificationRead(ctx context.Context, id uint) error
+	DeleteNotification(ctx context.Context, id uint) error // dismiss; ownership is checked by the caller before invoking this
 
 	// HasRecentResurfacedNotification is the dedup check for the periodic
 	// resurfaced sweep: true if a "resurfaced" notification for

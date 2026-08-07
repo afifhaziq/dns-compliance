@@ -260,6 +260,11 @@ export type Notification = {
   type: 'resurfaced' | 'due_date_reached'
   compliant?: boolean
   details?: Record<string, unknown>
+  // scan_run_id is only set for "due_date_reached" (one targeted Trigger
+  // call is always exactly one ScanRun); "resurfaced" can span servers
+  // checked in different runs, so it only carries scanned_at (the flip time).
+  scan_run_id?: number
+  scanned_at?: string
   read_at?: string
   created_at: string
 }

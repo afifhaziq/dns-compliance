@@ -74,35 +74,60 @@ func (h *Handlers) UnreadNotificationCount(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, map[string]int{"count": count})
 }
 
-// MarkNotificationRead — PATCH /api/notifications/{id}/read. 404s (not
-// 403) for a notification owned by another department, matching the
-// requireDomainOwnership convention used by /api/results etc. — avoids
-// confirming the notification exists to a department that can't see it.
+// ownedNotificationID parses the {id} URL param and 404s (not 403) unless
+// it belongs to the caller's own department (or the caller is admin) —
+// matching the requireDomainOwnership convention used by /api/results etc.,
+// so a department can't confirm another department's notification exists.
+// Returns ok=false after already writing a response.
+func (h *Handlers) ownedNotificationID(w http.ResponseWriter, r *http.Request, user *db.User) (id uint, ok bool) {
+	parsed, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return 0, false
+	}
+	n, err := h.store.GetNotification(r.Context(), uint(parsed))
+	if err != nil {
+		writeInternalError(w, err)
+		return 0, false
+	}
+	if n == nil || (!user.IsAdmin && (user.DepartmentID == nil || *user.DepartmentID != n.DepartmentID)) {
+		writeError(w, http.StatusNotFound, "notification not found")
+		return 0, false
+	}
+	return uint(parsed), true
+}
+
+// MarkNotificationRead — PATCH /api/notifications/{id}/read.
 func (h *Handlers) MarkNotificationRead(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "not authenticated")
 		return
 	}
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid id")
+	id, ok := h.ownedNotificationID(w, r, user)
+	if !ok {
 		return
 	}
-	n, err := h.store.GetNotification(r.Context(), uint(id))
-	if err != nil {
+	if err := h.store.MarkNotificationRead(r.Context(), id); err != nil {
 		writeInternalError(w, err)
 		return
 	}
-	if n == nil {
-		writeError(w, http.StatusNotFound, "notification not found")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DeleteNotification — DELETE /api/notifications/{id}, dismisses one
+// notification. Same 404-not-403 ownership check as MarkNotificationRead.
+func (h *Handlers) DeleteNotification(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
 		return
 	}
-	if !user.IsAdmin && (user.DepartmentID == nil || *user.DepartmentID != n.DepartmentID) {
-		writeError(w, http.StatusNotFound, "notification not found")
+	id, ok := h.ownedNotificationID(w, r, user)
+	if !ok {
 		return
 	}
-	if err := h.store.MarkNotificationRead(r.Context(), uint(id)); err != nil {
+	if err := h.store.DeleteNotification(r.Context(), id); err != nil {
 		writeInternalError(w, err)
 		return
 	}

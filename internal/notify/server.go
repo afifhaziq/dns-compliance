@@ -121,8 +121,16 @@ func (s *Server) handleDueDateCheck(ctx context.Context, t *asynq.Task) error {
 
 	compliant := len(results) > 0
 	breakdown := make([]map[string]any, 0, len(results))
+	// All of results shares one ScanRunID (a single targeted Trigger call
+	// produces exactly one ScanRun) — scannedAt takes the latest ScannedAt
+	// across servers as "when the scan finished", not the first server's.
+	scanRunID := results[0].ScanRunID
+	scannedAt := results[0].ScannedAt
 	for _, r := range results {
 		compliant = compliant && r.Compliant
+		if r.ScannedAt.After(scannedAt) {
+			scannedAt = r.ScannedAt
+		}
 		breakdown = append(breakdown, map[string]any{
 			"dns_server_id":   r.DNSServerID,
 			"dns_server_name": r.DNSServer.Name,
@@ -137,6 +145,8 @@ func (s *Server) handleDueDateCheck(ctx context.Context, t *asynq.Task) error {
 		Type:         "due_date_reached",
 		Compliant:    &compliant,
 		Details:      db.NotificationDetails{"servers": breakdown},
+		ScanRunID:    &scanRunID,
+		ScannedAt:    &scannedAt,
 	})
 	return err
 }
@@ -170,12 +180,16 @@ func (s *Server) handleResurfacedSweep(ctx context.Context, _ *asynq.Task) error
 			if err != nil || u == nil {
 				continue
 			}
+			resurfacedAt := d.ResurfacedAt
 			if _, err := s.store.CreateNotification(ctx, db.Notification{
 				DepartmentID: dept.ID,
 				URLID:        u.ID,
 				URLValue:     d.URLValue,
 				Type:         "resurfaced",
 				Details:      db.NotificationDetails{"affected_servers": d.AffectedServers},
+				// No single ScanRunID: a resurfacing event can span servers
+				// checked in different scan runs. ScannedAt is the flip time.
+				ScannedAt: &resurfacedAt,
 			}); err != nil {
 				log.Printf("notify: create resurfaced notification for %s/%d: %v", d.URLValue, dept.ID, err)
 			}

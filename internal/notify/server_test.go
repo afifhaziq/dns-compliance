@@ -74,8 +74,10 @@ func TestHandleDueDateCheck_CompliantOutcome(t *testing.T) {
 	u, _ := store.AddURLToWatchlist(ctx, dept.ID, "due-check-compliant.com")
 	srv, _ := store.CreateDNSServer(ctx, db.DNSServer{ISP: "DueISP", Name: "Due DNS", Address: "9.9.9.3:53", Protocol: "udp"})
 
+	var wantRunID uint
 	trig := &fakeTriggerer{afterTrigger: func() {
 		run, _ := store.CreateScanRun(ctx, "due-date-check")
+		wantRunID = run.ID
 		_ = store.InsertResult(ctx, db.ScanResult{
 			ScanRunID: run.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
 			Compliant: true, ScannedAt: time.Now(),
@@ -108,6 +110,12 @@ func TestHandleDueDateCheck_CompliantOutcome(t *testing.T) {
 	}
 	if n.Compliant == nil || !*n.Compliant {
 		t.Fatalf("expected compliant=true, got %+v", n.Compliant)
+	}
+	if n.ScanRunID == nil || *n.ScanRunID != wantRunID {
+		t.Fatalf("expected scan_run_id %d, got %+v", wantRunID, n.ScanRunID)
+	}
+	if n.ScannedAt == nil || n.ScannedAt.IsZero() {
+		t.Fatal("expected a non-zero scanned_at")
 	}
 }
 
@@ -208,9 +216,16 @@ func TestHandleResurfacedSweep_NotifiesOnceAndDedupsOnRerun(t *testing.T) {
 	if err := s.handleResurfacedSweep(ctx, task); err != nil {
 		t.Fatalf("handleResurfacedSweep (first run): %v", err)
 	}
-	_, total, _ := store.ListNotificationsForDepartment(ctx, 1, 10, dept.ID)
+	notifications, total, _ := store.ListNotificationsForDepartment(ctx, 1, 10, dept.ID)
 	if total != 1 {
 		t.Fatalf("expected 1 notification after first sweep, got %d", total)
+	}
+	n := notifications[0]
+	if n.ScanRunID != nil {
+		t.Fatalf("expected no scan_run_id for a resurfaced notification, got %+v", n.ScanRunID)
+	}
+	if n.ScannedAt == nil || !n.ScannedAt.Equal(t2) {
+		t.Fatalf("expected scanned_at %v (the flip time), got %+v", t2, n.ScannedAt)
 	}
 
 	if err := s.handleResurfacedSweep(ctx, task); err != nil {

@@ -1525,6 +1525,10 @@ func (s *postgresStore) MarkNotificationRead(ctx context.Context, id uint) error
 		Update("read_at", time.Now()).Error
 }
 
+func (s *postgresStore) DeleteNotification(ctx context.Context, id uint) error {
+	return s.db.WithContext(ctx).Delete(&Notification{}, id).Error
+}
+
 func (s *postgresStore) HasRecentResurfacedNotification(ctx context.Context, departmentID uint, urlValue string, sinceResurfacedAt time.Time) (bool, error) {
 	var count int64
 	err := s.db.WithContext(ctx).Model(&Notification{}).

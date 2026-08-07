@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { ChevronLeftIcon, ChevronRightIcon, RefreshCwIcon, CopyIcon, CheckIcon, Image as ImageIcon } from 'lucide-react'
 import { Breadcrumbs } from '@/components/breadcrumbs'
@@ -37,9 +37,13 @@ import {
 } from '@/lib/heatmap-year'
 
 export const Route = createFileRoute('/domain/$url')({
-  validateSearch: (search: Record<string, unknown>): { tab: 'history' | 'overview'; server?: string } => ({
+  // run is deep-linked from the notification bell (a due_date_reached
+  // notification's scan_run_id) — auto-expands and jumps to that scan run
+  // in the History tab once results load, see the `run` useEffect below.
+  validateSearch: (search: Record<string, unknown>): { tab: 'history' | 'overview'; server?: string; run?: number } => ({
     tab: search.tab === 'history' ? 'history' : 'overview',
     server: typeof search.server === 'string' ? search.server : undefined,
+    run: typeof search.run === 'number' ? search.run : undefined,
   }),
   component: URLHistoryPage,
 })
@@ -254,7 +258,7 @@ const heatmapTooltipDateFmt = new Intl.DateTimeFormat('en-US', {
 
 function URLHistoryPage() {
   const { url } = Route.useParams()
-  const { tab, server } = Route.useSearch()
+  const { tab, server, run } = Route.useSearch()
   const hostname = useMemo(() => { try { return new URL(url).hostname } catch { return url } }, [url])
 
   const [results, setResults] = useState<ScanResult[]>([])
@@ -521,6 +525,23 @@ function URLHistoryPage() {
       return next
     })
   }, [])
+
+  // Deep-linked from the notification bell (?tab=history&run=<scanRunId>):
+  // jump to the page containing that scan run, auto-expand it, and scroll
+  // it into view. Runs once per `run` value (jumpedToRun guards against
+  // re-firing if the user manually collapses the row afterward).
+  const jumpedToRun = useRef<number | null>(null)
+  useEffect(() => {
+    if (run == null || groups.length === 0 || jumpedToRun.current === run) return
+    const index = groups.findIndex(g => g.scanRunId === run)
+    if (index === -1) return
+    jumpedToRun.current = run
+    setPage(Math.floor(index / PAGE_SIZE) + 1)
+    setExpandedRuns(prev => new Set(prev).add(run))
+    requestAnimationFrame(() => {
+      document.getElementById(`scan-run-${run}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    })
+  }, [run, groups])
 
   const yearNav = (
     <div className="heatmap-year-nav pr-5">
@@ -915,6 +936,7 @@ function URLHistoryPage() {
                     return (
                       <Fragment key={g.scanRunId}>
                         <TableRow
+                          id={`scan-run-${g.scanRunId}`}
                           className="scan-group-row"
                           onClick={() => toggleRun(g.scanRunId)}
                           role="button"

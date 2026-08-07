@@ -1212,6 +1212,16 @@ func (m *fullMockStore) MarkNotificationRead(_ context.Context, id uint) error {
 	return nil
 }
 
+func (m *fullMockStore) DeleteNotification(_ context.Context, id uint) error {
+	for i, n := range m.notifications {
+		if n.ID == id {
+			m.notifications = append(m.notifications[:i], m.notifications[i+1:]...)
+			return nil
+		}
+	}
+	return nil
+}
+
 func (m *fullMockStore) HasRecentResurfacedNotification(_ context.Context, departmentID uint, urlValue string, since time.Time) (bool, error) {
 	for _, n := range m.notifications {
 		if n.DepartmentID == departmentID && n.URLValue == urlValue && n.Type == "resurfaced" && !n.CreatedAt.Before(since) {
@@ -3448,5 +3458,51 @@ func TestMarkNotificationRead_Success(t *testing.T) {
 	}
 	if store.notifications[0].ReadAt == nil {
 		t.Fatal("expected ReadAt to be set")
+	}
+}
+
+func TestDeleteNotification_404sForOtherDepartment(t *testing.T) {
+	deptA, deptB := uint(1), uint(2)
+	store := &fullMockStore{
+		notifications: []db.Notification{
+			{ID: 1, DepartmentID: deptB, URLValue: "b.com", Type: "resurfaced"},
+		},
+	}
+	cookie := deptCookie(store, deptA)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/notifications/1", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("want 404 for another department's notification, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.notifications) != 1 {
+		t.Fatalf("expected the other department's notification to survive, got %d remaining", len(store.notifications))
+	}
+}
+
+func TestDeleteNotification_Success(t *testing.T) {
+	deptA := uint(1)
+	store := &fullMockStore{
+		notifications: []db.Notification{
+			{ID: 1, DepartmentID: deptA, URLValue: "a.com", Type: "resurfaced"},
+		},
+	}
+	cookie := deptCookie(store, deptA)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/notifications/1", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.notifications) != 0 {
+		t.Fatalf("expected the notification to be deleted, got %d remaining", len(store.notifications))
 	}
 }

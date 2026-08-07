@@ -17,3 +17,7 @@ export async function fetchNotifications(page = 1, pageSize = 20): Promise<Notif
 export async function markNotificationRead(id: number): Promise<void> {
   await api.patch<void>(`/notifications/${id}/read`, {})
 }
+
+export async function deleteNotification(id: number): Promise<void> {
+  await api.delete<void>(`/notifications/${id}`)
+}

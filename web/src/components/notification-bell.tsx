@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bell } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
-import { fetchUnreadCount, fetchNotifications, markNotificationRead } from '@/api/notifications'
+import { BellIcon } from '@/components/ui/bell'
+import { XIcon } from '@/components/ui/x'
+import { relativeTime } from '@/lib/relative-time'
+import { fetchUnreadCount, fetchNotifications, markNotificationRead, deleteNotification } from '@/api/notifications'
 import type { Notification } from '@/api/types'
 
 const POLL_MS = 30000
@@ -53,7 +55,21 @@ export function NotificationBell() {
         // best-effort — the badge will self-correct on the next poll
       }
     }
-    navigate({ to: '/domain/$url', params: { url: n.url }, search: { tab: 'overview' } })
+    // run is only present on due_date_reached (resurfaced has no single
+    // scan run — see Notification.scan_run_id's doc comment); the History
+    // tab treats a missing run as "just open History", no auto-expand.
+    navigate({ to: '/domain/$url', params: { url: n.url }, search: { tab: 'history', run: n.scan_run_id } })
+  }
+
+  const handleDelete = async (e: React.MouseEvent, n: Notification) => {
+    e.stopPropagation()
+    setItems(prev => prev.filter(item => item.id !== n.id))
+    if (!n.read_at) setUnread(c => Math.max(0, c - 1))
+    try {
+      await deleteNotification(n.id)
+    } catch {
+      // best-effort — a failed dismiss just reappears on the next open
+    }
   }
 
   return (
@@ -65,7 +81,7 @@ export function NotificationBell() {
         onClick={toggleOpen}
         style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36 }}
       >
-        <Bell size={18} />
+        <BellIcon size={18} />
         {unread > 0 && (
           <span
             style={{
@@ -88,20 +104,37 @@ export function NotificationBell() {
             <p style={{ padding: 16, fontSize: '0.85rem', opacity: 0.6 }}>No notifications yet.</p>
           ) : (
             items.map(n => (
-              <button
+              <div
                 key={n.id}
-                type="button"
-                onClick={() => handleClick(n)}
-                className="block w-full text-left px-3 py-2 text-sm bg-transparent border-none cursor-pointer font-[inherit] hover:bg-stone-panel transition-colors duration-100"
+                className="flex items-stretch bg-transparent hover:bg-stone-panel transition-colors duration-100"
                 style={{ borderBottom: '1px solid var(--stone-border, rgba(0,0,0,0.08))', opacity: n.read_at ? 0.6 : 1 }}
               >
-                <div style={{ fontWeight: 600 }}>{n.url}</div>
-                <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>
-                  {n.type === 'resurfaced'
-                    ? 'Resurfaced — blocked domain is resolving again'
-                    : `Due-date scan: ${n.compliant ? 'compliant' : 'still violating'}`}
-                </div>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => handleClick(n)}
+                  className="flex-1 min-w-0 text-left px-3 py-2 text-sm bg-transparent border-none cursor-pointer font-[inherit]"
+                >
+                  <div style={{ fontWeight: 600 }}>{n.url}</div>
+                  <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+                    {n.type === 'resurfaced'
+                      ? 'Resurfaced — blocked domain is resolving again'
+                      : `Due-date scan: ${n.compliant ? 'compliant' : 'still violating'}`}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', opacity: 0.5, marginTop: 2 }}>
+                    {n.scan_run_id != null && `Scan #${n.scan_run_id} · `}
+                    {relativeTime(n.scanned_at ?? n.created_at)}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={e => handleDelete(e, n)}
+                  aria-label={`Dismiss notification for ${n.url}`}
+                  className="screenshot-icon-btn"
+                  style={{ alignSelf: 'center', marginRight: 8, flexShrink: 0 }}
+                >
+                  <XIcon size={14} />
+                </button>
+              </div>
             ))
           )}
         </div>
