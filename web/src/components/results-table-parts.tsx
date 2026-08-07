@@ -1,6 +1,39 @@
-// Shared building blocks for the Results page table (results.index.tsx) and
-// the domain History tab table (domain.$url.tsx) — kept in one place so the
-// two stay visually consistent instead of drifting via copy-paste.
+// Shared building blocks for the Results page table (results.index.tsx),
+// the domain History tab table (domain.$url.tsx), and the watchlist data
+// grid (urls.tsx) — kept in one place so they stay visually consistent
+// instead of drifting via copy-paste.
+
+import type { Column } from '@tanstack/react-table'
+import { ArrowUpIcon, ArrowDownIcon, ChevronsUpDownIcon } from 'lucide-react'
+
+// Minimal stand-in for reui's DataGridColumnHeader: that component pulls in
+// a full dropdown-menu (pin/move/visibility) tied to Next.js-specific paths
+// that this app doesn't use — this is just click-to-cycle-sort with an
+// indicator icon.
+export function SortableHeader<TData, TValue>({ column, title }: { column: Column<TData, TValue>; title: string }) {
+  const sorted = column.getIsSorted()
+  const cycleSort = () => {
+    if (sorted === 'asc') column.toggleSorting(true)
+    else if (sorted === 'desc') column.clearSorting()
+    else column.toggleSorting(false)
+  }
+  return (
+    <button
+      type="button"
+      className="inline-flex items-center gap-1 text-[11px] font-semibold tracking-[0.06em] uppercase text-stone-muted hover:text-foreground transition-colors duration-150 ease-snappy"
+      onClick={cycleSort}
+    >
+      {title}
+      {sorted === 'asc' ? (
+        <ArrowUpIcon className="w-3 h-3" />
+      ) : sorted === 'desc' ? (
+        <ArrowDownIcon className="w-3 h-3" />
+      ) : (
+        <ChevronsUpDownIcon className="w-3 h-3 opacity-40" />
+      )}
+    </button>
+  )
+}
 
 export function StatusDot({ compliant }: { compliant: boolean }) {
   return (

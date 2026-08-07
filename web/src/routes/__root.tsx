@@ -37,6 +37,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/animate-ui/components/radix/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
 
 /* ─── URL normalization (mirrors urlnorm.Normalize on the server) ──────────── */
 
@@ -142,31 +143,33 @@ function ScanSelectedDialog({
             />
 
             {showDropdown && (
-              <div
-                className="absolute left-0 right-0 z-50 rounded-lg border border-stone-border bg-background shadow-[0_4px_20px_rgba(0,0,0,0.12)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.4)] overflow-y-auto py-1"
+              <ScrollArea
+                className="absolute left-0 right-0 z-50 rounded-lg border border-stone-border bg-background shadow-[0_4px_20px_rgba(0,0,0,0.12)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.4)]"
                 style={{ top: 'calc(100% + 4px)', maxHeight: 220 }}
               >
-                {filtered.map(url => (
-                  <button
-                    key={url}
-                    type="button"
-                    onMouseDown={e => { e.preventDefault(); addChip(url) }}
-                    className="block w-full text-left px-3 py-[7px] text-sm text-foreground bg-transparent border-none cursor-pointer font-[inherit] hover:bg-stone-panel transition-colors duration-100"
-                  >
-                    {url}
-                  </button>
-                ))}
-                {showAddNew && (
-                  <button
-                    type="button"
-                    onMouseDown={e => { e.preventDefault(); addChip(inputText) }}
-                    className={`flex items-center gap-1.5 w-full text-left px-3 py-[7px] text-sm text-ink bg-transparent border-none cursor-pointer font-[inherit] hover:bg-stone-panel transition-colors duration-100${filtered.length > 0 ? ' border-t border-stone-border mt-1' : ''}`}
-                  >
-                    <Plus size={13} />
-                    Add "{inputText.trim()}"
-                  </button>
-                )}
-              </div>
+                <div className="py-1">
+                  {filtered.map(url => (
+                    <button
+                      key={url}
+                      type="button"
+                      onMouseDown={e => { e.preventDefault(); addChip(url) }}
+                      className="block w-full text-left px-3 py-[7px] text-sm text-foreground bg-transparent border-none cursor-pointer font-[inherit] hover:bg-stone-panel transition-colors duration-100"
+                    >
+                      {url}
+                    </button>
+                  ))}
+                  {showAddNew && (
+                    <button
+                      type="button"
+                      onMouseDown={e => { e.preventDefault(); addChip(inputText) }}
+                      className={`flex items-center gap-1.5 w-full text-left px-3 py-[7px] text-sm text-ink bg-transparent border-none cursor-pointer font-[inherit] hover:bg-stone-panel transition-colors duration-100${filtered.length > 0 ? ' border-t border-stone-border mt-1' : ''}`}
+                    >
+                      <Plus size={13} />
+                      Add "{inputText.trim()}"
+                    </button>
+                  )}
+                </div>
+              </ScrollArea>
             )}
           </div>
 

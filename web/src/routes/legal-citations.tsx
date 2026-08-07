@@ -8,9 +8,10 @@ import {
   fetchCitations, parseCitationPreview, createCitation, updateCitation, deleteCitation,
   fetchCategories, createCategory, updateCategory, deleteCategory,
   fetchElements, createElement, updateElement, deleteElement,
+  fetchSubElements, createSubElement, updateSubElement, deleteSubElement,
   formatParsedCitation,
 } from '@/api/legal'
-import type { Instrument, Citation, LegalCategory, LegalElement, LegalCitationParsed } from '@/api/types'
+import type { Instrument, Citation, LegalCategory, LegalElement, LegalSubElement, LegalCitationParsed } from '@/api/types'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/animate-ui/components/radix/dialog'
@@ -26,7 +27,7 @@ export const Route = createFileRoute('/legal-citations')({ component: LegalCitat
 
 /* ─── Tree model ─────────────────────────────────────────────────────────── */
 
-type LegalKind = 'instrument' | 'citation' | 'category' | 'element'
+type LegalKind = 'instrument' | 'citation' | 'category' | 'element' | 'subelement'
 
 type LegalTreeRow = {
   id: string
@@ -37,11 +38,12 @@ type LegalTreeRow = {
   citation?: Citation
   category?: LegalCategory
   element?: LegalElement
+  subElement?: LegalSubElement
   children?: LegalTreeRow[]
 }
 
-// Eagerly walks the whole Instrument -> Citation -> Category -> Element
-// hierarchy into one nested tree so it can be rendered as a single indented
+// Eagerly walks the whole Instrument -> Citation -> Category -> Element ->
+// SubElement hierarchy into one nested tree so it can be rendered as a single indented
 // table via getSubRows — a reference catalog like this is small enough that
 // loading it all up front (rather than lazy-fetching per expand) is simpler
 // and keeps expand/collapse instant.
@@ -53,8 +55,15 @@ async function loadTree(): Promise<LegalTreeRow[]> {
       const categories = await fetchCategories(cit.id)
       const categoryRows = await Promise.all(categories.map(async (cat): Promise<LegalTreeRow> => {
         const elements = await fetchElements(cat.id)
-        const elementRows: LegalTreeRow[] = elements.map(el => ({
-          id: `element-${el.id}`, kind: 'element', refId: el.id, label: el.name, element: el,
+        const elementRows: LegalTreeRow[] = await Promise.all(elements.map(async (el): Promise<LegalTreeRow> => {
+          const subElements = await fetchSubElements(el.id)
+          const subElementRows: LegalTreeRow[] = subElements.map(se => ({
+            id: `subelement-${se.id}`, kind: 'subelement', refId: se.id, label: se.name, subElement: se,
+          }))
+          return {
+            id: `element-${el.id}`, kind: 'element', refId: el.id, label: el.name, element: el,
+            children: subElementRows.length > 0 ? subElementRows : undefined,
+          }
         }))
         return {
           id: `category-${cat.id}`, kind: 'category', refId: cat.id, label: cat.name, category: cat,
@@ -74,10 +83,11 @@ async function loadTree(): Promise<LegalTreeRow[]> {
 }
 
 const DELETE_DESCRIPTIONS: Record<LegalKind, string> = {
-  instrument: 'Cascades to every citation, category, element, and recorded offence under this law.',
-  citation: 'Cascades to every category, element, and recorded offence under this citation.',
-  category: 'Cascades to every element and recorded offence under this category.',
-  element: 'Removes this element from any domain currently tagged with it.',
+  instrument: 'Cascades to every citation, category, element, sub-element, and recorded offence under this law.',
+  citation: 'Cascades to every category, element, sub-element, and recorded offence under this citation.',
+  category: 'Cascades to every element, sub-element, and recorded offence under this category.',
+  element: 'Cascades to every sub-element and recorded offence under this element.',
+  subelement: 'Deletes the recorded offence of any domain tagged with this sub-element.',
 }
 
 /* ─── Dialogs ─────────────────────────────────────────────────────────────── */
@@ -463,14 +473,14 @@ function ElementFormDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!category) return
+    if (!editing && !category) return
     if (!name.trim()) { setError('Name is required'); return }
     setLoading(true)
     setError(null)
     try {
       if (editing) {
         await updateElement(editing.id, name.trim())
-      } else {
+      } else if (category) {
         await createElement(category.id, name.trim())
       }
       reset()
@@ -521,6 +531,81 @@ function ElementFormDialog({
   )
 }
 
+function SubElementFormDialog({
+  open, onClose, onSaved, element, editing,
+}: { open: boolean; onClose: () => void; onSaved: () => void; element: LegalElement | null; editing: LegalSubElement | null }) {
+  const [name, setName] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const reset = () => { setName(''); setError(null) }
+  const handleClose = () => { reset(); onClose() }
+
+  useEffect(() => {
+    if (!open) return
+    if (editing) { setName(editing.name); setError(null) } else { reset() }
+  }, [open, editing])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editing && !element) return
+    if (!name.trim()) { setError('Name is required'); return }
+    setLoading(true)
+    setError(null)
+    try {
+      if (editing) {
+        await updateSubElement(editing.id, name.trim())
+      } else if (element) {
+        await createSubElement(element.id, name.trim())
+      }
+      reset()
+      onSaved()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to ${editing ? 'save' : 'add'} sub-element`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: 420 }}>
+        <DialogHeader>
+          <DialogTitle>{editing ? 'Edit Sub-Element' : 'Add Sub-Element'}</DialogTitle>
+          <DialogDescription>
+            {element ? `Sub-category of "${element.name}".` : ''} Optional finer-grained qualifier one level below Element.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit}>
+          <div className="form-field">
+            <label className="form-label" htmlFor="subelement-name-input">Name</label>
+            <input
+              id="subelement-name-input"
+              className="form-input"
+              type="text"
+              placeholder="e.g. Direct Threat"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              autoFocus
+              disabled={loading}
+            />
+          </div>
+          {error && <p className="form-error">{error}</p>}
+          <DialogFooter>
+            <button type="button" className="btn-ghost" onClick={handleClose} disabled={loading}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={loading}>
+              {editing ? (loading ? 'Saving…' : 'Save Changes') : (loading ? 'Adding…' : 'Add Sub-Element')}
+            </button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 /* ─── Page ────────────────────────────────────────────────────────────────── */
 
 function LegalCitationsPage() {
@@ -535,10 +620,12 @@ function LegalCitationsPage() {
   const [addCitationFor, setAddCitationFor] = useState<Instrument | null>(null)
   const [addCategoryFor, setAddCategoryFor] = useState<Citation | null>(null)
   const [addElementFor, setAddElementFor] = useState<LegalCategory | null>(null)
+  const [addSubElementFor, setAddSubElementFor] = useState<LegalElement | null>(null)
   const [editInstrumentTarget, setEditInstrumentTarget] = useState<Instrument | null>(null)
   const [editCitationTarget, setEditCitationTarget] = useState<Citation | null>(null)
   const [editCategoryTarget, setEditCategoryTarget] = useState<LegalCategory | null>(null)
   const [editElementTarget, setEditElementTarget] = useState<LegalElement | null>(null)
+  const [editSubElementTarget, setEditSubElementTarget] = useState<LegalSubElement | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ kind: LegalKind; id: number; label: string } | null>(null)
 
   const load = useCallback(async () => {
@@ -562,6 +649,7 @@ function LegalCitationsPage() {
       case 'citation': await deleteCitation(deleteTarget.id); break
       case 'category': await deleteCategory(deleteTarget.id); break
       case 'element': await deleteElement(deleteTarget.id); break
+      case 'subelement': await deleteSubElement(deleteTarget.id); break
     }
     setDeleteTarget(null)
     load()
@@ -607,7 +695,7 @@ function LegalCitationsPage() {
                 )}
               </div>
             )}
-            {(r.kind === 'category' || r.kind === 'element') && (
+            {(r.kind === 'category' || r.kind === 'element' || r.kind === 'subelement') && (
               <span>{r.label}</span>
             )}
           </div>
@@ -647,6 +735,11 @@ function LegalCitationsPage() {
                 + Element
               </button>
             )}
+            {r.kind === 'element' && r.element && (
+              <button type="button" className="btn-ghost" style={{ backgroundColor: 'var(--stone-panel)' }} onClick={() => setAddSubElementFor(r.element!)}>
+                + Sub-Element
+              </button>
+            )}
             <button
               type="button"
               className="screenshot-icon-btn"
@@ -655,6 +748,7 @@ function LegalCitationsPage() {
                 else if (r.kind === 'citation' && r.citation) setEditCitationTarget(r.citation)
                 else if (r.kind === 'category' && r.category) setEditCategoryTarget(r.category)
                 else if (r.kind === 'element' && r.element) setEditElementTarget(r.element)
+                else if (r.kind === 'subelement' && r.subElement) setEditSubElementTarget(r.subElement)
               }}
               aria-label={`Edit ${r.label}`}
               title="Edit"
@@ -744,10 +838,14 @@ function LegalCitationsPage() {
       {/* category is null here (not editCategoryTarget — unrelated state for
           the edit-category dialog above): LegalElement doesn't carry its
           parent Category, and the update payload doesn't need it either
-          (updateElement only takes id+name) — this only affects the
-          dialog's "Sub-category of ..." description line, which is simply
-          omitted for the edit case. */}
+          (updateElement only takes id+name). handleSubmit only requires
+          category when creating (editing is falsy), so this only affects
+          the dialog's "Sub-category of ..." description line, which is
+          simply omitted for the edit case. */}
       <ElementFormDialog open={editElementTarget !== null} onClose={() => setEditElementTarget(null)} onSaved={load} category={null} editing={editElementTarget} />
+
+      <SubElementFormDialog open={addSubElementFor !== null} onClose={() => setAddSubElementFor(null)} onSaved={load} element={addSubElementFor} editing={null} />
+      <SubElementFormDialog open={editSubElementTarget !== null} onClose={() => setEditSubElementTarget(null)} onSaved={load} element={null} editing={editSubElementTarget} />
 
       <DeleteConfirmDialog
         open={deleteTarget !== null}

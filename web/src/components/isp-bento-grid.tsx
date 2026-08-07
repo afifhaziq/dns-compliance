@@ -141,7 +141,7 @@ function ISPCard({ data, logoUrl }: { data: ISPCardData; logoUrl?: string }) {
         )}
       </div>
 
-      {timing.with_order_date_count > 0 && (
+      {timing.with_due_date_count > 0 && (
         <div className="bento-stat-row">
           <div>
             <p className="server-count">{timing.median_days_to_block.toFixed(1)} days</p>

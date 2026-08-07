@@ -167,6 +167,7 @@ body {
     <span class="url-text">{{URL}}</span>
   </div>
   <div class="clock-chip">{{TIMESTAMP}}</div>
+  {{ISP_CHIP}}
   <div class="menu-btn">&#8942;</div>
 </div>
 <div class="page">
@@ -175,26 +176,58 @@ body {
 </body>
 </html>`
 
-// addBrowserFrame composites pageBytes into a Chrome-like browser mockup by
-// navigating to a locally generated HTML page and screenshotting it. capturedAt
-// is stamped into the mockup as a system-tray-style clock chip — burning the
-// capture time into the evidence image itself, the same purpose served by
-// manually screenshotting the OS taskbar clock, without needing one.
-func addBrowserFrame(chromeCtx context.Context, pageBytes []byte, rawURL string, capturedAt time.Time) ([]byte, error) {
+// ispDNSLabel joins isp and dnsAddress with " · ", falling back to whichever
+// single value is set, or "" when both are empty (system resolver — no
+// second chip is rendered in that case).
+func ispDNSLabel(isp, dnsAddress string) string {
+	switch {
+	case isp != "" && dnsAddress != "":
+		return isp + " · " + dnsAddress
+	case isp != "":
+		return isp
+	default:
+		return dnsAddress
+	}
+}
+
+// buildFrameHTML renders the browser-mockup HTML with the page screenshot,
+// timestamp chip, and (when isp/dnsAddress carry a value) a second chip
+// identifying which ISP/DNS server resolved this capture. Pure string
+// templating — no chromedp — so it's unit-testable without Chrome.
+func buildFrameHTML(pageBytes []byte, rawURL string, capturedAt time.Time, isp, dnsAddress string) string {
 	hostname := hostnameFromURL(rawURL)
-	htmlContent := strings.NewReplacer(
+	ispChip := ""
+	if label := ispDNSLabel(isp, dnsAddress); label != "" {
+		ispChip = `<div class="clock-chip">` + html.EscapeString(label) + `</div>`
+	}
+	return strings.NewReplacer(
 		"{{HOSTNAME}}", html.EscapeString(hostname),
 		"{{URL}}", html.EscapeString(rawURL),
 		"{{TIMESTAMP}}", html.EscapeString(capturedAt.In(malaysiaTime).Format("2006-01-02 15:04:05 MST")),
+		"{{ISP_CHIP}}", ispChip,
 		"{{BASE64}}", base64.StdEncoding.EncodeToString(pageBytes),
 	).Replace(browserHTML)
+}
 
+// Frame composites pageBytes into a Chrome-like browser mockup by navigating
+// to a locally generated HTML page and screenshotting it. capturedAt is
+// stamped into the mockup as a system-tray-style clock chip. isp/dnsAddress,
+// when non-empty, render a second chip identifying which ISP/DNS server
+// produced this capture — pass "" for both when there's no DNS server
+// context (system resolver). chromeCtx is a chromedp tab context; callers
+// may reuse the same one across multiple Frame calls since this only
+// navigates to a local data: URL, never the target site.
+func Frame(chromeCtx context.Context, pageBytes []byte, rawURL string, capturedAt time.Time, isp, dnsAddress string) ([]byte, error) {
+	htmlContent := buildFrameHTML(pageBytes, rawURL, capturedAt, isp, dnsAddress)
 	dataURL := "data:text/html;base64," + base64.StdEncoding.EncodeToString([]byte(htmlContent))
 
 	var buf []byte
 	if err := chromedp.Run(chromeCtx,
 		chromedp.Navigate(dataURL),
 		chromedp.ActionFunc(func(ctx context.Context) error {
+			if err := emulation.ClearDeviceMetricsOverride().Do(ctx); err != nil {
+				return err
+			}
 			_, _, contentSize, _, _, _, err := page.GetLayoutMetrics().Do(ctx)
 			if err != nil {
 				return err

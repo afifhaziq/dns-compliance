@@ -31,10 +31,8 @@ func (c *asynqQueueClient) DeleteTask(queue, id string) error {
 }
 
 // Enqueuer schedules/cancels the one-shot due-date-reached task. Called from
-// the PATCH /api/urls/{id} handler whenever DepartmentURL.OrderedAt changes
-// — see internal/server's dueDateRescheduler.
-// TODO(url-compliance-case-fields): once that branch's OrderedAt -> DueDate
-// rename merges, this comment (and the callers below) should say DueDate.
+// the PATCH /api/urls/{id} handler whenever URL.DueDate changes — see
+// internal/server's dueDateRescheduler.
 type Enqueuer struct {
 	q queueClient
 }

@@ -807,49 +807,123 @@ func TestListWatchedURLsDeduplicatesAcrossDepartments(t *testing.T) {
 	}
 }
 
-func TestSetURLOrderedAt(t *testing.T) {
+func TestUpdateURLCaseFields_DueDate(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
 	dept, _ := s.CreateDepartment(ctx, "TestDept4")
 	u, _ := s.AddURLToWatchlist(ctx, dept.ID, "example.com")
 
-	orderedAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	found, err := s.SetURLOrderedAt(ctx, dept.ID, u.ID, &orderedAt)
+	dueDate := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	duePtr := &dueDate
+	found, err := s.UpdateURLCaseFields(ctx, dept.ID, u.ID, db.URLCaseFields{DueDate: &duePtr})
 	if err != nil || !found {
-		t.Fatalf("SetURLOrderedAt(set): found=%v err=%v", found, err)
+		t.Fatalf("UpdateURLCaseFields(set due_date): found=%v err=%v", found, err)
 	}
 
 	entries, _ := s.ListDepartmentURLs(ctx, dept.ID)
-	if len(entries) != 1 || entries[0].OrderedAt == nil || !entries[0].OrderedAt.Equal(orderedAt) {
-		t.Fatalf("expected ordered_at to be set, got %+v", entries)
+	if len(entries) != 1 || entries[0].DueDate == nil || !entries[0].DueDate.Equal(dueDate) {
+		t.Fatalf("expected due_date to be set, got %+v", entries)
 	}
 
 	// Clear it
-	found, err = s.SetURLOrderedAt(ctx, dept.ID, u.ID, nil)
+	var nilTime *time.Time
+	found, err = s.UpdateURLCaseFields(ctx, dept.ID, u.ID, db.URLCaseFields{DueDate: &nilTime})
 	if err != nil || !found {
-		t.Fatalf("SetURLOrderedAt(clear): found=%v err=%v", found, err)
+		t.Fatalf("UpdateURLCaseFields(clear due_date): found=%v err=%v", found, err)
 	}
 	entries, _ = s.ListDepartmentURLs(ctx, dept.ID)
-	if len(entries) != 1 || entries[0].OrderedAt != nil {
-		t.Fatalf("expected ordered_at to be cleared, got %+v", entries)
+	if len(entries) != 1 || entries[0].DueDate != nil {
+		t.Fatalf("expected due_date to be cleared, got %+v", entries)
 	}
 }
 
-func TestSetURLOrderedAtNotOnWatchlist(t *testing.T) {
+func TestUpdateURLCaseFields_CaseMetadata(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	dept, _ := s.CreateDepartment(ctx, "TestDept6")
+	reqDept, _ := s.CreateDepartment(ctx, "RequestingDept6")
+	agency, _ := s.CreateAgency(ctx, "MCMC")
+	u, _ := s.AddURLToWatchlist(ctx, dept.ID, "casefields.com")
+
+	ref, status := "REF-001", "requested"
+	agencyIDPtr, reqDeptIDPtr := &agency.ID, &reqDept.ID
+	found, err := s.UpdateURLCaseFields(ctx, dept.ID, u.ID, db.URLCaseFields{
+		AgencyID: &agencyIDPtr, ReferenceNumber: &ref, RequestingDeptID: &reqDeptIDPtr, Status: &status,
+	})
+	if err != nil || !found {
+		t.Fatalf("UpdateURLCaseFields(case metadata): found=%v err=%v", found, err)
+	}
+
+	entries, _ := s.ListDepartmentURLs(ctx, dept.ID)
+	if len(entries) != 1 {
+		t.Fatalf("want 1 entry, got %d", len(entries))
+	}
+	e := entries[0]
+	if e.AgencyName != agency.Name || e.ReferenceNumber != ref || e.RequestingDeptName != reqDept.Name || e.Status != status {
+		t.Fatalf("expected case metadata to be set, got %+v", e)
+	}
+
+	// Updating only Status must not clobber the other fields already set.
+	newStatus := "uplift"
+	found, err = s.UpdateURLCaseFields(ctx, dept.ID, u.ID, db.URLCaseFields{Status: &newStatus})
+	if err != nil || !found {
+		t.Fatalf("UpdateURLCaseFields(status only): found=%v err=%v", found, err)
+	}
+	entries, _ = s.ListDepartmentURLs(ctx, dept.ID)
+	e = entries[0]
+	if e.Status != newStatus {
+		t.Fatalf("expected status to be updated, got %q", e.Status)
+	}
+	if e.AgencyName != agency.Name || e.ReferenceNumber != ref || e.RequestingDeptName != reqDept.Name {
+		t.Fatalf("expected other case fields to remain untouched, got %+v", e)
+	}
+}
+
+func TestUpdateURLCaseFields_NotOnWatchlist(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
 	dept, _ := s.CreateDepartment(ctx, "TestDept5")
 	u, _ := s.CreateURL(ctx, "notlinked2.com")
 
-	orderedAt := time.Now()
-	found, err := s.SetURLOrderedAt(ctx, dept.ID, u.ID, &orderedAt)
+	dueDate := time.Now()
+	duePtr := &dueDate
+	found, err := s.UpdateURLCaseFields(ctx, dept.ID, u.ID, db.URLCaseFields{DueDate: &duePtr})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if found {
 		t.Fatal("expected found=false for URL not on watchlist")
+	}
+}
+
+// TestUpdateURLCaseFields_VisibleToOtherWatchingDepartment proves case
+// metadata is global per-URL, not siloed per department: department A's
+// edit must be visible to department B, which also watches the same URL.
+func TestUpdateURLCaseFields_VisibleToOtherWatchingDepartment(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	deptA, _ := s.CreateDepartment(ctx, "DeptA")
+	deptB, _ := s.CreateDepartment(ctx, "DeptB")
+	u, _ := s.AddURLToWatchlist(ctx, deptA.ID, "shared-case.com")
+	if _, err := s.AddURLToWatchlist(ctx, deptB.ID, "shared-case.com"); err != nil {
+		t.Fatalf("AddURLToWatchlist(deptB): %v", err)
+	}
+
+	status := "uplift"
+	if _, err := s.UpdateURLCaseFields(ctx, deptA.ID, u.ID, db.URLCaseFields{Status: &status}); err != nil {
+		t.Fatalf("UpdateURLCaseFields(deptA): %v", err)
+	}
+
+	entriesB, err := s.ListDepartmentURLs(ctx, deptB.ID)
+	if err != nil {
+		t.Fatalf("ListDepartmentURLs(deptB): %v", err)
+	}
+	if len(entriesB) != 1 || entriesB[0].Status != status {
+		t.Fatalf("expected deptB to see deptA's edit, got %+v", entriesB)
 	}
 }
 
@@ -863,29 +937,30 @@ func TestISPComplianceTiming_BlockedAndStillOpen(t *testing.T) {
 
 	blocked, _ := s.AddURLToWatchlist(ctx, dept.ID, "blocked.com")
 	stillOpen, _ := s.AddURLToWatchlist(ctx, dept.ID, "open.com")
-	noOrderDate, _ := s.AddURLToWatchlist(ctx, dept.ID, "noorder.com")
+	noDueDate, _ := s.AddURLToWatchlist(ctx, dept.ID, "noorder.com")
 
-	blockedOrder := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	openOrder := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	if _, err := s.SetURLOrderedAt(ctx, dept.ID, blocked.ID, &blockedOrder); err != nil {
-		t.Fatalf("SetURLOrderedAt blocked: %v", err)
+	blockedDueDate := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	openDueDate := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	blockedDueDatePtr, openDueDatePtr := &blockedDueDate, &openDueDate
+	if _, err := s.UpdateURLCaseFields(ctx, dept.ID, blocked.ID, db.URLCaseFields{DueDate: &blockedDueDatePtr}); err != nil {
+		t.Fatalf("UpdateURLCaseFields blocked: %v", err)
 	}
-	if _, err := s.SetURLOrderedAt(ctx, dept.ID, stillOpen.ID, &openOrder); err != nil {
-		t.Fatalf("SetURLOrderedAt open: %v", err)
+	if _, err := s.UpdateURLCaseFields(ctx, dept.ID, stillOpen.ID, db.URLCaseFields{DueDate: &openDueDatePtr}); err != nil {
+		t.Fatalf("UpdateURLCaseFields open: %v", err)
 	}
-	_ = noOrderDate
+	_ = noDueDate
 
-	// blocked.com: compliant 3 days after order
+	// blocked.com: compliant 3 days after its due date
 	if err := s.InsertResult(ctx, db.ScanResult{
 		ScanRunID: run.ID, URLID: blocked.ID, URLValue: blocked.URL, DNSServerID: srv.ID,
-		Compliant: true, ScannedAt: blockedOrder.AddDate(0, 0, 3),
+		Compliant: true, ScannedAt: blockedDueDate.AddDate(0, 0, 3),
 	}); err != nil {
 		t.Fatalf("InsertResult: %v", err)
 	}
 	// open.com: never compliant (still open) — no result inserted, or a non-compliant one
 	if err := s.InsertResult(ctx, db.ScanResult{
 		ScanRunID: run.ID, URLID: stillOpen.ID, URLValue: stillOpen.URL, DNSServerID: srv.ID,
-		Compliant: false, ScannedAt: openOrder.AddDate(0, 0, 1),
+		Compliant: false, ScannedAt: openDueDate.AddDate(0, 0, 1),
 	}); err != nil {
 		t.Fatalf("InsertResult: %v", err)
 	}
@@ -900,8 +975,8 @@ func TestISPComplianceTiming_BlockedAndStillOpen(t *testing.T) {
 	if timing.StillOpenCount != 1 {
 		t.Fatalf("expected 1 still-open domain, got %d", timing.StillOpenCount)
 	}
-	if timing.WithOrderDateCount != 2 {
-		t.Fatalf("expected 2 domains with an order date, got %d", timing.WithOrderDateCount)
+	if timing.WithDueDateCount != 2 {
+		t.Fatalf("expected 2 domains with a due date, got %d", timing.WithDueDateCount)
 	}
 	if timing.TotalDomains != 3 {
 		t.Fatalf("expected 3 total monitored domains, got %d", timing.TotalDomains)
@@ -928,27 +1003,28 @@ func TestISPComplianceTiming_NegativeClampedToZero(t *testing.T) {
 	run, _ := s.CreateScanRun(ctx, "manual")
 
 	u, _ := s.AddURLToWatchlist(ctx, dept.ID, "alreadyblocked.com")
-	// Compliant scan happened BEFORE the recorded order date.
+	// Compliant scan happened BEFORE the recorded due date.
 	early := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	orderedAt := early.AddDate(0, 0, 5)
+	dueDate := early.AddDate(0, 0, 5)
 	if err := s.InsertResult(ctx, db.ScanResult{
 		ScanRunID: run.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
 		Compliant: true, ScannedAt: early,
 	}); err != nil {
 		t.Fatalf("InsertResult: %v", err)
 	}
-	if _, err := s.SetURLOrderedAt(ctx, dept.ID, u.ID, &orderedAt); err != nil {
-		t.Fatalf("SetURLOrderedAt: %v", err)
+	dueDatePtr := &dueDate
+	if _, err := s.UpdateURLCaseFields(ctx, dept.ID, u.ID, db.URLCaseFields{DueDate: &dueDatePtr}); err != nil {
+		t.Fatalf("UpdateURLCaseFields: %v", err)
 	}
 
 	timing, err := s.ISPComplianceTiming(ctx, "TelCo2")
 	if err != nil {
 		t.Fatalf("ISPComplianceTiming: %v", err)
 	}
-	// The only compliant scan predates the order date, so it's still "open"
-	// from the order's perspective (no valid block event recorded after it).
+	// The only compliant scan predates the due date, so it's still "open"
+	// from the due date's perspective (no valid block event recorded after it).
 	if timing.StillOpenCount != 1 || timing.BlockedCount != 0 {
-		t.Fatalf("expected still-open (pre-order compliant scan doesn't count), got blocked=%d open=%d", timing.BlockedCount, timing.StillOpenCount)
+		t.Fatalf("expected still-open (pre-due-date compliant scan doesn't count), got blocked=%d open=%d", timing.BlockedCount, timing.StillOpenCount)
 	}
 }
 
@@ -1631,6 +1707,81 @@ func TestDeleteISPLogo(t *testing.T) {
 	}
 	if len(logos) != 0 {
 		t.Fatalf("expected 0 logos after delete, got %d", len(logos))
+	}
+}
+
+func TestListAndCreateAgencies(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := s.CreateAgency(ctx, "MCMC"); err != nil {
+		t.Fatalf("CreateAgency: %v", err)
+	}
+	if _, err := s.CreateAgency(ctx, "Bank Negara"); err != nil {
+		t.Fatalf("CreateAgency: %v", err)
+	}
+
+	agencies, err := s.ListAgencies(ctx)
+	if err != nil {
+		t.Fatalf("ListAgencies: %v", err)
+	}
+	if len(agencies) != 2 {
+		t.Fatalf("expected 2 agencies, got %d", len(agencies))
+	}
+	// Order is by name ascending.
+	if agencies[0].Name != "Bank Negara" || agencies[1].Name != "MCMC" {
+		t.Fatalf("unexpected agency order: %+v", agencies)
+	}
+}
+
+func TestCreateAgency_DuplicateNameErrors(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := s.CreateAgency(ctx, "MCMC"); err != nil {
+		t.Fatalf("CreateAgency: %v", err)
+	}
+	if _, err := s.CreateAgency(ctx, "MCMC"); err == nil {
+		t.Fatal("expected an error creating a duplicate agency name")
+	}
+}
+
+// TestDeleteAgency_ClearsReferencingURLs exercises URL.AgencyID's
+// OnDelete:SET NULL constraint directly: deleting an Agency currently
+// referenced by a URL must clear the reference, not error or orphan it.
+// Uses newCascadeTestStore (see legalcite_test.go) since plain
+// newTestStore's SQLite connection doesn't enforce foreign keys at all —
+// without FK enforcement this test would pass trivially without the
+// constraint doing anything.
+func TestDeleteAgency_ClearsReferencingURLs(t *testing.T) {
+	s := newCascadeTestStore(t)
+	ctx := context.Background()
+
+	dept, _ := s.CreateDepartment(ctx, "AgencyDeleteDept")
+	agency, err := s.CreateAgency(ctx, "MCMC")
+	if err != nil {
+		t.Fatalf("CreateAgency: %v", err)
+	}
+	u, _ := s.AddURLToWatchlist(ctx, dept.ID, "agency-delete.com")
+
+	agencyIDPtr := &agency.ID
+	if _, err := s.UpdateURLCaseFields(ctx, dept.ID, u.ID, db.URLCaseFields{AgencyID: &agencyIDPtr}); err != nil {
+		t.Fatalf("UpdateURLCaseFields: %v", err)
+	}
+
+	if err := s.DeleteAgency(ctx, agency.ID); err != nil {
+		t.Fatalf("DeleteAgency: %v", err)
+	}
+
+	entries, err := s.ListDepartmentURLs(ctx, dept.ID)
+	if err != nil {
+		t.Fatalf("ListDepartmentURLs: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("want 1 entry, got %d", len(entries))
+	}
+	if entries[0].AgencyID != nil {
+		t.Fatalf("expected agency_id to be cleared after deleting the agency, got %+v", entries[0].AgencyID)
 	}
 }
 

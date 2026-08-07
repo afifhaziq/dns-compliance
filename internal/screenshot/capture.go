@@ -44,15 +44,20 @@ func AllocatorOptionsWithHostRules(rules string) []chromedp.ExecAllocatorOption 
 func Capture(ctx context.Context, rawURL string) ([]byte, error) {
 	allocCtx, allocCancel := chromedp.NewExecAllocator(ctx, AllocatorOptions...)
 	defer allocCancel()
-	return CaptureWithAllocator(ctx, allocCtx, rawURL, 5*time.Second, 2*time.Second)
+	buf, _, err := CaptureWithAllocator(ctx, allocCtx, rawURL, 5*time.Second, 2*time.Second)
+	return buf, err
 }
 
 // CaptureWithAllocator is like Capture but uses an existing allocator context
 // instead of spawning a new Chrome process. Use this with a shared allocator to
 // avoid per-URL process startup overhead. waitIdle is the maximum time to wait
 // for network idle after navigation; the screenshot is taken immediately when
-// idle is detected or after waitIdle elapses, whichever comes first.
-func CaptureWithAllocator(ctx, allocCtx context.Context, rawURL string, waitIdle, postIdleSleep time.Duration) ([]byte, error) {
+// idle is detected or after waitIdle elapses, whichever comes first. Returns
+// the raw, unframed page screenshot plus the time it was captured — callers
+// that want the browser-mockup frame call screenshot.Frame separately (kept
+// out of this function so the same raw pixels can be framed once per DNS
+// server without repeating the expensive navigate+idle-wait capture).
+func CaptureWithAllocator(ctx, allocCtx context.Context, rawURL string, waitIdle, postIdleSleep time.Duration) ([]byte, time.Time, error) {
 	// WithErrorf suppresses chromedp's internal cleanup logs (e.g. "could not
 	// retrieve document root: context deadline exceeded") that fire when a tab
 	// is cancelled mid-operation. Errors are surfaced via return values instead.
@@ -144,14 +149,8 @@ func CaptureWithAllocator(ctx, allocCtx context.Context, rawURL string, waitIdle
 			return err
 		}),
 	); err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
 
-	// Wrap the page screenshot in a Chrome-like browser mockup.
-	// Fall back to the raw screenshot if framing fails.
-	framed, err := addBrowserFrame(tabCtx, pageBuf, rawURL, capturedAt)
-	if err != nil {
-		return pageBuf, nil
-	}
-	return framed, nil
+	return pageBuf, capturedAt, nil
 }
