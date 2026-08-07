@@ -608,9 +608,12 @@ html.dark {
    above makes the (non-scrolling) table itself that ancestor instead of the
    actually-scrolling .results-wrap container, so a pinned column silently
    never sticks. Opt out here on the (few) tables that pin columns; every
-   other .results-table consumer keeps the corner-radius clip untouched. */
+   other .results-table consumer keeps the corner-radius clip untouched.
+   Sharp corners (border-radius: 0) instead of the base rounded-lg, per
+   design feedback on the /results page specifically - also sidesteps having
+   to clip a rounded corner at all now that overflow is visible. */
 .results-table--pinned {
-  overflow: visible;
+  @apply overflow-visible rounded-none;
 }
 
 .results-table th {
