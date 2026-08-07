@@ -40,6 +40,7 @@ type fullMockStore struct {
 	categories     []db.Category
 	elements       []db.Element
 	urlOffences    []db.URLOffence
+	notifications  []db.Notification
 	scheduleMu     sync.Mutex // guards the three fields below; the scheduler goroutine reads them concurrently with test/handler writes
 	scanInterval   int
 	scanEnabled    bool
@@ -961,29 +962,85 @@ func (m *fullMockStore) UpsertSubdomainScan(_ context.Context, s db.SubdomainSca
 	return nil
 }
 
-// NotificationStore stubs for tests
+// NotificationStore implementations for tests
 func (m *fullMockStore) CreateNotification(_ context.Context, n db.Notification) (db.Notification, error) {
+	n.ID = uint(len(m.notifications) + 1)
+	n.CreatedAt = time.Now()
+	m.notifications = append(m.notifications, n)
 	return n, nil
 }
+
 func (m *fullMockStore) ListNotifications(_ context.Context, page, pageSize int) ([]db.Notification, int, error) {
-	return nil, 0, nil
+	return m.listNotifications(page, pageSize, nil)
 }
+
 func (m *fullMockStore) ListNotificationsForDepartment(_ context.Context, page, pageSize int, departmentID uint) ([]db.Notification, int, error) {
-	return nil, 0, nil
+	return m.listNotifications(page, pageSize, &departmentID)
 }
+
+func (m *fullMockStore) listNotifications(page, pageSize int, departmentID *uint) ([]db.Notification, int, error) {
+	var filtered []db.Notification
+	for _, n := range m.notifications {
+		if departmentID == nil || n.DepartmentID == *departmentID {
+			filtered = append(filtered, n)
+		}
+	}
+	total := len(filtered)
+	start := (page - 1) * pageSize
+	if start > total {
+		start = total
+	}
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+	return filtered[start:end], total, nil
+}
+
 func (m *fullMockStore) UnreadCount(_ context.Context) (int, error) {
-	return 0, nil
+	return m.unreadCount(nil), nil
 }
+
 func (m *fullMockStore) UnreadCountForDepartment(_ context.Context, departmentID uint) (int, error) {
-	return 0, nil
+	return m.unreadCount(&departmentID), nil
 }
+
+func (m *fullMockStore) unreadCount(departmentID *uint) int {
+	count := 0
+	for _, n := range m.notifications {
+		if n.ReadAt == nil && (departmentID == nil || n.DepartmentID == *departmentID) {
+			count++
+		}
+	}
+	return count
+}
+
 func (m *fullMockStore) GetNotification(_ context.Context, id uint) (*db.Notification, error) {
+	for i := range m.notifications {
+		if m.notifications[i].ID == id {
+			return &m.notifications[i], nil
+		}
+	}
 	return nil, nil
 }
+
 func (m *fullMockStore) MarkNotificationRead(_ context.Context, id uint) error {
+	for i := range m.notifications {
+		if m.notifications[i].ID == id {
+			now := time.Now()
+			m.notifications[i].ReadAt = &now
+			return nil
+		}
+	}
 	return nil
 }
-func (m *fullMockStore) HasRecentResurfacedNotification(_ context.Context, departmentID uint, urlValue string, sinceResurfacedAt time.Time) (bool, error) {
+
+func (m *fullMockStore) HasRecentResurfacedNotification(_ context.Context, departmentID uint, urlValue string, since time.Time) (bool, error) {
+	for _, n := range m.notifications {
+		if n.DepartmentID == departmentID && n.URLValue == urlValue && n.Type == "resurfaced" && !n.CreatedAt.Before(since) {
+			return true, nil
+		}
+	}
 	return false, nil
 }
 
@@ -1043,6 +1100,8 @@ func deptAdminCookie(store *fullMockStore, departmentID uint) *http.Cookie {
 		DepartmentID: &departmentID,
 	})
 }
+
+func ptrTime(t time.Time) *time.Time { return &t }
 
 func TestListURLsEmpty(t *testing.T) {
 	store := &fullMockStore{}
@@ -2641,5 +2700,107 @@ func TestRemoveFromWatchlist_CancelsDueDateTask(t *testing.T) {
 	}
 	if notifier.calls[0].dueDate != nil {
 		t.Fatal("expected a nil due date on removal (cancel-only)")
+	}
+}
+
+func TestListNotifications_ScopesToOwnDepartment(t *testing.T) {
+	deptA, deptB := uint(1), uint(2)
+	store := &fullMockStore{
+		notifications: []db.Notification{
+			{ID: 1, DepartmentID: deptA, URLValue: "a.com", Type: "resurfaced"},
+			{ID: 2, DepartmentID: deptB, URLValue: "b.com", Type: "resurfaced"},
+		},
+	}
+	cookie := deptCookie(store, deptA)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/notifications", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Notifications []db.Notification `json:"notifications"`
+		Total         int                `json:"total"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Total != 1 || len(body.Notifications) != 1 || body.Notifications[0].URLValue != "a.com" {
+		t.Fatalf("expected only deptA's notification, got %+v", body)
+	}
+}
+
+func TestUnreadNotificationCount(t *testing.T) {
+	deptA := uint(1)
+	store := &fullMockStore{
+		notifications: []db.Notification{
+			{ID: 1, DepartmentID: deptA, URLValue: "a.com", Type: "resurfaced"},
+			{ID: 2, DepartmentID: deptA, URLValue: "b.com", Type: "resurfaced", ReadAt: ptrTime(time.Now())},
+		},
+	}
+	cookie := deptCookie(store, deptA)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/notifications/unread-count", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Count int `json:"count"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &body)
+	if body.Count != 1 {
+		t.Fatalf("expected count 1, got %d", body.Count)
+	}
+}
+
+func TestMarkNotificationRead_404sForOtherDepartment(t *testing.T) {
+	deptA, deptB := uint(1), uint(2)
+	store := &fullMockStore{
+		notifications: []db.Notification{
+			{ID: 1, DepartmentID: deptB, URLValue: "b.com", Type: "resurfaced"},
+		},
+	}
+	cookie := deptCookie(store, deptA)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/notifications/1/read", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("want 404 for another department's notification, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestMarkNotificationRead_Success(t *testing.T) {
+	deptA := uint(1)
+	store := &fullMockStore{
+		notifications: []db.Notification{
+			{ID: 1, DepartmentID: deptA, URLValue: "a.com", Type: "resurfaced"},
+		},
+	}
+	cookie := deptCookie(store, deptA)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/notifications/1/read", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if store.notifications[0].ReadAt == nil {
+		t.Fatal("expected ReadAt to be set")
 	}
 }
