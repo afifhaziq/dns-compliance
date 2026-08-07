@@ -226,6 +226,7 @@
 /* ─── Dark Mode ──────────────────────────────────────────────────────────── */
 
 html.dark {
+  color-scheme: dark;
   --ink: var(--pal-magenta-bloom);
   --ink-hover: color-mix(in srgb, var(--pal-magenta-bloom) 75%, var(--pal-ghost-white) 25%);
   --ink-active: color-mix(in srgb, var(--pal-magenta-bloom) 92%, var(--pal-black) 8%);
@@ -372,6 +373,10 @@ html.dark {
 
   html {
     @apply font-sans antialiased;
+    /* Native form controls (e.g. <input type="time">'s spinner/clock icon)
+       otherwise always render in the browser's light chrome regardless of
+       our own theme, reading as an off-theme white patch in dark mode. */
+    color-scheme: light;
   }
 
   body {
@@ -568,11 +573,34 @@ html.dark {
 /* ─── Results Table ──────────────────────────────────────────────────────── */
 
 .results-wrap {
-  @apply  flex-1 overflow-x-auto;
+  @apply flex-1 overflow-x-auto;
+  scrollbar-color: var(--stone-border) transparent;
+}
+
+.results-wrap::-webkit-scrollbar {
+  height: 8px;
+}
+
+.results-wrap::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.results-wrap::-webkit-scrollbar-thumb {
+  background-color: var(--stone-border);
+  border-radius: 4px;
+}
+
+.results-wrap::-webkit-scrollbar-thumb:hover {
+  background-color: var(--stone-muted);
 }
 
 .results-table {
-  @apply w-full border-collapse border border-stone-border rounded-lg overflow-hidden text-sm;
+  /* table-fixed + width:max-content lets columns keep their colgroup width
+     instead of being squeezed to fit .results-wrap - a squeeze that visibly
+     overlapped controls (selects, date+time inputs) once several optional
+     columns were shown. min-w-full still fills the wrapper when few columns
+     are visible; .results-wrap's overflow-x-auto scrolls the rest. */
+  @apply w-max min-w-full border-collapse border border-stone-border rounded-lg overflow-hidden text-sm;
 }
 
 .results-table th {
@@ -588,7 +616,7 @@ html.dark {
 }
 
 .col-domain {
-  @apply min-w-[250px];
+  @apply min-w-[250px] whitespace-normal break-words;
 }
 
 .col-status {
@@ -1070,6 +1098,15 @@ th.th-left {
   @apply flex flex-col gap-2 mb-4;
 }
 
+/* Two form-fields side by side (e.g. Agency + Requesting Dept.) */
+.form-row {
+  @apply flex gap-3;
+}
+
+.form-row > .form-field {
+  @apply flex-1 min-w-0;
+}
+
 .form-label {
   @apply text-[13px] font-medium text-foreground;
 }
@@ -1078,6 +1115,13 @@ th.th-left {
   @apply py-1.5 px-3 text-sm font-[inherit] text-foreground bg-background border border-stone-border rounded-lg w-full outline-none
     transition-colors duration-150 ease-snappy
     focus:border-stone-muted placeholder:text-stone-muted;
+}
+
+/* .form-input's default border-stone-border reads as barely-there against
+   bg-background - opt in to the more visible stone-muted border for fields
+   that need to stand out on their own (not just on focus/hover). */
+.form-input-strong {
+  @apply border-stone-muted;
 }
 
 .form-select {

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import {
   type ColumnDef,
-  type Column,
   type ExpandedState,
   type SortingState,
   type PaginationState,
@@ -12,7 +11,7 @@ import {
   getPaginationRowModel,
   useReactTable,
 } from '@tanstack/react-table'
-import { Camera, Image as ImageIcon, ChevronLeftIcon, ChevronRightIcon, ArrowUpIcon, ArrowDownIcon, ChevronsUpDownIcon } from 'lucide-react'
+import { Camera, Image as ImageIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { GripIcon } from '@/components/ui/grip'
 import { ChevronRight } from '@/components/ui/chevron-right'
 import { fetchResults, groupResults, lastScanTime } from '../api/results'
@@ -34,8 +33,9 @@ import { DataGrid, DataGridContainer } from '@/components/reui/data-grid/data-gr
 import { DataGridTable, DataGridTableRowExpand } from '@/components/reui/data-grid/data-grid-table'
 import { BrailleLoader } from '@/components/ui/braille-loader'
 import { ThinkingIndicator } from '@/components/ui/thinking-indicator'
-import { StatusDot, EmptyIcon } from '@/components/results-table-parts'
+import { SortableHeader, StatusDot, EmptyIcon } from '@/components/results-table-parts'
 import { relativeTime } from '@/lib/relative-time'
+import { useGridPreference } from '@/hooks/use-grid-preference'
 
 export const Route = createFileRoute('/results/')({ component: ResultsPage })
 
@@ -58,37 +58,6 @@ const STATUS_FIELD: FilterFieldConfig<string> = {
     { value: 'violations', label: 'Violations' },
     { value: 'compliant', label: 'Compliant' },
   ],
-}
-
-/* ─── Sortable column header ────────────────────────────────────────────── */
-// Minimal stand-in for reui's DataGridColumnHeader: that component pulls in a
-// column-visibility/pin/move dropdown menu and an IconPlaceholder shim tied
-// to a Next.js app path this repo doesn't have. All we need is click-to-cycle
-// sort with an indicator icon, so it's written directly instead of vendored.
-
-function SortableHeader<TData, TValue>({ column, title }: { column: Column<TData, TValue>; title: string }) {
-  const sorted = column.getIsSorted()
-  const cycleSort = () => {
-    if (sorted === 'asc') column.toggleSorting(true)
-    else if (sorted === 'desc') column.clearSorting()
-    else column.toggleSorting(false)
-  }
-  return (
-    <button
-      type="button"
-      className="inline-flex items-center gap-1 text-[11px] font-semibold tracking-[0.06em] uppercase text-stone-muted hover:text-foreground transition-colors duration-150 ease-snappy"
-      onClick={cycleSort}
-    >
-      {title}
-      {sorted === 'asc' ? (
-        <ArrowUpIcon className="w-3 h-3" />
-      ) : sorted === 'desc' ? (
-        <ArrowDownIcon className="w-3 h-3" />
-      ) : (
-        <ChevronsUpDownIcon className="w-3 h-3 opacity-40" />
-      )}
-    </button>
-  )
 }
 
 /* ─── Tree rows (domain parent + per-DNS-server children) ──────────────── */
@@ -186,6 +155,10 @@ function ResultsPage() {
   const [expanded, setExpanded] = useState<ExpandedState>({})
   const [sorting, setSorting] = useState<SortingState>([{ id: 'status', desc: true }])
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
+
+  // Only sorting is persisted here — unlike urls.tsx, this grid has no
+  // column-visibility toggle or adjustable page size to save.
+  const { ready: gridPrefReady } = useGridPreference('results', { sorting }, { setSorting })
 
   const [pendingScreenshotIds, setPendingScreenshotIds] = useState<Set<number>>(new Set())
   const [screenshotErrors, setScreenshotErrors] = useState<Record<number, string>>({})
@@ -497,6 +470,11 @@ function ResultsPage() {
 
   const pageCount = table.getPageCount()
 
+  // Holds the grid in its loading state until the saved sort order has been
+  // applied, so it renders once already sorted instead of flashing the
+  // default order first.
+  const gridLoading = loading || !gridPrefReady
+
   return (
     <div className="mx-20 mt-10">
       <div className="page-header">
@@ -544,7 +522,7 @@ function ResultsPage() {
           </div>
 
           <div className="results-wrap w-full">
-            {!loading && groups.length === 0 ? (
+            {!gridLoading && groups.length === 0 ? (
               <div className="empty-state">
                 <EmptyIcon />
                 <p className="empty-heading">No results yet</p>
@@ -552,7 +530,7 @@ function ResultsPage() {
                   No scan has been run. Use Run Scan to begin compliance monitoring.
                 </p>
               </div>
-            ) : !loading && filtered.length === 0 ? (
+            ) : !gridLoading && filtered.length === 0 ? (
               <div className="empty-state" style={{ padding: '3rem 0' }}>
                 <p className="empty-heading">No results match the current filters</p>
               </div>
@@ -560,12 +538,12 @@ function ResultsPage() {
               <DataGrid
                 table={table}
                 recordCount={filtered.length}
-                isLoading={loading}
+                isLoading={gridLoading}
                 onRowClick={row => { if (row.kind === 'domain') table.getRow(row.group.url).toggleExpanded() }}
                 rowClassName={row => row.kind === 'server' && !row.result.compliant ? 'violation-row' : undefined}
                 tableClassNames={{ base: 'results-table' }}
               >
-                <DataGridContainer>
+                <DataGridContainer className="overflow-visible">
                   <DataGridTable />
                 </DataGridContainer>
               </DataGrid>

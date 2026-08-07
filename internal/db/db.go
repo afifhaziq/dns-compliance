@@ -24,9 +24,26 @@ func Connect(dialector gorm.Dialector) (*gorm.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening db: %w", err)
 	}
+	// The case-metadata columns (due_date, agency, reference_number,
+	// requesting_dept, status, requested_at) moved off DepartmentURL onto
+	// URL — a domain has one legal case, not one per watching department.
+	// AutoMigrate only adds columns matching current struct tags, it never
+	// drops ones that used to exist — without this, an already-migrated dev
+	// DB would keep six dead columns on department_urls forever. This
+	// branch has never been deployed with real data, so this is a plain
+	// idempotent drop, not a data-preserving copy: a no-op once the columns
+	// are gone, including on a fresh DB where they never existed.
+	for _, col := range []string{"due_date", "agency", "reference_number", "requesting_dept", "status", "requested_at"} {
+		if database.Migrator().HasColumn(&DepartmentURL{}, col) {
+			if err := database.Migrator().DropColumn(&DepartmentURL{}, col); err != nil {
+				return nil, fmt.Errorf("dropping department_urls.%s: %w", col, err)
+			}
+		}
+	}
 	if err := database.AutoMigrate(
 		&Department{}, &User{}, &Session{}, &DNSServer{}, &URL{}, &DepartmentURL{}, &ScanRun{}, &ScanResult{}, &CompliantIP{}, &DomainWhois{}, &IPInfo{}, &Favicon{}, &ScanSettings{}, &SubdomainScan{}, &ISPLogo{},
 		&Instrument{}, &Citation{}, &Category{}, &Element{}, &SubElement{}, &URLOffence{},
+		&Agency{}, &GridPreference{},
 	); err != nil {
 		return nil, fmt.Errorf("migrating schema: %w", err)
 	}

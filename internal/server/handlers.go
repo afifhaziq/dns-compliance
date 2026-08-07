@@ -222,10 +222,34 @@ func (h *Handlers) RemoveFromWatchlist(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// urlStatusAllowed is the server-side allow-list for URL.Status — a free
+// string column (not a DB enum), matching this codebase's existing
+// string-enum convention (Instrument.Type, ScanRun.Status, etc). "" clears
+// the field.
+var urlStatusAllowed = map[string]bool{"": true, "requested": true, "uplift": true, "suspended": true}
+
+// parseOptionalRFC3339 parses an RFC3339 timestamp, or returns nil for an
+// empty string (clears the field).
+func parseOptionalRFC3339(s string) (*time.Time, error) {
+	if s == "" {
+		return nil, nil
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 // ToggleURL updates a URL in the caller's department watchlist: the enabled
-// flag and/or the optional order date. Does not affect other departments
-// watching the same domain. Only fields present in the body are touched —
-// omit "enabled" to change only "ordered_at" and vice versa.
+// flag and/or the optional case-metadata fields (due date, agency,
+// reference number, requesting department, status, requested-at). Enabled
+// is department-scoped (only affects the caller's own watchlist entry); the
+// case-metadata fields are global on the URL row (see db.URL's doc
+// comment) — editing them is visible to every department watching the same
+// domain. Both still require the caller's department to actually be
+// watching the URL (enforced by SetURLEnabled/UpdateURLCaseFields). Only
+// fields present in the body are touched — omit a key to leave it untouched.
 func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
 	if !ok {
@@ -245,9 +269,16 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 
 	var body struct {
 		Enabled *bool `json:"enabled"`
-		// OrderedAt is RFC3339 when setting a date, or "" to clear it.
-		// Omit the key entirely to leave the order date untouched.
-		OrderedAt *string `json:"ordered_at"`
+		// DueDate/RequestedAt are RFC3339 when setting a value, or "" to
+		// clear. AgencyID/RequestingDeptID are real IDs when setting, or 0
+		// to clear (0 is never a real row id). Omit any key entirely to
+		// leave that field untouched.
+		DueDate          *string `json:"due_date"`
+		AgencyID         *uint   `json:"agency_id"`
+		ReferenceNumber  *string `json:"reference_number"`
+		RequestingDeptID *uint   `json:"requesting_dept_id"`
+		Status           *string `json:"status"`
+		RequestedAt      *string `json:"requested_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
@@ -263,23 +294,68 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 		}
 		found = found || f
 	}
-	if body.OrderedAt != nil {
-		var orderedAt *time.Time
-		if *body.OrderedAt != "" {
-			t, err := time.Parse(time.RFC3339, *body.OrderedAt)
-			if err != nil {
-				writeError(w, http.StatusBadRequest, "invalid ordered_at, expected RFC3339")
-				return
-			}
-			orderedAt = &t
+
+	var fields db.URLCaseFields
+	hasFields := false
+	if body.DueDate != nil {
+		dueDate, err := parseOptionalRFC3339(*body.DueDate)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid due_date, expected RFC3339")
+			return
 		}
-		f, err := h.store.SetURLOrderedAt(r.Context(), *user.DepartmentID, uint(id), orderedAt)
+		fields.DueDate = &dueDate
+		hasFields = true
+	}
+	if body.AgencyID != nil {
+		var agencyID *uint
+		if *body.AgencyID != 0 {
+			agencyID = body.AgencyID
+		}
+		fields.AgencyID = &agencyID
+		hasFields = true
+	}
+	if body.ReferenceNumber != nil {
+		if len(*body.ReferenceNumber) > 255 {
+			writeError(w, http.StatusBadRequest, "reference_number too long, max 255 characters")
+			return
+		}
+		fields.ReferenceNumber = body.ReferenceNumber
+		hasFields = true
+	}
+	if body.RequestingDeptID != nil {
+		var deptID *uint
+		if *body.RequestingDeptID != 0 {
+			deptID = body.RequestingDeptID
+		}
+		fields.RequestingDeptID = &deptID
+		hasFields = true
+	}
+	if body.Status != nil {
+		if !urlStatusAllowed[*body.Status] {
+			writeError(w, http.StatusBadRequest, "invalid status, expected one of: requested, uplift, suspended")
+			return
+		}
+		fields.Status = body.Status
+		hasFields = true
+	}
+	if body.RequestedAt != nil {
+		requestedAt, err := parseOptionalRFC3339(*body.RequestedAt)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid requested_at, expected RFC3339")
+			return
+		}
+		fields.RequestedAt = &requestedAt
+		hasFields = true
+	}
+	if hasFields {
+		f, err := h.store.UpdateURLCaseFields(r.Context(), *user.DepartmentID, uint(id), fields)
 		if err != nil {
 			writeInternalError(w, err)
 			return
 		}
 		found = found || f
 	}
+
 	if !found {
 		writeError(w, http.StatusNotFound, "url not on this department's watchlist")
 		return
@@ -534,6 +610,73 @@ func (h *Handlers) URLsRequestedThisMonth(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]int{"count": count})
+}
+
+// Grid preferences — a data grid's saved column visibility/sort/page-size
+// layout, personal to the calling user (no admin gate; ownership is
+// implicit in the session's user ID, not a request param). gridKey is
+// restricted to a known allowlist rather than accepting any client-supplied
+// string, since it's just an internal identifier for which grid this is,
+// not user-facing data.
+var validGridKeys = map[string]bool{"urls": true, "results": true}
+
+func (h *Handlers) GetGridPreference(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	key := chi.URLParam(r, "key")
+	if !validGridKeys[key] {
+		writeError(w, http.StatusBadRequest, "unknown grid key")
+		return
+	}
+	pref, err := h.store.GetGridPreference(r.Context(), user.ID, key)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	if pref == nil {
+		writeJSON(w, http.StatusOK, map[string]any{})
+		return
+	}
+	writeJSON(w, http.StatusOK, pref)
+}
+
+func (h *Handlers) SaveGridPreference(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	key := chi.URLParam(r, "key")
+	if !validGridKeys[key] {
+		writeError(w, http.StatusBadRequest, "unknown grid key")
+		return
+	}
+	var body struct {
+		ColumnVisibility map[string]bool `json:"column_visibility"`
+		SortField        string          `json:"sort_field"`
+		SortDesc         bool            `json:"sort_desc"`
+		PageSize         int             `json:"page_size"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	pref, err := h.store.SaveGridPreference(r.Context(), db.GridPreference{
+		UserID:           user.ID,
+		GridKey:          key,
+		ColumnVisibility: body.ColumnVisibility,
+		SortField:        body.SortField,
+		SortDesc:         body.SortDesc,
+		PageSize:         body.PageSize,
+	})
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, pref)
 }
 
 // urlParamFromRequest unescapes the `*url` wildcard path segment and

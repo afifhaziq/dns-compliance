@@ -1,9 +1,21 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import {
+  type ColumnDef,
+  type SortingState,
+  type PaginationState,
+  type VisibilityState,
+  getCoreRowModel,
+  getSortedRowModel,
+  getPaginationRowModel,
+  useReactTable,
+} from '@tanstack/react-table'
 import { GripIcon } from '@/components/ui/grip'
-import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlOrderedAt } from '../api/urls'
-import type { URLEntry, Instrument, Citation, LegalCategory, LegalElement, LegalSubElement, URLOffence } from '../api/types'
+import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlFields } from '../api/urls'
+import { fetchAgencies } from '../api/agencies'
+import { fetchDepartmentsOpen } from '../api/departments'
+import { useGridPreference } from '@/hooks/use-grid-preference'
+import type { URLEntry, Agency, Department, Instrument, Citation, LegalCategory, LegalElement, LegalSubElement, URLOffence } from '../api/types'
 import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, fetchSubElements, attachOffence, fetchOffencesByUrl, detachOffence, formatParsedCitation } from '../api/legal'
 import {
   Dialog,
@@ -17,7 +29,13 @@ import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/r-switch'
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { Input } from '@/components/ui/input'
+import { DataGrid, DataGridContainer } from '@/components/reui/data-grid/data-grid'
+import { DataGridTable } from '@/components/reui/data-grid/data-grid-table'
+import { DataGridColumnVisibility } from '@/components/reui/data-grid/data-grid-column-visibility'
+import { DataGridPagination } from '@/components/reui/data-grid/data-grid-pagination'
+import { Filters, type Filter, type FilterFieldConfig } from '@/components/reui/filters'
+import { SortableHeader, EmptyIcon } from '@/components/results-table-parts'
 import { XIcon } from '@/components/ui/x'
 import { FaviconSearch } from '@/components/unlumen-ui/favicon-search'
 import { faviconApiUrl } from '../api/domain'
@@ -27,6 +45,7 @@ import {
   PreviewLinkCardPanel,
   PreviewLinkCardImage,
 } from '@/components/animate-ui/components/base/preview-link-card'
+import { useAuth } from './__root'
 
 /* ─── Quick Add (single domain, favicon preview) ─────────────────────────── */
 
@@ -65,6 +84,33 @@ function QuickAddFavicon({ onAdded }: { onAdded: () => void }) {
 
 export const Route = createFileRoute('/urls')({ component: URLsPage })
 
+/* ─── Case metadata (shared by the Add Domain form + inline table cells) ─── */
+
+const STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: '—' },
+  { value: 'requested', label: 'Requested' },
+  { value: 'uplift', label: 'Uplift' },
+  { value: 'suspended', label: 'Suspended' },
+]
+
+// due_date is the ISP's block deadline (some takedown orders require
+// blocking within 6h/24h), but rather than picking a calendar date+time by
+// hand, the case owner picks how long from now the ISP has — the computed
+// deadline (now + duration) is what actually gets stored in due_date, same
+// field ISPTiming already measures against.
+const DUE_DATE_DURATION_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: '—' },
+  { value: '6', label: '6 hours' },
+  { value: '24', label: '24 hours' },
+  { value: '48', label: '48 hours' },
+  { value: '72', label: '72 hours' },
+  { value: '168', label: '7 days' },
+]
+
+function dueDateFromDurationHours(hours: number): string {
+  return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString()
+}
+
 /* ─── Add Domain Dialog ──────────────────────────────────────────────────── */
 
 export type StagedOffence = {
@@ -94,7 +140,7 @@ export type MultiOffencePickerHandle = {
 // MCMC data cites domains under several sections joined by "dan"/"&"), so
 // this replaces the old single-selection OffencePicker. Reused by both
 // AddUrlDialog (staged offences applied to every domain on submit) and
-// EditOffencesDialog (each addition attaches immediately to one existing
+// EditUrlDialog (each addition attaches immediately to one existing
 // domain) — this component has no knowledge of which caller it's in.
 const MultiOffencePicker = forwardRef<MultiOffencePickerHandle, {
   value: StagedOffence[]
@@ -283,19 +329,39 @@ function AddUrlDialog({
   open,
   onClose,
   onAdded,
+  agencies,
+  departments,
+  defaultDepartmentId,
 }: {
   open: boolean
   onClose: () => void
   onAdded: () => void
+  agencies: Agency[]
+  departments: Department[]
+  defaultDepartmentId: number | null
 }) {
   const [value, setValue] = useState('')
   const [offences, setOffences] = useState<StagedOffence[]>([])
+  const [agencyId, setAgencyId] = useState<number | ''>('')
+  const [referenceNumber, setReferenceNumber] = useState('')
+  const [requestingDeptId, setRequestingDeptId] = useState<number | ''>('')
+  const [status, setStatus] = useState('requested')
+  const [dueDurationHours, setDueDurationHours] = useState('24')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const pickerRef = useRef<MultiOffencePickerHandle>(null)
 
+  // Requesting Dept defaults to the current user's own department, but stays
+  // changeable — reset it whenever the dialog reopens (a stale value from a
+  // previous open shouldn't linger) or once the department list arrives.
+  useEffect(() => {
+    if (open) setRequestingDeptId(defaultDepartmentId ?? '')
+  }, [open, defaultDepartmentId])
+
   const reset = () => {
     setValue(''); setOffences([]); setError(null)
+    setAgencyId(''); setReferenceNumber(''); setRequestingDeptId(defaultDepartmentId ?? '')
+    setStatus('requested'); setDueDurationHours('24')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -306,13 +372,23 @@ function AddUrlDialog({
     // in the picker — otherwise it's silently dropped rather than attached.
     const pending = pickerRef.current?.flush()
     const allOffences = pending ? [...offences, pending] : offences
+
+    const caseFields: Parameters<typeof setUrlFields>[1] = {}
+    if (agencyId !== '') caseFields.agency_id = agencyId
+    if (referenceNumber.trim()) caseFields.reference_number = referenceNumber.trim()
+    if (requestingDeptId !== '') caseFields.requesting_dept_id = requestingDeptId
+    if (status) caseFields.status = status
+    if (dueDurationHours) caseFields.due_date = dueDateFromDurationHours(Number(dueDurationHours))
+    const hasCaseFields = Object.keys(caseFields).length > 0
+
     setLoading(true)
     setError(null)
     try {
-      await Promise.all(domains.map(d => createUrl(d)))
-      await Promise.all(
-        domains.flatMap(d => allOffences.map(o => attachOffence(d, o.categoryId, o.elementId, o.subElementId)))
-      )
+      const created = await Promise.all(domains.map(d => createUrl(d)))
+      await Promise.all([
+        ...created.flatMap(u => allOffences.map(o => attachOffence(u.url, o.categoryId, o.elementId, o.subElementId))),
+        ...(hasCaseFields ? created.map(u => setUrlFields(u.id, caseFields)) : []),
+      ])
       reset()
       onAdded()
       onClose()
@@ -327,11 +403,11 @@ function AddUrlDialog({
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
-      <DialogContent showCloseButton={false} style={{ maxWidth: 440 }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: 560 }}>
         <DialogHeader>
           <DialogTitle>Add Domain</DialogTitle>
           <DialogDescription>
-            Enter one or more domains or full URLs to monitor for DNS compliance. Full URLs will have their domain automatically extracted. You can add multiple entries at once, just put each one on a new line.
+            Enter one or more domains or full URLs to monitor for DNS compliance. Full URLs will have their domain automatically extracted. You can add multiple entries at once, just put each one on a new line. Case details below (if any) apply to every domain added.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -339,7 +415,7 @@ function AddUrlDialog({
             <label className="form-label" htmlFor="add-url-input">Domain</label>
             <textarea
               id="add-url-input"
-              className="form-input"
+              className="form-input form-input-strong"
               placeholder={'https://example.com\nhttps://example2.com'}
               value={value}
               onChange={e => setValue(e.target.value)}
@@ -349,12 +425,81 @@ function AddUrlDialog({
               style={{ resize: 'vertical', fontFamily: 'inherit' }}
             />
           </div>
+
           <MultiOffencePicker
             ref={pickerRef}
             value={offences}
             onChange={setOffences}
             disabled={loading}
           />
+
+          <div className="form-row">
+            <div className="form-field">
+              <label className="form-label" id="add-agency-label">Agency</label>
+              <Select value={String(agencyId)} onValueChange={v => setAgencyId(v === '' ? '' : Number(v))} disabled={loading}>
+                <SelectTrigger aria-labelledby="add-agency-label" placeholder="—" className="w-full" />
+                <SelectContent>
+                  <SelectItem index={0} value="">—</SelectItem>
+                  {agencies.map((a, i) => (
+                    <SelectItem key={a.id} index={i + 1} value={String(a.id)}>{a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="form-field">
+              <label className="form-label" id="add-requesting-dept-label">Requesting Dept.</label>
+              <Select value={String(requestingDeptId)} onValueChange={v => setRequestingDeptId(v === '' ? '' : Number(v))} disabled={loading}>
+                <SelectTrigger aria-labelledby="add-requesting-dept-label" placeholder="—" className="w-full" />
+                <SelectContent>
+                  <SelectItem index={0} value="">—</SelectItem>
+                  {departments.map((d, i) => (
+                    <SelectItem key={d.id} index={i + 1} value={String(d.id)}>{d.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-field">
+              <label className="form-label" id="add-status-label">Status</label>
+              <Select value={status} onValueChange={setStatus} disabled={loading}>
+                <SelectTrigger aria-labelledby="add-status-label" placeholder="—" className="w-full" />
+                <SelectContent>
+                  {STATUS_OPTIONS.map((opt, i) => (
+                    <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="form-field">
+              <label className="form-label" id="add-due-date-label">Time to Block</label>
+              <Select value={dueDurationHours} onValueChange={setDueDurationHours} disabled={loading}>
+                <SelectTrigger aria-labelledby="add-due-date-label" placeholder="—" className="w-full" />
+                <SelectContent>
+                  {DUE_DATE_DURATION_OPTIONS.map((opt, i) => (
+                    <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="form-field">
+            <label className="form-label" htmlFor="add-reference-number">Reference No.</label>
+            <input
+              id="add-reference-number"
+              type="text"
+              className="form-input form-input-strong"
+              maxLength={255}
+              value={referenceNumber}
+              onChange={e => setReferenceNumber(e.target.value)}
+              disabled={loading}
+            />
+          </div>
+
           {error && <p className="form-error">{error}</p>}
           <DialogFooter>
             <button type="button" className="btn-ghost" onClick={handleClose} disabled={loading}>
@@ -370,15 +515,34 @@ function AddUrlDialog({
   )
 }
 
-function EditOffencesDialog({
-  url,
+function EditUrlDialog({
+  entry,
   open,
   onClose,
+  agencies,
+  departments,
+  onAgencyChange,
+  onRequestingDeptChange,
+  onStatusChange,
+  onDueDurationChange,
+  onRefFocus,
+  onRefChange,
+  onRefBlur,
 }: {
-  url: string | null
+  entry: URLEntry | null
   open: boolean
   onClose: () => void
+  agencies: Agency[]
+  departments: Department[]
+  onAgencyChange: (id: number, agencyId: number | null) => void
+  onRequestingDeptChange: (id: number, deptId: number | null) => void
+  onStatusChange: (id: number, status: string) => void
+  onDueDurationChange: (id: number, durationHours: string) => void
+  onRefFocus: (id: number, value: string) => void
+  onRefChange: (id: number, value: string) => void
+  onRefBlur: (id: number) => void
 }) {
+  const url = entry?.url ?? null
   const [offences, setOffences] = useState<URLOffence[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -450,33 +614,119 @@ function EditOffencesDialog({
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) handleDone() }}>
-      <DialogContent showCloseButton={false} style={{ maxWidth: 440 }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: 560 }}>
         <DialogHeader>
-          <DialogTitle>Offences</DialogTitle>
+          <DialogTitle>Edit Domain</DialogTitle>
           <DialogDescription>{url}</DialogDescription>
         </DialogHeader>
-        {loading ? (
-          <p className="text-sm text-stone-muted">Loading…</p>
-        ) : offences.length > 0 ? (
-          <ul className="offence-chip-list">
-            {offences.map(o => (
-              <li key={o.id} className="offence-chip">
-                <span>{formatParsedCitation(o.category.citation.parsed)} — {o.category.name}{o.element ? ` (${o.element.name})` : ''}{o.sub_element ? ` › ${o.sub_element.name}` : ''}</span>
-                <button
-                  type="button"
-                  className="screenshot-icon-btn"
-                  onClick={() => handleRemove(o.id)}
-                  aria-label={`Remove offence ${o.category.name}`}
-                >
-                  <XIcon size={14} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-stone-muted mb-2">No offences attached yet.</p>
-        )}
+
+        <div className="form-field">
+          <label className="form-label" id="edit-offences-label">Offences</label>
+          {loading ? (
+            <p className="text-sm text-stone-muted">Loading…</p>
+          ) : offences.length > 0 ? (
+            <ul className="offence-chip-list">
+              {offences.map(o => (
+                <li key={o.id} className="offence-chip">
+                  <span>{formatParsedCitation(o.category.citation.parsed)} — {o.category.name}{o.element ? ` (${o.element.name})` : ''}{o.sub_element ? ` › ${o.sub_element.name}` : ''}</span>
+                  <button
+                    type="button"
+                    className="screenshot-icon-btn"
+                    onClick={() => handleRemove(o.id)}
+                    aria-label={`Remove offence ${o.category.name}`}
+                  >
+                    <XIcon size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-stone-muted mb-2">No offences attached yet.</p>
+          )}
+        </div>
         <MultiOffencePicker ref={pickerRef} value={staged} onChange={handleAddStaged} disabled={loading} />
+
+        {entry && (
+          <>
+            <div className="form-row">
+              <div className="form-field">
+                <label className="form-label" id="edit-agency-label">Agency</label>
+                <Select
+                  value={String(entry.agency_id ?? '')}
+                  onValueChange={v => onAgencyChange(entry.id, v === '' ? null : Number(v))}
+                >
+                  <SelectTrigger aria-labelledby="edit-agency-label" placeholder="—" className="w-full" />
+                  <SelectContent>
+                    <SelectItem index={0} value="">—</SelectItem>
+                    {agencies.map((a, i) => (
+                      <SelectItem key={a.id} index={i + 1} value={String(a.id)}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="form-field">
+                <label className="form-label" id="edit-requesting-dept-label">Requesting Dept.</label>
+                <Select
+                  value={String(entry.requesting_dept_id ?? '')}
+                  onValueChange={v => onRequestingDeptChange(entry.id, v === '' ? null : Number(v))}
+                >
+                  <SelectTrigger aria-labelledby="edit-requesting-dept-label" placeholder="—" className="w-full" />
+                  <SelectContent>
+                    <SelectItem index={0} value="">—</SelectItem>
+                    {departments.map((d, i) => (
+                      <SelectItem key={d.id} index={i + 1} value={String(d.id)}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-field">
+                <label className="form-label" id="edit-status-label">Status</label>
+                <Select value={entry.status ?? ''} onValueChange={v => onStatusChange(entry.id, v)}>
+                  <SelectTrigger aria-labelledby="edit-status-label" placeholder="—" className="w-full" />
+                  <SelectContent>
+                    {STATUS_OPTIONS.map((opt, i) => (
+                      <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="form-field">
+                <label className="form-label" id="edit-due-date-label">Time to Block</label>
+                <Select value="" onValueChange={v => onDueDurationChange(entry.id, v)}>
+                  <SelectTrigger aria-labelledby="edit-due-date-label" placeholder="—" className="w-full" />
+                  <SelectContent>
+                    {DUE_DATE_DURATION_OPTIONS.map((opt, i) => (
+                      <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {entry.due_date && (
+                  <p className="text-xs text-stone-muted">Deadline: {DUE_DATE_FMT.format(new Date(entry.due_date))}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="form-field">
+              <label className="form-label" htmlFor="edit-reference-number">Reference No.</label>
+              <input
+                id="edit-reference-number"
+                type="text"
+                className="form-input form-input-strong"
+                maxLength={255}
+                value={entry.reference_number ?? ''}
+                onFocus={e => onRefFocus(entry.id, e.target.value)}
+                onChange={e => onRefChange(entry.id, e.target.value)}
+                onBlur={() => onRefBlur(entry.id)}
+              />
+            </div>
+          </>
+        )}
+
         {error && <p className="form-error">{error}</p>}
         <DialogFooter>
           <button type="button" className="btn-primary" onClick={handleDone}>
@@ -488,65 +738,67 @@ function EditOffencesDialog({
   )
 }
 
-/* ─── Skeleton ───────────────────────────────────────────────────────────── */
-
-function SkeletonRows() {
-  return (
-    <>
-      {[200, 160, 240].map((w, i) => (
-        <TableRow key={i} className="skeleton-row">
-          <TableCell className="col-domain">
-            <span className="skeleton" style={{ width: w, height: 14 }} />
-          </TableCell>
-          <TableCell className="col-status">
-            <span className="skeleton" style={{ width: 90, height: 14 }} />
-          </TableCell>
-          <TableCell className="col-status">
-            <span className="skeleton" style={{ width: 90, height: 14 }} />
-          </TableCell>
-          <TableCell style={{ width: 52 }} />
-          <TableCell className="col-evidence" />
-        </TableRow>
-      ))}
-    </>
-  )
-}
-
-/* ─── Empty Icon ─────────────────────────────────────────────────────────── */
-
-function EmptyIcon() {
-  return (
-    <svg className="empty-icon" width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-      <rect x="8" y="4" width="24" height="32" rx="2" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M32 4L40 12V36C40 37.1 39.1 38 38 38H32" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M40 12H32V4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M14 18H26M14 24H22" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  )
-}
-
 /* ─── URLs Page ──────────────────────────────────────────────────────────── */
 
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric', month: 'short', year: 'numeric',
 })
 
+// Explicit timeZone so the deadline reads the same regardless of the
+// viewing browser's OS timezone — matches the backend's own hardcoded
+// Asia/Kuala_Lumpur reporting convention (see postgresStore's
+// reportingLocation) rather than leaving it to an implicit local default.
+const DUE_DATE_FMT = new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  timeZone: 'Asia/Kuala_Lumpur',
+})
+
 const PAGE_SIZE = 25
 
+const IS_ONLY = [{ value: 'is', label: 'is' }]
+
 function URLsPage() {
+  const { me } = useAuth()
   const [urls, setUrls] = useState<URLEntry[]>([])
+  const [agencies, setAgencies] = useState<Agency[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<URLEntry | null>(null)
-  const [editOffencesTarget, setEditOffencesTarget] = useState<string | null>(null)
-  const [page, setPage] = useState(1)
+  // id, not a URLEntry snapshot, so the dialog re-reads the live row out of
+  // `urls` below and reflects its own edits (agency/status/etc.) immediately.
+  const [editTargetId, setEditTargetId] = useState<number | null>(null)
+  const editTarget = urls.find(u => u.id === editTargetId) ?? null
+
+  const [search, setSearch] = useState('')
+  const [filters, setFilters] = useState<Filter<string>[]>([])
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+
+  const { ready: gridPrefReady } = useGridPreference(
+    'urls',
+    { sorting, columnVisibility, pageSize: pagination.pageSize },
+    {
+      setSorting,
+      setColumnVisibility,
+      setPageSize: pageSize => setPagination(p => ({ ...p, pageSize })),
+    }
+  )
+
+  // Snapshots the reference-number field's pre-edit value on focus so a
+  // failed blur-commit can roll back to it.
+  const refOriginalRef = useRef<Record<number, string>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       setError(null)
-      setUrls(await fetchUrls())
+      const [u, a, d] = await Promise.all([fetchUrls(), fetchAgencies(), fetchDepartmentsOpen()])
+      setUrls(u)
+      setAgencies(a)
+      setDepartments(d)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load domains')
     } finally {
@@ -565,14 +817,61 @@ function URLsPage() {
     }
   }, [])
 
-  const handleOrderedAtChange = useCallback(async (id: number, dateStr: string) => {
-    const previous = urls.find(u => u.id === id)?.ordered_at
-    const orderedAt = dateStr ? new Date(dateStr).toISOString() : null
-    setUrls(prev => prev.map(u => u.id === id ? { ...u, ordered_at: orderedAt ?? undefined } : u))
+  // Generic case-field commit: optimistic local update, roll back to the
+  // previous URLEntry snapshot on failure. Shared by every select-style
+  // field (agency, requesting dept, status) and the date-picker/time pair.
+  const commitField = useCallback(async (id: number, patch: Partial<URLEntry>, body: Parameters<typeof setUrlFields>[1]) => {
+    const previous = urls.find(u => u.id === id)
+    setUrls(prev => prev.map(u => u.id === id ? { ...u, ...patch } : u))
     try {
-      await setUrlOrderedAt(id, orderedAt)
+      await setUrlFields(id, body)
     } catch {
-      setUrls(prev => prev.map(u => u.id === id ? { ...u, ordered_at: previous } : u))
+      if (previous) setUrls(prev => prev.map(u => u.id === id ? previous : u))
+    }
+  }, [urls])
+
+  const handleAgencyChange = useCallback((id: number, agencyId: number | null) => {
+    const agency = agencies.find(a => a.id === agencyId)
+    commitField(id, { agency_id: agencyId ?? undefined, agency_name: agency?.name }, { agency_id: agencyId })
+  }, [agencies, commitField])
+
+  const handleRequestingDeptChange = useCallback((id: number, deptId: number | null) => {
+    const dept = departments.find(d => d.id === deptId)
+    commitField(id, { requesting_dept_id: deptId ?? undefined, requesting_dept_name: dept?.name }, { requesting_dept_id: deptId })
+  }, [departments, commitField])
+
+  const handleStatusChange = useCallback((id: number, status: string) => {
+    commitField(id, { status }, { status })
+  }, [commitField])
+
+  const handleDueDurationChange = useCallback((id: number, durationHours: string) => {
+    if (!durationHours) {
+      commitField(id, { due_date: undefined }, { due_date: null })
+      return
+    }
+    const combined = dueDateFromDurationHours(Number(durationHours))
+    commitField(id, { due_date: combined }, { due_date: combined })
+  }, [commitField])
+
+  // Reference number commits on blur (not per keystroke) to avoid a PATCH
+  // per character — refOriginalRef snapshots the pre-edit value on focus so
+  // a failed commit can roll back to it.
+  const handleRefFocus = useCallback((id: number, value: string) => {
+    refOriginalRef.current[id] = value
+  }, [])
+
+  const handleRefChange = useCallback((id: number, value: string) => {
+    setUrls(prev => prev.map(u => u.id === id ? { ...u, reference_number: value } : u))
+  }, [])
+
+  const handleRefBlur = useCallback(async (id: number) => {
+    const original = refOriginalRef.current[id] ?? ''
+    const current = urls.find(u => u.id === id)?.reference_number ?? ''
+    if (current === original) return
+    try {
+      await setUrlFields(id, { reference_number: current })
+    } catch {
+      setUrls(prev => prev.map(u => u.id === id ? { ...u, reference_number: original } : u))
     }
   }, [urls])
 
@@ -583,12 +882,186 @@ function URLsPage() {
     load()
   }
 
-  const totalPages = Math.max(1, Math.ceil(urls.length / PAGE_SIZE))
-  const currentPage = Math.min(page, totalPages)
-  const paginated = useMemo(
-    () => urls.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
-    [urls, currentPage],
-  )
+  const filterFields = useMemo<FilterFieldConfig<string>[]>(() => [
+    { key: 'status', label: 'Status', type: 'select', operators: IS_ONLY, options: STATUS_OPTIONS.filter(o => o.value).map(o => ({ value: o.value, label: o.label })) },
+    { key: 'requesting_dept', label: 'Requesting Dept.', type: 'select', operators: IS_ONLY, options: departments.map(d => ({ value: String(d.id), label: d.name })) },
+    { key: 'agency', label: 'Agency', type: 'select', operators: IS_ONLY, options: agencies.map(a => ({ value: String(a.id), label: a.name })) },
+  ], [agencies, departments])
+
+  const statusFilter = filters.find(f => f.field === 'status')?.values[0]
+  const deptFilter = filters.find(f => f.field === 'requesting_dept')?.values[0]
+  const agencyFilter = filters.find(f => f.field === 'agency')?.values[0]
+
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    return urls.filter(u =>
+      (!query || u.url.toLowerCase().includes(query)) &&
+      (!statusFilter || u.status === statusFilter) &&
+      (!deptFilter || String(u.requesting_dept_id ?? '') === deptFilter) &&
+      (!agencyFilter || String(u.agency_id ?? '') === agencyFilter)
+    )
+  }, [urls, search, statusFilter, deptFilter, agencyFilter])
+
+  useEffect(() => { setPagination(p => ({ ...p, pageIndex: 0 })) }, [search, statusFilter, deptFilter, agencyFilter])
+
+  const columns = useMemo<ColumnDef<URLEntry>[]>(() => [
+    {
+      id: 'domain',
+      accessorFn: u => u.url,
+      header: ({ column }) => <SortableHeader column={column} title="Domain" />,
+      enableHiding: false,
+      size: 280,
+      meta: {
+        headerTitle: 'Domain',
+        headerClassName: 'col-domain th-left',
+        cellClassName: 'col-domain',
+        skeleton: <span className="skeleton" style={{ width: 200, height: 14 }} />,
+      },
+      cell: ({ row }) => {
+        const u = row.original
+        return (
+          <PreviewLinkCard href={u.url}>
+            <PreviewLinkCardTrigger>
+              <span className="hostname flex items-center gap-2 min-w-0">
+                <img src={faviconApiUrl(u.url)} alt="" width={16} height={16} className="shrink-0" onError={e => { e.currentTarget.style.visibility = 'hidden' }} />
+                {u.url}
+              </span>
+            </PreviewLinkCardTrigger>
+            <PreviewLinkCardPanel>
+              <PreviewLinkCardImage />
+            </PreviewLinkCardPanel>
+          </PreviewLinkCard>
+        )
+      },
+    },
+    {
+      id: 'created_at',
+      accessorFn: u => u.created_at,
+      size: 110,
+      header: ({ column }) => <SortableHeader column={column} title="Added" />,
+      meta: { headerTitle: 'Added', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => <span className="dns-name">{DATE_FMT.format(new Date(row.original.created_at))}</span>,
+    },
+    {
+      id: 'agency',
+      accessorFn: u => u.agency_id ?? '',
+      size: 130,
+      header: 'Agency',
+      meta: { headerTitle: 'Agency', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => <span className="dns-name">{row.original.agency_name ?? '—'}</span>,
+    },
+    {
+      id: 'reference_number',
+      accessorFn: u => u.reference_number ?? '',
+      size: 130,
+      header: 'Reference No.',
+      meta: { headerTitle: 'Reference No.', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => <span className="dns-name">{row.original.reference_number || '—'}</span>,
+    },
+    {
+      id: 'requesting_dept',
+      accessorFn: u => u.requesting_dept_id ?? '',
+      size: 140,
+      header: 'Requesting Dept.',
+      meta: { headerTitle: 'Requesting Dept.', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => <span className="dns-name">{row.original.requesting_dept_name ?? '—'}</span>,
+    },
+    {
+      id: 'status',
+      accessorFn: u => u.status ?? '',
+      size: 110,
+      header: 'Status',
+      meta: {
+        headerTitle: 'Status',
+        headerClassName: 'col-status',
+        cellClassName: 'col-status text-center',
+        skeleton: <span className="skeleton" style={{ width: 90, height: 20, borderRadius: 4 }} />,
+      },
+      cell: ({ row }) => <span className="dns-name">{STATUS_OPTIONS.find(o => o.value === row.original.status)?.label ?? '—'}</span>,
+    },
+    {
+      id: 'due_date',
+      accessorFn: u => u.due_date ?? '',
+      size: 170,
+      header: ({ column }) => <SortableHeader column={column} title="Due Date" />,
+      meta: {
+        headerTitle: 'Due Date',
+        headerClassName: 'col-status',
+        cellClassName: 'col-status text-center',
+        skeleton: <span className="skeleton" style={{ width: 160, height: 20, borderRadius: 4 }} />,
+      },
+      cell: ({ row }) => {
+        const { due_date } = row.original
+        return <span className="dns-name">{due_date ? DUE_DATE_FMT.format(new Date(due_date)) : '—'}</span>
+      },
+    },
+    {
+      id: 'enabled',
+      header: 'Scan',
+      enableHiding: false,
+      size: 70,
+      meta: { headerClassName: 'th-center', cellClassName: 'text-center' },
+      cell: ({ row }) => {
+        const u = row.original
+        return (
+          <Switch
+            checked={u.enabled}
+            onCheckedChange={checked => handleToggle(u.id, checked)}
+            aria-label={`${u.enabled ? 'Disable' : 'Enable'} ${u.url} in scan`}
+          />
+        )
+      },
+    },
+    {
+      id: 'actions',
+      header: '',
+      enableHiding: false,
+      size: 90,
+      meta: { headerClassName: 'col-evidence', cellClassName: 'col-evidence text-right' },
+      cell: ({ row }) => {
+        const u = row.original
+        return (
+          <div className="flex items-center justify-end gap-1">
+            <button
+              type="button"
+              className="screenshot-icon-btn"
+              onClick={() => setEditTargetId(u.id)}
+              aria-label={`Edit ${u.url}`}
+              title="Edit"
+            >
+              <GripIcon size={16} />
+            </button>
+            <button
+              type="button"
+              className="screenshot-icon-btn"
+              onClick={() => setDeleteTarget(u)}
+              aria-label={`Delete ${u.url}`}
+              title="Delete"
+            >
+              <XIcon size={16} />
+            </button>
+          </div>
+        )
+      },
+    },
+  ], [handleToggle])
+
+  const table = useReactTable({
+    data: filtered,
+    columns,
+    state: { sorting, pagination, columnVisibility },
+    onSortingChange: setSorting,
+    onPaginationChange: setPagination,
+    onColumnVisibilityChange: setColumnVisibility,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+  })
+
+  // Holds the grid in its loading state until the saved column
+  // visibility/sort/page-size layout has been applied, so it renders once
+  // already in its final shape instead of flashing plain defaults first.
+  const gridLoading = loading || !gridPrefReady
 
   return (
     <div className="mx-20 mt-10">
@@ -603,128 +1076,59 @@ function URLsPage() {
         </div>
       </div>
 
-      <div className="results-wrap">
-        {error ? (
-          <div className="error-state">
-            <p className="error-message">{error}</p>
-            <button className="btn-primary" onClick={load}>Retry</button>
+      {error ? (
+        <div className="error-state">
+          <p className="error-message">{error}</p>
+          <button className="btn-primary" onClick={load}>Retry</button>
+        </div>
+      ) : !gridLoading && urls.length === 0 ? (
+        <div className="empty-state">
+          <EmptyIcon />
+          <p className="empty-heading">No domains yet</p>
+          <p className="empty-body">Add a domain to start monitoring DNS compliance.</p>
+          <button className="btn-primary" onClick={() => setAddOpen(true)}>Add Domain</button>
+        </div>
+      ) : (
+        <div className="flex flex-col items-stretch w-full gap-4 mt-4">
+          <div className="filter-bar flex flex-row items-center justify-start gap-4 w-full">
+            <Input
+              type="search"
+              placeholder="Search domain..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="max-w-64"
+              aria-label="Search domain"
+            />
+            <Filters filters={filters} fields={filterFields} onChange={setFilters} />
+            <div style={{ marginLeft: 'auto' }}>
+              <DataGridColumnVisibility table={table} trigger={<Button variant="outline">Columns</Button>} />
+            </div>
           </div>
-        ) : !loading && urls.length === 0 ? (
-          <div className="empty-state">
-            <EmptyIcon />
-            <p className="empty-heading">No domains yet</p>
-            <p className="empty-body">Add a domain to start monitoring DNS compliance.</p>
-            <button className="btn-primary" onClick={() => setAddOpen(true)}>Add Domain</button>
+
+          <div className="results-wrap w-full">
+            {!gridLoading && filtered.length === 0 ? (
+              <div className="empty-state" style={{ padding: '3rem 0' }}>
+                <p className="empty-heading">No domains match the current filters</p>
+              </div>
+            ) : (
+              <DataGrid table={table} recordCount={filtered.length} isLoading={gridLoading} tableClassNames={{ base: 'results-table' }}>
+                <DataGridContainer className="overflow-visible mb-5">
+                  <DataGridTable />
+                </DataGridContainer>
+                <DataGridPagination sizes={[10, 25, 50, 100]} />
+              </DataGrid>
+            )}
           </div>
-        ) : (
-          <Table className="results-table" aria-label="Monitored domains">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="col-domain th-left" scope="col">Domain</TableHead>
-                <TableHead className="col-status" scope="col">Added</TableHead>
-                <TableHead className="col-status" scope="col">Order Date</TableHead>
-                <TableHead scope="col" style={{ width: 52, textAlign: 'center' }}>Scan</TableHead>
-                <TableHead className="col-evidence" scope="col" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <SkeletonRows />
-              ) : (
-                paginated.map(u => (
-                  <TableRow key={u.id} className="url-row">
-                    <TableCell className="col-domain">
-                      <PreviewLinkCard href={u.url}>
-                        <PreviewLinkCardTrigger>
-                          <span className="hostname flex items-center gap-2">
-                            <img src={faviconApiUrl(u.url)} alt="" width={16} height={16} className="shrink-0" onError={e => { e.currentTarget.style.visibility = 'hidden' }} />
-                            {u.url}
-                          </span>
-                        </PreviewLinkCardTrigger>
-                        <PreviewLinkCardPanel>
-                          <PreviewLinkCardImage />
-                        </PreviewLinkCardPanel>
-                      </PreviewLinkCard>
-                    </TableCell>
-                    <TableCell className="col-status text-center">
-                      <span className="dns-name">
-                        {DATE_FMT.format(new Date(u.created_at))}
-                      </span>
-                    </TableCell>
-                    <TableCell className="col-status text-center">
-                      <input
-                        type="date"
-                        className="form-input"
-                        style={{ width: 140 }}
-                        value={u.ordered_at ? u.ordered_at.slice(0, 10) : ''}
-                        onChange={e => handleOrderedAtChange(u.id, e.target.value)}
-                        aria-label={`Order date for ${u.url}`}
-                      />
-                    </TableCell>
-                    <TableCell style={{ textAlign: 'center' }}>
-                      <Switch
-                        checked={u.enabled}
-                        onCheckedChange={checked => handleToggle(u.id, checked)}
-                        aria-label={`${u.enabled ? 'Disable' : 'Enable'} ${u.url} in scan`}
-                      />
-                    </TableCell>
-                    <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          type="button"
-                          className="screenshot-icon-btn"
-                          onClick={() => setEditOffencesTarget(u.url)}
-                          aria-label={`Edit offences for ${u.url}`}
-                          title="Offences"
-                        >
-                          <GripIcon size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          className="screenshot-icon-btn"
-                          onClick={() => setDeleteTarget(u)}
-                          aria-label={`Delete ${u.url}`}
-                          title="Delete"
-                        >
-                          <XIcon size={16} />
-                        </button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        )}
-        {!loading && totalPages > 1 && (
-          <div className="pagination">
-            <span className="pagination-label">Page {currentPage} of {totalPages}</span>
-            <button
-              type="button"
-              className="pagination-btn"
-              onClick={() => setPage(p => p - 1)}
-              disabled={currentPage <= 1}
-              aria-label="Previous page"
-            >
-              <ChevronLeftIcon className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              className="pagination-btn"
-              onClick={() => setPage(p => p + 1)}
-              disabled={currentPage >= totalPages}
-              aria-label="Next page"
-            >
-              <ChevronRightIcon className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <AddUrlDialog
         open={addOpen}
         onClose={() => setAddOpen(false)}
         onAdded={load}
+        agencies={agencies}
+        departments={departments}
+        defaultDepartmentId={me?.department_id ?? null}
       />
 
       <DeleteConfirmDialog
@@ -735,10 +1139,19 @@ function URLsPage() {
         onCancel={() => setDeleteTarget(null)}
       />
 
-      <EditOffencesDialog
-        url={editOffencesTarget}
-        open={editOffencesTarget !== null}
-        onClose={() => setEditOffencesTarget(null)}
+      <EditUrlDialog
+        entry={editTarget}
+        open={editTargetId !== null}
+        onClose={() => setEditTargetId(null)}
+        agencies={agencies}
+        departments={departments}
+        onAgencyChange={handleAgencyChange}
+        onRequestingDeptChange={handleRequestingDeptChange}
+        onStatusChange={handleStatusChange}
+        onDueDurationChange={handleDueDurationChange}
+        onRefFocus={handleRefFocus}
+        onRefChange={handleRefChange}
+        onRefBlur={handleRefBlur}
       />
     </div>
   )

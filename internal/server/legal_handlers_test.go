@@ -186,7 +186,7 @@ func TestOffencesByURL_NonOwningDepartment404(t *testing.T) {
 
 // AttachOffence is routine per-domain bookkeeping, open to any authenticated
 // role within the owning department — not admin-gated, matching PATCH
-// /api/urls/{id}'s ordered_at.
+// /api/urls/{id}'s due_date.
 func TestAttachOffence_PlainMemberOfOwningDepartmentAllowed(t *testing.T) {
 	store := &fullMockStore{}
 	u := db.URL{ID: 1, URL: "example.com"}

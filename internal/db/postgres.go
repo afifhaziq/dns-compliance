@@ -504,8 +504,13 @@ func (s *postgresStore) ListDepartmentURLs(ctx context.Context, departmentID uin
 	var entries []URLEntry
 	err := s.db.WithContext(ctx).
 		Table("urls").
-		Select("urls.id, urls.url, urls.created_at, du.enabled, du.ordered_at").
+		Select(`urls.id, urls.url, urls.created_at, du.enabled,
+			urls.due_date, urls.agency_id, agencies.name as agency_name,
+			urls.reference_number, urls.requesting_dept_id, departments.name as requesting_dept_name,
+			urls.status, urls.requested_at`).
 		Joins("JOIN department_urls du ON du.url_id = urls.id AND du.department_id = ?", departmentID).
+		Joins("LEFT JOIN agencies ON agencies.id = urls.agency_id").
+		Joins("LEFT JOIN departments ON departments.id = urls.requesting_dept_id").
 		Order("urls.created_at asc").
 		Scan(&entries).Error
 	return entries, err
@@ -543,14 +548,46 @@ func (s *postgresStore) SetURLEnabled(ctx context.Context, departmentID, urlID u
 	return res.RowsAffected > 0, res.Error
 }
 
-// SetURLOrderedAt sets or clears (orderedAt == nil) the takedown-order date
-// for one department's watchlist entry. Optional field — leaving it unset
-// just excludes the domain from time-to-compliance aggregates.
-func (s *postgresStore) SetURLOrderedAt(ctx context.Context, departmentID, urlID uint, orderedAt *time.Time) (bool, error) {
-	res := s.db.WithContext(ctx).
-		Model(&DepartmentURL{}).
+// UpdateURLCaseFields applies a partial update to a URL's case-metadata
+// fields — only non-nil fields in `fields` are touched, via one map-based
+// UPDATE rather than one setter method per column. The write target (URL)
+// is shared across every department watching the domain, so — unlike the
+// old department-scoped UPDATE this replaces — authorization can't fall out
+// of the WHERE clause anymore; ownership is checked explicitly first.
+func (s *postgresStore) UpdateURLCaseFields(ctx context.Context, departmentID, urlID uint, fields URLCaseFields) (bool, error) {
+	var count int64
+	if err := s.db.WithContext(ctx).Model(&DepartmentURL{}).
 		Where("department_id = ? AND url_id = ?", departmentID, urlID).
-		Update("ordered_at", orderedAt)
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	if count == 0 {
+		return false, nil
+	}
+
+	updates := map[string]interface{}{}
+	if fields.DueDate != nil {
+		updates["due_date"] = *fields.DueDate
+	}
+	if fields.AgencyID != nil {
+		updates["agency_id"] = *fields.AgencyID
+	}
+	if fields.ReferenceNumber != nil {
+		updates["reference_number"] = *fields.ReferenceNumber
+	}
+	if fields.RequestingDeptID != nil {
+		updates["requesting_dept_id"] = *fields.RequestingDeptID
+	}
+	if fields.Status != nil {
+		updates["status"] = *fields.Status
+	}
+	if fields.RequestedAt != nil {
+		updates["requested_at"] = *fields.RequestedAt
+	}
+	if len(updates) == 0 {
+		return true, nil // owned, but nothing in the body to apply
+	}
+	res := s.db.WithContext(ctx).Model(&URL{}).Where("id = ?", urlID).Updates(updates)
 	return res.RowsAffected > 0, res.Error
 }
 
@@ -626,6 +663,20 @@ func (s *postgresStore) DeleteCompliantIP(ctx context.Context, id uint) error {
 	return s.db.WithContext(ctx).Delete(&CompliantIP{}, id).Error
 }
 
+func (s *postgresStore) ListAgencies(ctx context.Context) ([]Agency, error) {
+	var agencies []Agency
+	return agencies, s.db.WithContext(ctx).Order("name asc").Find(&agencies).Error
+}
+
+func (s *postgresStore) CreateAgency(ctx context.Context, name string) (Agency, error) {
+	a := Agency{Name: name}
+	return a, s.db.WithContext(ctx).Create(&a).Error
+}
+
+func (s *postgresStore) DeleteAgency(ctx context.Context, id uint) error {
+	return s.db.WithContext(ctx).Delete(&Agency{}, id).Error
+}
+
 func (s *postgresStore) ListISPLogos(ctx context.Context) ([]ISPLogo, error) {
 	var logos []ISPLogo
 	return logos, s.db.WithContext(ctx).Order("isp").Find(&logos).Error
@@ -642,6 +693,26 @@ func (s *postgresStore) UpsertISPLogo(ctx context.Context, isp, logoURL string) 
 
 func (s *postgresStore) DeleteISPLogo(ctx context.Context, isp string) error {
 	return s.db.WithContext(ctx).Delete(&ISPLogo{}, "isp = ?", isp).Error
+}
+
+func (s *postgresStore) GetGridPreference(ctx context.Context, userID uint, gridKey string) (*GridPreference, error) {
+	var pref GridPreference
+	err := s.db.WithContext(ctx).Where("user_id = ? AND grid_key = ?", userID, gridKey).First(&pref).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &pref, nil
+}
+
+func (s *postgresStore) SaveGridPreference(ctx context.Context, pref GridPreference) (GridPreference, error) {
+	err := s.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "grid_key"}},
+		DoUpdates: clause.AssignmentColumns([]string{"column_visibility", "sort_field", "sort_desc", "page_size", "updated_at"}),
+	}).Create(&pref).Error
+	return pref, err
 }
 
 func (s *postgresStore) GetScanInterval(ctx context.Context) (int, error) {
@@ -1052,38 +1123,35 @@ func (s *postgresStore) ResurfacedDomainsForDepartment(ctx context.Context, depa
 // scoped to one department's watchlist. Aggregated in Go, following the same
 // SQLite-portability reasoning as dailyTrend/DailyComplianceByURL.
 func (s *postgresStore) ispComplianceTiming(ctx context.Context, isp string, departmentID *uint) (ISPTimingResult, error) {
-	// Plain (non-aggregated) column read, reduced to a min-per-url_id map in
-	// Go: SQLite's driver can't scan a SQL MIN() of a datetime column
-	// directly into time.Time, so the reduction happens here instead.
-	type deptURLOrderRow struct {
-		URLID     uint
-		OrderedAt time.Time
+	// DueDate is a single value per URL (case metadata is global, not
+	// per-department — see URL's doc comment), so there's no per-department
+	// min-reduction to do anymore. When department-scoped, the join to
+	// department_urls only narrows *which* domains count toward this
+	// department's aggregate (the denominator) — it can't introduce
+	// duplicate rows per url_id, since (department_id, url_id) is a
+	// composite primary key.
+	type deptURLDueRow struct {
+		URLID   uint
+		DueDate time.Time
 	}
-	orderQuery := s.db.WithContext(ctx).
-		Table("department_urls").
-		Select("url_id, ordered_at").
-		Where("ordered_at IS NOT NULL")
+	dueQuery := s.db.WithContext(ctx).
+		Table("urls").
+		Select("urls.id as url_id, urls.due_date").
+		Where("urls.due_date IS NOT NULL")
 	if departmentID != nil {
-		orderQuery = orderQuery.Where("department_id = ?", *departmentID)
+		dueQuery = dueQuery.Joins("JOIN department_urls du ON du.url_id = urls.id AND du.department_id = ?", *departmentID)
 	}
-	var deptURLOrderRows []deptURLOrderRow
-	if err := orderQuery.Scan(&deptURLOrderRows).Error; err != nil {
+	var dueRows []deptURLDueRow
+	if err := dueQuery.Scan(&dueRows).Error; err != nil {
 		return ISPTimingResult{}, err
 	}
-	orderedAtByURL := make(map[uint]time.Time, len(deptURLOrderRows))
-	for _, r := range deptURLOrderRows {
-		existing, ok := orderedAtByURL[r.URLID]
-		if !ok || r.OrderedAt.Before(existing) {
-			orderedAtByURL[r.URLID] = r.OrderedAt
-		}
-	}
-	orderRows := make([]deptURLOrderRow, 0, len(orderedAtByURL))
-	for urlID, orderedAt := range orderedAtByURL {
-		orderRows = append(orderRows, deptURLOrderRow{URLID: urlID, OrderedAt: orderedAt})
+	dueDateByURL := make(map[uint]time.Time, len(dueRows))
+	for _, r := range dueRows {
+		dueDateByURL[r.URLID] = r.DueDate
 	}
 
 	// Total monitored domains in this scope — the denominator for the
-	// "N domains have a recorded order date" coverage figure.
+	// "N domains have a recorded due date" coverage figure.
 	totalQuery := s.db.WithContext(ctx).Table("department_urls").Select("COUNT(DISTINCT url_id)")
 	if departmentID != nil {
 		totalQuery = totalQuery.Where("department_id = ?", *departmentID)
@@ -1115,26 +1183,26 @@ func (s *postgresStore) ispComplianceTiming(ctx context.Context, isp string, dep
 		return ISPTimingResult{}, err
 	}
 
-	firstCompliantAfterOrder := make(map[uint]time.Time)
+	firstCompliantAfterDue := make(map[uint]time.Time)
 	domainNameByURL := make(map[uint]string)
 	for _, r := range complianceRows {
 		domainNameByURL[r.URLID] = r.URLValue
-		orderedAt, hasOrder := orderedAtByURL[r.URLID]
-		if !hasOrder {
+		dueDate, hasDue := dueDateByURL[r.URLID]
+		if !hasDue {
 			continue
 		}
-		if _, already := firstCompliantAfterOrder[r.URLID]; already {
+		if _, already := firstCompliantAfterDue[r.URLID]; already {
 			continue
 		}
-		if r.ScannedAt.Before(orderedAt) {
-			continue // compliant scan predates the recorded order — not this order's block event
+		if r.ScannedAt.Before(dueDate) {
+			continue // compliant scan predates the recorded due date — not this order's block event
 		}
-		firstCompliantAfterOrder[r.URLID] = r.ScannedAt
+		firstCompliantAfterDue[r.URLID] = r.ScannedAt
 	}
 
-	// Domain names for ordered URLs that have no compliant scan yet (still open).
+	// Domain names for due URLs that have no compliant scan yet (still open).
 	var missingIDs []uint
-	for _, r := range orderRows {
+	for _, r := range dueRows {
 		if _, known := domainNameByURL[r.URLID]; !known {
 			missingIDs = append(missingIDs, r.URLID)
 		}
@@ -1150,19 +1218,19 @@ func (s *postgresStore) ispComplianceTiming(ctx context.Context, isp string, dep
 	}
 
 	now := time.Now()
-	timings := make([]DomainTiming, 0, len(orderRows))
+	timings := make([]DomainTiming, 0, len(dueRows))
 	var blockedDays []float64
-	for _, r := range orderRows {
+	for _, r := range dueRows {
 		domain := domainNameByURL[r.URLID]
-		if firstCompliant, blocked := firstCompliantAfterOrder[r.URLID]; blocked {
-			days := firstCompliant.Sub(r.OrderedAt).Hours() / 24
+		if firstCompliant, blocked := firstCompliantAfterDue[r.URLID]; blocked {
+			days := firstCompliant.Sub(r.DueDate).Hours() / 24
 			if days < 0 {
-				days = 0 // order recorded after the domain was already observed compliant
+				days = 0 // due date recorded after the domain was already observed compliant
 			}
 			timings = append(timings, DomainTiming{Domain: domain, DaysToBlock: int(days + 0.5), Blocked: true})
 			blockedDays = append(blockedDays, days)
 		} else {
-			waited := now.Sub(r.OrderedAt).Hours() / 24
+			waited := now.Sub(r.DueDate).Hours() / 24
 			if waited < 0 {
 				waited = 0
 			}
@@ -1192,14 +1260,14 @@ func (s *postgresStore) ispComplianceTiming(ctx context.Context, isp string, dep
 	}
 
 	return ISPTimingResult{
-		ISP:                isp,
-		MedianDaysToBlock:  median,
-		AvgDaysToBlock:     avg,
-		BlockedCount:       len(blockedDays),
-		StillOpenCount:     len(orderRows) - len(blockedDays),
-		WithOrderDateCount: len(orderRows),
-		TotalDomains:       int(totalDomains),
-		Slowest:            slowest,
+		ISP:               isp,
+		MedianDaysToBlock: median,
+		AvgDaysToBlock:    avg,
+		BlockedCount:      len(blockedDays),
+		StillOpenCount:    len(dueRows) - len(blockedDays),
+		WithDueDateCount:  len(dueRows),
+		TotalDomains:      int(totalDomains),
+		Slowest:           slowest,
 	}, nil
 }
 

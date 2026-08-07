@@ -46,7 +46,22 @@ export type GroupedResult = {
   latestScannedAt: string
 }
 
-export type URLEntry = { id: number; url: string; enabled: boolean; ordered_at?: string; created_at: string }
+export type URLEntry = {
+  id: number
+  url: string
+  enabled: boolean
+  due_date?: string
+  agency_id?: number
+  agency_name?: string
+  reference_number?: string
+  requesting_dept_id?: number
+  requesting_dept_name?: string
+  status?: string
+  requested_at?: string
+  created_at: string
+}
+
+export type Agency = { id: number; name: string; created_at: string }
 
 export type Department = { id: number; name: string; created_at: string }
 
@@ -111,7 +126,7 @@ export type ISPTiming = {
   avg_days_to_block: number
   blocked_count: number
   still_open_count: number
-  with_order_date_count: number
+  with_due_date_count: number
   total_domains: number
   slowest: DomainTiming[]
 }
@@ -231,4 +246,14 @@ export type URLOffence = {
   sub_element_id?: number
   sub_element?: LegalSubElement
   recorded_at: string
+}
+
+// GET/PUT /api/grid-preferences/{key} — a user's saved data-grid layout.
+// GET returns {} (all fields absent) when nothing has been saved yet.
+export type GridPreference = {
+  column_visibility?: Record<string, boolean>
+  sort_field?: string
+  sort_desc?: boolean
+  page_size?: number
+  updated_at?: string
 }

@@ -18,8 +18,14 @@ type URLStore interface {
 	ListDepartmentURLs(ctx context.Context, departmentID uint) ([]URLEntry, error)
 	AddURLToWatchlist(ctx context.Context, departmentID uint, rawURL string) (URL, error)
 	RemoveURLFromWatchlist(ctx context.Context, departmentID, urlID uint) (bool, error)                // false if no row was deleted (not on that watchlist)
-	SetURLEnabled(ctx context.Context, departmentID, urlID uint, enabled bool) (bool, error)           // false if the URL is not on that watchlist
-	SetURLOrderedAt(ctx context.Context, departmentID, urlID uint, orderedAt *time.Time) (bool, error) // nil clears the order date; false if the URL is not on that watchlist
+	SetURLEnabled(ctx context.Context, departmentID, urlID uint, enabled bool) (bool, error) // false if the URL is not on that watchlist
+	// UpdateURLCaseFields writes to the shared URL row (case metadata is
+	// global, see URL's doc comment) but only after verifying departmentID
+	// actually watches urlID — the write target is no longer department-
+	// scoped, so authorization must be checked explicitly instead of
+	// falling out of a WHERE clause. Only non-nil fields in `fields` are
+	// applied; false if the URL is not on that department's watchlist.
+	UpdateURLCaseFields(ctx context.Context, departmentID, urlID uint, fields URLCaseFields) (bool, error)
 	ListWatchedURLs(ctx context.Context) ([]URL, error)                                                // urls with >=1 enabled DepartmentURL row — used by the scan sweep
 	ListUnassignedURLs(ctx context.Context) ([]URL, error)                                             // admin view: urls with 0 DepartmentURL rows
 	URLOwnedByDepartment(ctx context.Context, departmentID uint, urlValue string) (bool, error)
@@ -132,12 +138,28 @@ type CompliantIPStore interface {
 	DeleteCompliantIP(ctx context.Context, id uint) error
 }
 
+// AgencyStore is the admin-managed agency lookup table — read open to any
+// authenticated role, mutations gated to admin-or-dept-admin (see router.go).
+type AgencyStore interface {
+	ListAgencies(ctx context.Context) ([]Agency, error)
+	CreateAgency(ctx context.Context, name string) (Agency, error)
+	DeleteAgency(ctx context.Context, id uint) error
+}
+
 // ISPLogoStore is the admin-managed ISP name → logo URL lookup, rendered on
 // the Overview page's ISPBentoGrid.
 type ISPLogoStore interface {
 	ListISPLogos(ctx context.Context) ([]ISPLogo, error)
 	UpsertISPLogo(ctx context.Context, isp, logoURL string) (ISPLogo, error)
 	DeleteISPLogo(ctx context.Context, isp string) error
+}
+
+// GridPreferenceStore holds each user's saved data-grid layout (column
+// visibility, sort, page size), keyed by (user, grid). Personal to the
+// calling user — no admin gating, ownership is implicit in the userID param.
+type GridPreferenceStore interface {
+	GetGridPreference(ctx context.Context, userID uint, gridKey string) (*GridPreference, error) // nil, nil if never saved
+	SaveGridPreference(ctx context.Context, pref GridPreference) (GridPreference, error)          // upsert by (user_id, grid_key)
 }
 
 // ScanSettingsStore holds the single admin-configurable scan cadence row.
@@ -238,7 +260,9 @@ type Store interface {
 	UserStore
 	SessionStore
 	CompliantIPStore
+	AgencyStore
 	ISPLogoStore
+	GridPreferenceStore
 	ScanSettingsStore
 	EnrichmentStore
 	LegalCitationStore

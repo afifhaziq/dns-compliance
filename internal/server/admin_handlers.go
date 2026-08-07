@@ -21,6 +21,20 @@ func (h *Handlers) ListDepartments(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, departments)
 }
 
+// ListDepartmentsOpen is the same underlying data as ListDepartments
+// (super-admin-only, /api/admin/departments) but exposed to any
+// authenticated role at GET /api/departments, for the Requesting Dept
+// dropdown any regular user needs when adding/editing a domain's case
+// metadata.
+func (h *Handlers) ListDepartmentsOpen(w http.ResponseWriter, r *http.Request) {
+	departments, err := h.store.ListDepartments(r.Context())
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, departments)
+}
+
 func (h *Handlers) CreateDepartment(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name string `json:"name"`
@@ -211,6 +225,51 @@ func (h *Handlers) DeleteCompliantIP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.store.DeleteCompliantIP(r.Context(), uint(id)); err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Agencies — an admin-managed lookup table for the government agency behind
+// a takedown request. Read open to any authenticated role (registered
+// below, outside this admin-gated group); create/delete gated to
+// admin-or-dept-admin, matching the DNS-server/ISP-logo/legal-catalog
+// pattern rather than the stricter super-admin-only Department/CompliantIP
+// pattern.
+
+func (h *Handlers) ListAgencies(w http.ResponseWriter, r *http.Request) {
+	agencies, err := h.store.ListAgencies(r.Context())
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, agencies)
+}
+
+func (h *Handlers) CreateAgency(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	a, err := h.store.CreateAgency(r.Context(), body.Name)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, a)
+}
+
+func (h *Handlers) DeleteAgency(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := h.store.DeleteAgency(r.Context(), uint(id)); err != nil {
 		writeInternalError(w, err)
 		return
 	}
