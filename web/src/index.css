@@ -637,6 +637,24 @@ html.dark {
   box-shadow: inset 1px 0 0 0 var(--stone-border), inset 0 -1px 0 0 var(--stone-border);
 }
 
+/* The table's own outer border (border-collapse, on .results-table above)
+   scrolls away with the <table> element while sticky pinned cells stay put,
+   so once scrolled it no longer lines up with the pinned group's true left/
+   right edge - same box-shadow workaround as above, extended to that edge.
+   Pinned cells are always rendered first/last within each row
+   (data-grid-table.tsx concatenates left+center+right cells in that order),
+   so :first-child/:last-child reliably targets the true edge even when
+   multiple columns are pinned to one side (results.index.tsx pins two).
+   .results-table--pinned bumps specificity above the divider rules'
+   compiled Tailwind selector so this isn't order-dependent. */
+.results-table.results-table--pinned tr > [data-pinned="left"]:first-child {
+  box-shadow: inset -1px 0 0 0 var(--stone-border), inset 0 -1px 0 0 var(--stone-border), inset 1px 0 0 0 var(--stone-border);
+}
+
+.results-table.results-table--pinned tr > [data-pinned="right"]:last-child {
+  box-shadow: inset 1px 0 0 0 var(--stone-border), inset 0 -1px 0 0 var(--stone-border), inset -1px 0 0 0 var(--stone-border);
+}
+
 .results-table th {
   @apply py-2 px-4 text-[11px] font-semibold tracking-[0.06em] uppercase text-stone-muted text-center border border-stone-border;
 }

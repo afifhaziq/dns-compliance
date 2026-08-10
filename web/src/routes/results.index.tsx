@@ -278,23 +278,6 @@ function LatestScanTab() {
 
   const columns = useMemo<ColumnDef<ResultRow>[]>(() => [
     {
-      id: 'expand',
-      header: () => null,
-      size: 30,
-      enableSorting: false,
-      enableHiding: false,
-      meta: {
-        headerClassName: 'col-expand',
-        cellClassName: 'col-expand',
-        skeleton: <span className="skeleton" style={{ width: 16, height: 16, borderRadius: 3 }} />,
-      },
-      cell: ({ row }) => (
-        <DataGridTableRowExpand row={row}>
-          <ChevronRight className={`expand-icon${row.getIsExpanded() ? ' expanded' : ''}`} />
-        </DataGridTableRowExpand>
-      ),
-    },
-    {
       id: 'domain',
       accessorFn: r => r.kind === 'domain' ? r.group.hostname : r.result.dns_server.name,
       header: ({ column }) => <SortableHeader column={column} title="Domain" />,
@@ -307,19 +290,32 @@ function LatestScanTab() {
       },
       cell: ({ row }) => {
         const original = row.original
+        const expandControl = (
+          <DataGridTableRowExpand row={row}>
+            <ChevronRight className={`expand-icon${row.getIsExpanded() ? ' expanded' : ''}`} />
+          </DataGridTableRowExpand>
+        )
         if (original.kind === 'server') {
-          return <span className="dns-name">{original.result.dns_server.name}</span>
+          return (
+            <span className="flex items-center gap-[2px]">
+              {expandControl}
+              <span className="dns-name">{original.result.dns_server.name}</span>
+            </span>
+          )
         }
         const { group } = original
         return (
-          <PreviewLinkCard href={`https://${group.hostname}`}>
-            <PreviewLinkCardTrigger>
-              <span className="hostname" title={group.url}>{group.hostname}</span>
-            </PreviewLinkCardTrigger>
-            <PreviewLinkCardPanel>
-              <PreviewLinkCardImage />
-            </PreviewLinkCardPanel>
-          </PreviewLinkCard>
+          <span className="flex items-center gap-[2px]">
+            {expandControl}
+            <PreviewLinkCard href={`https://${group.hostname}`}>
+              <PreviewLinkCardTrigger>
+                <span className="hostname" title={group.url}>{group.hostname}</span>
+              </PreviewLinkCardTrigger>
+              <PreviewLinkCardPanel>
+                <PreviewLinkCardImage />
+              </PreviewLinkCardPanel>
+            </PreviewLinkCard>
+          </span>
         )
       },
     },
@@ -444,7 +440,7 @@ function LatestScanTab() {
   const table = useReactTable({
     data: treeData,
     columns,
-    initialState: { columnPinning: { left: ['expand', 'domain'], right: ['actions'] } },
+    initialState: { columnPinning: { left: ['domain'], right: ['actions'] } },
     state: { expanded, sorting, pagination, columnVisibility },
     onExpandedChange: setExpanded,
     onSortingChange: setSorting,
@@ -660,37 +656,29 @@ const allTimeSkeletonWidths = [180, 90, 60, 100]
 
 const allTimeColumns: ColumnDef<DomainSummary>[] = [
   {
-    id: 'expand',
-    header: () => null,
-    size: 30,
-    enableHiding: false,
-    meta: {
-      headerClassName: 'col-expand',
-      cellClassName: 'col-expand',
-      expandedContent: (row: DomainSummary) => <DomainServerBreakdown domain={row.url} />,
-    },
-    cell: ({ row }) => (
-      <button
-        type="button"
-        className="expand-btn"
-        onClick={e => { e.stopPropagation(); row.getToggleExpandedHandler()() }}
-        aria-expanded={row.getIsExpanded()}
-        aria-label={`${row.getIsExpanded() ? 'Collapse' : 'Expand'} per-server breakdown for ${row.original.url}`}
-      >
-        <ChevronRight className={`expand-icon${row.getIsExpanded() ? ' expanded' : ''}`} />
-      </button>
-    ),
-  },
-  {
     accessorKey: 'url',
     header: 'Domain',
     enableHiding: false,
     meta: {
       headerClassName: 'col-domain th-left',
-      cellClassName: 'col-domain pl-4',
+      cellClassName: 'col-domain',
       skeleton: <span className="skeleton" style={{ width: allTimeSkeletonWidths[0], height: 14 }} />,
+      expandedContent: (row: DomainSummary) => <DomainServerBreakdown domain={row.url} />,
     },
-    cell: ({ getValue }) => <span className="hostname">{getValue<string>()}</span>,
+    cell: ({ row }) => (
+      <span className="hostname flex items-center gap-[2px]">
+        <button
+          type="button"
+          className="expand-btn"
+          onClick={e => { e.stopPropagation(); row.getToggleExpandedHandler()() }}
+          aria-expanded={row.getIsExpanded()}
+          aria-label={`${row.getIsExpanded() ? 'Collapse' : 'Expand'} per-server breakdown for ${row.original.url}`}
+        >
+          <ChevronRight className={`expand-icon${row.getIsExpanded() ? ' expanded' : ''}`} />
+        </button>
+        {row.original.url}
+      </span>
+    ),
   },
   {
     id: 'compliance',
@@ -822,7 +810,7 @@ function AllTimeTab() {
   const table = useReactTable({
     data: domains,
     columns: allTimeColumns,
-    initialState: { columnPinning: { left: ['expand', 'url'], right: ['actions'] } },
+    initialState: { columnPinning: { left: ['url'], right: ['actions'] } },
     state: { pagination, expanded, columnVisibility },
     onPaginationChange: setPagination,
     onExpandedChange: setExpanded,
