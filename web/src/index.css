@@ -617,7 +617,11 @@ html.dark {
 }
 
 .results-table th {
-  @apply py-2 px-4 text-[11px] font-semibold tracking-[0.06em] uppercase text-stone-muted text-center border-b border-stone-border;
+  @apply py-2 px-4 text-[11px] font-semibold tracking-[0.06em] uppercase text-stone-muted text-center border border-stone-border;
+}
+
+.results-table td {
+  @apply border border-stone-border;
 }
 
 .col-expand {
