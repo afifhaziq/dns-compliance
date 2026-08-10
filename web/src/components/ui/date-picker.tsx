@@ -178,6 +178,9 @@ export type DatePickerProps = {
   "aria-invalid"?: boolean;
   side?: DatePickerSide;
   align?: DatePickerAlign;
+  /** Skips the trigger's own border/background/height — for embedding inside
+   * a parent that already supplies that chrome (e.g. a Filters chip). */
+  bare?: boolean;
   /** Props forwarded to the embedded Calendar, except selection and month state. */
   calendarProps?: DatePickerCalendarProps;
 };
@@ -401,6 +404,10 @@ function mergeTriggerRef(
 type DatePickerTriggerProps = {
   ariaInvalid?: boolean;
   ariaLabel: string;
+  /** Skips the trigger's own border/background/height — for embedding inside
+   * a parent that already supplies that chrome (e.g. a Filters chip), so the
+   * two don't nest into a double box. */
+  bare?: boolean;
   clearable: boolean;
   disabled: boolean;
   id?: string;
@@ -418,6 +425,7 @@ type DatePickerTriggerProps = {
 function DatePickerTrigger({
   ariaInvalid,
   ariaLabel,
+  bare = false,
   clearable,
   disabled,
   id,
@@ -438,16 +446,23 @@ function DatePickerTrigger({
 
   return (
     <div
-      className={cn(
-        datePickerInputShellClassName,
-        "h-10 pr-2 pl-4",
-        datePickerTriggerCornerClassName
-      )}
+      className={
+        bare
+          ? "group flex items-center gap-1.5 cursor-pointer [&:has(input:disabled)]:cursor-not-allowed [&:has(input:disabled)]:opacity-50"
+          : cn(
+              datePickerInputShellClassName,
+              "h-10 pr-2 pl-4",
+              datePickerTriggerCornerClassName
+            )
+      }
     >
-      <div className="relative flex min-w-0 flex-1 items-center">
+      <div className={cn("flex min-w-0 items-center", bare ? "gap-1.5" : "relative flex-1")}>
         <CalendarIcon
           aria-hidden
-          className="pointer-events-none absolute left-0 h-4 w-4 shrink-0 text-stone-muted transition-colors group-hover:text-foreground group-has-[input:disabled]:text-stone-muted"
+          className={cn(
+            "pointer-events-none shrink-0 text-stone-muted transition-colors group-hover:text-foreground group-has-[input:disabled]:text-stone-muted",
+            bare ? "h-3.5 w-3.5" : "absolute left-0 h-4 w-4"
+          )}
         />
         <InputPrimitive
           aria-controls={open ? panelId : undefined}
@@ -478,7 +493,7 @@ function DatePickerTrigger({
                 {...resolvedInputProps}
                 className={cn(
                   datePickerInputClassName,
-                  "pl-7",
+                  bare ? "w-auto" : "pl-7",
                   !selected && "text-muted-foreground",
                   primitiveClassName
                 )}
@@ -504,7 +519,10 @@ function DatePickerTrigger({
       {clearable && selected && !disabled ? (
         <button
           aria-label="Clear selected date"
-          className="ml-1 flex h-7 w-7 shrink-0 items-center justify-center text-stone-muted transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
+          className={cn(
+            "flex shrink-0 items-center justify-center text-stone-muted transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none",
+            bare ? "h-4 w-4" : "ml-1 h-7 w-7"
+          )}
           onClick={onClear}
           onPointerDown={(event) => {
             event.stopPropagation();
@@ -636,6 +654,7 @@ export const AnimatedDatePicker = forwardRef<HTMLInputElement, DatePickerProps>(
       "aria-invalid": ariaInvalid,
       side = "bottom",
       align = "start",
+      bare = false,
       calendarProps,
     } = props;
 
@@ -809,7 +828,7 @@ export const AnimatedDatePicker = forwardRef<HTMLInputElement, DatePickerProps>(
 
     return (
       <div
-        className={cn("relative w-full", className)}
+        className={cn("relative", !bare && "w-full", className)}
         ref={rootRef}
         style={{ maxWidth: panelWidth }}
       >
@@ -828,6 +847,7 @@ export const AnimatedDatePicker = forwardRef<HTMLInputElement, DatePickerProps>(
         <DatePickerTrigger
           ariaInvalid={ariaInvalid}
           ariaLabel={ariaLabel}
+          bare={bare}
           clearable={clearable}
           disabled={disabled}
           id={id}

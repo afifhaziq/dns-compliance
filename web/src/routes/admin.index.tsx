@@ -15,7 +15,8 @@ import {
   type ScanSchedule,
 } from '../api/admin'
 import { fetchAgencies, createAgency, deleteAgency } from '../api/agencies'
-import type { Agency, CompliantIP, Department, User } from '../api/types'
+import { fetchDueDatePresets, createDueDatePreset, deleteDueDatePreset } from '../api/due-date-presets'
+import type { Agency, CompliantIP, Department, DueDatePreset, User } from '../api/types'
 import {
   Dialog,
   DialogContent,
@@ -32,7 +33,7 @@ import { Slider } from '@/components/ui/slider'
 import { XIcon } from '@/components/ui/x'
 import { useAuth } from './__root'
 
-const ADMIN_TABS = ['departments', 'users', 'ip', 'agencies', 'scan-settings'] as const
+const ADMIN_TABS = ['departments', 'users', 'ip', 'agencies', 'due-dates', 'scan-settings'] as const
 type AdminTab = typeof ADMIN_TABS[number]
 
 export const Route = createFileRoute('/admin/')({
@@ -180,6 +181,93 @@ function AddAgencyDialog({
             </button>
             <button type="submit" className="btn-primary" disabled={loading}>
               {loading ? 'Adding…' : 'Add Agency'}
+            </button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ─── Add Due-Date Preset Dialog ─────────────────────────────────────────── */
+
+function AddDueDatePresetDialog({
+  open,
+  onClose,
+  onAdded,
+}: {
+  open: boolean
+  onClose: () => void
+  onAdded: (preset: DueDatePreset) => void
+}) {
+  const [label, setLabel] = useState('')
+  const [hours, setHours] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const reset = () => { setLabel(''); setHours(''); setError(null) }
+  const handleClose = () => { reset(); onClose() }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const h = Number(hours)
+    if (!label.trim() || !h || h <= 0) { setError('Label and a positive number of hours are required'); return }
+    setLoading(true)
+    setError(null)
+    try {
+      const created = await createDueDatePreset(label.trim(), h)
+      onAdded(created)
+      reset()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add duration')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: 400 }}>
+        <DialogHeader>
+          <DialogTitle>Add Time-to-Block Duration</DialogTitle>
+          <DialogDescription>
+            Options shown in the "Time to Block" picker when setting a domain's due date on the Watchlist.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit}>
+          <div className="form-field">
+            <label className="form-label" htmlFor="preset-label-input">Label</label>
+            <input
+              id="preset-label-input"
+              className="form-input"
+              type="text"
+              placeholder="e.g. 12 hours"
+              value={label}
+              onChange={e => setLabel(e.target.value)}
+              autoFocus
+              disabled={loading}
+            />
+          </div>
+          <div className="form-field">
+            <label className="form-label" htmlFor="preset-hours-input">Hours</label>
+            <input
+              id="preset-hours-input"
+              className="form-input"
+              type="number"
+              min={1}
+              value={hours}
+              onChange={e => setHours(e.target.value)}
+              disabled={loading}
+            />
+          </div>
+          {error && <p className="form-error">{error}</p>}
+          <DialogFooter>
+            <button type="button" className="btn-ghost" onClick={handleClose} disabled={loading}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={loading}>
+              {loading ? 'Adding…' : 'Add Duration'}
             </button>
           </DialogFooter>
         </form>
@@ -553,6 +641,7 @@ function AdminPage() {
   const [users, setUsers] = useState<User[]>([])
   const [compliantIPs, setCompliantIPs] = useState<CompliantIP[]>([])
   const [agencies, setAgencies] = useState<Agency[]>([])
+  const [duePresets, setDuePresets] = useState<DueDatePreset[]>([])
   const [scanSchedule, setScanSchedule] = useState<ScanSchedule | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -560,31 +649,35 @@ function AdminPage() {
   const [addUserOpen, setAddUserOpen] = useState(false)
   const [addIPOpen, setAddIPOpen] = useState(false)
   const [addAgencyOpen, setAddAgencyOpen] = useState(false)
+  const [addPresetOpen, setAddPresetOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
   const [deleteIPTarget, setDeleteIPTarget] = useState<CompliantIP | null>(null)
   const [deleteAgencyTarget, setDeleteAgencyTarget] = useState<Agency | null>(null)
+  const [deletePresetTarget, setDeletePresetTarget] = useState<DueDatePreset | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       setError(null)
-      // Agencies are readable by both roles (admin-or-dept-admin manageable,
-      // unlike Departments/Compliant-IPs/scan interval, which stay
-      // super-admin-only server-side — a department admin would just get a
-      // 403 fetching those).
+      // Agencies and due-date presets are readable by both roles
+      // (admin-or-dept-admin manageable, unlike Departments/Compliant-IPs/
+      // scan interval, which stay super-admin-only server-side — a
+      // department admin would just get a 403 fetching those).
       if (me?.is_admin) {
-        const [d, u, ips, schedule, a] = await Promise.all([
-          fetchDepartments(), fetchUsers(), fetchCompliantIPs(), fetchScanInterval(), fetchAgencies(),
+        const [d, u, ips, schedule, a, p] = await Promise.all([
+          fetchDepartments(), fetchUsers(), fetchCompliantIPs(), fetchScanInterval(), fetchAgencies(), fetchDueDatePresets(),
         ])
         setDepartments(d)
         setUsers(u)
         setCompliantIPs(ips)
         setScanSchedule(schedule)
         setAgencies(a)
+        setDuePresets(p)
       } else {
-        const [u, a] = await Promise.all([fetchUsers(), fetchAgencies()])
+        const [u, a, p] = await Promise.all([fetchUsers(), fetchAgencies(), fetchDueDatePresets()])
         setUsers(u)
         setAgencies(a)
+        setDuePresets(p)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load admin data')
@@ -628,6 +721,13 @@ function AdminPage() {
     load()
   }
 
+  const handleDeletePreset = async () => {
+    if (!deletePresetTarget) return
+    await deleteDueDatePreset(deletePresetTarget.id)
+    setDeletePresetTarget(null)
+    load()
+  }
+
   return (
     <div className="mx-20 mt-10">
       <div className="page-header">
@@ -655,6 +755,7 @@ function AdminPage() {
             <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="ip">IP</TabsTrigger>
             <TabsTrigger value="agencies">Agencies</TabsTrigger>
+            <TabsTrigger value="due-dates">Time to Block</TabsTrigger>
             <TabsTrigger value="scan-settings">Scan Settings</TabsTrigger>
           </TabsList>
 
@@ -832,6 +933,53 @@ function AdminPage() {
             </div>
           </TabsContent>
 
+          <TabsContent value="due-dates">
+            <div className='mb-4'>
+              <div className="page-header" style={{ marginBottom: 12 }}>
+                <h2 className="section-title">Time to Block</h2>
+                <p className="page-subtitle" style={{ marginLeft: 8 }}>Duration options offered in the "Time to Block" picker when setting a domain's due date on the Watchlist</p>
+                <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddPresetOpen(true)}>
+                  + Add Duration
+                </button>
+              </div>
+              <Table className="results-table" aria-label="Time-to-Block Durations">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="col-domain th-left" scope="col">Label</TableHead>
+                    <TableHead className="col-status" scope="col">Hours</TableHead>
+                    <TableHead className="col-evidence" scope="col" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {duePresets.map(p => (
+                    <TableRow key={p.id} className="admin-row">
+                      <TableCell className="col-domain">{p.label}</TableCell>
+                      <TableCell className="col-status">{p.hours}</TableCell>
+                      <TableCell className="col-evidence" style={{ textAlign: 'right' }}>
+                        <button
+                          type="button"
+                          className="screenshot-icon-btn"
+                          onClick={() => setDeletePresetTarget(p)}
+                          aria-label={`Delete duration ${p.label}`}
+                          title="Delete"
+                        >
+                          <XIcon size={16} />
+                        </button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {duePresets.length === 0 && !loading && (
+                    <TableRow>
+                      <TableCell colSpan={3} style={{ textAlign: 'center', color: 'var(--stone-muted)', padding: '16px 0' }}>
+                        No durations configured
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </TabsContent>
+
           <TabsContent value="scan-settings">
             {me?.is_admin && scanSchedule !== null ? (
               <ScanSettingsSection value={scanSchedule} onSaved={setScanSchedule} />
@@ -852,6 +1000,11 @@ function AdminPage() {
       />
       <AddCompliantIPDialog open={addIPOpen} onClose={() => setAddIPOpen(false)} onAdded={load} />
       <AddAgencyDialog open={addAgencyOpen} onClose={() => setAddAgencyOpen(false)} onAdded={load} />
+      <AddDueDatePresetDialog
+        open={addPresetOpen}
+        onClose={() => setAddPresetOpen(false)}
+        onAdded={preset => setDuePresets(prev => [...prev, preset].sort((a, b) => a.hours - b.hours))}
+      />
       <DeleteConfirmDialog
         open={deleteTarget !== null}
         itemLabel={deleteTarget?.username ?? ''}
@@ -871,6 +1024,13 @@ function AdminPage() {
         description="Domains currently assigned to this agency will show a blank Agency instead."
         onConfirm={handleDeleteAgency}
         onCancel={() => setDeleteAgencyTarget(null)}
+      />
+      <DeleteConfirmDialog
+        open={deletePresetTarget !== null}
+        itemLabel={deletePresetTarget?.label ?? ''}
+        description="It will no longer appear as an option in the Watchlist's Time to Block picker."
+        onConfirm={handleDeletePreset}
+        onCancel={() => setDeletePresetTarget(null)}
       />
     </div>
   )

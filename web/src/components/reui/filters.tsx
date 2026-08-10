@@ -1192,7 +1192,7 @@ function FilterValueSelector<T = unknown>({
 
   if (field.customRenderer) {
     return (
-      <ButtonGroupText className="hover:bg-accent aria-expanded:bg-accent bg-background dark:bg-input/30 text-start whitespace-nowrap outline-hidden">
+      <ButtonGroupText className="hover:bg-accent aria-expanded:bg-accent border-border dark:border-input bg-background dark:bg-input/30 text-start whitespace-nowrap outline-hidden">
         {field.customRenderer({ field, values, onChange, operator })}
       </ButtonGroupText>
     )
@@ -2073,13 +2073,14 @@ export function Filters<T = unknown>({
           return (
             <ButtonGroup
               key={filter.id}
-              // Sera is an underline style: its group text and input group carry
-              // only a bottom border. Normalise the boxed segments (operator,
-              // value, remove) to the same treatment so the whole chip reads as
-              // one underlined group instead of mixing boxes and rules.
-              className=""
+              // ButtonGroup's default "joined pill" look strips the border/radius
+              // between adjacent segments (border-l-0, rounded-l-none, etc.) —
+              // every segment here (label, operator, value, remove) instead
+              // reads as its own fully-bordered chip, same as the standalone
+              // Filter/Columns buttons beside it.
+              className="gap-1.5 [&>*]:rounded-lg! [&>*]:border!"
             >
-              <ButtonGroupText className="bg-background dark:bg-input/30">
+              <ButtonGroupText className="border-border dark:border-input bg-background dark:bg-input/30">
                 {field.icon && field.icon}
                 {field.label}
               </ButtonGroupText>

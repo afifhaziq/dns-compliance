@@ -14,7 +14,7 @@ import { GripIcon } from '@/components/ui/grip'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlFields } from '../api/urls'
 import { fetchAgencies } from '../api/agencies'
 import { fetchDepartmentsOpen } from '../api/departments'
-import { fetchDueDatePresets, createDueDatePreset, deleteDueDatePreset } from '../api/due-date-presets'
+import { fetchDueDatePresets } from '../api/due-date-presets'
 import { useGridPreference } from '@/hooks/use-grid-preference'
 import type { URLEntry, Agency, Department, DueDatePreset, Instrument, Citation, LegalCategory, LegalElement, LegalSubElement, URLOffence } from '../api/types'
 import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, fetchSubElements, attachOffence, fetchOffencesByUrl, detachOffence, formatParsedCitation } from '../api/legal'
@@ -35,7 +35,9 @@ import { DataGrid, DataGridContainer } from '@/components/reui/data-grid/data-gr
 import { DataGridTable } from '@/components/reui/data-grid/data-grid-table'
 import { DataGridColumnVisibility } from '@/components/reui/data-grid/data-grid-column-visibility'
 import { DataGridPagination } from '@/components/reui/data-grid/data-grid-pagination'
-import { Filters, type Filter, type FilterFieldConfig } from '@/components/reui/filters'
+import { Filters, type Filter, type FilterFieldConfig, type CustomRendererProps } from '@/components/reui/filters'
+import { DatePicker } from '@/components/ui/date-picker'
+import { format, parseISO } from 'date-fns'
 import { SortableHeader, EmptyIcon } from '@/components/results-table-parts'
 import { XIcon } from '@/components/ui/x'
 import { FaviconSearch } from '@/components/unlumen-ui/favicon-search'
@@ -99,9 +101,9 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
 // hand, the case owner picks how long from now the ISP has — the computed
 // deadline (now + duration) is what actually gets stored in due_date, same
 // field ISPTiming already measures against. The duration list itself is
-// admin/dept-admin-configurable (DueDatePreset, see ManageDueDatePresetsDialog
-// below) rather than hardcoded, seeded on first boot with the original
-// 6h/24h/48h/72h/7-day options.
+// admin/dept-admin-configurable (DueDatePreset, managed from the Admin page's
+// "Time to Block" tab) rather than hardcoded, seeded on first boot with the
+// original 6h/24h/48h/72h/7-day options.
 //
 // Keyed by hours (not preset id) since that's what dueDateFromDurationHours
 // actually needs — two presets sharing the same hours with different labels
@@ -765,124 +767,59 @@ const PAGE_SIZE = 25
 
 const IS_ONLY = [{ value: 'is', label: 'is' }]
 
-/* ─── Manage Due-Date Presets Dialog (admin/dept-admin only) ────────────── */
+const DATE_OPERATORS = [
+  { value: 'on', label: 'on' },
+  { value: 'before', label: 'before' },
+  { value: 'after', label: 'after' },
+  { value: 'between', label: 'between' },
+]
 
-function ManageDueDatePresetsDialog({
-  open,
-  onClose,
-  presets,
-  onChanged,
-}: {
-  open: boolean
-  onClose: () => void
-  presets: DueDatePreset[]
-  onChanged: (presets: DueDatePreset[]) => void
-}) {
-  const [label, setLabel] = useState('')
-  const [hours, setHours] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  const handleAdd = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const h = Number(hours)
-    if (!label.trim() || !h || h <= 0) {
-      setError('Label and a positive number of hours are required')
-      return
-    }
-    setLoading(true)
-    setError(null)
-    try {
-      const created = await createDueDatePreset(label.trim(), h)
-      onChanged([...presets, created].sort((a, b) => a.hours - b.hours))
-      setLabel(''); setHours('')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add duration')
-    } finally {
-      setLoading(false)
-    }
+// `bare` skips DatePicker's own bordered/rounded shell (built for standalone
+// form fields) — the customRenderer slot's ButtonGroupText wrapper already
+// supplies that chrome, so without `bare` the two nest into a double box.
+// values hold plain 'yyyy-MM-dd' strings (see matchesDateFilter) — parseISO
+// (not `new Date()`) so a date-only string parses as local midnight, not UTC.
+function DateFilterRenderer({ values, onChange, operator }: CustomRendererProps<string>) {
+  const [from, to] = values
+  const set = (index: 0 | 1) => (date: Date | null) => {
+    const next = [from ?? '', to ?? '']
+    next[index] = date ? format(date, 'yyyy-MM-dd') : ''
+    onChange(operator === 'between' ? next : [next[0]])
   }
 
-  const handleDelete = async (id: number) => {
-    const previous = presets
-    onChanged(presets.filter(p => p.id !== id))
-    try {
-      await deleteDueDatePreset(id)
-    } catch {
-      onChanged(previous)
-    }
+  if (operator === 'between') {
+    return (
+      <div className="flex items-center gap-1">
+        <DatePicker value={from ? parseISO(from) : null} onChange={set(0)} placeholder="From" clearable bare calendarProps={{ size: 'sm' }} />
+        <span className="text-xs text-stone-muted">–</span>
+        <DatePicker value={to ? parseISO(to) : null} onChange={set(1)} placeholder="To" clearable bare calendarProps={{ size: 'sm' }} />
+      </div>
+    )
   }
+  return <DatePicker value={from ? parseISO(from) : null} onChange={set(0)} clearable bare calendarProps={{ size: 'sm' }} />
+}
 
-  return (
-    <Dialog open={open} onOpenChange={v => { if (!v) onClose() }}>
-      <DialogContent showCloseButton={false} style={{ maxWidth: 420 }}>
-        <DialogHeader>
-          <DialogTitle>Time-to-Block Durations</DialogTitle>
-          <DialogDescription>
-            Options shown in the "Time to Block" picker when setting a domain's due date. Changes apply department-wide.
-          </DialogDescription>
-        </DialogHeader>
-
-        {presets.length > 0 ? (
-          <ul className="offence-chip-list">
-            {presets.map(p => (
-              <li key={p.id} className="offence-chip">
-                <span>{p.label} ({p.hours}h)</span>
-                <button
-                  type="button"
-                  className="screenshot-icon-btn"
-                  onClick={() => handleDelete(p.id)}
-                  aria-label={`Remove duration ${p.label}`}
-                >
-                  <XIcon size={14} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-stone-muted mb-2">No durations configured yet.</p>
-        )}
-
-        <form onSubmit={handleAdd} className="form-row" style={{ alignItems: 'flex-end' }}>
-          <div className="form-field">
-            <label className="form-label" htmlFor="preset-label">Label</label>
-            <input
-              id="preset-label"
-              type="text"
-              className="form-input form-input-strong"
-              placeholder="e.g. 12 hours"
-              value={label}
-              onChange={e => setLabel(e.target.value)}
-              disabled={loading}
-            />
-          </div>
-          <div className="form-field" style={{ maxWidth: 100 }}>
-            <label className="form-label" htmlFor="preset-hours">Hours</label>
-            <input
-              id="preset-hours"
-              type="number"
-              min={1}
-              className="form-input form-input-strong"
-              value={hours}
-              onChange={e => setHours(e.target.value)}
-              disabled={loading}
-            />
-          </div>
-          <button type="submit" className="btn-primary" disabled={loading}>Add</button>
-        </form>
-
-        {error && <p className="form-error">{error}</p>}
-        <DialogFooter>
-          <button type="button" className="btn-primary" onClick={onClose}>Done</button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
+// due_date/created_at are full ISO timestamps; filter values are date-only —
+// compare on the date portion so "on 10 Aug" matches any time that day.
+function matchesDateFilter(value: string | null | undefined, filter: Filter<string> | undefined): boolean {
+  if (!filter) return true
+  const [from, to] = filter.values
+  // Chip added but no date picked yet — pass through, same as an unset
+  // select filter, rather than hiding every row until a date is chosen.
+  if (!from && !to) return true
+  if (!value) return false
+  const day = value.slice(0, 10)
+  switch (filter.operator) {
+    case 'on': return day === from
+    case 'before': return day < from
+    case 'after': return day > from
+    case 'between': return (!from || day >= from) && (!to || day <= to)
+    default: return true
+  }
 }
 
 function URLsPage() {
   const { me } = useAuth()
-  const canManage = me?.is_admin || me?.is_dept_admin
   const [urls, setUrls] = useState<URLEntry[]>([])
   const [agencies, setAgencies] = useState<Agency[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
@@ -890,7 +827,6 @@ function URLsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
-  const [managePresetsOpen, setManagePresetsOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<URLEntry | null>(null)
   // id, not a URLEntry snapshot, so the dialog re-reads the live row out of
   // `urls` below and reflects its own edits (agency/status/etc.) immediately.
@@ -1013,23 +949,29 @@ function URLsPage() {
     { key: 'status', label: 'Status', type: 'select', operators: IS_ONLY, options: STATUS_OPTIONS.filter(o => o.value).map(o => ({ value: o.value, label: o.label })) },
     { key: 'requesting_dept', label: 'Requesting Dept.', type: 'select', operators: IS_ONLY, options: departments.map(d => ({ value: String(d.id), label: d.name })) },
     { key: 'agency', label: 'Agency', type: 'select', operators: IS_ONLY, options: agencies.map(a => ({ value: String(a.id), label: a.name })) },
+    { key: 'created_at', label: 'Date Added', type: 'custom', operators: DATE_OPERATORS, defaultOperator: 'on', customRenderer: DateFilterRenderer },
+    { key: 'due_date', label: 'Due Date', type: 'custom', operators: DATE_OPERATORS, defaultOperator: 'on', customRenderer: DateFilterRenderer },
   ], [agencies, departments])
 
   const statusFilter = filters.find(f => f.field === 'status')?.values[0]
   const deptFilter = filters.find(f => f.field === 'requesting_dept')?.values[0]
   const agencyFilter = filters.find(f => f.field === 'agency')?.values[0]
+  const createdAtFilter = filters.find(f => f.field === 'created_at')
+  const dueDateFilter = filters.find(f => f.field === 'due_date')
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
     return urls.filter(u =>
-      (!query || u.url.toLowerCase().includes(query)) &&
+      (!query || u.url.toLowerCase().includes(query) || (u.reference_number ?? '').toLowerCase().includes(query)) &&
       (!statusFilter || u.status === statusFilter) &&
       (!deptFilter || String(u.requesting_dept_id ?? '') === deptFilter) &&
-      (!agencyFilter || String(u.agency_id ?? '') === agencyFilter)
+      (!agencyFilter || String(u.agency_id ?? '') === agencyFilter) &&
+      matchesDateFilter(u.created_at, createdAtFilter) &&
+      matchesDateFilter(u.due_date, dueDateFilter)
     )
-  }, [urls, search, statusFilter, deptFilter, agencyFilter])
+  }, [urls, search, statusFilter, deptFilter, agencyFilter, createdAtFilter, dueDateFilter])
 
-  useEffect(() => { setPagination(p => ({ ...p, pageIndex: 0 })) }, [search, statusFilter, deptFilter, agencyFilter])
+  useEffect(() => { setPagination(p => ({ ...p, pageIndex: 0 })) }, [search, statusFilter, deptFilter, agencyFilter, createdAtFilter, dueDateFilter])
 
   const columns = useMemo<ColumnDef<URLEntry>[]>(() => [
     {
@@ -1188,11 +1130,6 @@ function URLsPage() {
         <p className="page-subtitle">{!loading && `${urls.length} monitored`}</p>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <QuickAddFavicon onAdded={load} />
-          {canManage && (
-            <Button variant="outline" onClick={() => setManagePresetsOpen(true)}>
-              Time-to-Block Durations
-            </Button>
-          )}
           <Button onClick={() => setAddOpen(true)}>
             + Add Domain
           </Button>
@@ -1283,13 +1220,6 @@ function URLsPage() {
         onRefFocus={handleRefFocus}
         onRefChange={handleRefChange}
         onRefBlur={handleRefBlur}
-      />
-
-      <ManageDueDatePresetsDialog
-        open={managePresetsOpen}
-        onClose={() => setManagePresetsOpen(false)}
-        presets={duePresets}
-        onChanged={setDuePresets}
       />
     </div>
   )
