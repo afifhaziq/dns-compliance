@@ -599,21 +599,24 @@ html.dark {
      instead of being squeezed to fit .results-wrap - a squeeze that visibly
      overlapped controls (selects, date+time inputs) once several optional
      columns were shown. min-w-full still fills the wrapper when few columns
-     are visible; .results-wrap's overflow-x-auto scrolls the rest. */
-  @apply w-max min-w-full border-collapse border border-stone-border rounded-lg overflow-hidden text-sm;
+     are visible; .results-wrap's overflow-x-auto scrolls the rest.
+
+     No overflow-hidden here despite the rounded-lg corners below: Chromium
+     clips away a collapsed table's own outer border entirely when overflow
+     is anything but visible (border-collapse + border-radius + overflow:
+     hidden/clip all lose the outer 1px line, not just the corner pixels) -
+     verified by toggling overflow on a live table and watching the border
+     vanish/reappear. Chromium also just doesn't paint rounded corners on a
+     collapsed table's border regardless of overflow (renders square either
+     way), so rounded-lg here is a no-op in practice, not a visible
+     regression from dropping the clip. */
+  @apply w-max min-w-full border-collapse border border-stone-border rounded-lg text-sm;
 }
 
-/* Column pinning (position: sticky on th/td) resolves against the nearest
-   ancestor with overflow != visible - .results-table's own overflow-hidden
-   above makes the (non-scrolling) table itself that ancestor instead of the
-   actually-scrolling .results-wrap container, so a pinned column silently
-   never sticks. Opt out here on the (few) tables that pin columns; every
-   other .results-table consumer keeps the corner-radius clip untouched.
-   Sharp corners (border-radius: 0) instead of the base rounded-lg, per
-   design feedback on the /results page specifically - also sidesteps having
-   to clip a rounded corner at all now that overflow is visible. */
+/* Sharp corners (border-radius: 0) instead of the base rounded-lg, per
+   design feedback on the /results page specifically. */
 .results-table--pinned {
-  @apply overflow-visible rounded-none;
+  @apply rounded-none;
 }
 
 .results-table th {
