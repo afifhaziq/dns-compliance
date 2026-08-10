@@ -1480,19 +1480,29 @@ func TestListDomainSummaries_AggregatesLifetimeScans(t *testing.T) {
 
 	// Status filter: this domain has one violation, so it shows up under
 	// "violations" and is excluded under "compliant".
-	violating, _, err := s.ListDomainSummaries(ctx, 1, 25, db.DomainSummaryFilter{Status: "violations"})
+	violating, _, err := s.ListDomainSummaries(ctx, 1, 25, db.DomainSummaryFilter{Statuses: []string{"violations"}})
 	if err != nil {
 		t.Fatalf("ListDomainSummaries(violations): %v", err)
 	}
 	if len(violating) != 1 {
 		t.Fatalf("expected domain to match status=violations, got %d", len(violating))
 	}
-	compliant, _, err := s.ListDomainSummaries(ctx, 1, 25, db.DomainSummaryFilter{Status: "compliant"})
+	compliant, _, err := s.ListDomainSummaries(ctx, 1, 25, db.DomainSummaryFilter{Statuses: []string{"compliant"}})
 	if err != nil {
 		t.Fatalf("ListDomainSummaries(compliant): %v", err)
 	}
 	if len(compliant) != 0 {
 		t.Fatalf("expected domain to be excluded under status=compliant, got %d", len(compliant))
+	}
+
+	// "is not any of" is the complement: excluding "compliant" behaves like
+	// including "violations" for this binary field.
+	notCompliant, _, err := s.ListDomainSummaries(ctx, 1, 25, db.DomainSummaryFilter{Statuses: []string{"compliant"}, StatusExclude: true})
+	if err != nil {
+		t.Fatalf("ListDomainSummaries(not compliant): %v", err)
+	}
+	if len(notCompliant) != 1 {
+		t.Fatalf("expected domain to match status is-not-any-of compliant, got %d", len(notCompliant))
 	}
 
 	// Search filter: substring match on the domain name.
@@ -1512,19 +1522,28 @@ func TestListDomainSummaries_AggregatesLifetimeScans(t *testing.T) {
 	}
 
 	// DNS server filter: matching server ID includes it, a different ID excludes it.
-	byServer, _, err := s.ListDomainSummaries(ctx, 1, 25, db.DomainSummaryFilter{DNSServerID: srv.ID})
+	byServer, _, err := s.ListDomainSummaries(ctx, 1, 25, db.DomainSummaryFilter{DNSServerIDs: []uint{srv.ID}})
 	if err != nil {
 		t.Fatalf("ListDomainSummaries(dns_server_id): %v", err)
 	}
 	if len(byServer) != 1 {
 		t.Fatalf("expected dns_server_id=%d to match, got %d", srv.ID, len(byServer))
 	}
-	byOtherServer, _, err := s.ListDomainSummaries(ctx, 1, 25, db.DomainSummaryFilter{DNSServerID: srv.ID + 999})
+	byOtherServer, _, err := s.ListDomainSummaries(ctx, 1, 25, db.DomainSummaryFilter{DNSServerIDs: []uint{srv.ID + 999}})
 	if err != nil {
 		t.Fatalf("ListDomainSummaries(other dns_server_id): %v", err)
 	}
 	if len(byOtherServer) != 0 {
 		t.Fatalf("expected unrelated dns_server_id to exclude the domain, got %d", len(byOtherServer))
+	}
+
+	// "is not any of" excludes the matching server instead of restricting to it.
+	byExcludedServer, _, err := s.ListDomainSummaries(ctx, 1, 25, db.DomainSummaryFilter{DNSServerIDs: []uint{srv.ID}, DNSServerExclude: true})
+	if err != nil {
+		t.Fatalf("ListDomainSummaries(dns_server_id excluded): %v", err)
+	}
+	if len(byExcludedServer) != 0 {
+		t.Fatalf("expected dns_server_id=%d excluded to exclude the domain, got %d", srv.ID, len(byExcludedServer))
 	}
 }
 

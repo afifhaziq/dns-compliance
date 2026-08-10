@@ -2,15 +2,23 @@ import type { ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
 import { Filters, type Filter, type FilterFieldConfig } from '@/components/reui/filters'
 
-// Single "is" operator only — these fields are single-value pickers, not
-// full is/is-not/empty builders, so there's nothing else to implement.
-const IS_ONLY = [{ value: 'is', label: 'is' }]
+// Multi-select operators only. The underlying Filters primitive
+// (@reui/c-filters-2, web/src/components/reui/filters.tsx) also offers
+// "includes all of"/"excludes all of", but those only make sense for a field
+// where one row can hold several values at once (e.g. tags) — a single scan
+// result has exactly one status and one DNS server, so there's nothing for
+// those two operators to mean here. "is empty"/"is not empty" are dropped
+// for the same reason: both fields are always present on every row.
+const MULTI_OPERATORS = [
+  { value: 'is_any_of', label: 'is any of' },
+  { value: 'is_not_any_of', label: 'is not any of' },
+]
 
 const STATUS_FIELD: FilterFieldConfig<string> = {
   key: 'status',
   label: 'Status',
-  type: 'select',
-  operators: IS_ONLY,
+  type: 'multiselect',
+  operators: MULTI_OPERATORS,
   options: [
     { value: 'violations', label: 'Violations' },
     { value: 'compliant', label: 'Compliant' },
@@ -29,8 +37,8 @@ export function buildScanFilterFields(dnsServerOptions: DnsServerFilterOption[])
     fields.push({
       key: 'dns_server',
       label: 'DNS Server',
-      type: 'select',
-      operators: IS_ONLY,
+      type: 'multiselect',
+      operators: MULTI_OPERATORS,
       options: dnsServerOptions,
     })
   }

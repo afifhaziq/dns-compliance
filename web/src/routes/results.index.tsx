@@ -235,8 +235,8 @@ function LatestScanTab() {
 
   const dnsServerOptions = useMemo(() => dnsServers.map(name => ({ value: name, label: name })), [dnsServers])
 
-  const statusFilter = filters.find(f => f.field === 'status')?.values[0] as 'violations' | 'compliant' | undefined
-  const dnsFilter = filters.find(f => f.field === 'dns_server')?.values[0] as string | undefined
+  const statusFilterEntry = filters.find(f => f.field === 'status')
+  const dnsFilterEntry = filters.find(f => f.field === 'dns_server')
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -244,17 +244,27 @@ function LatestScanTab() {
       .filter(g => !query || g.url.toLowerCase().includes(query))
       .map(g => {
         let res = g.results
-        if (dnsFilter) res = res.filter(r => r.dns_server.name === dnsFilter)
-        if (statusFilter === 'violations') res = res.filter(r => !r.compliant)
-        else if (statusFilter === 'compliant') res = res.filter(r => r.compliant)
+        if (dnsFilterEntry && dnsFilterEntry.values.length > 0) {
+          const selected = new Set(dnsFilterEntry.values)
+          res = dnsFilterEntry.operator === 'is_not_any_of'
+            ? res.filter(r => !selected.has(r.dns_server.name))
+            : res.filter(r => selected.has(r.dns_server.name))
+        }
+        if (statusFilterEntry && statusFilterEntry.values.length > 0) {
+          const selected = new Set(statusFilterEntry.values)
+          const matches = (r: ScanResult) => selected.has(r.compliant ? 'compliant' : 'violations')
+          res = statusFilterEntry.operator === 'is_not_any_of'
+            ? res.filter(r => !matches(r))
+            : res.filter(matches)
+        }
         if (res.length === 0) return null
         const violationCount = res.filter(r => !r.compliant).length
         return { ...g, results: res, violationCount, totalCount: res.length }
       })
       .filter(Boolean) as GroupedResult[]
-  }, [groups, statusFilter, dnsFilter, search])
+  }, [groups, statusFilterEntry, dnsFilterEntry, search])
 
-  useEffect(() => { setPagination(p => ({ ...p, pageIndex: 0 })) }, [statusFilter, dnsFilter, search])
+  useEffect(() => { setPagination(p => ({ ...p, pageIndex: 0 })) }, [statusFilterEntry, dnsFilterEntry, search])
 
   const scanProgress = useMemo(() => {
     if (!progress) return undefined
@@ -775,18 +785,19 @@ function AllTimeTab() {
 
   const dnsServerOptions = useMemo(() => dnsServers.map(s => ({ value: String(s.id), label: s.name })), [dnsServers])
 
-  const statusFilter = filters.find(f => f.field === 'status')?.values[0] as 'compliant' | 'violations' | undefined
-  const dnsServerFilterValue = filters.find(f => f.field === 'dns_server')?.values[0]
-  const dnsServerId = dnsServerFilterValue ? Number(dnsServerFilterValue) : undefined
+  const statusFilterEntry = filters.find(f => f.field === 'status')
+  const dnsServerFilterEntry = filters.find(f => f.field === 'dns_server')
 
-  useEffect(() => { setPagination(p => ({ ...p, pageIndex: 0 })) }, [statusFilter, dnsServerId, debouncedSearch])
+  useEffect(() => { setPagination(p => ({ ...p, pageIndex: 0 })) }, [statusFilterEntry, dnsServerFilterEntry, debouncedSearch])
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     fetchDomainSummaries(pagination.pageIndex + 1, pagination.pageSize, {
-      status: statusFilter,
-      dnsServerId,
+      statuses: statusFilterEntry?.values.length ? statusFilterEntry.values as ('compliant' | 'violations')[] : undefined,
+      statusExclude: statusFilterEntry?.operator === 'is_not_any_of',
+      dnsServerIds: dnsServerFilterEntry?.values.length ? dnsServerFilterEntry.values.map(Number) : undefined,
+      dnsServerExclude: dnsServerFilterEntry?.operator === 'is_not_any_of',
       search: debouncedSearch || undefined,
     })
       .then(res => {
@@ -803,7 +814,7 @@ function AllTimeTab() {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [pagination.pageIndex, pagination.pageSize, statusFilter, dnsServerId, debouncedSearch])
+  }, [pagination.pageIndex, pagination.pageSize, statusFilterEntry, dnsServerFilterEntry, debouncedSearch])
 
   const pageCount = useMemo(() => Math.max(1, Math.ceil(total / pagination.pageSize)), [total, pagination.pageSize])
 
@@ -825,7 +836,7 @@ function AllTimeTab() {
   const goToDomain = (domain: string) =>
     navigate({ to: '/domain/$url', params: { url: domain }, search: { tab: 'overview' } })
 
-  const hasActiveFilter = Boolean(statusFilter || dnsServerId || debouncedSearch)
+  const hasActiveFilter = Boolean(statusFilterEntry?.values.length || dnsServerFilterEntry?.values.length || debouncedSearch)
 
   return (
     <div className="flex flex-col items-stretch w-full gap-4">

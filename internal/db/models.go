@@ -437,15 +437,19 @@ type Notification struct {
 }
 
 // DomainSummaryFilter narrows ListDomainSummaries/ForDepartment — every
-// field is optional (zero value = no filter). Search matches a substring of
-// the domain; DNSServerID, when set, also restricts the aggregate counts to
-// that server's scans only (not just which domains touched it); Status is
-// "compliant" (never once violated) or "violations" (violated at least
-// once), any other value is treated as no filter.
+// field is optional (empty/zero = no filter). Search matches a substring of
+// the domain. DNSServerIDs, when set, also restricts the aggregate counts to
+// those servers' scans only (not just which domains touched them) — matching
+// ANY of the listed IDs, or NONE of them when DNSServerExclude is true (the
+// "is any of"/"is not any of" filter operators). Statuses is any combination
+// of "compliant" (never once violated) or "violations" (violated at least
+// once); StatusExclude flips the same any/none semantics.
 type DomainSummaryFilter struct {
-	Search      string
-	DNSServerID uint
-	Status      string
+	Search           string
+	DNSServerIDs     []uint
+	DNSServerExclude bool
+	Statuses         []string
+	StatusExclude    bool
 }
 
 // DomainSummary is one row of GET /api/domains — a lifetime aggregate over

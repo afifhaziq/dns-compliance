@@ -244,15 +244,36 @@ func (s *postgresStore) domainSummaryQuery(ctx context.Context, departmentID *ui
 	if filter.Search != "" {
 		q = q.Where("scan_results.url_value LIKE ?", "%"+strings.ToLower(filter.Search)+"%")
 	}
-	if filter.DNSServerID != 0 {
-		q = q.Where("scan_results.dns_server_id = ?", filter.DNSServerID)
+	if len(filter.DNSServerIDs) > 0 {
+		if filter.DNSServerExclude {
+			q = q.Where("scan_results.dns_server_id NOT IN ?", filter.DNSServerIDs)
+		} else {
+			q = q.Where("scan_results.dns_server_id IN ?", filter.DNSServerIDs)
+		}
 	}
 	return q
 }
 
+// statusFilterWant resolves Statuses/StatusExclude to which statuses should
+// pass — collapsing "is any of" and "is not any of" (its complement) to the
+// same two booleans so groupedDomainSummaryQuery only needs one switch.
+func statusFilterWant(filter DomainSummaryFilter) (compliant, violations bool) {
+	if len(filter.Statuses) == 0 {
+		return true, true
+	}
+	selected := make(map[string]bool, len(filter.Statuses))
+	for _, st := range filter.Statuses {
+		selected[st] = true
+	}
+	if filter.StatusExclude {
+		return !selected["compliant"], !selected["violations"]
+	}
+	return selected["compliant"], selected["violations"]
+}
+
 // groupedDomainSummaryQuery is domainSummaryQuery grouped into one row per
-// domain, with the Status filter applied as a HAVING clause since it depends
-// on the aggregated compliant count, not a raw column.
+// domain, with the Statuses filter applied as a HAVING clause since it
+// depends on the aggregated compliant count, not a raw column.
 func (s *postgresStore) groupedDomainSummaryQuery(ctx context.Context, departmentID *uint, filter DomainSummaryFilter) *gorm.DB {
 	q := s.domainSummaryQuery(ctx, departmentID, filter).
 		Select(`scan_results.url_value,
@@ -260,11 +281,17 @@ func (s *postgresStore) groupedDomainSummaryQuery(ctx context.Context, departmen
             SUM(CASE WHEN scan_results.compliant = true THEN 1 ELSE 0 END) AS compliant_scans,
             MAX(scan_results.scanned_at) AS last_scanned_at`).
 		Group("scan_results.url_value")
-	switch filter.Status {
-	case "compliant":
+	wantCompliant, wantViolations := statusFilterWant(filter)
+	switch {
+	case wantCompliant && wantViolations:
+		// Both statuses pass — no filter.
+	case wantCompliant:
 		q = q.Having("SUM(CASE WHEN scan_results.compliant = true THEN 0 ELSE 1 END) = 0")
-	case "violations":
+	case wantViolations:
 		q = q.Having("SUM(CASE WHEN scan_results.compliant = true THEN 0 ELSE 1 END) > 0")
+	default:
+		// Neither status passes (e.g. "is not any of" both) — exclude everything.
+		q = q.Having("1 = 0")
 	}
 	return q
 }

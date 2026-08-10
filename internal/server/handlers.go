@@ -1501,11 +1501,25 @@ func (h *Handlers) DomainSummaries(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filter := db.DomainSummaryFilter{Search: r.URL.Query().Get("q")}
-	if status := r.URL.Query().Get("status"); status == "compliant" || status == "violations" {
-		filter.Status = status
+	if statuses := r.URL.Query()["status"]; len(statuses) > 0 {
+		valid := make([]string, 0, len(statuses))
+		for _, status := range statuses {
+			if status == "compliant" || status == "violations" {
+				valid = append(valid, status)
+			}
+		}
+		filter.Statuses = valid
+		filter.StatusExclude = r.URL.Query().Get("status_op") == "not_any"
 	}
-	if id, err := strconv.Atoi(r.URL.Query().Get("dns_server_id")); err == nil && id > 0 {
-		filter.DNSServerID = uint(id)
+	if ids := r.URL.Query()["dns_server_id"]; len(ids) > 0 {
+		valid := make([]uint, 0, len(ids))
+		for _, idStr := range ids {
+			if id, err := strconv.Atoi(idStr); err == nil && id > 0 {
+				valid = append(valid, uint(id))
+			}
+		}
+		filter.DNSServerIDs = valid
+		filter.DNSServerExclude = r.URL.Query().Get("dns_server_op") == "not_any"
 	}
 
 	user, ok := userFromContext(r.Context())
