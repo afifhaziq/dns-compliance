@@ -619,22 +619,22 @@ html.dark {
   @apply rounded-none;
 }
 
-/* Divider between adjacent pinned columns (e.g. urls.tsx's Scan|Actions,
-   both right-pinned). data-grid-table.tsx only draws its own inset-shadow
-   divider on the outermost cell of each pinned group (data-last-col) -
-   the boundary between two cells *within* the same pinned group has
-   nothing. A plain border can't fill that gap either: sticky-positioned
-   cells silently drop their border-collapse-computed border in Chromium
-   (same family of bug as the overflow-hidden one above), which is exactly
-   why the outer divider already uses box-shadow instead of border - this
-   just applies that same trick to every pinned cell, not only the last
-   one, so it also covers the inner boundary. */
+/* Dividers for pinned columns. Sticky-positioned cells silently drop their
+   border-collapse-computed border entirely in Chromium (same family of bug
+   as the overflow-hidden one above) - on every edge, not just the vertical
+   ones, which is why a pinned column's header row visibly has no line
+   under it. data-grid-table.tsx already works around this for the outer
+   edge of each pinned group via an inset box-shadow instead of a real
+   border; this extends that trick to every pinned cell (not only the
+   outermost) and adds the missing bottom edge too, so row separators
+   inside a pinned column show up the same as everywhere else in the
+   table. */
 .results-table [data-pinned="left"] {
-  box-shadow: inset -1px 0 0 0 var(--stone-border);
+  box-shadow: inset -1px 0 0 0 var(--stone-border), inset 0 -1px 0 0 var(--stone-border);
 }
 
 .results-table [data-pinned="right"] {
-  box-shadow: inset 1px 0 0 0 var(--stone-border);
+  box-shadow: inset 1px 0 0 0 var(--stone-border), inset 0 -1px 0 0 var(--stone-border);
 }
 
 .results-table th {
