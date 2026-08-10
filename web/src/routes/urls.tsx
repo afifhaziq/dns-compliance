@@ -1123,50 +1123,40 @@ function URLsPage() {
       },
     },
     {
-      id: 'enabled',
-      header: 'Scan',
+      id: 'action',
+      header: 'Action',
       enableHiding: false,
-      size: 70,
+      size: 140,
       meta: { headerClassName: 'th-center', cellClassName: 'text-center' },
       cell: ({ row }) => {
         const u = row.original
         return (
-          <Switch
-            checked={u.enabled}
-            onCheckedChange={checked => handleToggle(u.id, checked)}
-            aria-label={`${u.enabled ? 'Disable' : 'Enable'} ${u.url} in scan`}
-          />
-        )
-      },
-    },
-    {
-      id: 'actions',
-      header: 'Actions',
-      enableHiding: false,
-      size: 90,
-      meta: { headerClassName: 'col-evidence', cellClassName: 'col-evidence text-right' },
-      cell: ({ row }) => {
-        const u = row.original
-        return (
-          <div className="flex items-center justify-end gap-1">
-            <button
-              type="button"
-              className="screenshot-icon-btn"
-              onClick={() => setEditTargetId(u.id)}
-              aria-label={`Edit ${u.url}`}
-              title="Edit"
-            >
-              <GripIcon size={16} />
-            </button>
-            <button
-              type="button"
-              className="screenshot-icon-btn"
-              onClick={() => setDeleteTarget(u)}
-              aria-label={`Delete ${u.url}`}
-              title="Delete"
-            >
-              <XIcon size={16} />
-            </button>
+          <div className="flex items-center justify-center gap-3">
+            <Switch
+              checked={u.enabled}
+              onCheckedChange={checked => handleToggle(u.id, checked)}
+              aria-label={`${u.enabled ? 'Disable' : 'Enable'} ${u.url} in scan`}
+            />
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                className="screenshot-icon-btn"
+                onClick={() => setEditTargetId(u.id)}
+                aria-label={`Edit ${u.url}`}
+                title="Edit"
+              >
+                <GripIcon size={16} />
+              </button>
+              <button
+                type="button"
+                className="screenshot-icon-btn"
+                onClick={() => setDeleteTarget(u)}
+                aria-label={`Delete ${u.url}`}
+                title="Delete"
+              >
+                <XIcon size={16} />
+              </button>
+            </div>
           </div>
         )
       },
@@ -1176,7 +1166,7 @@ function URLsPage() {
   const table = useReactTable({
     data: filtered,
     columns,
-    initialState: { columnPinning: { left: ['domain'], right: ['enabled', 'actions'] } },
+    initialState: { columnPinning: { left: ['domain'], right: ['action'] } },
     state: { sorting, pagination, columnVisibility },
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
@@ -1192,7 +1182,7 @@ function URLsPage() {
   const gridLoading = loading || !gridPrefReady
 
   return (
-    <div className="mx-20 mt-10">
+    <div className="mx-20 mt-10 mb-10">
       <div className="page-header">
         <h1 className="page-title mb-4">Domains</h1>
         <p className="page-subtitle">{!loading && `${urls.length} monitored`}</p>
