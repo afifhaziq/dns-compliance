@@ -1141,7 +1141,7 @@ function URLsPage() {
     },
     {
       id: 'actions',
-      header: '',
+      header: 'Actions',
       enableHiding: false,
       size: 90,
       meta: { headerClassName: 'col-evidence', cellClassName: 'col-evidence text-right' },
@@ -1176,6 +1176,7 @@ function URLsPage() {
   const table = useReactTable({
     data: filtered,
     columns,
+    initialState: { columnPinning: { left: ['domain'], right: ['enabled', 'actions'] } },
     state: { sorting, pagination, columnVisibility },
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
@@ -1243,8 +1244,14 @@ function URLsPage() {
                 <p className="empty-heading">No domains match the current filters</p>
               </div>
             ) : (
-              <DataGrid table={table} recordCount={filtered.length} isLoading={gridLoading} tableClassNames={{ base: 'results-table' }}>
-                <DataGridContainer className="overflow-visible mb-5">
+              <DataGrid
+                table={table}
+                recordCount={filtered.length}
+                isLoading={gridLoading}
+                tableClassNames={{ base: 'results-table results-table--pinned' }}
+                tableLayout={{ columnsPinnable: true }}
+              >
+                <DataGridContainer className="overflow-x-auto overflow-y-visible mb-5">
                   <DataGridTable />
                 </DataGridContainer>
                 <DataGridPagination sizes={[10, 25, 50, 100]} />
