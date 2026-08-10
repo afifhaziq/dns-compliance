@@ -1001,7 +1001,12 @@ th.th-left {
 /* ─── Server Status Table ────────────────────────────────────────────────── */
 
 .server-table {
-  @apply w-full border-collapse text-sm;
+  @apply w-full border-collapse border border-stone-border rounded-lg overflow-hidden text-sm;
+}
+
+.server-table th,
+.server-table td {
+  @apply border border-stone-border;
 }
 
 .server-row {
