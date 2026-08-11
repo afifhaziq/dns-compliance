@@ -44,6 +44,7 @@ import {
 } from '@/components/animate-ui/components/radix/dialog'
 import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
+import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/r-switch'
 import { Slider } from '@/components/ui/slider'
 import { Input } from '@/components/ui/input'
@@ -1653,7 +1654,14 @@ function AdminPage() {
         </TabsContent>
       </Tabs>
 
-      <div className="flex flex-col gap-10 my-10">
+      <div className="relative my-10">
+        <Separator />
+        <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-xs text-stone-muted">
+          Configs
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-10 mb-10">
         {me?.is_admin && (
           <div id="ip" ref={el => { sectionRefs.current.ip = el }} data-section="ip" className="scroll-mt-24">
             <div className="page-header" style={{ marginBottom: 12 }}>
