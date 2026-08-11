@@ -74,7 +74,12 @@ gosec:
   allow_failure: true
   script:
     - go install github.com/securego/gosec/v2/cmd/gosec@latest
-    - gosec ./...
+    - gosec -fmt=json -out=gosec-report.json ./...
+  artifacts:
+    when: always
+    paths:
+      - gosec-report.json
+    expire_in: 30 days
 
 gitleaks:
   stage: security
@@ -82,8 +87,15 @@ gitleaks:
     name: zricethezav/gitleaks:latest
     entrypoint: [""]
   allow_failure: true
+  variables:
+    GIT_DEPTH: 0
   script:
-    - gitleaks detect --source . --verbose
+    - gitleaks detect --source . --verbose --report-path gitleaks-report.json
+  artifacts:
+    when: always
+    paths:
+      - gitleaks-report.json
+    expire_in: 30 days
 
 build:
   stage: build
@@ -109,4 +121,9 @@ trivy:
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
   script:
-    - trivy image --severity HIGH,CRITICAL --exit-code 1 --username "$CI_REGISTRY_USER" --password "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+    - trivy image --severity HIGH,CRITICAL --exit-code 1 --format json --output trivy-report.json --username "$CI_REGISTRY_USER" --password "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+  artifacts:
+    when: always
+    paths:
+      - trivy-report.json
+    expire_in: 30 days
