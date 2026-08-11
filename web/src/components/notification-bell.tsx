@@ -94,7 +94,7 @@ export function NotificationBell() {
         className="btn-ghost"
         aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
         onClick={toggleOpen}
-        style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36 }}
+        style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, border: 'none' }}
       >
         <BellIcon size={18} />
         {unread > 0 && (
