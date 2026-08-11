@@ -88,14 +88,15 @@ type Department struct {
 // DepartmentID — mutually exclusive with is_admin. Neither flag set means a
 // plain department member (watchlist-only).
 type User struct {
-	ID           uint        `gorm:"primaryKey" json:"id"`
-	Username     string      `gorm:"uniqueIndex;not null" json:"username"`
-	PasswordHash string      `gorm:"not null" json:"-"`
-	IsAdmin      bool        `gorm:"not null;default:false" json:"is_admin"`
-	IsDeptAdmin  bool        `gorm:"not null;default:false" json:"is_dept_admin"`
-	DepartmentID *uint       `gorm:"index" json:"department_id,omitempty"`
-	Department   *Department `gorm:"foreignKey:DepartmentID" json:"department,omitempty"`
-	CreatedAt    time.Time   `json:"created_at"`
+	ID                 uint        `gorm:"primaryKey" json:"id"`
+	Username           string      `gorm:"uniqueIndex;not null" json:"username"`
+	PasswordHash       string      `gorm:"not null" json:"-"`
+	IsAdmin            bool        `gorm:"not null;default:false" json:"is_admin"`
+	IsDeptAdmin        bool        `gorm:"not null;default:false" json:"is_dept_admin"`
+	DepartmentID       *uint       `gorm:"index" json:"department_id,omitempty"`
+	Department         *Department `gorm:"foreignKey:DepartmentID" json:"department,omitempty"`
+	MustChangePassword bool        `gorm:"not null;default:false" json:"must_change_password"`
+	CreatedAt          time.Time   `json:"created_at"`
 }
 
 type Session struct {

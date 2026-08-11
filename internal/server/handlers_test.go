@@ -229,6 +229,15 @@ func (m *fullMockStore) CreateDepartment(_ context.Context, name string) (db.Dep
 	m.departments = append(m.departments, d)
 	return d, nil
 }
+func (m *fullMockStore) UpdateDepartment(_ context.Context, id uint, name string) (db.Department, error) {
+	for i, d := range m.departments {
+		if d.ID == id {
+			m.departments[i].Name = name
+			return m.departments[i], nil
+		}
+	}
+	return db.Department{}, nil
+}
 
 func (m *fullMockStore) ListUsers(_ context.Context) ([]db.User, error) { return m.users, nil }
 func (m *fullMockStore) CreateUser(_ context.Context, u db.User) (db.User, error) {
@@ -236,6 +245,27 @@ func (m *fullMockStore) CreateUser(_ context.Context, u db.User) (db.User, error
 	u.CreatedAt = time.Now()
 	m.users = append(m.users, u)
 	return u, nil
+}
+func (m *fullMockStore) UpdateUser(_ context.Context, id uint, u db.User) (db.User, error) {
+	for i, existing := range m.users {
+		if existing.ID == id {
+			u.ID = id
+			u.CreatedAt = existing.CreatedAt
+			m.users[i] = u
+			return u, nil
+		}
+	}
+	return db.User{}, nil
+}
+func (m *fullMockStore) SetUserPassword(_ context.Context, id uint, hash string, mustChange bool) error {
+	for i, u := range m.users {
+		if u.ID == id {
+			m.users[i].PasswordHash = hash
+			m.users[i].MustChangePassword = mustChange
+			return nil
+		}
+	}
+	return nil
 }
 func (m *fullMockStore) GetUserByUsername(_ context.Context, username string) (*db.User, error) {
 	for _, u := range m.users {
@@ -405,6 +435,16 @@ func (m *fullMockStore) CreateAgency(_ context.Context, name string) (db.Agency,
 	a := db.Agency{ID: uint(len(m.agencies) + 1), Name: name, CreatedAt: time.Now()}
 	m.agencies = append(m.agencies, a)
 	return a, nil
+}
+
+func (m *fullMockStore) UpdateAgency(_ context.Context, id uint, name string) (db.Agency, error) {
+	for i, a := range m.agencies {
+		if a.ID == id {
+			m.agencies[i].Name = name
+			return m.agencies[i], nil
+		}
+	}
+	return db.Agency{}, nil
 }
 
 func (m *fullMockStore) DeleteAgency(_ context.Context, id uint) error {

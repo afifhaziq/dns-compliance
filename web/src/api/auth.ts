@@ -20,3 +20,9 @@ export async function fetchMe(): Promise<User | null> {
     return null
   }
 }
+
+// changePassword is self-service (the caller's own account) — used both for
+// a voluntary change and to clear must_change_password after an admin reset.
+export async function changePassword(currentPassword: string, newPassword: string): Promise<User> {
+  return api.post<User>('/auth/change-password', { current_password: currentPassword, new_password: newPassword })
+}

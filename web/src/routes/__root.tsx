@@ -26,6 +26,7 @@ import { fetchUrls } from '../api/urls'
 import type { User, URLEntry } from '../api/types'
 import { ThemeSwitch } from '../components/theme-switch'
 import { NotificationBell } from '../components/notification-bell'
+import { ForceChangePasswordScreen } from '../components/force-change-password'
 import { GlassNavbar, LogoutButton } from '../components/aicanvas/glass-navbar'
 import { IconBar, IconBarItem } from '@/components/ui/icon-bar'
 import { Zap, Crosshair, X, Plus } from 'lucide-react'
@@ -361,6 +362,18 @@ function RootLayout() {
     return (
       <AuthContext value={authValue}>
         <Navigate to="/" />
+      </AuthContext>
+    )
+  }
+
+  // A temporary password from an admin-initiated reset — block every route
+  // (including whatever the user was mid-navigation to) until they set
+  // their own password. See ResetUserPassword/ChangePassword in
+  // internal/server/CLAUDE.md.
+  if (me?.must_change_password && !isLoginRoute) {
+    return (
+      <AuthContext value={authValue}>
+        <ForceChangePasswordScreen onChanged={refreshAuth} />
       </AuthContext>
     )
   }

@@ -42,6 +42,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 
 			r.Post("/auth/logout", ah.Logout)
 			r.Get("/auth/me", ah.Me)
+			r.Post("/auth/change-password", ah.ChangePassword)
 
 			r.Get("/urls", h.ListURLs)
 			r.Post("/urls", h.AddToWatchlist)
@@ -130,6 +131,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 				r.Post("/admin/isp-logos", h.UpsertISPLogo)
 				r.Delete("/admin/isp-logos/*", h.DeleteISPLogo)
 				r.Post("/admin/agencies", h.CreateAgency)
+				r.Patch("/admin/agencies/{id}", h.UpdateAgency)
 				r.Delete("/admin/agencies/{id}", h.DeleteAgency)
 				r.Post("/due-date-presets", h.CreateDueDatePreset)
 				r.Delete("/due-date-presets/{id}", h.DeleteDueDatePreset)
@@ -154,6 +156,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 				r.Get("/admin/users", h.ListUsers)
 				r.Post("/admin/users", h.CreateUser)
 				r.Delete("/admin/users/{id}", h.DeleteUser)
+				r.Post("/admin/users/{id}/reset-password", h.ResetUserPassword)
 			})
 
 			// Super-admin-only — inherently cross-department concerns.
@@ -162,6 +165,8 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 
 				r.Get("/admin/departments", h.ListDepartments)
 				r.Post("/admin/departments", h.CreateDepartment)
+				r.Patch("/admin/departments/{id}", h.UpdateDepartment)
+				r.Patch("/admin/users/{id}", h.UpdateUser)
 				r.Get("/admin/urls/unassigned", h.ListUnassignedURLs)
 				r.Delete("/admin/urls/{id}", h.PurgeURL)
 

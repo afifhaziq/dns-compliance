@@ -13,6 +13,10 @@ export async function createAgency(name: string): Promise<Agency> {
   return api.post<Agency>('/admin/agencies', { name })
 }
 
+export async function updateAgency(id: number, name: string): Promise<Agency> {
+  return api.patch<Agency>(`/admin/agencies/${id}`, { name })
+}
+
 export async function deleteAgency(id: number): Promise<void> {
   await api.delete<void>(`/admin/agencies/${id}`)
 }
