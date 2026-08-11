@@ -4,6 +4,9 @@ Google/
 Google_DoH/
 screenshots/
 web/node_modules/
+.go/
+.gocache/
+web/.npm/
 *.png
 .git/
 main

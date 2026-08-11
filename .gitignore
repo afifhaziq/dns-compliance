@@ -1,6 +1,10 @@
 .worktrees/
 web/.tanstack/
 
+# Go module/build caches (CI GOPATH/GOCACHE) — regenerated, not source
+.go/
+.gocache/
+
 # Compiled binaries (go build -o server/crawler) — regenerated, not source
 /server
 /crawler

@@ -9,12 +9,14 @@ go-test:
   image: golang:1.26-bookworm
   variables:
     GOPATH: $CI_PROJECT_DIR/.go
+    GOCACHE: $CI_PROJECT_DIR/.gocache
   cache:
     key:
       files:
         - go.sum
     paths:
       - .go/pkg/mod/
+      - .gocache/
   script:
     - go test ./...
 
@@ -26,10 +28,10 @@ web-build:
       files:
         - web/package-lock.json
     paths:
-      - web/node_modules/
+      - web/.npm/
   script:
     - cd web
-    - npm ci
+    - npm ci --cache .npm --prefer-offline
     - npm run build
 
 go-vet:
@@ -37,12 +39,14 @@ go-vet:
   image: golang:1.26-bookworm
   variables:
     GOPATH: $CI_PROJECT_DIR/.go
+    GOCACHE: $CI_PROJECT_DIR/.gocache
   cache:
     key:
       files:
         - go.sum
     paths:
       - .go/pkg/mod/
+      - .gocache/
   script:
     - go vet ./...
 
@@ -62,10 +66,10 @@ web-lint:
       files:
         - web/package-lock.json
     paths:
-      - web/node_modules/
+      - web/.npm/
   script:
     - cd web
-    - npm ci
+    - npm ci --cache .npm --prefer-offline
     - npm run lint
 
 gosec:
@@ -73,7 +77,7 @@ gosec:
   image: golang:1.26-bookworm
   allow_failure: true
   script:
-    - go install github.com/securego/gosec/v2/cmd/gosec@latest
+    - go install github.com/securego/gosec/v2/cmd/gosec@v2.28.0
     - gosec -fmt=json -out=gosec-report.json ./...
   artifacts:
     when: always
@@ -120,8 +124,11 @@ trivy:
   allow_failure: true
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  variables:
+    TRIVY_USERNAME: $CI_REGISTRY_USER
+    TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
   script:
-    - trivy image --severity HIGH,CRITICAL --exit-code 1 --format json --output trivy-report.json --username "$CI_REGISTRY_USER" --password "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+    - trivy image --severity HIGH,CRITICAL --exit-code 1 --format json --output trivy-report.json "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
   artifacts:
     when: always
     paths:
