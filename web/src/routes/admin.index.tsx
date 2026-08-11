@@ -1684,46 +1684,48 @@ function AdminPage() {
           </div>
         )}
 
-        <div id="due-dates" ref={el => { sectionRefs.current['due-dates'] = el }} data-section="due-dates" className="scroll-mt-24">
-          <div className="page-header" style={{ marginBottom: 12 }}>
-            <h2 className="section-title">Time to Block</h2>
-            <p className="page-subtitle" style={{ marginLeft: 8 }}>Duration options offered in the "Time to Block" picker when setting a domain's due date on the Watchlist</p>
-            <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddPresetOpen(true)}>
-              + Add Duration
-            </button>
-          </div>
-          <div className="border border-stone-border rounded-lg overflow-hidden">
-            {duePresets.map(p => (
-              <div key={p.id} className="admin-row py-[9px] px-4 flex items-center gap-4">
-                <span className="flex-1 font-medium truncate">{p.label}</span>
-                <div className="server-bar-wrap" style={{ width: 240 }}>
-                  <div className="server-bar" role="presentation">
-                    <div className="server-bar-fill" style={{ width: `${presetBarPct(p.minutes, maxPresetMinutes)}%` }} />
+        <div className="flex flex-row gap-10">
+          {me?.is_admin && scanSchedule !== null && (
+            <div id="scan-settings" ref={el => { sectionRefs.current['scan-settings'] = el }} data-section="scan-settings" className="scroll-mt-24 flex-1 min-w-0">
+              <ScanSettingsSection value={scanSchedule} onSaved={setScanSchedule} />
+            </div>
+          )}
+
+          <div id="due-dates" ref={el => { sectionRefs.current['due-dates'] = el }} data-section="due-dates" className="scroll-mt-24 flex-1 min-w-0">
+            <div className="page-header" style={{ marginBottom: 4 }}>
+              <h2 className="section-title">Time to Block</h2>
+              <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddPresetOpen(true)}>
+                + Add Duration
+              </button>
+            </div>
+            <p className="page-subtitle" style={{ marginBottom: 12 }}>Duration options offered in the "Time to Block" picker when setting a domain's due date on the Watchlist</p>
+            <div className="border border-stone-border rounded-lg overflow-hidden">
+              {duePresets.map(p => (
+                <div key={p.id} className="admin-row py-[9px] px-4 flex items-center gap-4">
+                  <span className="flex-1 font-medium truncate">{p.label}</span>
+                  <div className="server-bar-wrap" style={{ width: 240 }}>
+                    <div className="server-bar" role="presentation">
+                      <div className="server-bar-fill" style={{ width: `${presetBarPct(p.minutes, maxPresetMinutes)}%` }} />
+                    </div>
+                    <span className="server-count">{formatDuration(p.minutes)}</span>
                   </div>
-                  <span className="server-count">{formatDuration(p.minutes)}</span>
+                  <button
+                    type="button"
+                    className="screenshot-icon-btn"
+                    onClick={() => setDeletePresetTarget(p)}
+                    aria-label={`Delete duration ${p.label}`}
+                    title="Delete"
+                  >
+                    <XIcon size={16} />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  className="screenshot-icon-btn"
-                  onClick={() => setDeletePresetTarget(p)}
-                  aria-label={`Delete duration ${p.label}`}
-                  title="Delete"
-                >
-                  <XIcon size={16} />
-                </button>
-              </div>
-            ))}
-            {duePresets.length === 0 && !loading && (
-              <p className="text-center text-stone-muted py-4">No durations configured</p>
-            )}
+              ))}
+              {duePresets.length === 0 && !loading && (
+                <p className="text-center text-stone-muted py-4">No durations configured</p>
+              )}
+            </div>
           </div>
         </div>
-
-        {me?.is_admin && scanSchedule !== null && (
-          <div id="scan-settings" ref={el => { sectionRefs.current['scan-settings'] = el }} data-section="scan-settings" className="scroll-mt-24">
-            <ScanSettingsSection value={scanSchedule} onSaved={setScanSchedule} />
-          </div>
-        )}
       </div>
 
       <AddDepartmentDialog open={addDeptOpen} onClose={() => setAddDeptOpen(false)} onAdded={load} />
