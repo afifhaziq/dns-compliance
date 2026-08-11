@@ -1,0 +1,33 @@
+stages:
+  - test
+  - lint
+  - security
+  - build
+
+go-test:
+  stage: test
+  image: golang:1.26-bookworm
+  variables:
+    GOPATH: $CI_PROJECT_DIR/.go
+  cache:
+    key:
+      files:
+        - go.sum
+    paths:
+      - .go/pkg/mod/
+  script:
+    - go test ./...
+
+web-build:
+  stage: test
+  image: node:22-alpine
+  cache:
+    key:
+      files:
+        - web/package-lock.json
+    paths:
+      - web/node_modules/
+  script:
+    - cd web
+    - npm ci
+    - npm run build
