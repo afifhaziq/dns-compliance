@@ -200,6 +200,7 @@ function EditDepartmentDialog({
       <DialogContent showCloseButton={false} style={{ maxWidth: 400 }}>
         <DialogHeader>
           <DialogTitle>Edit Department</DialogTitle>
+          <DialogDescription>Rename this department. Existing users and their watchlists keep their assignment.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="form-field">
@@ -341,6 +342,7 @@ function EditAgencyDialog({
       <DialogContent showCloseButton={false} style={{ maxWidth: 400 }}>
         <DialogHeader>
           <DialogTitle>Edit Agency</DialogTitle>
+          <DialogDescription>Rename this agency.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="form-field">
@@ -678,6 +680,7 @@ function EditUserDialog({
       <DialogContent showCloseButton={false} style={{ maxWidth: 420 }}>
         <DialogHeader>
           <DialogTitle>Edit User</DialogTitle>
+          <DialogDescription>Update this user's username, role, or department.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="form-field">
