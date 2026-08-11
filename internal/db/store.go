@@ -164,7 +164,7 @@ type AgencyStore interface {
 // AgencyStore, not department-scoped.
 type DueDatePresetStore interface {
 	ListDueDatePresets(ctx context.Context) ([]DueDatePreset, error)
-	CreateDueDatePreset(ctx context.Context, label string, hours int) (DueDatePreset, error)
+	CreateDueDatePreset(ctx context.Context, label string, minutes int) (DueDatePreset, error)
 	DeleteDueDatePreset(ctx context.Context, id uint) error
 }
 

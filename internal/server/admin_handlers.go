@@ -436,14 +436,14 @@ func (h *Handlers) ListDueDatePresets(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) CreateDueDatePreset(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Label string `json:"label"`
-		Hours int    `json:"hours"`
+		Label   string `json:"label"`
+		Minutes int    `json:"minutes"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Label == "" || body.Hours <= 0 {
-		writeError(w, http.StatusBadRequest, "label is required and hours must be positive")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Label == "" || body.Minutes <= 0 {
+		writeError(w, http.StatusBadRequest, "label is required and minutes must be positive")
 		return
 	}
-	p, err := h.store.CreateDueDatePreset(r.Context(), body.Label, body.Hours)
+	p, err := h.store.CreateDueDatePreset(r.Context(), body.Label, body.Minutes)
 	if err != nil {
 		writeInternalError(w, err)
 		return

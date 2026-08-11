@@ -9,8 +9,8 @@ export async function fetchDueDatePresets(): Promise<DueDatePreset[]> {
   return Array.isArray(data) ? data : []
 }
 
-export async function createDueDatePreset(label: string, hours: number): Promise<DueDatePreset> {
-  return api.post<DueDatePreset>('/due-date-presets', { label, hours })
+export async function createDueDatePreset(label: string, minutes: number): Promise<DueDatePreset> {
+  return api.post<DueDatePreset>('/due-date-presets', { label, minutes })
 }
 
 export async function deleteDueDatePreset(id: number): Promise<void> {

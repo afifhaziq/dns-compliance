@@ -1753,17 +1753,17 @@ func TestListAndCreateAgencies(t *testing.T) {
 	}
 }
 
-func TestListDueDatePresets_OrderedByHoursAscending(t *testing.T) {
+func TestListDueDatePresets_OrderedByMinutesAscending(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	if _, err := s.CreateDueDatePreset(ctx, "7 days", 168); err != nil {
+	if _, err := s.CreateDueDatePreset(ctx, "7 days", 168*60); err != nil {
 		t.Fatalf("CreateDueDatePreset: %v", err)
 	}
-	if _, err := s.CreateDueDatePreset(ctx, "6 hours", 6); err != nil {
+	if _, err := s.CreateDueDatePreset(ctx, "6 hours", 6*60); err != nil {
 		t.Fatalf("CreateDueDatePreset: %v", err)
 	}
-	if _, err := s.CreateDueDatePreset(ctx, "24 hours", 24); err != nil {
+	if _, err := s.CreateDueDatePreset(ctx, "24 hours", 24*60); err != nil {
 		t.Fatalf("CreateDueDatePreset: %v", err)
 	}
 
@@ -1774,11 +1774,11 @@ func TestListDueDatePresets_OrderedByHoursAscending(t *testing.T) {
 	if len(presets) != 3 {
 		t.Fatalf("expected 3 presets, got %d: %+v", len(presets), presets)
 	}
-	gotHours := []int{presets[0].Hours, presets[1].Hours, presets[2].Hours}
-	wantHours := []int{6, 24, 168}
-	for i := range wantHours {
-		if gotHours[i] != wantHours[i] {
-			t.Fatalf("expected hours ordered %v, got %v", wantHours, gotHours)
+	gotMinutes := []int{presets[0].Minutes, presets[1].Minutes, presets[2].Minutes}
+	wantMinutes := []int{6 * 60, 24 * 60, 168 * 60}
+	for i := range wantMinutes {
+		if gotMinutes[i] != wantMinutes[i] {
+			t.Fatalf("expected minutes ordered %v, got %v", wantMinutes, gotMinutes)
 		}
 	}
 }
@@ -1787,7 +1787,7 @@ func TestDeleteDueDatePreset_RemovesIt(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	p, err := s.CreateDueDatePreset(ctx, "24 hours", 24)
+	p, err := s.CreateDueDatePreset(ctx, "24 hours", 24*60)
 	if err != nil {
 		t.Fatalf("CreateDueDatePreset: %v", err)
 	}

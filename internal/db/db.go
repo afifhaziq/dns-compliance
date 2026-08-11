@@ -40,6 +40,28 @@ func Connect(dialector gorm.Dialector) (*gorm.DB, error) {
 			}
 		}
 	}
+	// DueDatePreset.Hours was renamed to Minutes for finer-grained "Time to
+	// Block" durations. This must run before AutoMigrate: AutoMigrate would
+	// try to add the new column as NOT NULL (per the struct tag) in one
+	// step, which Postgres rejects on a non-empty table with no default —
+	// so add it nullable, backfill from the old column, then tighten it,
+	// leaving AutoMigrate's own pass over DueDatePreset a no-op.
+	if database.Migrator().HasColumn(&DueDatePreset{}, "hours") && !database.Migrator().HasColumn(&DueDatePreset{}, "minutes") {
+		if err := database.Exec("ALTER TABLE due_date_presets ADD COLUMN minutes bigint").Error; err != nil {
+			return nil, fmt.Errorf("adding due_date_presets.minutes: %w", err)
+		}
+		if err := database.Exec("UPDATE due_date_presets SET minutes = hours * 60").Error; err != nil {
+			return nil, fmt.Errorf("backfilling due_date_presets.minutes: %w", err)
+		}
+		if err := database.Exec("ALTER TABLE due_date_presets ALTER COLUMN minutes SET NOT NULL").Error; err != nil {
+			return nil, fmt.Errorf("setting due_date_presets.minutes not null: %w", err)
+		}
+	}
+	if database.Migrator().HasColumn(&DueDatePreset{}, "hours") {
+		if err := database.Migrator().DropColumn(&DueDatePreset{}, "hours"); err != nil {
+			return nil, fmt.Errorf("dropping due_date_presets.hours: %w", err)
+		}
+	}
 	if err := database.AutoMigrate(
 		&Department{}, &User{}, &Session{}, &DNSServer{}, &URL{}, &DepartmentURL{}, &ScanRun{}, &ScanResult{}, &CompliantIP{}, &DomainWhois{}, &IPInfo{}, &Favicon{}, &ScanSettings{}, &SubdomainScan{}, &ISPLogo{},
 		&Instrument{}, &Citation{}, &Category{}, &Element{}, &SubElement{}, &URLOffence{},
@@ -84,11 +106,11 @@ func SeedDueDatePresets(database *gorm.DB) error {
 		return nil
 	}
 	return database.Create(&[]DueDatePreset{
-		{Label: "6 hours", Hours: 6},
-		{Label: "24 hours", Hours: 24},
-		{Label: "48 hours", Hours: 48},
-		{Label: "72 hours", Hours: 72},
-		{Label: "7 days", Hours: 168},
+		{Label: "6 hours", Minutes: 6 * 60},
+		{Label: "24 hours", Minutes: 24 * 60},
+		{Label: "48 hours", Minutes: 48 * 60},
+		{Label: "72 hours", Minutes: 72 * 60},
+		{Label: "7 days", Minutes: 7 * 24 * 60},
 	}).Error
 }
 

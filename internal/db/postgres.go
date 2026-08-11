@@ -749,11 +749,11 @@ func (s *postgresStore) DeleteAgency(ctx context.Context, id uint) error {
 
 func (s *postgresStore) ListDueDatePresets(ctx context.Context) ([]DueDatePreset, error) {
 	var presets []DueDatePreset
-	return presets, s.db.WithContext(ctx).Order("hours asc").Find(&presets).Error
+	return presets, s.db.WithContext(ctx).Order("minutes asc").Find(&presets).Error
 }
 
-func (s *postgresStore) CreateDueDatePreset(ctx context.Context, label string, hours int) (DueDatePreset, error) {
-	p := DueDatePreset{Label: label, Hours: hours}
+func (s *postgresStore) CreateDueDatePreset(ctx context.Context, label string, minutes int) (DueDatePreset, error) {
+	p := DueDatePreset{Label: label, Minutes: minutes}
 	return p, s.db.WithContext(ctx).Create(&p).Error
 }
 

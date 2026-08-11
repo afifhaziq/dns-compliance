@@ -461,8 +461,8 @@ func (m *fullMockStore) ListDueDatePresets(_ context.Context) ([]db.DueDatePrese
 	return m.dueDatePresets, nil
 }
 
-func (m *fullMockStore) CreateDueDatePreset(_ context.Context, label string, hours int) (db.DueDatePreset, error) {
-	p := db.DueDatePreset{ID: uint(len(m.dueDatePresets) + 1), Label: label, Hours: hours, CreatedAt: time.Now()}
+func (m *fullMockStore) CreateDueDatePreset(_ context.Context, label string, minutes int) (db.DueDatePreset, error) {
+	p := db.DueDatePreset{ID: uint(len(m.dueDatePresets) + 1), Label: label, Minutes: minutes, CreatedAt: time.Now()}
 	m.dueDatePresets = append(m.dueDatePresets, p)
 	return p, nil
 }
@@ -3130,7 +3130,7 @@ func TestDeleteAgency_AllowedForDeptAdmin(t *testing.T) {
 }
 
 func TestListDueDatePresets_AllowedForNonAdmin(t *testing.T) {
-	store := &fullMockStore{dueDatePresets: []db.DueDatePreset{{ID: 1, Label: "24 hours", Hours: 24}}}
+	store := &fullMockStore{dueDatePresets: []db.DueDatePreset{{ID: 1, Label: "24 hours", Minutes: 24 * 60}}}
 	cookie := deptCookie(store, 1)
 	r := setupRouter(store, nil)
 
@@ -3146,7 +3146,7 @@ func TestListDueDatePresets_AllowedForNonAdmin(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &presets); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if len(presets) != 1 || presets[0].Hours != 24 {
+	if len(presets) != 1 || presets[0].Minutes != 24*60 {
 		t.Fatalf("unexpected presets: %+v", presets)
 	}
 }
@@ -3156,7 +3156,7 @@ func TestCreateDueDatePreset_ForbiddenForNonAdmin(t *testing.T) {
 	cookie := deptCookie(store, 1)
 	r := setupRouter(store, nil)
 
-	body, _ := json.Marshal(map[string]any{"label": "12 hours", "hours": 12})
+	body, _ := json.Marshal(map[string]any{"label": "12 hours", "minutes": 12 * 60})
 	req := httptest.NewRequest(http.MethodPost, "/api/due-date-presets", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
@@ -3173,7 +3173,7 @@ func TestCreateDueDatePreset_AllowedForDeptAdmin(t *testing.T) {
 	cookie := deptAdminCookie(store, 1)
 	r := setupRouter(store, nil)
 
-	body, _ := json.Marshal(map[string]any{"label": "12 hours", "hours": 12})
+	body, _ := json.Marshal(map[string]any{"label": "12 hours", "minutes": 12 * 60})
 	req := httptest.NewRequest(http.MethodPost, "/api/due-date-presets", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
@@ -3185,15 +3185,15 @@ func TestCreateDueDatePreset_AllowedForDeptAdmin(t *testing.T) {
 	}
 }
 
-func TestCreateDueDatePreset_RequiresLabelAndPositiveHours(t *testing.T) {
+func TestCreateDueDatePreset_RequiresLabelAndPositiveMinutes(t *testing.T) {
 	store := &fullMockStore{}
 	cookie := adminCookie(store)
 	r := setupRouter(store, nil)
 
 	for _, body := range []map[string]any{
-		{"label": "", "hours": 12},
-		{"label": "12 hours", "hours": 0},
-		{"label": "12 hours", "hours": -1},
+		{"label": "", "minutes": 12},
+		{"label": "12 hours", "minutes": 0},
+		{"label": "12 hours", "minutes": -1},
 	} {
 		b, _ := json.Marshal(body)
 		req := httptest.NewRequest(http.MethodPost, "/api/due-date-presets", bytes.NewReader(b))
@@ -3209,7 +3209,7 @@ func TestCreateDueDatePreset_RequiresLabelAndPositiveHours(t *testing.T) {
 }
 
 func TestDeleteDueDatePreset_AllowedForDeptAdmin(t *testing.T) {
-	store := &fullMockStore{dueDatePresets: []db.DueDatePreset{{ID: 1, Label: "24 hours", Hours: 24}}}
+	store := &fullMockStore{dueDatePresets: []db.DueDatePreset{{ID: 1, Label: "24 hours", Minutes: 24 * 60}}}
 	cookie := deptAdminCookie(store, 1)
 	r := setupRouter(store, nil)
 

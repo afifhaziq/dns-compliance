@@ -105,16 +105,16 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
 // "Time to Block" tab) rather than hardcoded, seeded on first boot with the
 // original 6h/24h/48h/72h/7-day options.
 //
-// Keyed by hours (not preset id) since that's what dueDateFromDurationHours
-// actually needs — two presets sharing the same hours with different labels
+// Keyed by minutes (not preset id) since that's what dueDateFromDurationMinutes
+// actually needs — two presets sharing the same minutes with different labels
 // would be indistinguishable once selected, an accepted edge case for a
 // simple duration list.
 function dueDateOptionsFrom(presets: DueDatePreset[]): { value: string; label: string }[] {
-  return [{ value: '', label: '—' }, ...presets.map(p => ({ value: String(p.hours), label: p.label }))]
+  return [{ value: '', label: '—' }, ...presets.map(p => ({ value: String(p.minutes), label: p.label }))]
 }
 
-function dueDateFromDurationHours(hours: number): string {
-  return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString()
+function dueDateFromDurationMinutes(minutes: number): string {
+  return new Date(Date.now() + minutes * 60 * 1000).toISOString()
 }
 
 /* ─── Add Domain Dialog ──────────────────────────────────────────────────── */
@@ -354,7 +354,7 @@ function AddUrlDialog({
   const [referenceNumber, setReferenceNumber] = useState('')
   const [requestingDeptId, setRequestingDeptId] = useState<number | ''>('')
   const [status, setStatus] = useState('requested')
-  const [dueDurationHours, setDueDurationHours] = useState('24')
+  const [dueDurationMinutes, setDueDurationMinutes] = useState('1440')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const pickerRef = useRef<MultiOffencePickerHandle>(null)
@@ -369,7 +369,7 @@ function AddUrlDialog({
   const reset = () => {
     setValue(''); setOffences([]); setError(null)
     setAgencyId(''); setReferenceNumber(''); setRequestingDeptId(defaultDepartmentId ?? '')
-    setStatus('requested'); setDueDurationHours('24')
+    setStatus('requested'); setDueDurationMinutes('1440')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -386,7 +386,7 @@ function AddUrlDialog({
     if (referenceNumber.trim()) caseFields.reference_number = referenceNumber.trim()
     if (requestingDeptId !== '') caseFields.requesting_dept_id = requestingDeptId
     if (status) caseFields.status = status
-    if (dueDurationHours) caseFields.due_date = dueDateFromDurationHours(Number(dueDurationHours))
+    if (dueDurationMinutes) caseFields.due_date = dueDateFromDurationMinutes(Number(dueDurationMinutes))
     const hasCaseFields = Object.keys(caseFields).length > 0
 
     setLoading(true)
@@ -484,7 +484,7 @@ function AddUrlDialog({
 
             <div className="form-field">
               <label className="form-label" id="add-due-date-label">Time to Block</label>
-              <Select value={dueDurationHours} onValueChange={setDueDurationHours} disabled={loading}>
+              <Select value={dueDurationMinutes} onValueChange={setDueDurationMinutes} disabled={loading}>
                 <SelectTrigger aria-labelledby="add-due-date-label" placeholder="—" className="w-full" />
                 <SelectContent>
                   {dueDateOptionsFrom(duePresets).map((opt, i) => (
@@ -547,7 +547,7 @@ function EditUrlDialog({
   onAgencyChange: (id: number, agencyId: number | null) => void
   onRequestingDeptChange: (id: number, deptId: number | null) => void
   onStatusChange: (id: number, status: string) => void
-  onDueDurationChange: (id: number, durationHours: string) => void
+  onDueDurationChange: (id: number, durationMinutes: string) => void
   onRefFocus: (id: number, value: string) => void
   onRefChange: (id: number, value: string) => void
   onRefBlur: (id: number) => void
@@ -907,12 +907,12 @@ function URLsPage() {
     commitField(id, { status }, { status })
   }, [commitField])
 
-  const handleDueDurationChange = useCallback((id: number, durationHours: string) => {
-    if (!durationHours) {
+  const handleDueDurationChange = useCallback((id: number, durationMinutes: string) => {
+    if (!durationMinutes) {
       commitField(id, { due_date: undefined }, { due_date: null })
       return
     }
-    const combined = dueDateFromDurationHours(Number(durationHours))
+    const combined = dueDateFromDurationMinutes(Number(durationMinutes))
     commitField(id, { due_date: combined }, { due_date: combined })
   }, [commitField])
 
