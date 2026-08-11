@@ -869,7 +869,7 @@ function LegalCitationsPage() {
             <Filters filters={filters} fields={filterFields} onChange={setFilters} />
           </div>
 
-          <div className="results-wrap w-full">
+          <div className="results-wrap w-full mt-10">
             {filteredTree.length === 0 ? (
               <div className="empty-state" style={{ padding: '3rem 0' }}>
                 <p className="empty-heading">No legal citations match the current filters</p>
