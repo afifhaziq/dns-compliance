@@ -91,7 +91,9 @@ build:
     name: gcr.io/kaniko-project/executor:v1.23.2-debug
     entrypoint: [""]
   rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH == "ci/replace-autodevops"'
+  before_script:
+    - printf 'nameserver 192.168.13.11\nnameserver 192.168.13.12\n' > /etc/resolv.conf
   script:
     - mkdir -p /kaniko/.docker
     - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(printf '%s:%s' "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
@@ -105,6 +107,8 @@ trivy:
   needs: ["build"]
   allow_failure: true
   rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH == "ci/replace-autodevops"'
+  before_script:
+    - printf 'nameserver 192.168.13.11\nnameserver 192.168.13.12\n' > /etc/resolv.conf
   script:
     - trivy image --severity HIGH,CRITICAL --exit-code 1 --username "$CI_REGISTRY_USER" --password "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
