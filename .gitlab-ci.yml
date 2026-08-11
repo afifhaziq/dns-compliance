@@ -1,0 +1,112 @@
+stages:
+  - test
+  - lint
+  - security
+  - build
+
+go-test:
+  stage: test
+  image: golang:1.26-bookworm
+  variables:
+    GOPATH: $CI_PROJECT_DIR/.go
+  cache:
+    key:
+      files:
+        - go.sum
+    paths:
+      - .go/pkg/mod/
+  script:
+    - go test ./...
+
+web-build:
+  stage: test
+  image: node:22-alpine
+  cache:
+    key:
+      files:
+        - web/package-lock.json
+    paths:
+      - web/node_modules/
+  script:
+    - cd web
+    - npm ci
+    - npm run build
+
+go-vet:
+  stage: lint
+  image: golang:1.26-bookworm
+  variables:
+    GOPATH: $CI_PROJECT_DIR/.go
+  cache:
+    key:
+      files:
+        - go.sum
+    paths:
+      - .go/pkg/mod/
+  script:
+    - go vet ./...
+
+golangci-lint:
+  stage: lint
+  image: golangci/golangci-lint:latest-alpine
+  allow_failure: true
+  script:
+    - golangci-lint run ./...
+
+web-lint:
+  stage: lint
+  image: node:22-alpine
+  allow_failure: true
+  cache:
+    key:
+      files:
+        - web/package-lock.json
+    paths:
+      - web/node_modules/
+  script:
+    - cd web
+    - npm ci
+    - npm run lint
+
+gosec:
+  stage: security
+  image: golang:1.26-bookworm
+  allow_failure: true
+  script:
+    - go install github.com/securego/gosec/v2/cmd/gosec@latest
+    - gosec ./...
+
+gitleaks:
+  stage: security
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]
+  allow_failure: true
+  script:
+    - gitleaks detect --source . --verbose
+
+build:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+  script:
+    - docker build --provenance=false --sbom=false -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" -t "$CI_REGISTRY_IMAGE:latest" .
+    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+    - docker push "$CI_REGISTRY_IMAGE:latest"
+
+trivy:
+  stage: build
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  needs: ["build"]
+  allow_failure: true
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  script:
+    - trivy image --severity HIGH,CRITICAL --exit-code 1 --username "$CI_REGISTRY_USER" --password "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
