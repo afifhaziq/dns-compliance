@@ -31,3 +31,38 @@ web-build:
     - cd web
     - npm ci
     - npm run build
+
+go-vet:
+  stage: lint
+  image: golang:1.26-bookworm
+  variables:
+    GOPATH: $CI_PROJECT_DIR/.go
+  cache:
+    key:
+      files:
+        - go.sum
+    paths:
+      - .go/pkg/mod/
+  script:
+    - go vet ./...
+
+golangci-lint:
+  stage: lint
+  image: golangci/golangci-lint:latest-alpine
+  allow_failure: true
+  script:
+    - golangci-lint run ./...
+
+web-lint:
+  stage: lint
+  image: node:22-alpine
+  cache:
+    key:
+      files:
+        - web/package-lock.json
+    paths:
+      - web/node_modules/
+  script:
+    - cd web
+    - npm ci
+    - npm run lint
