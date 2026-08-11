@@ -67,3 +67,20 @@ web-lint:
     - cd web
     - npm ci
     - npm run lint
+
+gosec:
+  stage: security
+  image: golang:1.26-bookworm
+  allow_failure: true
+  script:
+    - go install github.com/securego/gosec/v2/cmd/gosec@latest
+    - gosec ./...
+
+gitleaks:
+  stage: security
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]
+  allow_failure: true
+  script:
+    - gitleaks detect --source . --verbose
