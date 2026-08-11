@@ -91,7 +91,7 @@ build:
     name: gcr.io/kaniko-project/executor:v1.23.2-debug
     entrypoint: [""]
   rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH == "ci/replace-autodevops"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
   before_script:
     - printf 'nameserver 192.168.13.11\nnameserver 192.168.13.12\n' > /etc/resolv.conf
   script:
@@ -107,7 +107,7 @@ trivy:
   needs: ["build"]
   allow_failure: true
   rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH == "ci/replace-autodevops"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
   before_script:
     - printf 'nameserver 192.168.13.11\nnameserver 192.168.13.12\n' > /etc/resolv.conf
   script:
