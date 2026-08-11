@@ -1650,7 +1650,7 @@ function AdminPage() {
         </TabsContent>
       </Tabs>
 
-      <div className="flex flex-col gap-14 mt-14">
+      <div className="flex flex-col gap-10 my-10">
         {me?.is_admin && (
           <div id="ip" ref={el => { sectionRefs.current.ip = el }} data-section="ip" className="scroll-mt-24">
             <div className="page-header" style={{ marginBottom: 12 }}>
