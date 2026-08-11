@@ -47,7 +47,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/u
 import { Switch } from '@/components/ui/r-switch'
 import { Slider } from '@/components/ui/slider'
 import { Input } from '@/components/ui/input'
-import { GripIcon } from '@/components/ui/grip'
+import { SquarePenIcon } from '@/components/ui/square-pen'
 import { XIcon } from '@/components/ui/x'
 import { KeyRoundIcon } from 'lucide-react'
 import { useAuth } from './__root'
@@ -1087,7 +1087,7 @@ function DepartmentsTab({
           aria-label={`Edit ${row.original.name}`}
           title="Edit"
         >
-          <GripIcon size={16} />
+          <SquarePenIcon size={16} />
         </button>
       ),
     },
@@ -1196,7 +1196,7 @@ function AgenciesTab({
             aria-label={`Edit ${row.original.name}`}
             title="Edit"
           >
-            <GripIcon size={16} />
+            <SquarePenIcon size={16} />
           </button>
           <button
             type="button"
@@ -1377,7 +1377,7 @@ function UsersTab({
                 aria-label={`Edit ${u.username}`}
                 title="Edit"
               >
-                <GripIcon size={16} />
+                <SquarePenIcon size={16} />
               </button>
             )}
             <button
