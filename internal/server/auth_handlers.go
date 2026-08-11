@@ -68,3 +68,42 @@ func (h *AuthHandlers) Me(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, user)
 }
+
+// ChangePassword is self-service — the caller changes their own password,
+// verifying the current one first. Used both for a voluntary change and to
+// clear MustChangePassword after an admin-initiated reset (see
+// Handlers.ResetUserPassword).
+func (h *AuthHandlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	caller, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	var body struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.CurrentPassword == "" || body.NewPassword == "" {
+		writeError(w, http.StatusBadRequest, "current_password and new_password are required")
+		return
+	}
+	if !db.CheckPassword(caller.PasswordHash, body.CurrentPassword) {
+		writeError(w, http.StatusBadRequest, "current password is incorrect")
+		return
+	}
+	hash, err := db.HashPassword(body.NewPassword)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	if err := h.store.SetUserPassword(r.Context(), caller.ID, hash, false); err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	user, err := h.store.GetUserByID(r.Context(), caller.ID)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, user)
+}

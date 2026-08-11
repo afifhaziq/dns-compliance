@@ -1,6 +1,8 @@
 package server
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -49,6 +51,27 @@ func (h *Handlers) CreateDepartment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, d)
+}
+
+func (h *Handlers) UpdateDepartment(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	d, err := h.store.UpdateDepartment(r.Context(), uint(id), body.Name)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, d)
 }
 
 // Users
@@ -163,6 +186,107 @@ func (h *Handlers) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// UpdateUser is super-admin-only (see router.go — routed under the
+// requireAdmin group, not requireAnyAdmin) so there's no caller-role
+// branching here, unlike CreateUser/DeleteUser/ResetUserPassword.
+func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var body struct {
+		Username     string `json:"username"`
+		IsAdmin      bool   `json:"is_admin"`
+		IsDeptAdmin  bool   `json:"is_dept_admin"`
+		DepartmentID *uint  `json:"department_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Username == "" {
+		writeError(w, http.StatusBadRequest, "username is required")
+		return
+	}
+	if body.IsAdmin && body.IsDeptAdmin {
+		writeError(w, http.StatusBadRequest, "user cannot be both is_admin and is_dept_admin")
+		return
+	}
+	if !body.IsAdmin && body.DepartmentID == nil {
+		writeError(w, http.StatusBadRequest, "department_id is required for non-admin users")
+		return
+	}
+	if body.IsAdmin {
+		body.DepartmentID = nil
+	}
+	u, err := h.store.UpdateUser(r.Context(), uint(id), db.User{
+		Username:     body.Username,
+		IsAdmin:      body.IsAdmin,
+		IsDeptAdmin:  body.IsDeptAdmin,
+		DepartmentID: body.DepartmentID,
+	})
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, u)
+}
+
+// ResetUserPassword generates a random temporary password, returned once in
+// the response — the caller (an admin) hands it to the user out of band.
+// MustChangePassword is set so the user is forced to set their own password
+// at next login (see AuthHandlers.ChangePassword / RootLayout's gate).
+func (h *Handlers) ResetUserPassword(w http.ResponseWriter, r *http.Request) {
+	caller, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if !caller.IsAdmin {
+		// department admin: only a plain member of their own department —
+		// same scoping as DeleteUser.
+		target, err := h.store.GetUserByID(r.Context(), uint(id))
+		if err != nil {
+			writeInternalError(w, err)
+			return
+		}
+		if target == nil || target.IsAdmin || target.IsDeptAdmin ||
+			target.DepartmentID == nil || caller.DepartmentID == nil ||
+			*target.DepartmentID != *caller.DepartmentID {
+			writeError(w, http.StatusForbidden, "cannot reset this user's password")
+			return
+		}
+	}
+	temp, err := generateTempPassword()
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	hash, err := db.HashPassword(temp)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	if err := h.store.SetUserPassword(r.Context(), uint(id), hash, true); err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"temp_password": temp})
+}
+
+// generateTempPassword returns a random, URL-safe temporary password for an
+// admin-initiated reset — same shape as generateSessionToken (auth.go) but
+// shorter, since a human has to read/copy/type this one.
+func generateTempPassword() (string, error) {
+	b := make([]byte, 9)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
 // URLs (admin-only views/actions)
 
 func (h *Handlers) ListUnassignedURLs(w http.ResponseWriter, r *http.Request) {
@@ -261,6 +385,27 @@ func (h *Handlers) CreateAgency(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, a)
+}
+
+func (h *Handlers) UpdateAgency(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	a, err := h.store.UpdateAgency(r.Context(), uint(id), body.Name)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, a)
 }
 
 func (h *Handlers) DeleteAgency(w http.ResponseWriter, r *http.Request) {

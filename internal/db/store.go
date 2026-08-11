@@ -112,6 +112,7 @@ type ISPStatsStore interface {
 type DepartmentStore interface {
 	ListDepartments(ctx context.Context) ([]Department, error)
 	CreateDepartment(ctx context.Context, name string) (Department, error)
+	UpdateDepartment(ctx context.Context, id uint, name string) (Department, error)
 }
 
 // UserStore covers user accounts (admin, department-admin, and plain
@@ -119,9 +120,14 @@ type DepartmentStore interface {
 type UserStore interface {
 	ListUsers(ctx context.Context) ([]User, error)
 	CreateUser(ctx context.Context, u User) (User, error)
+	UpdateUser(ctx context.Context, id uint, u User) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (*User, error)
 	GetUserByID(ctx context.Context, id uint) (*User, error)
 	DeleteUser(ctx context.Context, id uint) error
+	// SetUserPassword sets a new bcrypt hash, and MustChangePassword — true
+	// for an admin-initiated reset (forces a change at next login), false
+	// for a user changing their own password.
+	SetUserPassword(ctx context.Context, id uint, hash string, mustChange bool) error
 }
 
 // SessionStore backs the session-cookie auth flow.
@@ -149,6 +155,7 @@ type CompliantIPStore interface {
 type AgencyStore interface {
 	ListAgencies(ctx context.Context) ([]Agency, error)
 	CreateAgency(ctx context.Context, name string) (Agency, error)
+	UpdateAgency(ctx context.Context, id uint, name string) (Agency, error)
 	DeleteAgency(ctx context.Context, id uint) error
 }
 

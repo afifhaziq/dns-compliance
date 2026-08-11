@@ -663,6 +663,22 @@ html.dark {
   @apply border border-stone-border;
 }
 
+/* Removes the internal vertical column divider (keeps the outer border and
+   horizontal row separators) — used where a table has few, wide columns and
+   a full grid reads as visual clutter rather than a useful divider.
+   border-collapse merges each pair of adjacent cell borders into one shared
+   line, so zeroing only border-right leaves the next cell's border-left to
+   render it right back — both sides of the shared edge have to drop out. */
+.results-table--no-col-divider th:not(:last-child),
+.results-table--no-col-divider td:not(:last-child) {
+  border-right: none;
+}
+
+.results-table--no-col-divider th:not(:first-child),
+.results-table--no-col-divider td:not(:first-child) {
+  border-left: none;
+}
+
 .col-expand {
   @apply w-10;
 }

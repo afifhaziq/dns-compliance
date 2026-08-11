@@ -10,6 +10,10 @@ export async function createDepartment(name: string): Promise<Department> {
   return api.post<Department>('/admin/departments', { name })
 }
 
+export async function updateDepartment(id: number, name: string): Promise<Department> {
+  return api.patch<Department>(`/admin/departments/${id}`, { name })
+}
+
 export async function fetchUsers(): Promise<User[]> {
   const data = await api.get<User[]>('/admin/users')
   return Array.isArray(data) ? data : []
@@ -25,8 +29,25 @@ export async function createUser(input: {
   return api.post<User>('/admin/users', input)
 }
 
+export async function updateUser(id: number, input: {
+  username: string
+  is_admin: boolean
+  is_dept_admin: boolean
+  department_id?: number
+}): Promise<User> {
+  return api.patch<User>(`/admin/users/${id}`, input)
+}
+
 export async function deleteUser(id: number): Promise<void> {
   await api.delete<void>(`/admin/users/${id}`)
+}
+
+// resetUserPassword returns the generated temporary password exactly once —
+// the caller must show/copy it immediately, the server never surfaces it
+// again. The target is forced to change it via the app-wide
+// must_change_password gate (see __root.tsx).
+export async function resetUserPassword(id: number): Promise<{ temp_password: string }> {
+  return api.post<{ temp_password: string }>(`/admin/users/${id}/reset-password`, {})
 }
 
 export async function fetchUnassignedUrls(): Promise<URLEntry[]> {

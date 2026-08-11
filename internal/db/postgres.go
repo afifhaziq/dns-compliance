@@ -459,6 +459,13 @@ func (s *postgresStore) CreateDepartment(ctx context.Context, name string) (Depa
 	return d, s.db.WithContext(ctx).Create(&d).Error
 }
 
+func (s *postgresStore) UpdateDepartment(ctx context.Context, id uint, name string) (Department, error) {
+	d := Department{ID: id, Name: name}
+	err := s.db.WithContext(ctx).Model(&Department{}).Where("id = ?", id).
+		Updates(map[string]any{"name": name}).Error
+	return d, err
+}
+
 // Users
 
 func (s *postgresStore) ListUsers(ctx context.Context) ([]User, error) {
@@ -468,6 +475,23 @@ func (s *postgresStore) ListUsers(ctx context.Context) ([]User, error) {
 
 func (s *postgresStore) CreateUser(ctx context.Context, u User) (User, error) {
 	return u, s.db.WithContext(ctx).Create(&u).Error
+}
+
+func (s *postgresStore) UpdateUser(ctx context.Context, id uint, u User) (User, error) {
+	u.ID = id
+	err := s.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).
+		Updates(map[string]any{
+			"username":      u.Username,
+			"is_admin":      u.IsAdmin,
+			"is_dept_admin": u.IsDeptAdmin,
+			"department_id": u.DepartmentID,
+		}).Error
+	return u, err
+}
+
+func (s *postgresStore) SetUserPassword(ctx context.Context, id uint, hash string, mustChange bool) error {
+	return s.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).
+		Updates(map[string]any{"password_hash": hash, "must_change_password": mustChange}).Error
 }
 
 func (s *postgresStore) GetUserByUsername(ctx context.Context, username string) (*User, error) {
@@ -710,6 +734,13 @@ func (s *postgresStore) ListAgencies(ctx context.Context) ([]Agency, error) {
 func (s *postgresStore) CreateAgency(ctx context.Context, name string) (Agency, error) {
 	a := Agency{Name: name}
 	return a, s.db.WithContext(ctx).Create(&a).Error
+}
+
+func (s *postgresStore) UpdateAgency(ctx context.Context, id uint, name string) (Agency, error) {
+	a := Agency{ID: id, Name: name}
+	err := s.db.WithContext(ctx).Model(&Agency{}).Where("id = ?", id).
+		Updates(map[string]any{"name": name}).Error
+	return a, err
 }
 
 func (s *postgresStore) DeleteAgency(ctx context.Context, id uint) error {

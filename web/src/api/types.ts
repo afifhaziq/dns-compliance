@@ -76,6 +76,7 @@ export type User = {
   is_dept_admin: boolean
   department_id?: number
   department?: Department
+  must_change_password: boolean
   created_at: string
 }
 

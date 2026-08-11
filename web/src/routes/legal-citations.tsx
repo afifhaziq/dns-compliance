@@ -17,6 +17,8 @@ import {
 } from '@/components/animate-ui/components/radix/dialog'
 import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
+import { Filters, type Filter, type FilterFieldConfig } from '@/components/reui/filters'
 import { BrailleLoader } from '@/components/ui/braille-loader'
 import { EmptyIcon } from '@/components/results-table-parts'
 import { XIcon } from '@/components/ui/x'
@@ -80,6 +82,24 @@ async function loadTree(): Promise<LegalTreeRow[]> {
       children: citationRows.length > 0 ? citationRows : undefined,
     }
   }))
+}
+
+const IS_ONLY = [{ value: 'is', label: 'is' }]
+
+// Keeps a row if its own label matches, or if any descendant's does — when
+// kept only because of a descendant match, its children are pruned down to
+// the matching-or-ancestor-of-match ones too (so an unrelated sibling
+// category/element doesn't tag along just because its parent instrument
+// matched something elsewhere). A row that matches directly keeps its whole
+// subtree untouched, same as today with no search applied.
+function filterTreeBySearch(rows: LegalTreeRow[], query: string): LegalTreeRow[] {
+  if (!query) return rows
+  const walk = (row: LegalTreeRow): LegalTreeRow | null => {
+    if (row.label.toLowerCase().includes(query)) return row
+    const children = row.children?.map(walk).filter((r): r is LegalTreeRow => r !== null)
+    return children && children.length > 0 ? { ...row, children } : null
+  }
+  return rows.map(walk).filter((r): r is LegalTreeRow => r !== null)
 }
 
 const DELETE_DESCRIPTIONS: Record<LegalKind, string> = {
@@ -615,6 +635,8 @@ function LegalCitationsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<ExpandedState>({})
+  const [search, setSearch] = useState('')
+  const [filters, setFilters] = useState<Filter<string>[]>([])
 
   const [addInstrumentOpen, setAddInstrumentOpen] = useState(false)
   const [addCitationFor, setAddCitationFor] = useState<Instrument | null>(null)
@@ -654,6 +676,24 @@ function LegalCitationsPage() {
     setDeleteTarget(null)
     load()
   }
+
+  const filterFields = useMemo<FilterFieldConfig<string>[]>(() => [
+    { key: 'type', label: 'Type', type: 'select', operators: IS_ONLY, options: INSTRUMENT_TYPES.map(t => ({ value: t, label: INSTRUMENT_TYPE_LABELS[t] })) },
+    { key: 'jurisdiction', label: 'Jurisdiction', type: 'select', operators: IS_ONLY, options: JURISDICTIONS.map(j => ({ value: j, label: jurisdictionLabel(j) })) },
+  ], [])
+
+  const typeFilter = filters.find(f => f.field === 'type')?.values[0]
+  const jurisdictionFilter = filters.find(f => f.field === 'jurisdiction')?.values[0]
+
+  // Type/Jurisdiction only make sense against top-level instrument rows, so
+  // they filter the instrument array first; search then walks whatever
+  // subtree survives that, at any depth.
+  const filteredTree = useMemo(() => {
+    let rows = tree
+    if (typeFilter) rows = rows.filter(r => r.instrument?.type === typeFilter)
+    if (jurisdictionFilter) rows = rows.filter(r => r.instrument?.jurisdiction === jurisdictionFilter)
+    return filterTreeBySearch(rows, search.trim().toLowerCase())
+  }, [tree, search, typeFilter, jurisdictionFilter])
 
   const columns = useMemo<ColumnDef<LegalTreeRow>[]>(() => [
     {
@@ -771,7 +811,7 @@ function LegalCitationsPage() {
   ], [canManage])
 
   const table = useReactTable({
-    data: tree,
+    data: filteredTree,
     columns,
     state: { expanded },
     onExpandedChange: setExpanded,
@@ -816,12 +856,32 @@ function LegalCitationsPage() {
           )}
         </div>
       ) : (
-        <div className="results-wrap w-full">
-          <DataGrid table={table} recordCount={tree.length} tableClassNames={{ base: 'results-table' }}>
-            <DataGridContainer>
-              <DataGridTable />
-            </DataGridContainer>
-          </DataGrid>
+        <div className="flex flex-col items-stretch w-full gap-4 mt-4">
+          <div className="filter-bar flex flex-row items-center justify-start gap-4 w-full">
+            <Input
+              type="search"
+              placeholder="Search instruments, citations, categories…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="max-w-64"
+              aria-label="Search legal citations"
+            />
+            <Filters filters={filters} fields={filterFields} onChange={setFilters} />
+          </div>
+
+          <div className="results-wrap w-full">
+            {filteredTree.length === 0 ? (
+              <div className="empty-state" style={{ padding: '3rem 0' }}>
+                <p className="empty-heading">No legal citations match the current filters</p>
+              </div>
+            ) : (
+              <DataGrid table={table} recordCount={filteredTree.length} tableClassNames={{ base: 'results-table results-table--no-col-divider' }}>
+                <DataGridContainer>
+                  <DataGridTable />
+                </DataGridContainer>
+              </DataGrid>
+            )}
+          </div>
         </div>
       )}
 
