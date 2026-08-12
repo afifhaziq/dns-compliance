@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ElementType, type ReactNode } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { type ColumnDef, type ExpandedState, getCoreRowModel, getExpandedRowModel, useReactTable } from '@tanstack/react-table'
-import { DataGrid, DataGridContainer } from '@/components/reui/data-grid/data-grid'
-import { DataGridTable, DataGridTableRowExpand } from '@/components/reui/data-grid/data-grid-table'
+import { Landmark, BookText, Tag, ListTree, FileText } from 'lucide-react'
+import { Files, FolderItem, FolderTrigger, FolderContent, FileItem, SubFiles } from '@/components/animate-ui/components/radix/files'
 import {
   fetchInstruments, createInstrument, updateInstrument, deleteInstrument,
   fetchCitations, parseCitationPreview, createCitation, updateCitation, deleteCitation,
@@ -21,8 +20,9 @@ import { Input } from '@/components/ui/input'
 import { Filters, type Filter, type FilterFieldConfig } from '@/components/reui/filters'
 import { BrailleLoader } from '@/components/ui/braille-loader'
 import { EmptyIcon } from '@/components/results-table-parts'
-import { XIcon } from '@/components/ui/x'
 import { SquarePenIcon } from '@/components/ui/square-pen'
+import { SquarePlusIcon } from '@/components/animate-ui/icons/square-plus'
+import { SquareXIcon } from '@/components/animate-ui/icons/square-x'
 import { useAuth } from './__root'
 
 export const Route = createFileRoute('/legal-citations')({ component: LegalCitationsPage })
@@ -126,6 +126,50 @@ const JURISDICTIONS = [
   'Perak', 'Perlis', 'Pulau Pinang', 'Sabah', 'Sarawak', 'Selangor', 'Terengganu',
 ]
 const jurisdictionLabel = (j: string) => j === 'FEDERAL' ? 'Persekutuan' : j
+
+const KIND_ICON: Record<LegalKind, ElementType> = {
+  instrument: Landmark,
+  citation: BookText,
+  category: Tag,
+  element: ListTree,
+  subelement: FileText,
+}
+
+function RowLabel({ r }: { r: LegalTreeRow }) {
+  if (r.kind === 'instrument' && r.instrument) {
+    return (
+      <div className="flex flex-col min-w-0">
+        <span className="font-semibold truncate">{r.label}</span>
+        <span className="text-xs text-stone-muted truncate">
+          {[
+            INSTRUMENT_TYPE_LABELS[r.instrument.type] ?? r.instrument.type,
+            jurisdictionLabel(r.instrument.jurisdiction),
+            r.instrument.number || null,
+          ].filter(Boolean).join(' · ')}
+          {r.instrument.year ? ` (${r.instrument.year})` : ''}
+        </span>
+      </div>
+    )
+  }
+  if (r.kind === 'citation' && r.citation) {
+    return (
+      <div className="flex flex-col min-w-0">
+        <span className="dns-name flex items-center gap-2 truncate">
+          {r.label}
+          <ConfidenceBadge confidence={r.citation.parse_confidence} />
+        </span>
+        {/* A clean parse reconstructs to the same string as raw_text —
+            showing it again would just repeat the line above. Only surface
+            it for NEEDS_REVIEW, where it shows how far parsing got before
+            stalling. */}
+        {r.citation.parse_confidence === 'NEEDS_REVIEW' && (
+          <span className="text-xs text-stone-muted truncate">Parsed as: {formatParsedCitation(r.citation.parsed)}</span>
+        )}
+      </div>
+    )
+  }
+  return <span className="truncate">{r.label}</span>
+}
 
 function ConfidenceBadge({ confidence }: { confidence: 'OK' | 'NEEDS_REVIEW' }) {
   return (
@@ -634,7 +678,15 @@ function LegalCitationsPage() {
   const [tree, setTree] = useState<LegalTreeRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [expanded, setExpanded] = useState<ExpandedState>({})
+  // Lifted out of the Files tree itself (rather than left as its own
+  // uncontrolled state) because every add/edit/delete re-triggers load(),
+  // which flips `loading` and swaps the tree out for the spinner — that
+  // unmounts the tree subtree, and uncontrolled state living inside it
+  // would reset to closed on every save. One flat set of open node ids
+  // shared by every nesting level (passed to both Files and each nested
+  // SubFiles below) mirrors how the old react-table `expanded` state was
+  // keyed by row id regardless of depth.
+  const [openFolders, setOpenFolders] = useState<string[]>([])
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<Filter<string>[]>([])
 
@@ -695,131 +747,67 @@ function LegalCitationsPage() {
     return filterTreeBySearch(rows, search.trim().toLowerCase())
   }, [tree, search, typeFilter, jurisdictionFilter])
 
-  const columns = useMemo<ColumnDef<LegalTreeRow>[]>(() => [
-    {
-      id: 'name',
-      header: 'Name',
-      meta: { headerClassName: 'col-domain th-left', cellClassName: 'col-domain' },
-      cell: ({ row }) => {
-        const r = row.original
-        return (
-          <div className="flex items-center gap-2">
-            <DataGridTableRowExpand row={row} className="-ms-1.5" />
-            {r.kind === 'instrument' && r.instrument && (
-              <div className="flex flex-col">
-                <span className="font-semibold">{r.label}</span>
-                <span className="text-xs text-stone-muted">
-                  {[
-                    INSTRUMENT_TYPE_LABELS[r.instrument.type] ?? r.instrument.type,
-                    jurisdictionLabel(r.instrument.jurisdiction),
-                    r.instrument.number || null,
-                  ].filter(Boolean).join(' · ')}
-                  {r.instrument.year ? ` (${r.instrument.year})` : ''}
-                </span>
-              </div>
-            )}
-            {r.kind === 'citation' && r.citation && (
-              <div className="flex flex-col">
-                <span className="dns-name flex items-center gap-2">
-                  {r.label}
-                  <ConfidenceBadge confidence={r.citation.parse_confidence} />
-                </span>
-                {/* A clean parse reconstructs to the same string as raw_text —
-                    showing it again would just repeat the line above. Only
-                    surface it for NEEDS_REVIEW, where it shows exactly how
-                    far parsing got before stalling. */}
-                {r.citation.parse_confidence === 'NEEDS_REVIEW' && (
-                  <span className="text-xs text-stone-muted">
-                    Parsed as: {formatParsedCitation(r.citation.parsed)}
-                  </span>
-                )}
-              </div>
-            )}
-            {(r.kind === 'category' || r.kind === 'element' || r.kind === 'subelement') && (
-              <span>{r.label}</span>
-            )}
-          </div>
-        )
-      },
-      minSize: 340,
-    },
-    ...(canManage ? [{
-      id: 'actions',
-      header: '',
-      size: 220,
-      meta: { headerClassName: 'col-evidence', cellClassName: 'col-evidence text-right' },
-      cell: ({ row }: { row: { original: LegalTreeRow } }) => {
-        const r = row.original
-        return (
-          <div className="flex items-center justify-end gap-2">
-            {/* .btn-ghost's border-stone-border is tuned for contrast
-                against a bg-stone-panel surface (dialogs/cards) — .results-table
-                rows have no background of their own, so on the page's near-black
-                base the border nearly disappears in dark mode. An explicit
-                panel background fixes that regardless of theme, matching how
-                the navbar's Sign Out button (also .btn-ghost) gets its own
-                explicit border-color override rather than relying on ambient
-                contrast. */}
-            {r.kind === 'instrument' && r.instrument && (
-              <button type="button" className="btn-ghost" style={{ backgroundColor: 'var(--stone-panel)' }} onClick={() => setAddCitationFor(r.instrument!)}>
-                + Citation
-              </button>
-            )}
-            {r.kind === 'citation' && r.citation && (
-              <button type="button" className="btn-ghost" style={{ backgroundColor: 'var(--stone-panel)' }} onClick={() => setAddCategoryFor(r.citation!)}>
-                + Category
-              </button>
-            )}
-            {r.kind === 'category' && r.category && (
-              <button type="button" className="btn-ghost" style={{ backgroundColor: 'var(--stone-panel)' }} onClick={() => setAddElementFor(r.category!)}>
-                + Element
-              </button>
-            )}
-            {r.kind === 'element' && r.element && (
-              <button type="button" className="btn-ghost" style={{ backgroundColor: 'var(--stone-panel)' }} onClick={() => setAddSubElementFor(r.element!)}>
-                + Sub-Element
-              </button>
-            )}
-            <button
-              type="button"
-              className="screenshot-icon-btn"
-              onClick={() => {
-                if (r.kind === 'instrument' && r.instrument) setEditInstrumentTarget(r.instrument)
-                else if (r.kind === 'citation' && r.citation) setEditCitationTarget(r.citation)
-                else if (r.kind === 'category' && r.category) setEditCategoryTarget(r.category)
-                else if (r.kind === 'element' && r.element) setEditElementTarget(r.element)
-                else if (r.kind === 'subelement' && r.subElement) setEditSubElementTarget(r.subElement)
-              }}
-              aria-label={`Edit ${r.label}`}
-              title="Edit"
-            >
-              <SquarePenIcon size={16} />
-            </button>
-            <button
-              type="button"
-              className="screenshot-icon-btn"
-              onClick={() => setDeleteTarget({ kind: r.kind, id: r.refId, label: r.label })}
-              aria-label={`Delete ${r.label}`}
-              title="Delete"
-            >
-              <XIcon size={16} />
-            </button>
-          </div>
-        )
-      },
-    } satisfies ColumnDef<LegalTreeRow>] : []),
-  ], [canManage])
+  // Which "+" a row's add-child button creates, and where it goes — keyed
+  // off the row's own kind since each level only ever adds the next one down.
+  const addChildFor = (r: LegalTreeRow): { label: string; onClick: () => void } | null => {
+    switch (r.kind) {
+      case 'instrument': return r.instrument ? { label: 'Citation', onClick: () => setAddCitationFor(r.instrument!) } : null
+      case 'citation': return r.citation ? { label: 'Category', onClick: () => setAddCategoryFor(r.citation!) } : null
+      case 'category': return r.category ? { label: 'Element', onClick: () => setAddElementFor(r.category!) } : null
+      case 'element': return r.element ? { label: 'Sub-Element', onClick: () => setAddSubElementFor(r.element!) } : null
+      case 'subelement': return null
+    }
+  }
 
-  const table = useReactTable({
-    data: filteredTree,
-    columns,
-    state: { expanded },
-    onExpandedChange: setExpanded,
-    getRowId: row => row.id,
-    getSubRows: row => row.children,
-    getCoreRowModel: getCoreRowModel(),
-    getExpandedRowModel: getExpandedRowModel(),
-  })
+  const editRow = (r: LegalTreeRow) => {
+    if (r.kind === 'instrument' && r.instrument) setEditInstrumentTarget(r.instrument)
+    else if (r.kind === 'citation' && r.citation) setEditCitationTarget(r.citation)
+    else if (r.kind === 'category' && r.category) setEditCategoryTarget(r.category)
+    else if (r.kind === 'element' && r.element) setEditElementTarget(r.element)
+    else if (r.kind === 'subelement' && r.subElement) setEditSubElementTarget(r.subElement)
+  }
+
+  // Plain recursive function, not useCallback — it's only ever called
+  // during render (never passed to a memoized child needing referential
+  // stability), and self-referencing recursion inside a useCallback trips
+  // the React Compiler's "accessed before declared" check.
+  function renderNode(r: LegalTreeRow): ReactNode {
+    const addChild = addChildFor(r)
+    const actions = canManage && (
+      <>
+        {addChild && (
+          <button type="button" className="screenshot-icon-btn" onClick={addChild.onClick} aria-label={`Add ${addChild.label} to ${r.label}`} title={`Add ${addChild.label}`}>
+            <SquarePlusIcon size={16} animateOnHover animation="path-loop" />
+          </button>
+        )}
+        <button type="button" className="screenshot-icon-btn" onClick={() => editRow(r)} aria-label={`Edit ${r.label}`} title="Edit">
+          <SquarePenIcon size={16} />
+        </button>
+        <button type="button" className="screenshot-icon-btn" onClick={() => setDeleteTarget({ kind: r.kind, id: r.refId, label: r.label })} aria-label={`Delete ${r.label}`} title="Delete">
+          <SquareXIcon size={16} animateOnHover animation="path-loop" />
+        </button>
+      </>
+    )
+
+    if (r.children && r.children.length > 0) {
+      return (
+        <FolderItem key={r.id} value={r.id}>
+          <FolderTrigger icon={KIND_ICON[r.kind]} actions={actions}>
+            <RowLabel r={r} />
+          </FolderTrigger>
+          <FolderContent>
+            <SubFiles open={openFolders} onOpenChange={setOpenFolders}>{r.children.map(renderNode)}</SubFiles>
+          </FolderContent>
+        </FolderItem>
+      )
+    }
+
+    return (
+      <FileItem key={r.id} icon={KIND_ICON[r.kind]} actions={actions}>
+        <RowLabel r={r} />
+      </FileItem>
+    )
+  }
 
   return (
     <div className="mx-20 mt-10">
@@ -875,11 +863,7 @@ function LegalCitationsPage() {
                 <p className="empty-heading">No legal citations match the current filters</p>
               </div>
             ) : (
-              <DataGrid table={table} recordCount={filteredTree.length} tableClassNames={{ base: 'results-table results-table--no-col-divider' }}>
-                <DataGridContainer>
-                  <DataGridTable />
-                </DataGridContainer>
-              </DataGrid>
+              <Files open={openFolders} onOpenChange={setOpenFolders}>{filteredTree.map(renderNode)}</Files>
             )}
           </div>
         </div>
