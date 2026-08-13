@@ -62,7 +62,8 @@ func buildProgressPayload(ctx context.Context, store db.Store) ([]byte, error) {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v) // #nosec G104 -- write to the response after headers/status are sent; nothing to do with an error here //nolint:errcheck
+	//nolint:errcheck
+	json.NewEncoder(w).Encode(v) // #nosec G104 -- write to the response after headers/status are sent; nothing to do with an error here
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
@@ -574,7 +575,8 @@ func (h *Handlers) TriggerScan(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		URLs []string `json:"urls"`
 	}
-	json.NewDecoder(r.Body).Decode(&body) // #nosec G104 -- body is optional, a decode error just leaves body.URLs nil (full sweep) //nolint:errcheck
+	//nolint:errcheck
+	json.NewDecoder(r.Body).Decode(&body) // #nosec G104 -- body is optional, a decode error just leaves body.URLs nil (full sweep)
 	if err := h.scanner.Trigger(r.Context(), "manual", body.URLs); err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
@@ -1117,7 +1119,8 @@ func (h *Handlers) FaviconByURL(w http.ResponseWriter, r *http.Request) {
 	// ever cached, so this can't be used to smuggle an HTML/script response.
 	w.Header().Set("Content-Type", cached.ContentType)
 	w.Header().Set("Cache-Control", "public, max-age=604800") // favicons rarely change; server already caches forever
-	w.Write(cached.Data)                                      // #nosec G104,G705 -- write to the response after headers are sent; nothing to do with an error here but drop the connection, which failing to write does anyway
+	//nolint:errcheck
+	w.Write(cached.Data) // #nosec G104,G705 -- write to the response after headers are sent; nothing to do with an error here but drop the connection, which failing to write does anyway
 }
 
 func lookupDNSRecordSet(ctx context.Context, resolver *net.Resolver, hostname string, addrs []string) dnsRecordSet {

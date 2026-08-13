@@ -526,6 +526,7 @@ func printTable(results []pipeline.SiteResult, paths map[string]string) {
 		fmt.Fprintf(w, "%s\t%s\t%v\t%s\t%s\t%s\n",
 			r.URL, serverCol, r.Compliant, r.ResolvedIP, screenshotCol, r.Error)
 	}
+	//nolint:errcheck
 	w.Flush() // #nosec G104 -- tabwriter flushing to stdout; an error here means stdout is broken and there's nothing left to report it to
 }
 

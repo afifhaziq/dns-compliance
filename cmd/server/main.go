@@ -220,7 +220,8 @@ func main() {
 	grpcSrv.GracefulStop()
 	shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	httpSrv.Shutdown(shutCtx) // #nosec G104 -- process is exiting either way; nothing left to do with a shutdown error //nolint:errcheck
+	//nolint:errcheck
+	httpSrv.Shutdown(shutCtx) // #nosec G104 -- process is exiting either way; nothing left to do with a shutdown error
 }
 
 func envOr(key, fallback string) string {

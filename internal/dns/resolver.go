@@ -46,6 +46,7 @@ func NewResolver(server string) func(context.Context, string) (string, int64, er
 		}
 
 		body, err := exchangeWithRetry(ctx, func(deadline time.Time) ([]byte, error) {
+			//nolint:errcheck
 			conn.SetDeadline(deadline) // #nosec G104 -- SetDeadline on a live conn practically never fails; a bad deadline surfaces via the Write/Read that follows
 			if _, err := conn.Write(query); err != nil {
 				return nil, err
@@ -129,6 +130,7 @@ func NewDoTResolver(address string) func(context.Context, string) (string, int64
 				return nil, err
 			}
 			defer conn.Close()
+			//nolint:errcheck
 			conn.SetDeadline(deadline) // #nosec G104 -- SetDeadline on a live conn practically never fails; a bad deadline surfaces via the Write/Read that follows
 			if err := writeTCPMessage(conn, query); err != nil {
 				return nil, err
