@@ -1,5 +1,6 @@
 # Dashboard host (192.168.88.46 — citadel-stg.mcmc.gov.my)
-# Traefik (public HTTPS) + server (REST API) + web (static frontend).
+# Traefik (public HTTPS) + server (REST API) + web (static frontend), plus
+# postgres/redis/minio as the server's backing services on this same host.
 # See ../../DEPLOYMENT.md for the full explanation of each piece.
 #
 # Layout expected alongside this file (both gitignored, not shipped in the repo):
@@ -41,6 +42,12 @@ services:
       TLS_CA: /certs/ca.crt
       CRAWLER_ADDR: citadel-api.mcmc.gov.my:50052
       COOKIE_SECURE: "true"
+      DB_URL: "host=postgres user=${POSTGRES_USER} password=${POSTGRES_PASSWORD} dbname=${POSTGRES_DB} sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      MINIO_ENDPOINT: "minio:9000"
+      MINIO_ACCESS_KEY: "${MINIO_ROOT_USER}"
+      MINIO_SECRET_KEY: "${MINIO_ROOT_PASSWORD}"
+      MINIO_BUCKET: "screenshots"
     volumes:
       - ./certs:/certs:ro
     labels:
@@ -53,6 +60,13 @@ services:
       - "8080"
     ports:
       - "50051:50051" # crawler's Submit RPC — not through Traefik, see DEPLOYMENT.md
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   web:
@@ -66,3 +80,51 @@ services:
       - traefik.http.routers.web.entrypoints=websecure
       - traefik.http.services.web.loadbalancer.server.port=80
     restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}"
+    volumes:
+      - miniodata:/data
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}; do sleep 1; done &&
+      mc mb --ignore-existing local/screenshots &&
+      mc anonymous set public local/screenshots
+      "
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
