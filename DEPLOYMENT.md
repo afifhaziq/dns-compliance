@@ -76,12 +76,23 @@ services:
       - --providers.docker=true
       - --providers.file.filename=/etc/traefik/dynamic.yml
       - --entrypoints.websecure.address=:443
+      - --api.dashboard=true
+      - --entrypoints.traefik.address=:8081
     ports:
       - "443:443"
+      - "127.0.0.1:8081:8081"   # Traefik's own admin dashboard — loopback only, not on :443/public
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
       - /opt/certs:/certs:ro   # the org-issued cert/key for citadel-stg.mcmc.gov.my
+    labels:
+      - traefik.enable=true
+      # Catch-all is safe here — this router only lives on the loopback-only
+      # `traefik` entrypoint above, never on the public `websecure` one, so
+      # it can't collide with the app's own /api router below.
+      - traefik.http.routers.traefik-dashboard.rule=PathPrefix(`/`)
+      - traefik.http.routers.traefik-dashboard.service=api@internal
+      - traefik.http.routers.traefik-dashboard.entrypoints=traefik
 
   server:
     image: nssti-dev.mcmc.gov.my/nsrd/dns-compliance/server:main
@@ -122,6 +133,15 @@ services:
 ```
 
 `web/dist/` comes from `npm --prefix web run build`, built and copied to the host (or baked into a small image) as a separate deploy step from the two Go binaries.
+
+**Traefik's own dashboard** (`--api.dashboard=true`) is bound to `127.0.0.1:8081` — not the public `websecure` entrypoint — since it exposes internal router/service topology and isn't meant for public access. Reach it over SSH port-forwarding from the dashboard host:
+
+```bash
+ssh -L 8081:localhost:8081 user@192.168.88.46
+# then open http://localhost:8081/dashboard/ locally
+```
+
+If it needs to be reachable without an SSH tunnel later, put it behind its own `Host()` rule on `websecure` with a `basicauth` middleware — don't expose `api@internal` on the public entrypoint unauthenticated.
 
 Set `COOKIE_SECURE=true` (the server's default) — it requires the session cookie only be sent over HTTPS, which Traefik now provides. `:50051` still needs to be reachable directly by the crawler host (not through Traefik — see the mTLS section above), so open it on the host firewall independent of Traefik's `:443`.
 
