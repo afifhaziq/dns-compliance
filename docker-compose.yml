@@ -1,6 +1,8 @@
 services:
   server:
-    build: .
+    build:
+      context: .
+      target: server
     ports:
       - "8080:8080"
       - "50051:50051"
@@ -23,8 +25,9 @@ services:
     restart: unless-stopped
 
   crawler:
-    build: .
-    entrypoint: ["/app/crawler"]
+    build:
+      context: .
+      target: crawler
     command:
       - "--listen-addr=:50052"
       - "--grpc-addr=server:50051"

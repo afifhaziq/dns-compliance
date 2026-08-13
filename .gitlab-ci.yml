@@ -101,45 +101,66 @@ gitleaks:
       - gitleaks-report.json
     expire_in: 30 days
 
-build:
+.build:
   stage: build
   image: docker:latest
   services:
     - docker:dind
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+
+build:server:
+  extends: .build
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-  before_script:
-    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
-    - docker build --provenance=false --sbom=false -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" -t "$CI_REGISTRY_IMAGE:main" .
-    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
-    - docker push "$CI_REGISTRY_IMAGE:main"
+    - docker build --provenance=false --sbom=false --target server -t "$CI_REGISTRY_IMAGE/server:$CI_COMMIT_SHA" -t "$CI_REGISTRY_IMAGE/server:main" .
+    - docker push "$CI_REGISTRY_IMAGE/server:$CI_COMMIT_SHA"
+    - docker push "$CI_REGISTRY_IMAGE/server:main"
 
-build:release:
-  stage: build
-  image: docker:latest
-  services:
-    - docker:dind
-  before_script:
-    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+build:crawler:
+  extends: .build
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  script:
+    - docker build --provenance=false --sbom=false --target crawler -t "$CI_REGISTRY_IMAGE/crawler:$CI_COMMIT_SHA" -t "$CI_REGISTRY_IMAGE/crawler:main" .
+    - docker push "$CI_REGISTRY_IMAGE/crawler:$CI_COMMIT_SHA"
+    - docker push "$CI_REGISTRY_IMAGE/crawler:main"
+
+build:server:release:
+  extends: .build
   script:
     - VERSION=${CI_COMMIT_TAG#v}
     - MAJOR=$(echo "$VERSION" | cut -d. -f1)
     - MINOR=$(echo "$VERSION" | cut -d. -f1,2)
-    - docker build --provenance=false --sbom=false -t "$CI_REGISTRY_IMAGE:$VERSION" -t "$CI_REGISTRY_IMAGE:$MINOR" -t "$CI_REGISTRY_IMAGE:$MAJOR" -t "$CI_REGISTRY_IMAGE:stable" .
-    - docker push "$CI_REGISTRY_IMAGE:$VERSION"
-    - docker push "$CI_REGISTRY_IMAGE:$MINOR"
-    - docker push "$CI_REGISTRY_IMAGE:$MAJOR"
-    - docker push "$CI_REGISTRY_IMAGE:stable"
+    - docker build --provenance=false --sbom=false --target server -t "$CI_REGISTRY_IMAGE/server:$VERSION" -t "$CI_REGISTRY_IMAGE/server:$MINOR" -t "$CI_REGISTRY_IMAGE/server:$MAJOR" -t "$CI_REGISTRY_IMAGE/server:stable" .
+    - docker push "$CI_REGISTRY_IMAGE/server:$VERSION"
+    - docker push "$CI_REGISTRY_IMAGE/server:$MINOR"
+    - docker push "$CI_REGISTRY_IMAGE/server:$MAJOR"
+    - docker push "$CI_REGISTRY_IMAGE/server:stable"
   rules:
     - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
 
-trivy:
+build:crawler:release:
+  extends: .build
+  script:
+    - VERSION=${CI_COMMIT_TAG#v}
+    - MAJOR=$(echo "$VERSION" | cut -d. -f1)
+    - MINOR=$(echo "$VERSION" | cut -d. -f1,2)
+    - docker build --provenance=false --sbom=false --target crawler -t "$CI_REGISTRY_IMAGE/crawler:$VERSION" -t "$CI_REGISTRY_IMAGE/crawler:$MINOR" -t "$CI_REGISTRY_IMAGE/crawler:$MAJOR" -t "$CI_REGISTRY_IMAGE/crawler:stable" .
+    - docker push "$CI_REGISTRY_IMAGE/crawler:$VERSION"
+    - docker push "$CI_REGISTRY_IMAGE/crawler:$MINOR"
+    - docker push "$CI_REGISTRY_IMAGE/crawler:$MAJOR"
+    - docker push "$CI_REGISTRY_IMAGE/crawler:stable"
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
+
+trivy:server:
   stage: build
   image:
     name: aquasec/trivy:latest
     entrypoint: [""]
-  needs: ["build"]
+  needs: ["build:server"]
   allow_failure: true
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
@@ -147,9 +168,29 @@ trivy:
     TRIVY_USERNAME: $CI_REGISTRY_USER
     TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
   script:
-    - trivy image --severity HIGH,CRITICAL --exit-code 1 --format json --output trivy-report.json "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+    - trivy image --severity HIGH,CRITICAL --exit-code 1 --format json --output trivy-server-report.json "$CI_REGISTRY_IMAGE/server:$CI_COMMIT_SHA"
   artifacts:
     when: always
     paths:
-      - trivy-report.json
+      - trivy-server-report.json
+    expire_in: 30 days
+
+trivy:crawler:
+  stage: build
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  needs: ["build:crawler"]
+  allow_failure: true
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  variables:
+    TRIVY_USERNAME: $CI_REGISTRY_USER
+    TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
+  script:
+    - trivy image --severity HIGH,CRITICAL --exit-code 1 --format json --output trivy-crawler-report.json "$CI_REGISTRY_IMAGE/crawler:$CI_COMMIT_SHA"
+  artifacts:
+    when: always
+    paths:
+      - trivy-crawler-report.json
     expire_in: 30 days
