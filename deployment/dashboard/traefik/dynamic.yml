@@ -1,0 +1,6 @@
+# Org-issued cert for citadel-stg.mcmc.gov.my — file lives in ../certs (gitignored),
+# referenced here by the mounted-in-container path (/certs, see docker-compose.yml).
+tls:
+  certificates:
+    - certFile: /certs/citadel-stg.mcmc.gov.my.crt
+      keyFile: /certs/citadel-stg.mcmc.gov.my.key

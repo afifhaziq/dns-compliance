@@ -1,0 +1,24 @@
+# Crawler host (192.168.88.35 — citadel-api.mcmc.gov.my)
+# No Traefik, no public HTTP surface — just the gRPC control service on :50052.
+# See ../../DEPLOYMENT.md for the full explanation.
+#
+# Layout expected alongside this file (both gitignored, not shipped in the repo):
+#   certs/  - ca.crt, crawler.crt, crawler.key (from scripts/gen-mtls-certs.sh)
+#   .env    - copy .env.example and fill in secrets
+
+services:
+  crawler:
+    image: ${CRAWLER_IMAGE:-nssti-dev.mcmc.gov.my/nsrd/dns-compliance/crawler:main}
+    env_file: .env
+    command:
+      - --listen-addr=:50052
+      - --grpc-addr=citadel-stg.mcmc.gov.my:50051
+      - --auth-token=${CRAWLER_TOKEN}
+      - --tls-cert=/certs/crawler.crt
+      - --tls-key=/certs/crawler.key
+      - --tls-ca=/certs/ca.crt
+    volumes:
+      - ./certs:/certs:ro
+    ports:
+      - "50052:50052" # dashboard's StartSweep RPC — firewalled to the dashboard host's IP
+    restart: unless-stopped

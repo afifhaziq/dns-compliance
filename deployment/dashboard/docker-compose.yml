@@ -1,0 +1,68 @@
+# Dashboard host (192.168.88.46 — citadel-stg.mcmc.gov.my)
+# Traefik (public HTTPS) + server (REST API) + web (static frontend).
+# See ../../DEPLOYMENT.md for the full explanation of each piece.
+#
+# Layout expected alongside this file (both gitignored, not shipped in the repo):
+#   certs/                    - ca.crt, server.crt, server.key (from scripts/gen-mtls-certs.sh)
+#                                + the org-issued citadel-stg.mcmc.gov.my.{crt,key}
+#   .env                      - copy .env.example and fill in secrets
+#   ../../web/dist            - built via `npm --prefix web run build`
+
+services:
+  traefik:
+    image: traefik:v3
+    command:
+      - --providers.docker=true
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --entrypoints.websecure.address=:443
+      - --api.dashboard=true
+      - --entrypoints.traefik.address=:8081
+    ports:
+      - "443:443"
+      - "127.0.0.1:8081:8081" # Traefik's own admin dashboard — loopback only
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - ./certs:/certs:ro
+    labels:
+      - traefik.enable=true
+      # Loopback-only entrypoint, never on the public websecure one — see DEPLOYMENT.md
+      - traefik.http.routers.traefik-dashboard.rule=PathPrefix(`/`)
+      - traefik.http.routers.traefik-dashboard.service=api@internal
+      - traefik.http.routers.traefik-dashboard.entrypoints=traefik
+    restart: unless-stopped
+
+  server:
+    image: ${SERVER_IMAGE:-nssti-dev.mcmc.gov.my/nsrd/dns-compliance/server:main}
+    env_file: .env
+    environment:
+      TLS_CERT: /certs/server.crt
+      TLS_KEY: /certs/server.key
+      TLS_CA: /certs/ca.crt
+      CRAWLER_ADDR: citadel-api.mcmc.gov.my:50052
+      COOKIE_SECURE: "true"
+    volumes:
+      - ./certs:/certs:ro
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.api.rule=Host(`citadel-stg.mcmc.gov.my`) && PathPrefix(`/api`)
+      - traefik.http.routers.api.tls=true
+      - traefik.http.routers.api.entrypoints=websecure
+      - traefik.http.services.api.loadbalancer.server.port=8080
+    expose:
+      - "8080"
+    ports:
+      - "50051:50051" # crawler's Submit RPC — not through Traefik, see DEPLOYMENT.md
+    restart: unless-stopped
+
+  web:
+    image: nginx:alpine
+    volumes:
+      - ../../web/dist:/usr/share/nginx/html:ro
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.web.rule=Host(`citadel-stg.mcmc.gov.my`)
+      - traefik.http.routers.web.tls=true
+      - traefik.http.routers.web.entrypoints=websecure
+      - traefik.http.services.web.loadbalancer.server.port=80
+    restart: unless-stopped
