@@ -526,7 +526,7 @@ func printTable(results []pipeline.SiteResult, paths map[string]string) {
 		fmt.Fprintf(w, "%s\t%s\t%v\t%s\t%s\t%s\n",
 			r.URL, serverCol, r.Compliant, r.ResolvedIP, screenshotCol, r.Error)
 	}
-	w.Flush()
+	w.Flush() // #nosec G104 -- tabwriter flushing to stdout; an error here means stdout is broken and there's nothing left to report it to
 }
 
 func saveScreenshots(results []pipeline.SiteResult, sweepTime time.Time) map[string]string {
@@ -549,13 +549,13 @@ func saveScreenshots(results []pipeline.SiteResult, sweepTime time.Time) map[str
 			defer func() { <-sem }()
 
 			siteDir := filepath.Join(dnsLabel(r.DNSServer), hostnameFromURL(r.URL))
-			if err := os.MkdirAll(siteDir, 0755); err != nil {
+			if err := os.MkdirAll(siteDir, 0750); err != nil {
 				log.Printf("creating screenshot dir: %v", err)
 				return
 			}
 			// Include IP in hash so the same URL at different IPs gets different filenames.
 			path := filepath.Join(siteDir, timestamp+"-"+urlHash(r.URL+"|"+r.ResolvedIP)+".png")
-			if err := os.WriteFile(path, r.Screenshot, 0644); err != nil {
+			if err := os.WriteFile(path, r.Screenshot, 0600); err != nil {
 				log.Printf("saving screenshot for %s: %v", r.URL, err)
 				return
 			}
@@ -579,7 +579,7 @@ func dnsLabel(name string) string {
 
 func urlHash(rawURL string) string {
 	h := fnv.New32a()
-	h.Write([]byte(rawURL))
+	h.Write([]byte(rawURL)) // #nosec G104 -- hash.Hash.Write never returns an error per its documented io.Writer contract
 	return fmt.Sprintf("%08x", h.Sum32())
 }
 

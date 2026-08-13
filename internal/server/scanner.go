@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"math"
 	"sync"
 	"time"
 
@@ -197,7 +198,13 @@ func (sc *Scanner) dnsWorkers(ctx context.Context) int32 {
 		log.Printf("scanner: load dns workers setting: %v", err)
 		return 0
 	}
-	return int32(workers)
+	if workers > math.MaxInt32 {
+		// SetDNSWorkers already rejects values this large; this is a
+		// belt-and-suspenders guard against int32 overflow, not a case
+		// that should be reachable.
+		return math.MaxInt32
+	}
+	return int32(workers) // #nosec G115 -- bounds-checked above; gosec can't see across the guard clause
 }
 
 // compliantIPs fetches the compliant IPs from the store as a string slice

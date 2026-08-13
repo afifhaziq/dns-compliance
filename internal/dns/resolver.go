@@ -46,7 +46,7 @@ func NewResolver(server string) func(context.Context, string) (string, int64, er
 		}
 
 		body, err := exchangeWithRetry(ctx, func(deadline time.Time) ([]byte, error) {
-			conn.SetDeadline(deadline)
+			conn.SetDeadline(deadline) // #nosec G104 -- SetDeadline on a live conn practically never fails; a bad deadline surfaces via the Write/Read that follows
 			if _, err := conn.Write(query); err != nil {
 				return nil, err
 			}
@@ -129,7 +129,7 @@ func NewDoTResolver(address string) func(context.Context, string) (string, int64
 				return nil, err
 			}
 			defer conn.Close()
-			conn.SetDeadline(deadline)
+			conn.SetDeadline(deadline) // #nosec G104 -- SetDeadline on a live conn practically never fails; a bad deadline surfaces via the Write/Read that follows
 			if err := writeTCPMessage(conn, query); err != nil {
 				return nil, err
 			}
@@ -357,7 +357,10 @@ func firstA(body []byte, host string) (string, error) {
 // writeTCPMessage writes msg to conn with the 2-byte length prefix DNS-over-TCP
 // (and therefore DoT) requires (RFC 1035 §4.2.2).
 func writeTCPMessage(conn net.Conn, msg []byte) error {
-	lenBuf := []byte{byte(len(msg) >> 8), byte(len(msg))}
+	if len(msg) > 0xFFFF {
+		return fmt.Errorf("dns: message too large for TCP length prefix (%d bytes)", len(msg))
+	}
+	lenBuf := []byte{byte(len(msg) >> 8), byte(len(msg))} // #nosec G115 -- bounds-checked above; gosec can't see across the guard clause
 	_, err := conn.Write(append(lenBuf, msg...))
 	return err
 }

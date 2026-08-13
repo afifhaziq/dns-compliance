@@ -62,7 +62,7 @@ func buildProgressPayload(ctx context.Context, store db.Store) ([]byte, error) {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v) //nolint:errcheck
+	json.NewEncoder(w).Encode(v) // #nosec G104 -- write to the response after headers/status are sent; nothing to do with an error here //nolint:errcheck
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
@@ -140,14 +140,14 @@ func (h *Handlers) AddToWatchlist(w http.ResponseWriter, r *http.Request) {
 	// Lazy WHOIS fetch — detached from the request, own timeout context, so
 	// a slow/unreachable RDAP server never delays or fails the add.
 	if h.whoisFetch != nil {
-		go fetchAndStoreWhois(h.store, h.whoisFetch, u.ID, u.URL)
+		go fetchAndStoreWhois(h.store, h.whoisFetch, u.ID, u.URL) // #nosec G118 -- must outlive r.Context(), which cancels once this handler returns
 	}
 
 	// Lazy subdomain enumeration — same detached-goroutine shape as WHOIS
 	// above; subfinder can take much longer than an RDAP lookup, so it gets
 	// its own (longer) timeout in fetchAndStoreSubdomains.
 	if h.subfinderFetch != nil {
-		go fetchAndStoreSubdomains(h.store, h.subfinderFetch, u.ID, u.URL)
+		go fetchAndStoreSubdomains(h.store, h.subfinderFetch, u.ID, u.URL) // #nosec G118 -- must outlive r.Context(), which cancels once this handler returns
 	}
 
 	writeJSON(w, http.StatusCreated, db.URLEntry{ID: u.ID, URL: u.URL, Enabled: true, CreatedAt: u.CreatedAt})
@@ -172,7 +172,7 @@ func fetchAndStoreWhois(store db.EnrichmentStore, fetch whois.Fetcher, urlID uin
 	dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer dbCancel()
 	if err := store.UpsertDomainWhois(dbCtx, w); err != nil {
-		log.Printf("whois: upsert for %s: %v", domain, err)
+		log.Printf("whois: upsert for %q: %v", domain, err) // #nosec G706 -- %q (strconv.Quote) escapes CR/LF and other control chars
 	}
 }
 
@@ -195,7 +195,7 @@ func fetchAndStoreSubdomains(store db.EnrichmentStore, fetch subfinder.Fetcher, 
 	dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer dbCancel()
 	if err := store.UpsertSubdomainScan(dbCtx, scan); err != nil {
-		log.Printf("subfinder: upsert for %s: %v", domain, err)
+		log.Printf("subfinder: upsert for %q: %v", domain, err) // #nosec G706 -- %q (strconv.Quote) escapes CR/LF and other control chars
 	}
 }
 
@@ -574,7 +574,7 @@ func (h *Handlers) TriggerScan(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		URLs []string `json:"urls"`
 	}
-	json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck — body is optional
+	json.NewDecoder(r.Body).Decode(&body) // #nosec G104 -- body is optional, a decode error just leaves body.URLs nil (full sweep) //nolint:errcheck
 	if err := h.scanner.Trigger(r.Context(), "manual", body.URLs); err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
@@ -1102,7 +1102,7 @@ func (h *Handlers) FaviconByURL(w http.ResponseWriter, r *http.Request) {
 			fav.Data = res.Data
 		}
 		if err := h.store.UpsertFavicon(r.Context(), fav); err != nil {
-			log.Printf("upsert favicon for %s: %v", domain, err)
+			log.Printf("upsert favicon for %q: %v", domain, err) // #nosec G706 -- %q (strconv.Quote) escapes CR/LF and other control chars
 		}
 		cached = &fav
 	}
@@ -1112,9 +1112,12 @@ func (h *Handlers) FaviconByURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// cached.ContentType is always image/* — favicon.Fetch rejects any
+	// response whose Content-Type doesn't start with "image/" before it's
+	// ever cached, so this can't be used to smuggle an HTML/script response.
 	w.Header().Set("Content-Type", cached.ContentType)
 	w.Header().Set("Cache-Control", "public, max-age=604800") // favicons rarely change; server already caches forever
-	w.Write(cached.Data)
+	w.Write(cached.Data)                                      // #nosec G104,G705 -- write to the response after headers are sent; nothing to do with an error here but drop the connection, which failing to write does anyway
 }
 
 func lookupDNSRecordSet(ctx context.Context, resolver *net.Resolver, hostname string, addrs []string) dnsRecordSet {

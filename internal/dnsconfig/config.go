@@ -23,7 +23,7 @@ type Config struct {
 // Load parses a YAML file at path into a Config.
 // Each server must have a non-empty address; name defaults to address if omitted.
 func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path is --dns-servers/--seed-dns, an operator-supplied CLI flag, not request input
 	if err != nil {
 		return nil, err
 	}

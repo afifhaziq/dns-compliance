@@ -38,7 +38,7 @@ func Creds(certFile, keyFile, caFile string) (creds credentials.TransportCredent
 	if err != nil {
 		return nil, false, fmt.Errorf("loading cert/key: %w", err)
 	}
-	caPEM, err := os.ReadFile(caFile)
+	caPEM, err := os.ReadFile(caFile) // #nosec G304 -- caFile is --tls-ca, an operator-supplied CLI flag, not request input
 	if err != nil {
 		return nil, false, fmt.Errorf("reading CA: %w", err)
 	}

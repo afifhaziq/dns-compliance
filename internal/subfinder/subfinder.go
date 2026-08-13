@@ -16,7 +16,10 @@ type Fetcher func(ctx context.Context, domain string) ([]string, error)
 // NewFetcher returns a Fetcher backed by the subfinder binary at binPath.
 func NewFetcher(binPath string) Fetcher {
 	return func(ctx context.Context, domain string) ([]string, error) {
-		out, err := exec.CommandContext(ctx, binPath, "-d", domain, "-silent").Output()
+		// binPath is --subfinder-path, an operator-supplied startup flag, not
+		// request input; domain is passed as a discrete argv element (no
+		// shell involved), so it can't be used for command injection.
+		out, err := exec.CommandContext(ctx, binPath, "-d", domain, "-silent").Output() // #nosec G204 -- see comment above
 		if err != nil {
 			return nil, err
 		}

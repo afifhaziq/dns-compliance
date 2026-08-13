@@ -88,7 +88,7 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 				// ingestion. This scan's row is inserted with a blank
 				// ASN/org/netname; the cache fill only benefits later scans
 				// of the same IP.
-				go fetchAndCacheIPInfo(s.store, s.ipFetch, s.netnameFetch, lookupIP)
+				go fetchAndCacheIPInfo(s.store, s.ipFetch, s.netnameFetch, lookupIP) // #nosec G118 -- must outlive ctx, which is this gRPC call's context
 			}
 		}
 
@@ -204,7 +204,7 @@ func fetchAndCacheIPInfo(store db.EnrichmentStore, fetch ipinfo.Fetcher, netname
 	dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer dbCancel()
 	if err := store.UpsertIPInfo(dbCtx, info); err != nil {
-		log.Printf("ipinfo: upsert for %s: %v", ip, err)
+		log.Printf("ipinfo: upsert for %q: %v", ip, err) // #nosec G706 -- %q (strconv.Quote) escapes CR/LF and other control chars
 	}
 	return info
 }

@@ -207,7 +207,7 @@ func main() {
 	r := chi.NewRouter()
 	server.RegisterRoutes(r, store, sc, broadcaster, *cookieSecure, whois.Fetch, favicon.Fetch, subfinderFetch, ipFetch, whois.FetchIP, notifyEnqueuer)
 
-	httpSrv := &http.Server{Addr: *httpAddr, Handler: r}
+	httpSrv := &http.Server{Addr: *httpAddr, Handler: r, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		log.Printf("HTTP listening on %s", *httpAddr)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -220,7 +220,7 @@ func main() {
 	grpcSrv.GracefulStop()
 	shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	httpSrv.Shutdown(shutCtx) //nolint:errcheck
+	httpSrv.Shutdown(shutCtx) // #nosec G104 -- process is exiting either way; nothing left to do with a shutdown error //nolint:errcheck
 }
 
 func envOr(key, fallback string) string {

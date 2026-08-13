@@ -25,7 +25,7 @@ func Load(filePath string, args []string) ([]string, error) {
 	}
 
 	if filePath != "" {
-		f, err := os.Open(filePath)
+		f, err := os.Open(filePath) // #nosec G304 -- filePath is --sites, an operator-supplied CLI flag, not request input
 		if err != nil {
 			return nil, err
 		}

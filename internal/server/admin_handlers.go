@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -532,7 +533,7 @@ func (h *Handlers) SetScanInterval(w http.ResponseWriter, r *http.Request) {
 		Enabled         bool `json:"enabled"`
 		DNSWorkers      int  `json:"dns_workers"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.IntervalMinutes < 1 || body.DNSWorkers < 1 {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.IntervalMinutes < 1 || body.DNSWorkers < 1 || body.DNSWorkers > math.MaxInt32 {
 		writeError(w, http.StatusBadRequest, "interval_minutes and dns_workers must be positive integers")
 		return
 	}

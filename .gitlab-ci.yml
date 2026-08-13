@@ -78,7 +78,7 @@ gosec:
   allow_failure: true
   script:
     - go install github.com/securego/gosec/v2/cmd/gosec@v2.28.0
-    - gosec -fmt=json -out=gosec-report.json ./...
+    - gosec -exclude-generated -fmt=json -out=gosec-report.json ./...
   artifacts:
     when: always
     paths:

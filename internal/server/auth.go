@@ -27,8 +27,11 @@ func generateSessionToken() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
+// Secure is a parameter, not a literal true, because --cookie-secure must be
+// false for local plain-HTTP dev (Vite's proxy talks over plain HTTP) — see
+// repo-root CLAUDE.md. HttpOnly and SameSite are always set regardless.
 func setSessionCookie(w http.ResponseWriter, token string, secure bool, expiresAt time.Time) {
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure driven by --cookie-secure, see comment above
 		Name:     sessionCookieName,
 		Value:    token,
 		Path:     "/",
@@ -40,7 +43,7 @@ func setSessionCookie(w http.ResponseWriter, token string, secure bool, expiresA
 }
 
 func clearSessionCookie(w http.ResponseWriter, secure bool) {
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure driven by --cookie-secure, see setSessionCookie
 		Name:     sessionCookieName,
 		Value:    "",
 		Path:     "/",
