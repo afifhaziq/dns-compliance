@@ -125,7 +125,7 @@ services:
 
 Set `COOKIE_SECURE=true` (the server's default) — it requires the session cookie only be sent over HTTPS, which Traefik now provides. `:50051` still needs to be reachable directly by the crawler host (not through Traefik — see the mTLS section above), so open it on the host firewall independent of Traefik's `:443`.
 
-**Assumption:** `citadel-api.mcmc.gov.my` (the crawler host) has no public-facing HTTP surface — nothing on the crawler is meant for browser/auditor access, only for the dashboard to reach over the private mTLS link. If that's wrong and the crawler needs its own public endpoint for some reason, say so and this doc needs an equivalent Traefik block for that host.
+**The crawler host (`citadel-api.mcmc.gov.my`) does not run Traefik.** It has no browser-facing HTTP surface — its only listener is the gRPC control service on `:50052`, reached exclusively by the dashboard's `Scanner`, already secured end-to-end by the mTLS setup above plus the shared token. Putting a reverse proxy in front would either do nothing (TCP passthrough) or break the link outright (if it terminates TLS, it becomes the gRPC client without a cert signed by the private CA, and `RequireAndVerifyClientCert` on the crawler's `grpc.NewServer` rejects it). The domain name is just what goes in `--grpc-addr`/`CRAWLER_ADDR` instead of the raw IP — not a public endpoint.
 
 ## Backing services (dashboard host only)
 
