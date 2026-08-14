@@ -11,6 +11,8 @@ Current staging hosts:
 
 Images: `nssti-dev.mcmc.gov.my/nsrd/dns-compliance/{server,crawler,web}:main`. `deployment/dashboard/docker-compose.yml` and `deployment/crawler/docker-compose.yml` are domain-agnostic — `DASHBOARD_DOMAIN`/`CRAWLER_GRPC_ADDR`/`DASHBOARD_GRPC_ADDR` in each `.env` are what make the same files work for prod too; for prod also pin the `*_IMAGE` vars to a release tag (`:stable` or `:vX.Y.Z`, from the `.gitlab-ci.yml` release jobs) instead of tracking `:main`.
 
+**Neither staging host can reach the GitLab registry**, so `docker compose pull` on either host doesn't work — use `scripts/sync-staging-images.sh <crawler|dashboard> <ssh-host> [tag]` from a machine that *can* reach the registry instead; it pulls, saves, scp's, and `docker load`s the right image set for that host. The loaded `image:tag` matches each compose file's `*_IMAGE` default, so nothing else changes — just skip the `pull` step on staging and go straight to `docker compose up -d`.
+
 ## Two separate TLS concerns — don't conflate them
 
 This deployment has **two independent certificates for two independent links**:

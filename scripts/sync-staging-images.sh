@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-# Pulls images from the GitLab registry (run this from a host that can reach
-# it, e.g. after `glab auth login` / `docker login`) and loads them onto a
-# staging host that can't reach the registry itself.
+# deployment/dashboard/docker-compose.yml and deployment/crawler/docker-compose.yml
+# (see DEPLOYMENT.md) assume a direct `docker compose pull` on each host. Our
+# staging hosts can't reach the GitLab registry at all, so this pulls the
+# same images from a host that can (e.g. after `glab auth login` / `docker
+# login`), saves, scp's, and loads them on the target host instead — the
+# resulting local image:tag matches what each compose file's
+# SERVER_IMAGE/WEB_IMAGE/CRAWLER_IMAGE already defaults to, so no compose
+# file changes are needed, just skip `docker compose pull` on staging.
 #
 # Usage: ./scripts/sync-staging-images.sh <crawler|dashboard> <ssh-host> [tag]
-#   ./scripts/sync-staging-images.sh crawler appsadmin@192.168.78.135
-#   ./scripts/sync-staging-images.sh dashboard appsadmin@192.168.78.46 main
+#   ./scripts/sync-staging-images.sh crawler appsadmin@192.168.88.35
+#   ./scripts/sync-staging-images.sh dashboard appsadmin@192.168.88.46 main
 set -euo pipefail
 
 ROLE="${1:?usage: $0 <crawler|dashboard> <ssh-host> [tag]}"
@@ -35,5 +40,6 @@ echo "==> loading on $STAGING_HOST"
 # shellcheck disable=SC2029
 ssh "$STAGING_HOST" "for f in $(for s in $SERVICES; do echo -n "/tmp/$s.tar.gz "; done); do docker load -i \"\$f\" && rm \"\$f\"; done"
 
-echo "==> done. On $STAGING_HOST, run (from docker-compose.$ROLE.yml):"
-echo "    REGISTRY_IMAGE=$REGISTRY_IMAGE IMAGE_TAG=$TAG docker compose -f docker-compose.$ROLE.yml up -d"
+echo "==> done. Images are loaded locally on $STAGING_HOST."
+echo "    Copy deployment/$ROLE/ (docker-compose.yml, filled-in .env, certs/) there if you haven't,"
+echo "    then: docker compose -f docker-compose.yml up -d   (skip 'docker compose pull' — images are already loaded)"
