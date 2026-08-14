@@ -13,6 +13,25 @@ Images: `nssti-dev.mcmc.gov.my/nsrd/dns-compliance/{server,crawler,web}:main`. `
 
 **Neither staging host can reach the GitLab registry**, so `docker compose pull` on either host doesn't work — use `scripts/sync-staging-images.sh <crawler|dashboard> <ssh-host> [tag]` from a machine that *can* reach the registry instead; it pulls, saves, scp's, and `docker load`s the right image set for that host. The loaded `image:tag` matches each compose file's `*_IMAGE` default, so nothing else changes — just skip the `pull` step on staging and go straight to `docker compose up -d`.
 
+## Redeploying an update
+
+Same two steps every time, once CI has built and pushed the new image:
+
+```bash
+# 1. From a machine with registry access, sync whichever host changed:
+./scripts/sync-staging-images.sh crawler appsadmin@192.168.88.35     # crawler code/Dockerfile changed
+./scripts/sync-staging-images.sh dashboard appsadmin@192.168.88.46   # server or web code changed (pulls both together)
+
+# 2. On the affected host, re-up — no `pull` (it'd fail, same registry-access
+#    problem above); the freshly loaded image already overwrote the local
+#    :main tag, so compose picks up the new image ID and recreates only
+#    what changed:
+ssh appsadmin@192.168.88.35 'cd ~/dns-compliance && docker compose up -d'
+ssh appsadmin@192.168.88.46 'cd ~/dns-compliance && docker compose up -d'
+```
+
+If it's unclear whether the new image was actually picked up, force it: `docker compose up -d --force-recreate`.
+
 ## Two separate TLS concerns — don't conflate them
 
 This deployment has **two independent certificates for two independent links**:
