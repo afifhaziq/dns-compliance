@@ -1,0 +1,16 @@
+# Runs on the crawler host, separate from the dashboard host — no source or
+# registry access needed here, images are loaded locally first (see
+# scripts/sync-staging-images.sh).
+#
+# Usage: DASHBOARD_HOST=192.168.78.46 CRAWLER_TOKEN=... \
+#        docker compose -f docker-compose.crawler.yml up -d
+services:
+  crawler:
+    image: "${REGISTRY_IMAGE:-nssti-dev.mcmc.gov.my/nsrd/dns-compliance}/crawler:${IMAGE_TAG:-main}"
+    ports:
+      - "50052:50052"
+    command:
+      - "--listen-addr=:50052"
+      - "--grpc-addr=${DASHBOARD_HOST}:50051"
+      - "--auth-token=${CRAWLER_TOKEN}"
+    restart: unless-stopped

@@ -1,0 +1,72 @@
+# Runs on the dashboard host, separate from the crawler host — no source or
+# registry access needed here, images are loaded locally first (see
+# scripts/sync-staging-images.sh).
+#
+# Usage: CRAWLER_HOST=192.168.78.35 DB_URL=... CRAWLER_TOKEN=... \
+#        docker compose -f docker-compose.dashboard.yml up -d
+services:
+  server:
+    image: "${REGISTRY_IMAGE:-nssti-dev.mcmc.gov.my/nsrd/dns-compliance}/server:${IMAGE_TAG:-main}"
+    ports:
+      - "8080:8080"
+      - "50051:50051"
+    environment:
+      DB_URL: "${DB_URL}"
+      MINIO_ENDPOINT: "minio:9000"
+      MINIO_ACCESS_KEY: "minioadmin"
+      MINIO_SECRET_KEY: "minioadmin"
+      MINIO_BUCKET: "screenshots"
+      CRAWLER_ADDR: "${CRAWLER_HOST}:50052"
+      CRAWLER_TOKEN: "${CRAWLER_TOKEN}"
+      REDIS_ADDR: "redis:6379"
+      BOOTSTRAP_ADMIN_USERNAME: "${BOOTSTRAP_ADMIN_USERNAME:-}"
+      BOOTSTRAP_ADMIN_PASSWORD: "${BOOTSTRAP_ADMIN_PASSWORD:-}"
+    depends_on:
+      minio:
+        condition: service_started
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  web:
+    image: "${REGISTRY_IMAGE:-nssti-dev.mcmc.gov.my/nsrd/dns-compliance}/web:${IMAGE_TAG:-main}"
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - miniodata:/data
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 3 &&
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/screenshots &&
+      mc anonymous set public local/screenshots
+      "
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+
+volumes:
+  miniodata:
+  redisdata:
