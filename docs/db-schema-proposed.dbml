@@ -1,21 +1,57 @@
-// Hand-derived snapshot of the current PostgreSQL schema, sourced from the
-// GORM models passed to AutoMigrate in internal/db/db.go and defined in
-// internal/db/models.go. Not a build artifact — no generator keeps this in
-// sync, so re-export by hand if those files change.
+// PROPOSED schema, not yet built -- internal/db/models.go and the
+// AutoMigrate list in internal/db/db.go are unchanged. This is a design
+// sketch for reconciling the CRD and CMOD Excel imports; see
+// docs/cmod-blocking-list-migration-clarifications.md for the EDA and
+// decisions behind it. Diff against docs/db-schema.dbml (the actual current
+// schema) is exactly four changes:
 //
-// Table names are GORM's default snake_case/pluralized names (schema.NamingStrategy),
-// confirmed against raw SQL table/column references in internal/db/postgres.go
-// and internal/db/legalcite.go.
+//   1. urls.reference_number removed -- confirmed many-to-many against real
+//      data (CRD's No. Rujukan NMD has 1,840 distinct values across 38,156
+//      rows, one value alone covering 9,206 rows; 790 domains carry more
+//      than one distinct ref across their own history; CMOD's own notice
+//      refs each cover ~10 domains per request). A scalar column can only
+//      hold the last-imported value and silently discards the rest.
+//   2. cases added -- a thin anchor, one row per real-world case/request.
+//      Deliberately holds almost no attributes of its own; see #3.
+//   3. case_letters added -- one row per actual letter/document (Memo,
+//      Notice, Memo (Uplift), Notice (Uplift)), FK'd to cases. Mirrors the
+//      source sheet's real grain (one row per letter, not one row per
+//      case) -- a case with a block + later uplift gets up to 4 rows here.
+//      Carries reference_number, workflow_status, subject, oic_user_id,
+//      requestor, remarks -- everything that used to be squashed onto a
+//      single cases row before this revision.
+//   4. case_urls added -- many-to-many join between cases and urls, since a
+//      case genuinely covers many urls (CMOD's "10 URLs in one Notice") and
+//      a url genuinely belongs to many cases over its history (reblocked
+//      later under a new reference). Carries its own `phase` rather than
+//      being a plain junction table -- confirmed some urls within the same
+//      case reach a different outcome than their siblings (2/65 CMOD cases,
+//      96/1841 CRD ref-no groups have mixed status across their own urls;
+//      e.g. CMOD case 19 covers 16 domains, only 1 was ever uplifted).
+//      "Current" reference/status for display is derived by querying the
+//      most recent case_letters row for the case, joined through case_urls.
 //
-// Regenerated 2026-08-13 against the full 25-table AutoMigrate list in
-// internal/db/db.go (Department, User, Session, DNSServer, URL, DepartmentURL,
-// ScanRun, ScanResult, CompliantIP, DomainWhois, IPInfo, Favicon, ScanSettings,
-// SubdomainScan, ISPLogo, Instrument, Citation, Category, Element, SubElement,
-// URLOffence, Agency, DueDatePreset, GridPreference, Notification) — adds the
-// five-level legal citation catalog + URLOffence, Agency, DueDatePreset,
-// GridPreference, and Notification tables that postdate the previous export,
-// and moves urls' case-metadata columns off department_urls (see that table's
-// Note below) to match the current models.go.
+// CAVEATS, not yet resolved:
+//   - Grouping rows into a case at all assumes each distinct reference
+//     number is one real-world request. CRD's "JK KPN(PR) 168/6" alone
+//     covers 9,206 rows -- almost certainly a generic/fallback reference
+//     reused across unrelated entries rather than one legitimate batch
+//     submission (same flavor as the other CRD data-quality issues in the
+//     CMOD doc). Importing that value naively would create one cases row
+//     artificially "covering" 9,206 unrelated domains. Needs checking how
+//     many of CRD's 1,840 distinct refs look like this (suspiciously high
+//     row count = probably a placeholder) before this design is safe to
+//     build as-is.
+//   - case_letters.oic_user_id assumes OIC names in the source sheet
+//     (Atiqah, Arishah, ...) match real users.username values -- not yet
+//     checked against the actual users table.
+//
+// due_date, status, and agency_id remain scalars on urls for now (same
+// last-write-wins shape, deliberately not addressed by this proposal --
+// open question, see the CMOD doc).
+//
+// Everything else below is an unmodified copy of docs/db-schema.dbml as of
+// 2026-08-13 -- re-sync by hand if that file changes upstream of this one.
 
 Table departments {
   id         integer   [pk, increment]
@@ -68,22 +104,27 @@ Table urls {
   created_at          timestamptz
   due_date            timestamptz [null, note: 'takedown-order SLA deadline, carries time-of-day']
   agency_id           integer     [null, note: 'indexed, FK OnDelete:SET NULL']
-  reference_number    varchar     [note: 'free text, Excel-sourced case metadata']
   requesting_dept_id  integer     [null, note: 'indexed, FK to departments, OnDelete:SET NULL']
   status              varchar     [note: '"" | requested | uplift | suspended, validated server-side -- independent of the derived Compliant field']
   requested_at        timestamptz [null]
 
   Note: '''
-    Carries the domain's legal case metadata directly -- one case per
-    domain, not one per watching department (two departments watching the
-    same domain share the same takedown order), mirroring how
-    DomainWhois/SubdomainScan/IPInfo are keyed by domain/IP rather than
-    department. These six case fields (due_date, agency_id,
-    reference_number, requesting_dept_id, status, requested_at) originally
-    lived on department_urls and were moved here the same day, before ever
-    being deployed with real data -- see department_urls' Note. Editing them
-    is visible to every department watching the domain (last-write-wins),
-    gated by UpdateURLCaseFields' department-ownership check.
+    reference_number removed from this table -- a url can carry many
+    reference numbers over its history and a single reference number
+    legitimately covers many urls (confirmed against real data: CRD's
+    No. Rujukan NMD has 1,840 distinct values across 38,156 rows, one
+    value alone covering 9,206 rows; 790 domains carry more than one
+    distinct ref across their own history). A scalar column can only hold
+    the last-imported one and silently discards the rest. Reference
+    numbers and every other case-level attribute now live on cases,
+    joined to urls many-to-many via case_urls.
+
+    due_date/agency_id/requesting_dept_id/status/requested_at keep the
+    same shape as today (one case per domain, last-write-wins, editing
+    visible to every department watching the domain, gated by
+    UpdateURLCaseFields' department-ownership check) -- NOT addressed by
+    this proposal even though the same many-to-many argument could apply;
+    left as an open question.
   '''
 }
 Ref: urls.agency_id > agencies.id [delete: set null]
@@ -372,7 +413,7 @@ Table sub_elements {
   name       varchar   [not null]
   created_at timestamptz
 
-  Note: 'Optional sub-category of an Element -- mirrors Element''s own relationship to Category one level up. Five levels is the ceiling, no nesting deeper.'
+  Note: 'Optional sub-category of an Element -- mirrors Element\'s own relationship to Category one level up. Five levels is the ceiling, no nesting deeper.'
 }
 Ref: sub_elements.element_id > elements.id [delete: cascade]
 
@@ -396,6 +437,82 @@ Ref: url_offences.url_id > urls.id [delete: cascade]
 Ref: url_offences.category_id > categories.id [delete: cascade]
 Ref: url_offences.element_id > elements.id [delete: cascade]
 Ref: url_offences.sub_element_id > sub_elements.id [delete: cascade]
+
+Table cases {
+  id            integer   [pk, increment]
+  department_id integer   [not null, note: 'indexed -- which department this case came from']
+  created_at    timestamptz
+
+  Note: '''
+    PROPOSED, not yet built -- see docs/cmod-blocking-list-migration-clarifications.md.
+    Thin anchor -- one row per real-world case/request, same role
+    scan_runs already plays for scan_results. Every case fact (ref
+    numbers, letters, subject, OIC, workflow status...) lives on
+    case_letters, not here, since the sheet's real grain is one row per
+    letter/document, not one row per case.
+    UNRESOLVED CAVEAT: grouping CRD rows into a case at all assumes each
+    distinct reference number is one real request -- CRD's
+    "JK KPN(PR) 168/6" covering 9,206 rows suggests some values are a
+    generic/fallback reference reused across unrelated entries, not a
+    genuine single batch. See file header.
+  '''
+}
+Ref: cases.department_id > departments.id
+
+Table case_letters {
+  id                integer     [pk, increment]
+  case_id           integer     [not null, note: 'indexed']
+  type              varchar     [not null, note: 'Memo | Notice | Memo (Uplift) | Notice (Uplift)']
+  reference_number  varchar     [note: 'this letter\'s own citable ref -- CRD\'s No. Rujukan NMD row value, or CMOD\'s per-letter ref (memo and notice each get their own)']
+  workflow_status   varchar     [note: 'CMOD-only internal approval state: Draft | Pending Legal | Pending TSC | Submitted, null for CRD-sourced letters']
+  letter_date       timestamptz [null]
+  submitted_at      timestamptz [null, note: 'CMOD Submission column -- sparse, ~387/499 filled']
+  subject           varchar
+  oic_user_id       integer     [null, note: 'officer in charge -- FK to users. NOT YET VERIFIED that OIC names in the source sheet (Atiqah, Arishah, ...) actually match real users.username values']
+  requestor         varchar
+  remarks           varchar
+  created_at        timestamptz
+
+  Note: '''
+    PROPOSED, not yet built -- see docs/cmod-blocking-list-migration-clarifications.md.
+    One row per actual letter/document -- a case with a block + later
+    uplift gets up to 4 rows here (Memo, Notice, Memo (Uplift),
+    Notice (Uplift)), a CRD-sourced case typically gets 1. Mirrors the
+    source sheet's real grain (one row per letter), which is what the
+    earlier single-cases-row design collapsed away.
+  '''
+}
+Ref: case_letters.case_id > cases.id [delete: cascade]
+Ref: case_letters.oic_user_id > users.id [delete: set null]
+
+Table case_urls {
+  case_id integer [not null]
+  url_id  integer [not null]
+  phase   varchar [not null, note: 'requested | uplift | suspended -- this (case, url) pair\'s own outcome, same vocabulary urls.status carries']
+
+  indexes {
+    (case_id, url_id) [pk]
+  }
+
+  Note: '''
+    PROPOSED, not yet built -- see docs/cmod-blocking-list-migration-clarifications.md.
+    Many-to-many join -- one case lists every url it covers (e.g. CMOD's
+    "10 URLs in one Notice"); one url can belong to many cases over time
+    (reblocked under a new reference). Carries its own `phase` rather than
+    being a plain junction row: confirmed some urls within the same case
+    reach a different outcome than their siblings (2/65 CMOD cases, 96/1841
+    CRD ref-no groups have mixed status across their own urls -- e.g. CMOD
+    case 19 covers 16 domains, only capitalpost.com.my was ever uplifted).
+    phase stays here rather than on case_letters because it varies per url
+    within the same case, not per letter. Sole source of truth for the
+    url<->reference-number relationship now that urls.reference_number is
+    removed. "Current" reference/status for display is derived by querying
+    the most recent case_letters row for the case (via letter_date) joined
+    through case_urls, not stored as a scalar on urls.
+  '''
+}
+Ref: case_urls.case_id > cases.id [delete: cascade]
+Ref: case_urls.url_id > urls.id [delete: cascade]
 
 Table notifications {
   id            integer     [pk, increment]
