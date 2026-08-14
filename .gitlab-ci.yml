@@ -1,3 +1,12 @@
+# Only pipeline on a merge to main or a release tag — not on every MR push.
+# Trades pre-merge CI feedback on the MR itself for avoiding the duplicate
+# push+merge_request_event pipelines that were doubling up on the project's
+# single shared runner.
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+
 stages:
   - test
   - lint
