@@ -1,0 +1,9 @@
+# Org-issued cert for whatever domain DASHBOARD_DOMAIN (.env) points at —
+# file lives in ../certs (gitignored), referenced here by the mounted-in-
+# container path (/certs, see docker-compose.yml). Fixed generic filename
+# so this file needs no per-environment edit — drop the org cert here under
+# these names on every host, staging or prod.
+tls:
+  certificates:
+    - certFile: /certs/dashboard.crt
+      keyFile: /certs/dashboard.key

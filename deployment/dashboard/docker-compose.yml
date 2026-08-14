@@ -1,0 +1,131 @@
+# Dashboard host — Traefik (public HTTPS) + server (REST API) + web (static
+# frontend), plus postgres/redis/minio as the server's backing services on
+# this same host. See ../../DEPLOYMENT.md for the full explanation.
+#
+# Domain-agnostic: DASHBOARD_DOMAIN/CRAWLER_GRPC_ADDR in .env are what make
+# this the same file for staging and prod — only .env and certs/ differ.
+#
+# Layout expected alongside this file (both gitignored, not shipped in the repo):
+#   certs/                    - ca.crt, server.crt, server.key (from scripts/gen-mtls-certs.sh)
+#                                + the org-issued dashboard.{crt,key}
+#   .env                      - copy .env.example and fill in secrets
+#
+# No repo checkout needed on this host — every service below is an image pull.
+
+services:
+  traefik:
+    image: traefik:v3
+    command:
+      - --providers.docker=true
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --entrypoints.websecure.address=:443
+      - --api.dashboard=true
+      - --entrypoints.traefik.address=:8081
+    ports:
+      - "443:443"
+      - "127.0.0.1:8081:8081" # Traefik's own admin dashboard — loopback only
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - ./certs:/certs:ro
+    labels:
+      - traefik.enable=true
+      # Loopback-only entrypoint, never on the public websecure one — see DEPLOYMENT.md
+      - traefik.http.routers.traefik-dashboard.rule=PathPrefix(`/`)
+      - traefik.http.routers.traefik-dashboard.service=api@internal
+      - traefik.http.routers.traefik-dashboard.entrypoints=traefik
+    restart: unless-stopped
+
+  server:
+    image: ${SERVER_IMAGE:-nssti-dev.mcmc.gov.my/nsrd/dns-compliance/server:main}
+    env_file: .env
+    environment:
+      TLS_CERT: /certs/server.crt
+      TLS_KEY: /certs/server.key
+      TLS_CA: /certs/ca.crt
+      CRAWLER_ADDR: "${CRAWLER_GRPC_ADDR}"
+      COOKIE_SECURE: "true"
+      DB_URL: "host=postgres user=${POSTGRES_USER} password=${POSTGRES_PASSWORD} dbname=${POSTGRES_DB} sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      MINIO_ENDPOINT: "minio:9000"
+      MINIO_ACCESS_KEY: "${MINIO_ROOT_USER}"
+      MINIO_SECRET_KEY: "${MINIO_ROOT_PASSWORD}"
+      MINIO_BUCKET: "screenshots"
+    volumes:
+      - ./certs:/certs:ro
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.api.rule=Host(`${DASHBOARD_DOMAIN}`) && PathPrefix(`/api`)
+      - traefik.http.routers.api.tls=true
+      - traefik.http.routers.api.entrypoints=websecure
+      - traefik.http.services.api.loadbalancer.server.port=8080
+    expose:
+      - "8080"
+    ports:
+      - "50051:50051" # crawler's Submit RPC — not through Traefik, see DEPLOYMENT.md
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  web:
+    image: ${WEB_IMAGE:-nssti-dev.mcmc.gov.my/nsrd/dns-compliance/web:main}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.web.rule=Host(`${DASHBOARD_DOMAIN}`)
+      - traefik.http.routers.web.tls=true
+      - traefik.http.routers.web.entrypoints=websecure
+      - traefik.http.services.web.loadbalancer.server.port=80
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}"
+    volumes:
+      - miniodata:/data
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}; do sleep 1; done &&
+      mc mb --ignore-existing local/screenshots &&
+      mc anonymous set public local/screenshots
+      "
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:

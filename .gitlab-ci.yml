@@ -1,8 +1,25 @@
+# Only pipeline on a merge to main or a release tag — not on every MR push.
+# Trades pre-merge CI feedback on the MR itself for avoiding the duplicate
+# push+merge_request_event pipelines that were doubling up on the project's
+# single shared runner.
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+
 stages:
   - test
   - lint
   - security
   - build
+
+.go-changes: &go-changes
+  - "**/*.go"
+  - go.mod
+  - go.sum
+
+.web-changes: &web-changes
+  - "web/**/*"
 
 go-test:
   stage: test
@@ -17,6 +34,8 @@ go-test:
     paths:
       - .go/pkg/mod/
       - .gocache/
+  rules:
+    - changes: *go-changes
   script:
     - go test ./...
 
@@ -29,6 +48,8 @@ web-build:
         - web/package-lock.json
     paths:
       - web/.npm/
+  rules:
+    - changes: *web-changes
   script:
     - cd web
     - npm ci --cache .npm --prefer-offline
@@ -47,6 +68,8 @@ go-vet:
     paths:
       - .go/pkg/mod/
       - .gocache/
+  rules:
+    - changes: *go-changes
   script:
     - go vet ./...
 
@@ -54,6 +77,8 @@ golangci-lint:
   stage: lint
   image: golangci/golangci-lint:latest-alpine
   allow_failure: true
+  rules:
+    - changes: *go-changes
   script:
     - golangci-lint run ./...
 
@@ -67,6 +92,8 @@ web-lint:
         - web/package-lock.json
     paths:
       - web/.npm/
+  rules:
+    - changes: *web-changes
   script:
     - cd web
     - npm ci --cache .npm --prefer-offline
@@ -76,6 +103,8 @@ gosec:
   stage: security
   image: golang:1.26-bookworm
   allow_failure: true
+  rules:
+    - changes: *go-changes
   script:
     - go install github.com/securego/gosec/v2/cmd/gosec@v2.28.0
     - gosec -exclude-generated -fmt=json -out=gosec-report.json ./...
@@ -109,10 +138,32 @@ gitleaks:
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
 
+.server-changes: &server-changes
+  - "cmd/server/**/*"
+  - "internal/**/*"
+  - "proto/**/*"
+  - go.mod
+  - go.sum
+  - Dockerfile
+  - dns-server.yaml
+
+.crawler-changes: &crawler-changes
+  - "cmd/crawler/**/*"
+  - "internal/**/*"
+  - "proto/**/*"
+  - go.mod
+  - go.sum
+  - Dockerfile
+
+.web-image-changes: &web-image-changes
+  - "web/**/*"
+  - Dockerfile
+
 build:server:
   extends: .build
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes: *server-changes
   script:
     - docker build --provenance=false --sbom=false --target server -t "$CI_REGISTRY_IMAGE/server:$CI_COMMIT_SHA" -t "$CI_REGISTRY_IMAGE/server:main" .
     - docker push "$CI_REGISTRY_IMAGE/server:$CI_COMMIT_SHA"
@@ -122,10 +173,21 @@ build:crawler:
   extends: .build
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes: *crawler-changes
   script:
     - docker build --provenance=false --sbom=false --target crawler -t "$CI_REGISTRY_IMAGE/crawler:$CI_COMMIT_SHA" -t "$CI_REGISTRY_IMAGE/crawler:main" .
     - docker push "$CI_REGISTRY_IMAGE/crawler:$CI_COMMIT_SHA"
     - docker push "$CI_REGISTRY_IMAGE/crawler:main"
+
+build:web:
+  extends: .build
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes: *web-image-changes
+  script:
+    - docker build --provenance=false --sbom=false --target web -t "$CI_REGISTRY_IMAGE/web:$CI_COMMIT_SHA" -t "$CI_REGISTRY_IMAGE/web:main" .
+    - docker push "$CI_REGISTRY_IMAGE/web:$CI_COMMIT_SHA"
+    - docker push "$CI_REGISTRY_IMAGE/web:main"
 
 build:server:release:
   extends: .build
@@ -155,6 +217,20 @@ build:crawler:release:
   rules:
     - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
 
+build:web:release:
+  extends: .build
+  script:
+    - VERSION=${CI_COMMIT_TAG#v}
+    - MAJOR=$(echo "$VERSION" | cut -d. -f1)
+    - MINOR=$(echo "$VERSION" | cut -d. -f1,2)
+    - docker build --provenance=false --sbom=false --target web -t "$CI_REGISTRY_IMAGE/web:$VERSION" -t "$CI_REGISTRY_IMAGE/web:$MINOR" -t "$CI_REGISTRY_IMAGE/web:$MAJOR" -t "$CI_REGISTRY_IMAGE/web:stable" .
+    - docker push "$CI_REGISTRY_IMAGE/web:$VERSION"
+    - docker push "$CI_REGISTRY_IMAGE/web:$MINOR"
+    - docker push "$CI_REGISTRY_IMAGE/web:$MAJOR"
+    - docker push "$CI_REGISTRY_IMAGE/web:stable"
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
+
 trivy:server:
   stage: build
   image:
@@ -164,6 +240,7 @@ trivy:server:
   allow_failure: true
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes: *server-changes
   variables:
     TRIVY_USERNAME: $CI_REGISTRY_USER
     TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
@@ -184,6 +261,7 @@ trivy:crawler:
   allow_failure: true
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes: *crawler-changes
   variables:
     TRIVY_USERNAME: $CI_REGISTRY_USER
     TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
@@ -193,4 +271,25 @@ trivy:crawler:
     when: always
     paths:
       - trivy-crawler-report.json
+    expire_in: 30 days
+
+trivy:web:
+  stage: build
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  needs: ["build:web"]
+  allow_failure: true
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes: *web-image-changes
+  variables:
+    TRIVY_USERNAME: $CI_REGISTRY_USER
+    TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
+  script:
+    - trivy image --severity HIGH,CRITICAL --exit-code 1 --format json --output trivy-web-report.json "$CI_REGISTRY_IMAGE/web:$CI_COMMIT_SHA"
+  artifacts:
+    when: always
+    paths:
+      - trivy-web-report.json
     expire_in: 30 days

@@ -1,15 +1,15 @@
 # Deployment
 
-Two-host deployment: the dashboard (`cmd/server`) and crawler (`cmd/crawler`) run as separate containers on separate machines, built as separate images by `.gitlab-ci.yml` (`Dockerfile`'s `server`/`crawler` targets — see CLAUDE.md's Docker section). This doc covers getting both running, the private link between them, and the public-facing HTTPS in front of the dashboard.
+Two-host deployment: the dashboard (`cmd/server` + frontend) and crawler (`cmd/crawler`) run as separate containers on separate machines, built as separate images by `.gitlab-ci.yml` (`Dockerfile`'s `server`/`crawler`/`web` targets — see CLAUDE.md's Docker section). Ready-to-use compose files live in `deployment/dashboard/` and `deployment/crawler/` — every service in both is an image pull, no repo checkout needed on either host. This doc explains the pieces; `deployment/*/docker-compose.yml` + `.env.example` are what you actually run.
 
 Current staging hosts:
 
 | Role | IP | Domain |
 |---|---|---|
-| Dashboard (`cmd/server`) | `192.168.88.46` | `citadel-stg.mcmc.gov.my` |
+| Dashboard (`cmd/server` + frontend) | `192.168.88.46` | `citadel-stg.mcmc.gov.my` |
 | Crawler (`cmd/crawler`) | `192.168.88.35` | `citadel-api.mcmc.gov.my` |
 
-Images: `nssti-dev.mcmc.gov.my/nsrd/dns-compliance/server:main` and `.../crawler:main`.
+Images: `nssti-dev.mcmc.gov.my/nsrd/dns-compliance/{server,crawler,web}:main`. `deployment/dashboard/docker-compose.yml` and `deployment/crawler/docker-compose.yml` are domain-agnostic — `DASHBOARD_DOMAIN`/`CRAWLER_GRPC_ADDR`/`DASHBOARD_GRPC_ADDR` in each `.env` are what make the same files work for prod too; for prod also pin the `*_IMAGE` vars to a release tag (`:stable` or `:vX.Y.Z`, from the `.gitlab-ci.yml` release jobs) instead of tracking `:main`.
 
 ## Two separate TLS concerns — don't conflate them
 
@@ -121,9 +121,7 @@ services:
       - "8080"
 
   web:
-    image: nginx:alpine   # or any static file server
-    volumes:
-      - ./web/dist:/usr/share/nginx/html:ro
+    image: nssti-dev.mcmc.gov.my/nsrd/dns-compliance/web:main
     labels:
       - traefik.enable=true
       - traefik.http.routers.web.rule=Host(`citadel-stg.mcmc.gov.my`)
@@ -132,7 +130,7 @@ services:
       - traefik.http.services.web.loadbalancer.server.port=80
 ```
 
-`web/dist/` comes from `npm --prefix web run build`, built and copied to the host (or baked into a small image) as a separate deploy step from the two Go binaries.
+The `web` image is the `Dockerfile`'s `web` target — Node builds `web/dist/`, `nginx:alpine` serves it with an SPA-fallback config (`web/nginx.conf`, needed because TanStack Router routes are client-side and a direct load of e.g. `/urls` 404s without it). Built and pushed by CI (`build:web`/`build:web:release`) alongside `server`/`crawler` — no separate manual build/copy step.
 
 **Traefik's own dashboard** (`--api.dashboard=true`) is bound to `127.0.0.1:8081` — not the public `websecure` entrypoint — since it exposes internal router/service topology and isn't meant for public access. Reach it over SSH port-forwarding from the dashboard host:
 

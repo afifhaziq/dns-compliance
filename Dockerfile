@@ -11,6 +11,16 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /out/crawler ./cmd/crawler/
 RUN CGO_ENABLED=0 GOOS=linux go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && \
     mv "$(go env GOPATH)/bin/subfinder" /out/subfinder
 
+# Stage 1b: build the frontend — separate builder since golang:bookworm has no Node.
+# API calls are same-origin relative paths (web/src/api/client.ts), so the
+# build is domain-agnostic: one image serves staging or prod, no build args.
+FROM node:22-alpine AS web-builder
+WORKDIR /src/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
 # Stage 2a: server runtime — no Chrome, needs subfinder
 FROM debian:bookworm-slim AS server
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -41,3 +51,9 @@ COPY --from=builder /out/crawler /app/crawler
 WORKDIR /app
 EXPOSE 50052
 ENTRYPOINT ["/app/crawler"]
+
+# Stage 2c: web runtime — static frontend only, no Go/Node in the final image
+FROM nginx:alpine AS web
+COPY web/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=web-builder /src/web/dist /usr/share/nginx/html
+EXPOSE 80
