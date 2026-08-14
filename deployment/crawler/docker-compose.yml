@@ -1,6 +1,8 @@
-# Crawler host (192.168.88.35 — citadel-api.mcmc.gov.my)
-# No Traefik, no public HTTP surface — just the gRPC control service on :50052.
-# See ../../DEPLOYMENT.md for the full explanation.
+# Crawler host — no Traefik, no public HTTP surface, just the gRPC control
+# service on :50052. See ../../DEPLOYMENT.md for the full explanation.
+#
+# Domain-agnostic: DASHBOARD_GRPC_ADDR in .env is what makes this the same
+# file for staging and prod — only .env and certs/ differ.
 #
 # Layout expected alongside this file (both gitignored, not shipped in the repo):
 #   certs/  - ca.crt, crawler.crt, crawler.key (from scripts/gen-mtls-certs.sh)
@@ -12,7 +14,7 @@ services:
     env_file: .env
     command:
       - --listen-addr=:50052
-      - --grpc-addr=citadel-stg.mcmc.gov.my:50051
+      - --grpc-addr=${DASHBOARD_GRPC_ADDR}
       - --auth-token=${CRAWLER_TOKEN}
       - --tls-cert=/certs/crawler.crt
       - --tls-key=/certs/crawler.key

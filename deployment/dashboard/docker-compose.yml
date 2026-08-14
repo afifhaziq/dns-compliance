@@ -1,13 +1,16 @@
-# Dashboard host (192.168.88.46 — citadel-stg.mcmc.gov.my)
-# Traefik (public HTTPS) + server (REST API) + web (static frontend), plus
-# postgres/redis/minio as the server's backing services on this same host.
-# See ../../DEPLOYMENT.md for the full explanation of each piece.
+# Dashboard host — Traefik (public HTTPS) + server (REST API) + web (static
+# frontend), plus postgres/redis/minio as the server's backing services on
+# this same host. See ../../DEPLOYMENT.md for the full explanation.
+#
+# Domain-agnostic: DASHBOARD_DOMAIN/CRAWLER_GRPC_ADDR in .env are what make
+# this the same file for staging and prod — only .env and certs/ differ.
 #
 # Layout expected alongside this file (both gitignored, not shipped in the repo):
 #   certs/                    - ca.crt, server.crt, server.key (from scripts/gen-mtls-certs.sh)
-#                                + the org-issued citadel-stg.mcmc.gov.my.{crt,key}
+#                                + the org-issued dashboard.{crt,key}
 #   .env                      - copy .env.example and fill in secrets
-#   ../../web/dist            - built via `npm --prefix web run build`
+#
+# No repo checkout needed on this host — every service below is an image pull.
 
 services:
   traefik:
@@ -40,7 +43,7 @@ services:
       TLS_CERT: /certs/server.crt
       TLS_KEY: /certs/server.key
       TLS_CA: /certs/ca.crt
-      CRAWLER_ADDR: citadel-api.mcmc.gov.my:50052
+      CRAWLER_ADDR: "${CRAWLER_GRPC_ADDR}"
       COOKIE_SECURE: "true"
       DB_URL: "host=postgres user=${POSTGRES_USER} password=${POSTGRES_PASSWORD} dbname=${POSTGRES_DB} sslmode=disable"
       REDIS_ADDR: "redis:6379"
@@ -52,7 +55,7 @@ services:
       - ./certs:/certs:ro
     labels:
       - traefik.enable=true
-      - traefik.http.routers.api.rule=Host(`citadel-stg.mcmc.gov.my`) && PathPrefix(`/api`)
+      - traefik.http.routers.api.rule=Host(`${DASHBOARD_DOMAIN}`) && PathPrefix(`/api`)
       - traefik.http.routers.api.tls=true
       - traefik.http.routers.api.entrypoints=websecure
       - traefik.http.services.api.loadbalancer.server.port=8080
@@ -70,12 +73,10 @@ services:
     restart: unless-stopped
 
   web:
-    image: nginx:alpine
-    volumes:
-      - ../../web/dist:/usr/share/nginx/html:ro
+    image: ${WEB_IMAGE:-nssti-dev.mcmc.gov.my/nsrd/dns-compliance/web:main}
     labels:
       - traefik.enable=true
-      - traefik.http.routers.web.rule=Host(`citadel-stg.mcmc.gov.my`)
+      - traefik.http.routers.web.rule=Host(`${DASHBOARD_DOMAIN}`)
       - traefik.http.routers.web.tls=true
       - traefik.http.routers.web.entrypoints=websecure
       - traefik.http.services.web.loadbalancer.server.port=80

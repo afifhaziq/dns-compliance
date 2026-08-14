@@ -127,6 +127,15 @@ build:crawler:
     - docker push "$CI_REGISTRY_IMAGE/crawler:$CI_COMMIT_SHA"
     - docker push "$CI_REGISTRY_IMAGE/crawler:main"
 
+build:web:
+  extends: .build
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  script:
+    - docker build --provenance=false --sbom=false --target web -t "$CI_REGISTRY_IMAGE/web:$CI_COMMIT_SHA" -t "$CI_REGISTRY_IMAGE/web:main" .
+    - docker push "$CI_REGISTRY_IMAGE/web:$CI_COMMIT_SHA"
+    - docker push "$CI_REGISTRY_IMAGE/web:main"
+
 build:server:release:
   extends: .build
   script:
@@ -152,6 +161,20 @@ build:crawler:release:
     - docker push "$CI_REGISTRY_IMAGE/crawler:$MINOR"
     - docker push "$CI_REGISTRY_IMAGE/crawler:$MAJOR"
     - docker push "$CI_REGISTRY_IMAGE/crawler:stable"
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
+
+build:web:release:
+  extends: .build
+  script:
+    - VERSION=${CI_COMMIT_TAG#v}
+    - MAJOR=$(echo "$VERSION" | cut -d. -f1)
+    - MINOR=$(echo "$VERSION" | cut -d. -f1,2)
+    - docker build --provenance=false --sbom=false --target web -t "$CI_REGISTRY_IMAGE/web:$VERSION" -t "$CI_REGISTRY_IMAGE/web:$MINOR" -t "$CI_REGISTRY_IMAGE/web:$MAJOR" -t "$CI_REGISTRY_IMAGE/web:stable" .
+    - docker push "$CI_REGISTRY_IMAGE/web:$VERSION"
+    - docker push "$CI_REGISTRY_IMAGE/web:$MINOR"
+    - docker push "$CI_REGISTRY_IMAGE/web:$MAJOR"
+    - docker push "$CI_REGISTRY_IMAGE/web:stable"
   rules:
     - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
 
@@ -193,4 +216,24 @@ trivy:crawler:
     when: always
     paths:
       - trivy-crawler-report.json
+    expire_in: 30 days
+
+trivy:web:
+  stage: build
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  needs: ["build:web"]
+  allow_failure: true
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  variables:
+    TRIVY_USERNAME: $CI_REGISTRY_USER
+    TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
+  script:
+    - trivy image --severity HIGH,CRITICAL --exit-code 1 --format json --output trivy-web-report.json "$CI_REGISTRY_IMAGE/web:$CI_COMMIT_SHA"
+  artifacts:
+    when: always
+    paths:
+      - trivy-web-report.json
     expire_in: 30 days
