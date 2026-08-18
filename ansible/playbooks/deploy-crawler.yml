@@ -1,0 +1,46 @@
+# Deploys/redeploys the crawler host. See ../../DEPLOYMENT.md for the manual
+# steps this automates.
+- name: Deploy crawler
+  hosts: staging_crawler
+  vars:
+    remote_dir: dns-compliance
+    images_to_sync:
+      - "{{ CRAWLER_IMAGE }}"
+  tasks:
+    - name: Ensure remote deploy directories exist
+      ansible.builtin.file:
+        path: "~/{{ remote_dir }}/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - ""
+        - certs
+
+    - name: Copy docker-compose.yml
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../deployment/crawler/docker-compose.yml"
+        dest: "~/{{ remote_dir }}/docker-compose.yml"
+
+    - name: Copy mTLS certs
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../deployment/crawler/certs/"
+        dest: "~/{{ remote_dir }}/certs/"
+        mode: "0600"
+
+    - name: Render .env
+      ansible.builtin.template:
+        src: crawler.env.j2
+        dest: "~/{{ remote_dir }}/.env"
+        mode: "0600"
+
+    - name: Sync images
+      ansible.builtin.include_tasks: tasks/sync-image.yml
+      loop: "{{ images_to_sync }}"
+      loop_control:
+        loop_var: image_ref
+
+    - name: docker compose up -d
+      ansible.builtin.command: docker compose up -d
+      args:
+        chdir: "~/{{ remote_dir }}"
+      changed_when: true

@@ -1,0 +1,4 @@
+# Copy to vault.yml, fill in the real secret, then encrypt:
+#   ansible-vault encrypt group_vars/staging_crawler/vault.yml
+# Must match CRAWLER_TOKEN in group_vars/staging_dashboard/vault.yml exactly.
+CRAWLER_TOKEN: ""

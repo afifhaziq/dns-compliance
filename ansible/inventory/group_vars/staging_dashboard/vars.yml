@@ -1,0 +1,9 @@
+# Non-secret values for the staging dashboard host — see deployment/dashboard/.env.example
+SERVER_IMAGE: nssti-dev.mcmc.gov.my/nsrd/dns-compliance/server:main
+WEB_IMAGE: nssti-dev.mcmc.gov.my/nsrd/dns-compliance/web:main
+DASHBOARD_DOMAIN: citadel-stg.mcmc.gov.my
+# Raw IP, not the domain — DNS for citadel-api.mcmc.gov.my isn't live yet.
+# Swap to citadel-api.mcmc.gov.my:50052 once it resolves, no rebuild needed.
+CRAWLER_GRPC_ADDR: 192.168.88.35:50052
+POSTGRES_USER: dns_compliance
+POSTGRES_DB: dns_compliance

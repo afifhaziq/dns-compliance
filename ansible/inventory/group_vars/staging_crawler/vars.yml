@@ -1,0 +1,4 @@
+# Non-secret values for the staging crawler host — see deployment/crawler/.env.example
+CRAWLER_IMAGE: nssti-dev.mcmc.gov.my/nsrd/dns-compliance/crawler:main
+# Raw IP, not the domain — see matching comment in staging_dashboard/vars.yml
+DASHBOARD_GRPC_ADDR: 192.168.88.46:50051

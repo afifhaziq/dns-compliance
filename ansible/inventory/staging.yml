@@ -1,0 +1,15 @@
+# Staging hosts — see ../../DEPLOYMENT.md. To add prod, copy this file to
+# prod.yml with prod hosts/IPs, and mirror group_vars/staging_* as
+# group_vars/prod_* (new ansible-vault file, pin *_IMAGE to a release tag).
+all:
+  children:
+    staging_dashboard:
+      hosts:
+        citadel-stg-dashboard:
+          ansible_host: 192.168.88.46
+          ansible_user: appsadmin
+    staging_crawler:
+      hosts:
+        citadel-stg-crawler:
+          ansible_host: 192.168.88.35
+          ansible_user: appsadmin

@@ -52,6 +52,10 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 # dev overlay: adds a local Postgres container (port 5432 published) and presets COOKIE_SECURE=false
 ```
 
+### Worktrees (Orca)
+
+`orca.yaml` at the repo root wires this repo's compose stack to Orca's worktree lifecycle: `scripts.setup` runs `docker compose ... up -d` on worktree create, `scripts.archive` runs `docker compose ... down -v --rmi local` on worktree removal. The archive hook only fires when `--run-hooks` is passed to `orca worktree rm` — it's skipped by default, which is how per-worktree containers/volumes/images used to get orphaned. Always remove a worktree with the `orca-wt-rm <selector>` zsh function (aliases to `orca worktree rm --force --run-hooks`, defined in `~/dotfiles/zsh/.zshrc`) instead of a bare `orca worktree rm` or raw `git worktree remove`.
+
 Dockerfile is multi-stage with two final targets sharing one `builder` stage (`golang:1.26`, produces both binaries plus a standalone `go install` of subfinder — not a go.mod dependency, only ever shelled out to, see `internal/subfinder/`): target `server` (`debian:bookworm-slim` + subfinder at `/app/subfinder`/`SUBFINDER_PATH`, no Chrome) and target `crawler` (`chromedp/headless-shell` base — a purpose-built headless-Chrome image chromedp's `findExecPath` auto-detects by binary name on `PATH`, far smaller than apt's `chromium` package — no subfinder). CI (`.gitlab-ci.yml`) builds and pushes each target to its own registry path — `$CI_REGISTRY_IMAGE/server` and `$CI_REGISTRY_IMAGE/crawler` — so the two can be deployed to separate hosts independently. `docker-compose.yml` builds both from the same `Dockerfile` via `build.target`; the two talk over gRPC (`CrawlerControl.StartSweep`, `ComplianceService.Submit`), not exec. Compose also runs a `redis` service (AOF persistence) backing the notification queue.
 
 ## Architecture

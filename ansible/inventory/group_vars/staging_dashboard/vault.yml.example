@@ -1,0 +1,9 @@
+# Copy to vault.yml, fill in real secrets, then encrypt:
+#   ansible-vault encrypt group_vars/staging_dashboard/vault.yml
+# CRAWLER_TOKEN must match group_vars/staging_crawler/vault.yml exactly.
+POSTGRES_PASSWORD: ""
+MINIO_ROOT_USER: ""
+MINIO_ROOT_PASSWORD: ""
+CRAWLER_TOKEN: ""
+BOOTSTRAP_ADMIN_USERNAME: ""
+BOOTSTRAP_ADMIN_PASSWORD: ""

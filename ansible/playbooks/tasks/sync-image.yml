@@ -1,0 +1,37 @@
+# Replaces scripts/sync-staging-images.sh's pull/save/scp/load flow for one
+# image ref. Included in a loop with loop_var: image_ref. Safe to re-run —
+# `docker pull`/`docker load` are no-ops once the target already has the tag.
+- name: Set tarball path for {{ image_ref }}
+  ansible.builtin.set_fact:
+    image_tar: "/tmp/{{ image_ref | regex_replace('[/:]', '_') }}.tar.gz"
+
+- name: Pull {{ image_ref }} on control node
+  ansible.builtin.command: docker pull {{ image_ref }}
+  delegate_to: localhost
+  changed_when: true
+
+- name: Save {{ image_ref }} to gzipped tarball on control node
+  ansible.builtin.shell: docker save {{ image_ref }} | gzip > {{ image_tar }}
+  delegate_to: localhost
+  changed_when: true
+
+- name: Copy {{ image_ref }} tarball to target host
+  ansible.builtin.copy:
+    src: "{{ image_tar }}"
+    dest: "{{ image_tar }}"
+    mode: "0644"
+
+- name: Load {{ image_ref }} on target host
+  ansible.builtin.shell: gunzip -c {{ image_tar }} | docker load
+  changed_when: true
+
+- name: Remove tarball from control node
+  ansible.builtin.file:
+    path: "{{ image_tar }}"
+    state: absent
+  delegate_to: localhost
+
+- name: Remove tarball from target host
+  ansible.builtin.file:
+    path: "{{ image_tar }}"
+    state: absent

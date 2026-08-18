@@ -1,6 +1,6 @@
 # Deployment
 
-Two-host deployment: the dashboard (`cmd/server` + frontend) and crawler (`cmd/crawler`) run as separate containers on separate machines, built as separate images by `.gitlab-ci.yml` (`Dockerfile`'s `server`/`crawler`/`web` targets — see CLAUDE.md's Docker section). Ready-to-use compose files live in `deployment/dashboard/` and `deployment/crawler/` — every service in both is an image pull, no repo checkout needed on either host. This doc explains the pieces; `deployment/*/docker-compose.yml` + `.env.example` are what you actually run.
+Two-host deployment: the dashboard (`cmd/server` + frontend) and crawler (`cmd/crawler`) run as separate containers on separate machines, built as separate images by `.gitlab-ci.yml` (`Dockerfile`'s `server`/`crawler`/`web` targets — see CLAUDE.md's Docker section). Ready-to-use compose files live in `deployment/dashboard/` and `deployment/crawler/` — every service in both is an image pull, no repo checkout needed on either host. This doc explains the pieces; `deployment/*/docker-compose.yml` + `.env.example` are what you actually run. `ansible/` (see "Deploying and redeploying with Ansible" below) automates shipping these to a host and is the normal way to deploy/redeploy — the manual steps stay documented for debugging or a machine without Ansible.
 
 Current staging hosts:
 
@@ -13,9 +13,52 @@ Images: `nssti-dev.mcmc.gov.my/nsrd/dns-compliance/{server,crawler,web}:main`. `
 
 **Neither staging host can reach the GitLab registry**, so `docker compose pull` on either host doesn't work — use `scripts/sync-staging-images.sh <crawler|dashboard> <ssh-host> [tag]` from a machine that *can* reach the registry instead; it pulls, saves, scp's, and `docker load`s the right image set for that host. The loaded `image:tag` matches each compose file's `*_IMAGE` default, so nothing else changes — just skip the `pull` step on staging and go straight to `docker compose up -d`.
 
-## Redeploying an update
+## Deploying and redeploying with Ansible
 
-Same two steps every time, once CI has built and pushed the new image:
+`ansible/` automates the whole per-host setup — compose file, `.env`, certs,
+image sync, `docker compose up -d` — from a machine with registry access
+(the same machine you'd otherwise run `sync-staging-images.sh` from).
+Playbooks are safe to run repeatedly: unchanged files no-op, images are
+re-pulled/loaded (no-op if already the latest tag), `docker compose up -d`
+only recreates what changed. Both first-time setup on a prepped host and
+routine redeploys after CI pushes a new image are the *same* command:
+
+```bash
+cd ansible
+ansible-playbook playbooks/deploy-dashboard.yml   # whichever host changed, or both:
+ansible-playbook playbooks/deploy-crawler.yml
+ansible-playbook playbooks/deploy-all.yml         # both, one invocation
+```
+
+`inventory/group_vars/staging_{dashboard,crawler}/vault.yml` (ansible-vault
+encrypted: `POSTGRES_PASSWORD`/`MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`/
+`CRAWLER_TOKEN`/`BOOTSTRAP_ADMIN_USERNAME`/`BOOTSTRAP_ADMIN_PASSWORD` —
+`CRAWLER_TOKEN` must match across both files) and `ansible/.vault_pass` (the
+random password that decrypts them, `ansible.cfg`'s `vault_password_file`)
+already exist on this machine, gitignored, not committed — **back both up**
+(password manager / secrets store) since losing `.vault_pass` means
+re-encrypting from scratch. `group_vars` must live under `inventory/` — that's
+where Ansible looks for it relative to the inventory file, not `ansible/`'s
+root. On a fresh checkout without them: copy each `vault.yml.example` to
+`vault.yml`, fill in real secrets, generate a password into `.vault_pass`
+(`openssl rand -base64 32 > .vault_pass && chmod 600 .vault_pass`), then
+`ansible-vault encrypt --vault-password-file .vault_pass inventory/group_vars/staging_dashboard/vault.yml inventory/group_vars/staging_crawler/vault.yml`.
+To edit a secret later: `ansible-vault edit inventory/group_vars/staging_dashboard/vault.yml`.
+
+Assumes the target host already has Docker + Compose installed and is
+reachable over SSH as `appsadmin` (no host bootstrapping — see
+`ansible/inventory/staging.yml`). mTLS/org certs are copied from
+`deployment/{dashboard,crawler}/certs/` on the control machine — generate
+them there first per "Internal gRPC link (mTLS)" below, same as today.
+
+**Adding prod**: copy `ansible/inventory/staging.yml` to `prod.yml` with
+prod hosts, and `group_vars/staging_dashboard`/`staging_crawler` to
+`group_vars/prod_dashboard`/`prod_crawler` (new vault file, `*_IMAGE`
+pinned to a release tag instead of `:main` — see `.env.example` comments).
+Then `ansible-playbook -i inventory/prod.yml playbooks/deploy-dashboard.yml`.
+
+**Without Ansible** — same two steps by hand, useful for debugging a single
+step or on a machine without Ansible installed:
 
 ```bash
 # 1. From a machine with registry access, sync whichever host changed:

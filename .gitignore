@@ -26,6 +26,12 @@ certs/
 # Per-host deployment secrets — copy from deployment/*/.env.example, never commit
 deployment/*/.env
 
+# Decrypted ansible-vault secrets — copy from the *.example file, encrypt before use, never commit plaintext
+ansible/inventory/group_vars/*/vault.yml
+
+# ansible-vault password file — never commit
+ansible/.vault_pass
+
 # Saved image tarballs from scripts/sync-staging-images.sh — regenerated, not source
 *.tar.gz
 

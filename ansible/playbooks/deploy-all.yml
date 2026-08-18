@@ -1,0 +1,3 @@
+# Convenience wrapper — runs both host playbooks in one invocation.
+- ansible.builtin.import_playbook: deploy-dashboard.yml
+- ansible.builtin.import_playbook: deploy-crawler.yml
