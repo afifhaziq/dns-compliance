@@ -21,6 +21,19 @@ stages:
 .web-changes: &web-changes
   - "web/**/*"
 
+# TEMPORARY — verifies the `deploy`-tagged runner can reach the staging hosts
+# over SSH before wiring a real auto-deploy job to it. Delete after checking
+# the job log.
+verify-staging-reach:
+  stage: test
+  image: alpine:latest
+  tags:
+    - deploy
+  script:
+    - apk add --no-cache openssh-client
+    - ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no appsadmin@192.168.88.46 exit && echo "dashboard (192.168.88.46) reachable" || echo "dashboard (192.168.88.46) UNREACHABLE"
+    - ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no appsadmin@192.168.88.35 exit && echo "crawler (192.168.88.35) reachable" || echo "crawler (192.168.88.35) UNREACHABLE"
+
 go-test:
   stage: test
   image: golang:1.26-bookworm
