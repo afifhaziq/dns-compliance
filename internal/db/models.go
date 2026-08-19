@@ -57,6 +57,24 @@ type Agency struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// Recipient and Requestor are admin-managed lookup tables backing the
+// CaseLetter.Recipient/Requestor dropdowns on the Docs page's Add Document
+// dialog — same shape as Agency (read open, mutations admin-or-dept-admin
+// gated, see router.go). CaseLetter itself keeps them as plain strings
+// (the selected name), not a foreign key — these tables only exist to
+// populate the picker with admin-configured options.
+type Recipient struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Name      string    `gorm:"uniqueIndex;not null" json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type Requestor struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Name      string    `gorm:"uniqueIndex;not null" json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // DueDatePreset is an admin/dept-admin-managed duration option shown in the
 // watchlist's "Time to Block" picker (urls.tsx) — e.g. Label "24 hours",
 // Minutes 1440; the picker computes the actual due_date as now+Minutes at

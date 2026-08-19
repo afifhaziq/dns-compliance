@@ -165,6 +165,23 @@ type AgencyStore interface {
 	DeleteAgency(ctx context.Context, id uint) error
 }
 
+// RecipientStore and RequestorStore are the admin-managed lookup tables
+// backing the Docs page's Recipient/Requestor dropdowns — same shape as
+// AgencyStore.
+type RecipientStore interface {
+	ListRecipients(ctx context.Context) ([]Recipient, error)
+	CreateRecipient(ctx context.Context, name string) (Recipient, error)
+	UpdateRecipient(ctx context.Context, id uint, name string) (Recipient, error)
+	DeleteRecipient(ctx context.Context, id uint) error
+}
+
+type RequestorStore interface {
+	ListRequestors(ctx context.Context) ([]Requestor, error)
+	CreateRequestor(ctx context.Context, name string) (Requestor, error)
+	UpdateRequestor(ctx context.Context, id uint, name string) (Requestor, error)
+	DeleteRequestor(ctx context.Context, id uint) error
+}
+
 // DueDatePresetStore is the admin/dept-admin-managed list of "Time to
 // Block" duration options — same read-open/write-gated shape as
 // AgencyStore, not department-scoped.
@@ -321,6 +338,8 @@ type Store interface {
 	SessionStore
 	CompliantIPStore
 	AgencyStore
+	RecipientStore
+	RequestorStore
 	DueDatePresetStore
 	ISPLogoStore
 	GridPreferenceStore

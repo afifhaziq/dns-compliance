@@ -67,6 +67,10 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			// mutating agencies is admin-gated (below), and Department's own
 			// mutation route stays super-admin-only, untouched.
 			r.Get("/agencies", h.ListAgencies)
+			// Recipient/Requestor dropdowns on the Docs page's Add Document
+			// dialog — same read-open/write-admin-gated shape as Agency.
+			r.Get("/recipients", h.ListRecipients)
+			r.Get("/requestors", h.ListRequestors)
 			r.Get("/departments", h.ListDepartmentsOpen)
 			r.Get("/due-date-presets", h.ListDueDatePresets)
 
@@ -148,6 +152,12 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 				r.Post("/admin/agencies", h.CreateAgency)
 				r.Patch("/admin/agencies/{id}", h.UpdateAgency)
 				r.Delete("/admin/agencies/{id}", h.DeleteAgency)
+				r.Post("/admin/recipients", h.CreateRecipient)
+				r.Patch("/admin/recipients/{id}", h.UpdateRecipient)
+				r.Delete("/admin/recipients/{id}", h.DeleteRecipient)
+				r.Post("/admin/requestors", h.CreateRequestor)
+				r.Patch("/admin/requestors/{id}", h.UpdateRequestor)
+				r.Delete("/admin/requestors/{id}", h.DeleteRequestor)
 				r.Post("/due-date-presets", h.CreateDueDatePreset)
 				r.Delete("/due-date-presets/{id}", h.DeleteDueDatePreset)
 

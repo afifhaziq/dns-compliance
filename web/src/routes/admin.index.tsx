@@ -32,8 +32,10 @@ import {
   type ScanSchedule,
 } from '../api/admin'
 import { fetchAgencies, createAgency, updateAgency, deleteAgency } from '../api/agencies'
+import { fetchRecipients, createRecipient, updateRecipient, deleteRecipient } from '../api/recipients'
+import { fetchRequestors, createRequestor, updateRequestor, deleteRequestor } from '../api/requestors'
 import { fetchDueDatePresets, createDueDatePreset, deleteDueDatePreset } from '../api/due-date-presets'
-import type { Agency, CompliantIP, Department, DueDatePreset, User } from '../api/types'
+import type { Agency, CompliantIP, Department, DueDatePreset, Recipient, Requestor, User } from '../api/types'
 import {
   Dialog,
   DialogContent,
@@ -53,13 +55,14 @@ import { XIcon } from '@/components/ui/x'
 import { KeyRoundIcon } from 'lucide-react'
 import { useAuth } from './__root'
 
-const ADMIN_TABS = ['departments', 'users', 'ip', 'agencies', 'due-dates', 'scan-settings'] as const
+const ADMIN_TABS = ['departments', 'users', 'ip', 'agencies', 'recipients', 'requestors', 'due-dates', 'scan-settings'] as const
 type AdminTab = typeof ADMIN_TABS[number]
 
-// Departments/Agencies/Users are the tabbed CRUD section at the top of the
-// page; Compliant IPs/Time to Block/Scan Settings stay as plain stacked
-// sections below (see admin.tsx's route bullet in web/CLAUDE.md).
-const CRUD_TABS = ['departments', 'agencies', 'users'] as const
+// Departments/Agencies/Recipients/Requestors/Users are the tabbed CRUD
+// section at the top of the page; Compliant IPs/Time to Block/Scan Settings
+// stay as plain stacked sections below (see admin.tsx's route bullet in
+// web/CLAUDE.md).
+const CRUD_TABS = ['departments', 'agencies', 'recipients', 'requestors', 'users'] as const
 type CrudTab = typeof CRUD_TABS[number]
 
 // Sections gated to is_admin server-side (see `load` below) — a department
@@ -1195,6 +1198,281 @@ function DepartmentsTab({
   )
 }
 
+/* ─── Generic name-lookup CRUD (Recipient/Requestor) ─────────────────────── */
+// Recipient and Requestor are structurally identical to Agency ({id, name,
+// created_at}, same read-open/write-admin-gated shape) — generic dialogs +
+// tab shared between the two rather than a third and fourth copy of
+// AddAgencyDialog/EditAgencyDialog/AgenciesTab below.
+
+function AddNameLookupDialog({
+  open,
+  onClose,
+  onAdded,
+  entityLabel,
+  description,
+  placeholder,
+  createFn,
+}: {
+  open: boolean
+  onClose: () => void
+  onAdded: () => void
+  entityLabel: string
+  description: string
+  placeholder?: string
+  createFn: (name: string) => Promise<unknown>
+}) {
+  const [name, setName] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const reset = () => { setName(''); setError(null) }
+  const handleClose = () => { reset(); onClose() }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim()) { setError('Name is required'); return }
+    setLoading(true)
+    setError(null)
+    try {
+      await createFn(name.trim())
+      reset()
+      onAdded()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to add ${entityLabel.toLowerCase()}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: 400 }}>
+        <DialogHeader>
+          <DialogTitle>Add {entityLabel}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit}>
+          <div className="form-field">
+            <label className="form-label" htmlFor={`add-${entityLabel}-name-input`}>Name</label>
+            <input
+              id={`add-${entityLabel}-name-input`}
+              className="form-input"
+              type="text"
+              placeholder={placeholder}
+              value={name}
+              onChange={e => setName(e.target.value)}
+              autoFocus
+              disabled={loading}
+            />
+          </div>
+          {error && <p className="form-error">{error}</p>}
+          <DialogFooter>
+            <button type="button" className="btn-ghost" onClick={handleClose} disabled={loading}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={loading}>
+              {loading ? 'Adding…' : `Add ${entityLabel}`}
+            </button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function EditNameLookupDialog<T extends { id: number; name: string }>({
+  item,
+  onClose,
+  onSaved,
+  entityLabel,
+  updateFn,
+}: {
+  item: T | null
+  onClose: () => void
+  onSaved: () => void
+  entityLabel: string
+  updateFn: (id: number, name: string) => Promise<unknown>
+}) {
+  const [name, setName] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => { if (item) setName(item.name) }, [item])
+
+  const handleClose = () => { setError(null); onClose() }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!item) return
+    if (!name.trim()) { setError('Name is required'); return }
+    setLoading(true)
+    setError(null)
+    try {
+      await updateFn(item.id, name.trim())
+      onSaved()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to update ${entityLabel.toLowerCase()}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog open={item !== null} onOpenChange={v => { if (!v) handleClose() }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: 400 }}>
+        <DialogHeader>
+          <DialogTitle>Edit {entityLabel}</DialogTitle>
+          <DialogDescription>Rename this {entityLabel.toLowerCase()}.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit}>
+          <div className="form-field">
+            <label className="form-label" htmlFor={`edit-${entityLabel}-name-input`}>Name</label>
+            <input
+              id={`edit-${entityLabel}-name-input`}
+              className="form-input"
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              autoFocus
+              disabled={loading}
+            />
+          </div>
+          {error && <p className="form-error">{error}</p>}
+          <DialogFooter>
+            <button type="button" className="btn-ghost" onClick={handleClose} disabled={loading}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={loading}>
+              {loading ? 'Saving…' : 'Save'}
+            </button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function NameLookupTab<T extends { id: number; name: string; created_at: string }>({
+  items,
+  loading,
+  entityLabel,
+  onAdd,
+  onEdit,
+  onDeleteRequest,
+}: {
+  items: T[]
+  loading: boolean
+  entityLabel: string
+  onAdd: () => void
+  onEdit: (item: T) => void
+  onDeleteRequest: (item: T) => void
+}) {
+  const [search, setSearch] = useState('')
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
+
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    return items.filter(a => !query || a.name.toLowerCase().includes(query))
+  }, [items, search])
+
+  useEffect(() => { setPagination(p => ({ ...p, pageIndex: 0 })) }, [search])
+
+  const columns = useMemo<ColumnDef<T>[]>(() => [
+    {
+      id: 'name',
+      accessorFn: a => a.name,
+      header: ({ column }) => <SortableHeader column={column} title="Name" />,
+      enableHiding: false,
+      cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+    },
+    {
+      id: 'created_at',
+      accessorFn: a => a.created_at,
+      size: 140,
+      header: ({ column }) => <SortableHeader column={column} title="Created" />,
+      meta: { headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => <span className="dns-name">{DATE_FMT.format(new Date(row.original.created_at))}</span>,
+    },
+    {
+      id: 'action',
+      header: 'Action',
+      enableHiding: false,
+      size: 100,
+      meta: { headerClassName: 'th-center', cellClassName: 'text-center' },
+      cell: ({ row }) => (
+        <div className="flex items-center justify-center gap-1">
+          <button
+            type="button"
+            className="screenshot-icon-btn"
+            onClick={() => onEdit(row.original)}
+            aria-label={`Edit ${row.original.name}`}
+            title="Edit"
+          >
+            <SquarePenIcon size={16} />
+          </button>
+          <button
+            type="button"
+            className="screenshot-icon-btn"
+            onClick={() => onDeleteRequest(row.original)}
+            aria-label={`Delete ${row.original.name}`}
+            title="Delete"
+          >
+            <XIcon size={16} />
+          </button>
+        </div>
+      ),
+    },
+  ], [onEdit, onDeleteRequest])
+
+  const table = useReactTable({
+    data: filtered,
+    columns,
+    state: { sorting, pagination },
+    onSortingChange: setSorting,
+    onPaginationChange: setPagination,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+  })
+
+  return (
+    <div>
+      <div className="page-header" style={{ marginBottom: 12 }}>
+        <h2 className="section-title">{entityLabel}s</h2>
+        <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={onAdd}>
+          + Add {entityLabel}
+        </button>
+      </div>
+      <div className="filter-bar flex flex-row items-center justify-start gap-4 w-full" style={{ marginBottom: 16 }}>
+        <Input
+          type="search"
+          placeholder={`Search ${entityLabel.toLowerCase()}s...`}
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="max-w-64"
+          aria-label={`Search ${entityLabel.toLowerCase()}s`}
+        />
+      </div>
+      {!loading && filtered.length === 0 ? (
+        <div className="empty-state" style={{ padding: '3rem 0' }}>
+          <EmptyIcon />
+          <p className="empty-heading">{items.length === 0 ? `No ${entityLabel.toLowerCase()}s yet` : `No ${entityLabel.toLowerCase()}s match your search`}</p>
+        </div>
+      ) : (
+        <DataGrid table={table} recordCount={filtered.length} isLoading={loading} loadingMode="spinner" tableClassNames={{ base: 'results-table' }}>
+          <DataGridContainer className="overflow-x-auto overflow-y-visible mb-5">
+            <DataGridTable />
+          </DataGridContainer>
+          <DataGridPagination sizes={[10, 25, 50]} />
+        </DataGrid>
+      )}
+    </div>
+  )
+}
+
 /* ─── Agencies Tab ───────────────────────────────────────────────────────── */
 
 function AgenciesTab({
@@ -1541,6 +1819,8 @@ function AdminPage() {
   const [users, setUsers] = useState<User[]>([])
   const [compliantIPs, setCompliantIPs] = useState<CompliantIP[]>([])
   const [agencies, setAgencies] = useState<Agency[]>([])
+  const [recipients, setRecipients] = useState<Recipient[]>([])
+  const [requestors, setRequestors] = useState<Requestor[]>([])
   const [duePresets, setDuePresets] = useState<DueDatePreset[]>([])
   const [scanSchedule, setScanSchedule] = useState<ScanSchedule | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1553,10 +1833,16 @@ function AdminPage() {
   const [addIPOpen, setAddIPOpen] = useState(false)
   const [addAgencyOpen, setAddAgencyOpen] = useState(false)
   const [editAgencyTarget, setEditAgencyTarget] = useState<Agency | null>(null)
+  const [addRecipientOpen, setAddRecipientOpen] = useState(false)
+  const [editRecipientTarget, setEditRecipientTarget] = useState<Recipient | null>(null)
+  const [addRequestorOpen, setAddRequestorOpen] = useState(false)
+  const [editRequestorTarget, setEditRequestorTarget] = useState<Requestor | null>(null)
   const [addPresetOpen, setAddPresetOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
   const [deleteIPTarget, setDeleteIPTarget] = useState<CompliantIP | null>(null)
   const [deleteAgencyTarget, setDeleteAgencyTarget] = useState<Agency | null>(null)
+  const [deleteRecipientTarget, setDeleteRecipientTarget] = useState<Recipient | null>(null)
+  const [deleteRequestorTarget, setDeleteRequestorTarget] = useState<Requestor | null>(null)
   const [deletePresetTarget, setDeletePresetTarget] = useState<DueDatePreset | null>(null)
 
   const load = useCallback(async () => {
@@ -1568,19 +1854,23 @@ function AdminPage() {
       // scan interval, which stay super-admin-only server-side — a
       // department admin would just get a 403 fetching those).
       if (me?.is_admin) {
-        const [d, u, ips, schedule, a, p] = await Promise.all([
-          fetchDepartments(), fetchUsers(), fetchCompliantIPs(), fetchScanInterval(), fetchAgencies(), fetchDueDatePresets(),
+        const [d, u, ips, schedule, a, rc, rq, p] = await Promise.all([
+          fetchDepartments(), fetchUsers(), fetchCompliantIPs(), fetchScanInterval(), fetchAgencies(), fetchRecipients(), fetchRequestors(), fetchDueDatePresets(),
         ])
         setDepartments(d)
         setUsers(u)
         setCompliantIPs(ips)
         setScanSchedule(schedule)
         setAgencies(a)
+        setRecipients(rc)
+        setRequestors(rq)
         setDuePresets(p)
       } else {
-        const [u, a, p] = await Promise.all([fetchUsers(), fetchAgencies(), fetchDueDatePresets()])
+        const [u, a, rc, rq, p] = await Promise.all([fetchUsers(), fetchAgencies(), fetchRecipients(), fetchRequestors(), fetchDueDatePresets()])
         setUsers(u)
         setAgencies(a)
+        setRecipients(rc)
+        setRequestors(rq)
         setDuePresets(p)
       }
     } catch (err) {
@@ -1641,6 +1931,20 @@ function AdminPage() {
     load()
   }
 
+  const handleDeleteRecipient = async () => {
+    if (!deleteRecipientTarget) return
+    await deleteRecipient(deleteRecipientTarget.id)
+    setDeleteRecipientTarget(null)
+    load()
+  }
+
+  const handleDeleteRequestor = async () => {
+    if (!deleteRequestorTarget) return
+    await deleteRequestor(deleteRequestorTarget.id)
+    setDeleteRequestorTarget(null)
+    load()
+  }
+
   const handleDeletePreset = async () => {
     if (!deletePresetTarget) return
     await deleteDueDatePreset(deletePresetTarget.id)
@@ -1670,6 +1974,8 @@ function AdminPage() {
         <TabsList>
           {visibleCrudTabs.includes('departments') && <TabsTrigger value="departments">Departments</TabsTrigger>}
           <TabsTrigger value="agencies">Agencies</TabsTrigger>
+          <TabsTrigger value="recipients">Recipients</TabsTrigger>
+          <TabsTrigger value="requestors">Requestors</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
         </TabsList>
 
@@ -1690,6 +1996,26 @@ function AdminPage() {
             onAdd={() => setAddAgencyOpen(true)}
             onEdit={setEditAgencyTarget}
             onDeleteRequest={setDeleteAgencyTarget}
+          />
+        </TabsContent>
+        <TabsContent value="recipients">
+          <NameLookupTab
+            items={recipients}
+            loading={loading}
+            entityLabel="Recipient"
+            onAdd={() => setAddRecipientOpen(true)}
+            onEdit={setEditRecipientTarget}
+            onDeleteRequest={setDeleteRecipientTarget}
+          />
+        </TabsContent>
+        <TabsContent value="requestors">
+          <NameLookupTab
+            items={requestors}
+            loading={loading}
+            entityLabel="Requestor"
+            onAdd={() => setAddRequestorOpen(true)}
+            onEdit={setEditRequestorTarget}
+            onDeleteRequest={setDeleteRequestorTarget}
           />
         </TabsContent>
         <TabsContent value="users">
@@ -1805,6 +2131,24 @@ function AdminPage() {
       <AddCompliantIPDialog open={addIPOpen} onClose={() => setAddIPOpen(false)} onAdded={load} />
       <AddAgencyDialog open={addAgencyOpen} onClose={() => setAddAgencyOpen(false)} onAdded={load} />
       <EditAgencyDialog agency={editAgencyTarget} onClose={() => setEditAgencyTarget(null)} onSaved={load} />
+      <AddNameLookupDialog
+        open={addRecipientOpen}
+        onClose={() => setAddRecipientOpen(false)}
+        onAdded={load}
+        entityLabel="Recipient"
+        description="Recipients appear in the Recipient dropdown when adding a document on the Docs page."
+        createFn={createRecipient}
+      />
+      <EditNameLookupDialog item={editRecipientTarget} onClose={() => setEditRecipientTarget(null)} onSaved={load} entityLabel="Recipient" updateFn={updateRecipient} />
+      <AddNameLookupDialog
+        open={addRequestorOpen}
+        onClose={() => setAddRequestorOpen(false)}
+        onAdded={load}
+        entityLabel="Requestor"
+        description="Requestors appear in the Requestor dropdown when adding a document on the Docs page."
+        createFn={createRequestor}
+      />
+      <EditNameLookupDialog item={editRequestorTarget} onClose={() => setEditRequestorTarget(null)} onSaved={load} entityLabel="Requestor" updateFn={updateRequestor} />
       <AddDueDatePresetDialog
         open={addPresetOpen}
         onClose={() => setAddPresetOpen(false)}
@@ -1829,6 +2173,20 @@ function AdminPage() {
         description="Domains currently assigned to this agency will show a blank Agency instead."
         onConfirm={handleDeleteAgency}
         onCancel={() => setDeleteAgencyTarget(null)}
+      />
+      <DeleteConfirmDialog
+        open={deleteRecipientTarget !== null}
+        itemLabel={deleteRecipientTarget?.name ?? ''}
+        description="It will no longer appear as an option in the Docs page's Recipient dropdown."
+        onConfirm={handleDeleteRecipient}
+        onCancel={() => setDeleteRecipientTarget(null)}
+      />
+      <DeleteConfirmDialog
+        open={deleteRequestorTarget !== null}
+        itemLabel={deleteRequestorTarget?.name ?? ''}
+        description="It will no longer appear as an option in the Docs page's Requestor dropdown."
+        onConfirm={handleDeleteRequestor}
+        onCancel={() => setDeleteRequestorTarget(null)}
       />
       <DeleteConfirmDialog
         open={deletePresetTarget !== null}

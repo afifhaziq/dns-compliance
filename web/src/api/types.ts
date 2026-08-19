@@ -101,6 +101,11 @@ export type CaseLettersResponse = { letters: CaseLetterEntry[]; total: number }
 
 export type Agency = { id: number; name: string; created_at: string }
 
+// Admin-managed lookup options for the Docs page's Recipient/Requestor
+// dropdowns — same shape as Agency.
+export type Recipient = { id: number; name: string; created_at: string }
+export type Requestor = { id: number; name: string; created_at: string }
+
 // A "Time to Block" duration option on the watchlist page — admin/dept-admin
 // managed, see CLAUDE.md's Notifications section.
 export type DueDatePreset = { id: number; label: string; minutes: number; created_at: string }

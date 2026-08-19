@@ -422,6 +422,129 @@ func (h *Handlers) DeleteAgency(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Recipients and Requestors — admin-managed lookup tables backing the Docs
+// page's Recipient/Requestor dropdowns. Read open to any authenticated
+// role (registered below, outside this admin-gated group); create/update/
+// delete gated to admin-or-dept-admin, same pattern as Agency above.
+
+func (h *Handlers) ListRecipients(w http.ResponseWriter, r *http.Request) {
+	recipients, err := h.store.ListRecipients(r.Context())
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, recipients)
+}
+
+func (h *Handlers) CreateRecipient(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	rec, err := h.store.CreateRecipient(r.Context(), body.Name)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, rec)
+}
+
+func (h *Handlers) UpdateRecipient(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	rec, err := h.store.UpdateRecipient(r.Context(), uint(id), body.Name)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rec)
+}
+
+func (h *Handlers) DeleteRecipient(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := h.store.DeleteRecipient(r.Context(), uint(id)); err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handlers) ListRequestors(w http.ResponseWriter, r *http.Request) {
+	requestors, err := h.store.ListRequestors(r.Context())
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, requestors)
+}
+
+func (h *Handlers) CreateRequestor(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	req, err := h.store.CreateRequestor(r.Context(), body.Name)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, req)
+}
+
+func (h *Handlers) UpdateRequestor(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	req, err := h.store.UpdateRequestor(r.Context(), uint(id), body.Name)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, req)
+}
+
+func (h *Handlers) DeleteRequestor(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := h.store.DeleteRequestor(r.Context(), uint(id)); err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // Due Date Presets — the "Time to Block" duration options on the watchlist
 // page (urls.tsx). Read open to any authenticated role; create/delete
 // gated to admin-or-dept-admin, same pattern as Agency above.

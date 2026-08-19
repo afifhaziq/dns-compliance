@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   type ColumnDef,
@@ -10,10 +10,32 @@ import {
   getPaginationRowModel,
   useReactTable,
 } from '@tanstack/react-table'
-import { fetchAllCaseLetters } from '@/api/cases'
+import { fetchAllCaseLetters, createCase, addCaseLetter, addUrlToCase } from '@/api/cases'
+import { createUrl, fetchUrls } from '@/api/urls'
 import { fetchDepartmentsOpen } from '@/api/departments'
-import type { CaseLetterEntry, Department } from '@/api/types'
-import { LETTER_TYPE_OPTIONS as CASE_LETTER_TYPE_OPTIONS } from '@/lib/case-options'
+import { fetchRecipients } from '@/api/recipients'
+import { fetchRequestors } from '@/api/requestors'
+import type { CaseLetterEntry, Department, Recipient, Requestor } from '@/api/types'
+import { PHASE_OPTIONS as CASE_PHASE_OPTIONS, LETTER_TYPE_OPTIONS as CASE_LETTER_TYPE_OPTIONS } from '@/lib/case-options'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/animate-ui/components/radix/dialog'
+import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
+import {
+  Combobox,
+  ComboboxChip,
+  ComboboxChips,
+  ComboboxChipsInput,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxItem,
+  ComboboxList,
+} from '@/components/ui/b-combobox'
 import { DataGrid, DataGridContainer } from '@/components/reui/data-grid/data-grid'
 import { DataGridTable } from '@/components/reui/data-grid/data-grid-table'
 import { DataGridColumnVisibility } from '@/components/reui/data-grid/data-grid-column-visibility'
@@ -37,11 +59,281 @@ function formatDate(value?: string) {
   return new Date(value).toLocaleDateString()
 }
 
+// yyyy-MM-dd from a native <input type="date"> -> RFC3339, or undefined for
+// an empty field (omitted from the PATCH body rather than sent as "").
+function isoFromDateInput(value: string): string | undefined {
+  return value ? new Date(value).toISOString() : undefined
+}
+
+/* ─── Add Document Dialog ────────────────────────────────────────────────── */
+
+// Opens a brand-new case (+ its first letter) for a domain — get-or-creates
+// the domain the same way AddUrlDialog does, so pointing this at an
+// already-watchlisted domain is idempotent. To add a *second* letter to an
+// already-open case, use that domain's Cases dialog on the Watchlist page
+// instead (this dialog has no case picker, only "open a new one").
+function AddDocumentDialog({
+  open,
+  onClose,
+  onAdded,
+  domainOptions,
+  recipients,
+  requestors,
+}: {
+  open: boolean
+  onClose: () => void
+  onAdded: () => void
+  domainOptions: string[]
+  recipients: Recipient[]
+  requestors: Requestor[]
+}) {
+  const [domains, setDomains] = useState<string[]>([])
+  const [domainQuery, setDomainQuery] = useState('')
+  const [phase, setPhase] = useState('requested')
+  const [type, setType] = useState('Notice')
+  const [referenceNumber, setReferenceNumber] = useState('')
+  const [recipient, setRecipient] = useState('')
+  const [subject, setSubject] = useState('')
+  const [requestor, setRequestor] = useState('')
+  const [workflowStatus, setWorkflowStatus] = useState('')
+  const [letterDate, setLetterDate] = useState('')
+  const [receivedAt, setReceivedAt] = useState('')
+  const [submittedAt, setSubmittedAt] = useState('')
+  const [remarks, setRemarks] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const reset = () => {
+    setDomains([]); setDomainQuery(''); setPhase('requested'); setType('Notice'); setReferenceNumber('')
+    setRecipient(''); setSubject(''); setRequestor(''); setWorkflowStatus('')
+    setLetterDate(''); setReceivedAt(''); setSubmittedAt(''); setRemarks(''); setError(null)
+  }
+
+  // The typed-but-not-yet-selected query is offered back as a pickable item
+  // itself (labeled "Add …") so this stays create-or-pick like the old
+  // textarea — a domain doesn't have to already be on a watchlist.
+  const trimmedQuery = domainQuery.trim()
+  const domainItems = useMemo(() => {
+    if (!trimmedQuery || domainOptions.includes(trimmedQuery) || domains.includes(trimmedQuery)) return domainOptions
+    return [...domainOptions, trimmedQuery]
+  }, [domainOptions, trimmedQuery, domains])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (domains.length === 0) { setError('At least one domain is required'); return }
+    setLoading(true)
+    setError(null)
+    try {
+      // Get-or-create every domain (idempotent for one already on a
+      // watchlist), then link them all to one shared case — matches
+      // AddUrlDialog's "N URLs in one Notice" batch shape rather than
+      // opening a separate case per domain.
+      const created = await Promise.all(domains.map(d => createUrl(d)))
+      const c = await createCase(created[0].url, phase)
+      await Promise.all(created.slice(1).map(u => addUrlToCase(c.id, u.url, phase)))
+      await addCaseLetter(c.id, {
+        type,
+        reference_number: referenceNumber.trim() || undefined,
+        recipient: recipient.trim() || undefined,
+        subject: subject.trim() || undefined,
+        requestor: requestor.trim() || undefined,
+        workflow_status: workflowStatus || undefined,
+        letter_date: isoFromDateInput(letterDate),
+        received_at: isoFromDateInput(receivedAt),
+        submitted_at: isoFromDateInput(submittedAt),
+        remarks: remarks.trim() || undefined,
+      })
+      reset()
+      onAdded()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add document')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleClose = () => { reset(); onClose() }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: 560 }}>
+        <DialogHeader>
+          <DialogTitle>Add Document</DialogTitle>
+          <DialogDescription>
+            Opens a new case linking one or more domains and records its first letter (Memo or Notice). To add a second letter to a case that's already open, use that domain's Cases dialog on the Watchlist page instead.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit}>
+          <div className="form-field">
+            <label className="form-label" htmlFor="add-doc-url">Domain(s)</label>
+            <Combobox
+              items={domainItems}
+              value={domains}
+              onValueChange={setDomains}
+              onInputValueChange={setDomainQuery}
+              multiple
+            >
+              <ComboboxChips>
+                {domains.map(d => (
+                  <ComboboxChip key={d} aria-label={d}>{d}</ComboboxChip>
+                ))}
+                <ComboboxChipsInput
+                  id="add-doc-url"
+                  placeholder={domains.length === 0 ? 'Search or type a domain…' : undefined}
+                  autoFocus
+                  disabled={loading}
+                />
+              </ComboboxChips>
+              <ComboboxContent>
+                <ComboboxEmpty>No domains found.</ComboboxEmpty>
+                <ComboboxList>
+                  {(item: string) => (
+                    <ComboboxItem key={item} value={item}>
+                      {domainOptions.includes(item) ? item : `Add "${item}"`}
+                    </ComboboxItem>
+                  )}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
+            <p className="text-xs text-stone-muted">Search existing watchlist domains or type a new one. All selected domains will share this one case.</p>
+          </div>
+
+          <div className="form-row">
+            <div className="form-field">
+              <label className="form-label" id="add-doc-phase-label">Case Phase</label>
+              <Select value={phase} onValueChange={setPhase} disabled={loading}>
+                <SelectTrigger aria-labelledby="add-doc-phase-label" placeholder="—" className="w-full" />
+                <SelectContent>
+                  {CASE_PHASE_OPTIONS.map((opt, i) => (
+                    <SelectItem key={opt.value} index={i} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="form-field">
+              <label className="form-label" id="add-doc-type-label">Type</label>
+              <Select value={type} onValueChange={setType} disabled={loading}>
+                <SelectTrigger aria-labelledby="add-doc-type-label" placeholder="—" className="w-full" />
+                <SelectContent>
+                  {CASE_LETTER_TYPE_OPTIONS.map((opt, i) => (
+                    <SelectItem key={opt} index={i} value={opt}>{opt}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-field">
+              <label className="form-label" htmlFor="add-doc-reference">Reference No.</label>
+              <input
+                id="add-doc-reference"
+                className="form-input"
+                placeholder="e.g. MCMC(S)CMOD/BLK/2026(1-2)"
+                value={referenceNumber}
+                onChange={e => setReferenceNumber(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+            <div className="form-field">
+              <label className="form-label" id="add-doc-recipient-label">Recipient</label>
+              <Select value={recipient} onValueChange={setRecipient} disabled={loading}>
+                <SelectTrigger aria-labelledby="add-doc-recipient-label" placeholder="—" className="w-full" />
+                <SelectContent>
+                  <SelectItem index={0} value="">—</SelectItem>
+                  {recipients.map((r, i) => (
+                    <SelectItem key={r.id} index={i + 1} value={r.name}>{r.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="form-field">
+            <label className="form-label" htmlFor="add-doc-subject">Subject</label>
+            <input id="add-doc-subject" className="form-input" value={subject} onChange={e => setSubject(e.target.value)} disabled={loading} />
+          </div>
+
+          <div className="form-row">
+            <div className="form-field">
+              <label className="form-label" id="add-doc-requestor-label">Requestor</label>
+              <Select value={requestor} onValueChange={setRequestor} disabled={loading}>
+                <SelectTrigger aria-labelledby="add-doc-requestor-label" placeholder="—" className="w-full" />
+                <SelectContent>
+                  <SelectItem index={0} value="">—</SelectItem>
+                  {requestors.map((r, i) => (
+                    <SelectItem key={r.id} index={i + 1} value={r.name}>{r.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="form-field">
+              <label className="form-label" id="add-doc-workflow-label">Workflow Status</label>
+              <Select value={workflowStatus} onValueChange={setWorkflowStatus} disabled={loading}>
+                <SelectTrigger aria-labelledby="add-doc-workflow-label" placeholder="—" className="w-full" />
+                <SelectContent>
+                  <SelectItem index={0} value="">—</SelectItem>
+                  {WORKFLOW_STATUS_OPTIONS.map((opt, i) => (
+                    <SelectItem key={opt} index={i + 1} value={opt}>{opt}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-field">
+              <label className="form-label" htmlFor="add-doc-letter-date">Letter Date</label>
+              <input id="add-doc-letter-date" type="date" className="form-input" value={letterDate} onChange={e => setLetterDate(e.target.value)} disabled={loading} />
+            </div>
+            <div className="form-field">
+              <label className="form-label" htmlFor="add-doc-received">Received</label>
+              <input id="add-doc-received" type="date" className="form-input" value={receivedAt} onChange={e => setReceivedAt(e.target.value)} disabled={loading} />
+            </div>
+            <div className="form-field">
+              <label className="form-label" htmlFor="add-doc-submission">Submission</label>
+              <input id="add-doc-submission" type="date" className="form-input" value={submittedAt} onChange={e => setSubmittedAt(e.target.value)} disabled={loading} />
+            </div>
+          </div>
+
+          <div className="form-field">
+            <label className="form-label" htmlFor="add-doc-remarks">Remarks</label>
+            <textarea
+              id="add-doc-remarks"
+              className="form-input"
+              rows={2}
+              value={remarks}
+              onChange={e => setRemarks(e.target.value)}
+              disabled={loading}
+              style={{ resize: 'vertical', fontFamily: 'inherit' }}
+            />
+          </div>
+
+          {error && <p className="form-error">{error}</p>}
+          <DialogFooter>
+            <button type="button" className="btn-ghost" onClick={handleClose} disabled={loading}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={loading}>
+              {loading ? 'Adding…' : 'Add Document'}
+            </button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function DocsPage() {
   const [letters, setLetters] = useState<CaseLetterEntry[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
+  const [domainOptions, setDomainOptions] = useState<string[]>([])
+  const [recipients, setRecipients] = useState<Recipient[]>([])
+  const [requestors, setRequestors] = useState<Requestor[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
 
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<Filter<string>[]>([])
@@ -59,23 +351,26 @@ function DocsPage() {
     }
   )
 
-  useEffect(() => {
-    let cancelled = false
+  const load = useCallback(async () => {
     setLoading(true)
-    Promise.all([fetchAllCaseLetters(), fetchDepartmentsOpen()])
-      .then(([l, d]) => {
-        if (cancelled) return
-        setLetters(l)
-        setDepartments(d)
-        setError(null)
-      })
-      .catch(err => {
-        if (cancelled) return
-        setError(err instanceof Error ? err.message : 'Failed to load documents')
-      })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+    try {
+      const [l, d, u, rc, rq] = await Promise.all([
+        fetchAllCaseLetters(), fetchDepartmentsOpen(), fetchUrls(), fetchRecipients(), fetchRequestors(),
+      ])
+      setLetters(l)
+      setDepartments(d)
+      setDomainOptions(u.map(entry => entry.url))
+      setRecipients(rc)
+      setRequestors(rq)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load documents')
+    } finally {
+      setLoading(false)
+    }
   }, [])
+
+  useEffect(() => { load() }, [load])
 
   const filterFields = useMemo<FilterFieldConfig<string>[]>(() => [
     { key: 'type', label: 'Type', type: 'select', operators: IS_ONLY, options: CASE_LETTER_TYPE_OPTIONS.map(t => ({ value: t, label: t })) },
@@ -217,6 +512,9 @@ function DocsPage() {
       <div className="page-header">
         <h1 className="page-title mb-4">Docs</h1>
         <p className="page-subtitle">{!loading && `${letters.length} documents`}</p>
+        <div style={{ marginLeft: 'auto' }}>
+          <Button onClick={() => setAddOpen(true)}>+ Add Document</Button>
+        </div>
       </div>
 
       {error ? (
@@ -228,6 +526,7 @@ function DocsPage() {
           <EmptyIcon />
           <p className="empty-heading">No documents yet</p>
           <p className="empty-body">Memos and Notices appear here once a case has letters recorded against it.</p>
+          <button className="btn-primary" onClick={() => setAddOpen(true)}>+ Add Document</button>
         </div>
       ) : (
         <div className="flex flex-col items-stretch w-full gap-4 mt-4">
@@ -267,6 +566,15 @@ function DocsPage() {
           </div>
         </div>
       )}
+
+      <AddDocumentDialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onAdded={load}
+        domainOptions={domainOptions}
+        recipients={recipients}
+        requestors={requestors}
+      />
     </div>
   )
 }

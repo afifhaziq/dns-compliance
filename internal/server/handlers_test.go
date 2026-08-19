@@ -38,6 +38,8 @@ type fullMockStore struct {
 	ispLogos           []db.ISPLogo
 	gridPrefs          []db.GridPreference
 	agencies           []db.Agency
+	recipients         []db.Recipient
+	requestors         []db.Requestor
 	dueDatePresets     []db.DueDatePreset
 	instruments        []db.Instrument
 	citations          []db.Citation
@@ -444,6 +446,66 @@ func (m *fullMockStore) DeleteAgency(_ context.Context, id uint) error {
 	for i, a := range m.agencies {
 		if a.ID == id {
 			m.agencies = append(m.agencies[:i], m.agencies[i+1:]...)
+			return nil
+		}
+	}
+	return nil
+}
+
+func (m *fullMockStore) ListRecipients(_ context.Context) ([]db.Recipient, error) {
+	return m.recipients, nil
+}
+
+func (m *fullMockStore) CreateRecipient(_ context.Context, name string) (db.Recipient, error) {
+	r := db.Recipient{ID: uint(len(m.recipients) + 1), Name: name, CreatedAt: time.Now()}
+	m.recipients = append(m.recipients, r)
+	return r, nil
+}
+
+func (m *fullMockStore) UpdateRecipient(_ context.Context, id uint, name string) (db.Recipient, error) {
+	for i, r := range m.recipients {
+		if r.ID == id {
+			m.recipients[i].Name = name
+			return m.recipients[i], nil
+		}
+	}
+	return db.Recipient{}, nil
+}
+
+func (m *fullMockStore) DeleteRecipient(_ context.Context, id uint) error {
+	for i, r := range m.recipients {
+		if r.ID == id {
+			m.recipients = append(m.recipients[:i], m.recipients[i+1:]...)
+			return nil
+		}
+	}
+	return nil
+}
+
+func (m *fullMockStore) ListRequestors(_ context.Context) ([]db.Requestor, error) {
+	return m.requestors, nil
+}
+
+func (m *fullMockStore) CreateRequestor(_ context.Context, name string) (db.Requestor, error) {
+	r := db.Requestor{ID: uint(len(m.requestors) + 1), Name: name, CreatedAt: time.Now()}
+	m.requestors = append(m.requestors, r)
+	return r, nil
+}
+
+func (m *fullMockStore) UpdateRequestor(_ context.Context, id uint, name string) (db.Requestor, error) {
+	for i, r := range m.requestors {
+		if r.ID == id {
+			m.requestors[i].Name = name
+			return m.requestors[i], nil
+		}
+	}
+	return db.Requestor{}, nil
+}
+
+func (m *fullMockStore) DeleteRequestor(_ context.Context, id uint) error {
+	for i, r := range m.requestors {
+		if r.ID == id {
+			m.requestors = append(m.requestors[:i], m.requestors[i+1:]...)
 			return nil
 		}
 	}

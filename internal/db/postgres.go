@@ -778,6 +778,48 @@ func (s *postgresStore) DeleteAgency(ctx context.Context, id uint) error {
 	return s.db.WithContext(ctx).Delete(&Agency{}, id).Error
 }
 
+func (s *postgresStore) ListRecipients(ctx context.Context) ([]Recipient, error) {
+	var recipients []Recipient
+	return recipients, s.db.WithContext(ctx).Order("name asc").Find(&recipients).Error
+}
+
+func (s *postgresStore) CreateRecipient(ctx context.Context, name string) (Recipient, error) {
+	r := Recipient{Name: name}
+	return r, s.db.WithContext(ctx).Create(&r).Error
+}
+
+func (s *postgresStore) UpdateRecipient(ctx context.Context, id uint, name string) (Recipient, error) {
+	r := Recipient{ID: id, Name: name}
+	err := s.db.WithContext(ctx).Model(&Recipient{}).Where("id = ?", id).
+		Updates(map[string]any{"name": name}).Error
+	return r, err
+}
+
+func (s *postgresStore) DeleteRecipient(ctx context.Context, id uint) error {
+	return s.db.WithContext(ctx).Delete(&Recipient{}, id).Error
+}
+
+func (s *postgresStore) ListRequestors(ctx context.Context) ([]Requestor, error) {
+	var requestors []Requestor
+	return requestors, s.db.WithContext(ctx).Order("name asc").Find(&requestors).Error
+}
+
+func (s *postgresStore) CreateRequestor(ctx context.Context, name string) (Requestor, error) {
+	r := Requestor{Name: name}
+	return r, s.db.WithContext(ctx).Create(&r).Error
+}
+
+func (s *postgresStore) UpdateRequestor(ctx context.Context, id uint, name string) (Requestor, error) {
+	r := Requestor{ID: id, Name: name}
+	err := s.db.WithContext(ctx).Model(&Requestor{}).Where("id = ?", id).
+		Updates(map[string]any{"name": name}).Error
+	return r, err
+}
+
+func (s *postgresStore) DeleteRequestor(ctx context.Context, id uint) error {
+	return s.db.WithContext(ctx).Delete(&Requestor{}, id).Error
+}
+
 func (s *postgresStore) ListDueDatePresets(ctx context.Context) ([]DueDatePreset, error) {
 	var presets []DueDatePreset
 	return presets, s.db.WithContext(ctx).Order("minutes asc").Find(&presets).Error
