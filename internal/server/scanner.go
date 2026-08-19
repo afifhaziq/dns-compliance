@@ -24,32 +24,44 @@ type crawlerClient interface {
 }
 
 type Scanner struct {
-	crawler       crawlerClient
-	crawlerToken  string
-	store         db.Store
-	broadcaster   *Broadcaster
-	mu            sync.Mutex
-	running       bool
-	scheduleReset chan struct{}
+	crawler          crawlerClient
+	crawlerToken     string
+	store            db.Store
+	broadcaster      *Broadcaster
+	mu               sync.Mutex
+	running          bool
+	scheduleReset    chan struct{}
+	slaScheduleReset chan struct{}
 }
 
 func NewScanner(crawler crawlerClient, crawlerToken string, store db.Store, broadcaster *Broadcaster) *Scanner {
-	return &Scanner{crawler: crawler, crawlerToken: crawlerToken, store: store, broadcaster: broadcaster, scheduleReset: make(chan struct{}, 1)}
+	return &Scanner{
+		crawler:          crawler,
+		crawlerToken:     crawlerToken,
+		store:            store,
+		broadcaster:      broadcaster,
+		scheduleReset:    make(chan struct{}, 1),
+		slaScheduleReset: make(chan struct{}, 1),
+	}
 }
 
-// NotifyScheduleChanged tells StartScheduler's loop to abandon whatever is
-// left of its current wait and restart it immediately using the
-// freshly-saved interval — so an admin save actually starts the cadence
-// from that moment, instead of finishing out however much of the stale
-// interval happened to be left. Non-blocking (a pending signal is enough;
-// no need to queue more) and nil-safe, since some tests construct routes
-// with a nil *Scanner.
+// NotifyScheduleChanged tells StartScheduler's and StartSLAScheduler's loops
+// to abandon whatever is left of their current wait and restart it
+// immediately using the freshly-saved settings — so an admin save actually
+// starts both cadences from that moment, instead of finishing out however
+// much of the stale interval happened to be left. Non-blocking (a pending
+// signal is enough; no need to queue more) and nil-safe, since some tests
+// construct routes with a nil *Scanner.
 func (sc *Scanner) NotifyScheduleChanged() {
 	if sc == nil {
 		return
 	}
 	select {
 	case sc.scheduleReset <- struct{}{}:
+	default:
+	}
+	select {
+	case sc.slaScheduleReset <- struct{}{}:
 	default:
 	}
 }

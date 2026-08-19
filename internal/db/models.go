@@ -172,11 +172,21 @@ type URLEntry struct {
 // standalone/manual crawler runs) — benchmarking against a realistic
 // domain-list scale showed 20 concurrent lookups is far too low for a
 // full sweep to complete within a reasonable interval.
+// SLAIntervalMinutes/SLAStreakThreshold configure a second, independent
+// schedule (see StartSLAScheduler in internal/server/scheduler.go) that
+// scans only URLs still under active SLA tracking — those with a DueDate
+// in the past that haven't yet racked up SLAStreakThreshold consecutive
+// compliant scans on every enabled DNS server — at a (typically shorter)
+// cadence than the normal IntervalMinutes sweep, so time-to-compliance
+// (see ispComplianceTiming) is measured at finer granularity than the
+// scan history of URLs with no due date needs.
 type ScanSettings struct {
-	ID              uint `gorm:"primaryKey" json:"id"`
-	IntervalMinutes int  `gorm:"not null" json:"interval_minutes"`
-	Enabled         bool `gorm:"not null;default:false" json:"enabled"`
-	DNSWorkers      int  `gorm:"not null;default:100" json:"dns_workers"`
+	ID                 uint `gorm:"primaryKey" json:"id"`
+	IntervalMinutes    int  `gorm:"not null" json:"interval_minutes"`
+	Enabled            bool `gorm:"not null;default:false" json:"enabled"`
+	DNSWorkers         int  `gorm:"not null;default:100" json:"dns_workers"`
+	SLAIntervalMinutes int  `gorm:"not null;default:15" json:"sla_interval_minutes"`
+	SLAStreakThreshold int  `gorm:"not null;default:3" json:"sla_streak_threshold"`
 }
 
 // CompliantIP is an IP address that counts as compliant even when DNS
@@ -218,7 +228,7 @@ type GridPreference struct {
 
 type ScanRun struct {
 	ID          uint       `gorm:"primaryKey" json:"id"`
-	TriggeredBy string     `json:"triggered_by"` // "scheduled", "manual", "screenshot"
+	TriggeredBy string     `json:"triggered_by"` // "scheduled", "scheduled-sla", "manual", "screenshot"
 	Status      string     `json:"status"`       // "running", "completed", "failed"
 	StartedAt   time.Time  `json:"started_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`

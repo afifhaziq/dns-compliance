@@ -926,6 +926,17 @@ const SCAN_INTERVAL_OPTIONS = [
   { minutes: 1440, label: '1 day' },
 ]
 
+const SLA_INTERVAL_OPTIONS = [
+  { minutes: 1, label: '1 minute' },
+  { minutes: 5, label: '5 minutes' },
+  { minutes: 10, label: '10 minutes' },
+  { minutes: 15, label: '15 minutes' },
+  { minutes: 30, label: '30 minutes' },
+  { minutes: 60, label: '1 hour' },
+]
+
+const SLA_STREAK_OPTIONS = Array.from({ length: 10 }, (_, i) => i + 1)
+
 // 10 steps, each double the last: 1, 2, 4, ..., 512.
 const DNS_WORKER_STEPS = Array.from({ length: 10 }, (_, i) => 2 ** i)
 
@@ -941,6 +952,8 @@ function ScanSettingsSection({ value, onSaved }: { value: ScanSchedule; onSaved:
   const [minutes, setMinutes] = useState(value.interval_minutes)
   const [enabled, setEnabled] = useState(value.enabled)
   const [dnsWorkers, setDnsWorkers] = useState(value.dns_workers)
+  const [slaMinutes, setSlaMinutes] = useState(value.sla_interval_minutes)
+  const [slaStreak, setSlaStreak] = useState(value.sla_streak_threshold)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedMessage, setSavedMessage] = useState<string | null>(null)
@@ -949,17 +962,30 @@ function ScanSettingsSection({ value, onSaved }: { value: ScanSchedule; onSaved:
     setMinutes(value.interval_minutes)
     setEnabled(value.enabled)
     setDnsWorkers(value.dns_workers)
+    setSlaMinutes(value.sla_interval_minutes)
+    setSlaStreak(value.sla_streak_threshold)
   }, [value])
 
-  const dirty = minutes !== value.interval_minutes || enabled !== value.enabled || dnsWorkers !== value.dns_workers
+  const dirty =
+    minutes !== value.interval_minutes ||
+    enabled !== value.enabled ||
+    dnsWorkers !== value.dns_workers ||
+    slaMinutes !== value.sla_interval_minutes ||
+    slaStreak !== value.sla_streak_threshold
 
   const handleSave = async () => {
     setSaving(true)
     setError(null)
     setSavedMessage(null)
     try {
-      await setScanInterval(minutes, enabled, dnsWorkers)
-      onSaved({ interval_minutes: minutes, enabled, dns_workers: dnsWorkers })
+      await setScanInterval(minutes, enabled, dnsWorkers, slaMinutes, slaStreak)
+      onSaved({
+        interval_minutes: minutes,
+        enabled,
+        dns_workers: dnsWorkers,
+        sla_interval_minutes: slaMinutes,
+        sla_streak_threshold: slaStreak,
+      })
       setSavedMessage(
         enabled
           ? 'Scan is active. It will start the cron job from the moment you saved this setting.'
@@ -1027,6 +1053,32 @@ function ScanSettingsSection({ value, onSaved }: { value: ScanSchedule; onSaved:
             ))}
           </span>
         </div>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <p className="dash-label-subheading">SLA Scan Frequency</p>
+        <p className="page-subtitle" style={{ marginBottom: 8 }}>How often URLs still under active SLA tracking get rescanned</p>
+        <Select value={String(slaMinutes)} onValueChange={v => setSlaMinutes(Number(v))} disabled={saving}>
+          <SelectTrigger aria-label="SLA scan interval" style={{ maxWidth: 320 }} />
+          <SelectContent>
+            {SLA_INTERVAL_OPTIONS.map((opt, i) => (
+              <SelectItem key={opt.minutes} index={i} value={String(opt.minutes)}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <p className="dash-label-subheading">SLA Streak Threshold</p>
+        <p className="page-subtitle" style={{ marginBottom: 8 }}>Consecutive compliant scans required before a URL reverts to the normal interval</p>
+        <Select value={String(slaStreak)} onValueChange={v => setSlaStreak(Number(v))} disabled={saving}>
+          <SelectTrigger aria-label="SLA streak threshold" style={{ maxWidth: 320 }} />
+          <SelectContent>
+            {SLA_STREAK_OPTIONS.map((n, i) => (
+              <SelectItem key={n} index={i} value={String(n)}>{n} scan{n === 1 ? '' : 's'}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {savedMessage && <p className="form-success" style={{ marginTop: 12 }}>{savedMessage}</p>}

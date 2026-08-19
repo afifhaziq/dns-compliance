@@ -114,18 +114,24 @@ func SeedDueDatePresets(database *gorm.DB) error {
 	}).Error
 }
 
-// SeedScanInterval creates the single ScanSettings row from the --interval
-// flag if it doesn't exist yet, with the schedule disabled — automated
-// scanning is an explicit admin opt-in, not a fresh deployment's default.
-// After the first boot, the admin panel is authoritative and this is a
-// no-op.
-func SeedScanInterval(database *gorm.DB, minutes int) error {
+// SeedScanInterval creates the single ScanSettings row from the --interval/
+// --sla-interval/--sla-streak-threshold flags if it doesn't exist yet, with
+// the schedule disabled — automated scanning is an explicit admin opt-in,
+// not a fresh deployment's default. After the first boot, the admin panel
+// is authoritative and this is a no-op.
+func SeedScanInterval(database *gorm.DB, minutes, slaMinutes, slaStreakThreshold int) error {
 	var count int64
 	database.Model(&ScanSettings{}).Count(&count)
 	if count > 0 {
 		return nil
 	}
-	return database.Create(&ScanSettings{ID: 1, IntervalMinutes: minutes, Enabled: false}).Error
+	return database.Create(&ScanSettings{
+		ID:                 1,
+		IntervalMinutes:    minutes,
+		Enabled:            false,
+		SLAIntervalMinutes: slaMinutes,
+		SLAStreakThreshold: slaStreakThreshold,
+	}).Error
 }
 
 // MigrateAdminDepartments ensures an "Admin" department exists and updates

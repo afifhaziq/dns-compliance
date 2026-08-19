@@ -437,6 +437,19 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
     const isHoveringOther =
       activeIndex !== null && activeIndex !== checkedIndex;
 
+    // Collision-clamp against the viewport: a trigger near the bottom of the
+    // screen (e.g. the last field in a tall card) would otherwise position
+    // this fixed-position popover partly or fully below the visible window,
+    // with no way to scroll it into view. Flip above the trigger when there's
+    // more room there than below, and either way cap the height to whatever
+    // space is actually available so the list scrolls instead of overflowing.
+    const GAP = 6;
+    const VIEWPORT_MARGIN = 8;
+    const spaceBelow = window.innerHeight - triggerRect.bottom - GAP - VIEWPORT_MARGIN;
+    const spaceAbove = triggerRect.top - GAP - VIEWPORT_MARGIN;
+    const dropUp = spaceBelow < 160 && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(120, Math.min(300, dropUp ? spaceAbove : spaceBelow));
+
     return createPortal(
       <SelectContentContext.Provider
         value={{ registerItem, activeIndex, checkedIndex }}
@@ -444,7 +457,9 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
         <div
           style={{
             position: "fixed",
-            top: triggerRect.bottom + 6,
+            ...(dropUp
+              ? { bottom: window.innerHeight - triggerRect.top + GAP }
+              : { top: triggerRect.bottom + GAP }),
             left: triggerRect.left,
             minWidth: triggerRect.width,
             // Radix's modal Dialog sets `pointer-events: none` on <body>
@@ -462,7 +477,7 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
           }}
         >
           <motion.div
-            initial={{ opacity: 0, y: -4, scaleY: 0.96 }}
+            initial={{ opacity: 0, y: dropUp ? 4 : -4, scaleY: 0.96 }}
             animate={{ opacity: 1, y: 0, scaleY: 1 }}
             transition={spring.fast}
             // position: relative + rounded/clip so the edge cues below can be
@@ -474,7 +489,7 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
             // scrollHeight past clientHeight and forcing a scrollbar to
             // render even for a one-item list that never needed to scroll.
             style={{
-              transformOrigin: "top center",
+              transformOrigin: dropUp ? "bottom center" : "top center",
               position: "relative",
               overflow: "hidden",
               borderRadius: 12,
@@ -531,8 +546,9 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
             // listener) lets the browser's native default action — scrolling this
             // already-overflow-auto container — proceed untouched.
             onWheel={(e) => e.stopPropagation()}
+            style={{ maxHeight }}
             className={cn(
-              "relative flex flex-col gap-0.5 max-h-[300px] overflow-y-auto rounded-xl p-1 select-none outline-none",
+              "relative flex flex-col gap-0.5 overflow-y-auto rounded-xl p-1 select-none outline-none",
               "bg-stone-panel border border-stone-border shadow-lg",
               className
             )}

@@ -827,6 +827,34 @@ func (s *postgresStore) SetScanEnabled(ctx context.Context, enabled bool) error 
 		Update("enabled", enabled).Error
 }
 
+func (s *postgresStore) GetSLAInterval(ctx context.Context) (int, error) {
+	var settings ScanSettings
+	if err := s.db.WithContext(ctx).First(&settings, 1).Error; err != nil {
+		return 0, err
+	}
+	return settings.SLAIntervalMinutes, nil
+}
+
+func (s *postgresStore) SetSLAInterval(ctx context.Context, minutes int) error {
+	return s.db.WithContext(ctx).
+		Model(&ScanSettings{ID: 1}).
+		Update("sla_interval_minutes", minutes).Error
+}
+
+func (s *postgresStore) GetSLAStreakThreshold(ctx context.Context) (int, error) {
+	var settings ScanSettings
+	if err := s.db.WithContext(ctx).First(&settings, 1).Error; err != nil {
+		return 0, err
+	}
+	return settings.SLAStreakThreshold, nil
+}
+
+func (s *postgresStore) SetSLAStreakThreshold(ctx context.Context, scans int) error {
+	return s.db.WithContext(ctx).
+		Model(&ScanSettings{ID: 1}).
+		Update("sla_streak_threshold", scans).Error
+}
+
 func (s *postgresStore) GetDNSWorkers(ctx context.Context) (int, error) {
 	var settings ScanSettings
 	if err := s.db.WithContext(ctx).First(&settings, 1).Error; err != nil {
@@ -1201,6 +1229,96 @@ func (s *postgresStore) ResurfacedDomains(ctx context.Context) ([]ResurfacedDoma
 
 func (s *postgresStore) ResurfacedDomainsForDepartment(ctx context.Context, departmentID uint) ([]ResurfacedDomain, error) {
 	return s.resurfacedDomains(ctx, &departmentID)
+}
+
+// SLAActiveURLs returns watched URLs whose DueDate has passed and that
+// haven't yet earned streakThreshold consecutive compliant scans on every
+// enabled DNS server — see StartSLAScheduler. "Last N per group" is found
+// via a correlated COUNT subquery (rows with fewer more-recent siblings
+// than the threshold), rather than a window function — same SQLite-test-
+// driver portability reasoning as resurfacedDomains/ispComplianceTiming.
+func (s *postgresStore) SLAActiveURLs(ctx context.Context, streakThreshold int) ([]string, error) {
+	if streakThreshold < 1 {
+		streakThreshold = 1
+	}
+
+	var candidates []URL
+	if err := s.db.WithContext(ctx).
+		Distinct().
+		Joins("JOIN department_urls du ON du.url_id = urls.id AND du.enabled = true").
+		Where("urls.due_date IS NOT NULL AND urls.due_date <= ?", time.Now()).
+		Find(&candidates).Error; err != nil {
+		return nil, err
+	}
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	urlValues := make([]string, len(candidates))
+	for i, u := range candidates {
+		urlValues[i] = u.URL
+	}
+
+	var servers []DNSServer
+	if err := s.db.WithContext(ctx).Where("enabled = ?", true).Find(&servers).Error; err != nil {
+		return nil, err
+	}
+	if len(servers) == 0 {
+		return nil, nil
+	}
+	serverIDs := make([]uint, len(servers))
+	for i, srv := range servers {
+		serverIDs[i] = srv.ID
+	}
+
+	type row struct {
+		URLValue    string
+		DNSServerID uint
+		Compliant   bool
+	}
+	var rows []row
+	err := s.db.WithContext(ctx).
+		Model(&ScanResult{}).
+		Select("url_value, dns_server_id, compliant").
+		Where("url_value IN ? AND dns_server_id IN ?", urlValues, serverIDs).
+		Where(`(SELECT COUNT(*) FROM scan_results sr2
+			WHERE sr2.url_value = scan_results.url_value
+			AND sr2.dns_server_id = scan_results.dns_server_id
+			AND sr2.scanned_at > scan_results.scanned_at) < ?`, streakThreshold).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	type streak struct {
+		count        int
+		allCompliant bool
+	}
+	streaks := make(map[[2]any]*streak)
+	for _, r := range rows {
+		key := [2]any{r.URLValue, r.DNSServerID}
+		st, ok := streaks[key]
+		if !ok {
+			st = &streak{allCompliant: true}
+			streaks[key] = st
+		}
+		st.count++
+		if !r.Compliant {
+			st.allCompliant = false
+		}
+	}
+
+	var active []string
+	for _, urlValue := range urlValues {
+		for _, serverID := range serverIDs {
+			st, ok := streaks[[2]any{urlValue, serverID}]
+			graduated := ok && st.count == streakThreshold && st.allCompliant
+			if !graduated {
+				active = append(active, urlValue)
+				break
+			}
+		}
+	}
+	return active, nil
 }
 
 // ispComplianceTiming computes time-to-block stats for one ISP, optionally

@@ -20,35 +20,37 @@ import (
 
 // fullMockStore implements db.Store completely for handler tests.
 type fullMockStore struct {
-	urls           []db.URL
-	dnsServers     []db.DNSServer
-	results        []db.ScanResult
-	activeRun      *db.ScanRun
-	lastRun        *db.ScanRun
-	progress       []db.ProgressEntry
-	departments    []db.Department
-	users          []db.User
-	sessions       []db.Session
-	departmentURLs []db.DepartmentURL
-	domainWhois    []db.DomainWhois
-	ipInfo         []db.IPInfo
-	favicons       []db.Favicon
-	subdomainScans []db.SubdomainScan
-	ispLogos       []db.ISPLogo
-	gridPrefs      []db.GridPreference
-	agencies       []db.Agency
-	dueDatePresets []db.DueDatePreset
-	instruments    []db.Instrument
-	citations      []db.Citation
-	categories     []db.Category
-	elements       []db.Element
-	subElements    []db.SubElement
-	urlOffences    []db.URLOffence
-	notifications  []db.Notification
-	scheduleMu     sync.Mutex // guards the three fields below; the scheduler goroutine reads them concurrently with test/handler writes
-	scanInterval   int
-	scanEnabled    bool
-	dnsWorkers     int
+	urls               []db.URL
+	dnsServers         []db.DNSServer
+	results            []db.ScanResult
+	activeRun          *db.ScanRun
+	lastRun            *db.ScanRun
+	progress           []db.ProgressEntry
+	departments        []db.Department
+	users              []db.User
+	sessions           []db.Session
+	departmentURLs     []db.DepartmentURL
+	domainWhois        []db.DomainWhois
+	ipInfo             []db.IPInfo
+	favicons           []db.Favicon
+	subdomainScans     []db.SubdomainScan
+	ispLogos           []db.ISPLogo
+	gridPrefs          []db.GridPreference
+	agencies           []db.Agency
+	dueDatePresets     []db.DueDatePreset
+	instruments        []db.Instrument
+	citations          []db.Citation
+	categories         []db.Category
+	elements           []db.Element
+	subElements        []db.SubElement
+	urlOffences        []db.URLOffence
+	notifications      []db.Notification
+	scheduleMu         sync.Mutex // guards the fields below; the scheduler goroutine reads them concurrently with test/handler writes
+	scanInterval       int
+	scanEnabled        bool
+	dnsWorkers         int
+	slaInterval        int
+	slaStreakThreshold int
 }
 
 func (m *fullMockStore) ListURLs(_ context.Context) ([]db.URL, error) { return m.urls, nil }
@@ -977,6 +979,28 @@ func (m *fullMockStore) SetDNSWorkers(_ context.Context, workers int) error {
 	m.dnsWorkers = workers
 	return nil
 }
+func (m *fullMockStore) GetSLAInterval(_ context.Context) (int, error) {
+	m.scheduleMu.Lock()
+	defer m.scheduleMu.Unlock()
+	return m.slaInterval, nil
+}
+func (m *fullMockStore) SetSLAInterval(_ context.Context, minutes int) error {
+	m.scheduleMu.Lock()
+	defer m.scheduleMu.Unlock()
+	m.slaInterval = minutes
+	return nil
+}
+func (m *fullMockStore) GetSLAStreakThreshold(_ context.Context) (int, error) {
+	m.scheduleMu.Lock()
+	defer m.scheduleMu.Unlock()
+	return m.slaStreakThreshold, nil
+}
+func (m *fullMockStore) SetSLAStreakThreshold(_ context.Context, scans int) error {
+	m.scheduleMu.Lock()
+	defer m.scheduleMu.Unlock()
+	m.slaStreakThreshold = scans
+	return nil
+}
 
 func (m *fullMockStore) ISPStats(_ context.Context, _ string) (db.ISPStatsResult, error) {
 	return db.ISPStatsResult{}, nil
@@ -1016,6 +1040,9 @@ func (m *fullMockStore) ResurfacedDomains(_ context.Context) ([]db.ResurfacedDom
 	return nil, nil
 }
 func (m *fullMockStore) ResurfacedDomainsForDepartment(_ context.Context, _ uint) ([]db.ResurfacedDomain, error) {
+	return nil, nil
+}
+func (m *fullMockStore) SLAActiveURLs(_ context.Context, _ int) ([]string, error) {
 	return nil, nil
 }
 func (m *fullMockStore) ListDomainSummaries(_ context.Context, _, _ int, _ db.DomainSummaryFilter) ([]db.DomainSummary, int, error) {
@@ -2633,7 +2660,7 @@ func TestURLsRequestedThisMonth_ScopedForDepartment(t *testing.T) {
 }
 
 func TestScanInterval_GetAndSet_AdminOnly(t *testing.T) {
-	store := &fullMockStore{scanInterval: 60, scanEnabled: true, dnsWorkers: 20}
+	store := &fullMockStore{scanInterval: 60, scanEnabled: true, dnsWorkers: 20, slaInterval: 15, slaStreakThreshold: 3}
 	admin := adminCookie(store)
 	r := setupRouter(store, nil)
 
@@ -2645,16 +2672,18 @@ func TestScanInterval_GetAndSet_AdminOnly(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 	var got struct {
-		IntervalMinutes int  `json:"interval_minutes"`
-		Enabled         bool `json:"enabled"`
-		DNSWorkers      int  `json:"dns_workers"`
+		IntervalMinutes    int  `json:"interval_minutes"`
+		Enabled            bool `json:"enabled"`
+		DNSWorkers         int  `json:"dns_workers"`
+		SLAIntervalMinutes int  `json:"sla_interval_minutes"`
+		SLAStreakThreshold int  `json:"sla_streak_threshold"`
 	}
 	json.NewDecoder(w.Body).Decode(&got)
-	if got.IntervalMinutes != 60 || !got.Enabled || got.DNSWorkers != 20 {
-		t.Fatalf("expected interval_minutes=60 enabled=true dns_workers=20, got %+v", got)
+	if got.IntervalMinutes != 60 || !got.Enabled || got.DNSWorkers != 20 || got.SLAIntervalMinutes != 15 || got.SLAStreakThreshold != 3 {
+		t.Fatalf("expected interval_minutes=60 enabled=true dns_workers=20 sla_interval_minutes=15 sla_streak_threshold=3, got %+v", got)
 	}
 
-	body, _ := json.Marshal(map[string]any{"interval_minutes": 15, "enabled": false, "dns_workers": 100})
+	body, _ := json.Marshal(map[string]any{"interval_minutes": 15, "enabled": false, "dns_workers": 100, "sla_interval_minutes": 5, "sla_streak_threshold": 4})
 	req2 := httptest.NewRequest(http.MethodPatch, "/api/admin/scan-interval", bytes.NewReader(body))
 	req2.Header.Set("Content-Type", "application/json")
 	req2.AddCookie(admin)
@@ -2671,6 +2700,12 @@ func TestScanInterval_GetAndSet_AdminOnly(t *testing.T) {
 	}
 	if store.dnsWorkers != 100 {
 		t.Fatalf("expected the stored dns_workers to update to 100, got %d", store.dnsWorkers)
+	}
+	if store.slaInterval != 5 {
+		t.Fatalf("expected the stored sla_interval to update to 5, got %d", store.slaInterval)
+	}
+	if store.slaStreakThreshold != 4 {
+		t.Fatalf("expected the stored sla_streak_threshold to update to 4, got %d", store.slaStreakThreshold)
 	}
 }
 

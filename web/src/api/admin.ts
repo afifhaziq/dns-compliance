@@ -78,12 +78,26 @@ export interface ScanSchedule {
   interval_minutes: number
   enabled: boolean
   dns_workers: number
+  sla_interval_minutes: number
+  sla_streak_threshold: number
 }
 
 export async function fetchScanInterval(): Promise<ScanSchedule> {
   return api.get<ScanSchedule>('/admin/scan-interval')
 }
 
-export async function setScanInterval(minutes: number, enabled: boolean, dnsWorkers: number): Promise<void> {
-  await api.patch<void>('/admin/scan-interval', { interval_minutes: minutes, enabled, dns_workers: dnsWorkers })
+export async function setScanInterval(
+  minutes: number,
+  enabled: boolean,
+  dnsWorkers: number,
+  slaMinutes: number,
+  slaStreakThreshold: number,
+): Promise<void> {
+  await api.patch<void>('/admin/scan-interval', {
+    interval_minutes: minutes,
+    enabled,
+    dns_workers: dnsWorkers,
+    sla_interval_minutes: slaMinutes,
+    sla_streak_threshold: slaStreakThreshold,
+  })
 }

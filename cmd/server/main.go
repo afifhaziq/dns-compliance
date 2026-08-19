@@ -40,6 +40,8 @@ func main() {
 	crawlerToken := flag.String("crawler-token", envOr("CRAWLER_TOKEN", ""), "shared secret for both gRPC directions: sent with outgoing StartSweep RPCs, and required on incoming Submit RPCs; must match the crawler's --auth-token")
 	seedFile := flag.String("seed-dns", "dns-server.yaml", "YAML file to seed DNS servers on first run; empty to skip")
 	intervalMin := flag.Int("interval", 60, "scan interval in minutes")
+	slaIntervalMin := flag.Int("sla-interval", 15, "scan interval in minutes for URLs still under active SLA tracking (a DueDate in the past not yet SLAStreakThreshold consecutive compliant scans)")
+	slaStreakThreshold := flag.Int("sla-streak-threshold", 3, "consecutive compliant scans (per URL x DNS server) before a URL under SLA tracking reverts to the normal scan interval")
 	cookieSecure := flag.Bool("cookie-secure", envOr("COOKIE_SECURE", "true") == "true", "mark the session cookie Secure (disable for local plain-HTTP dev)")
 	bootstrapAdminUser := flag.String("bootstrap-admin-username", envOr("BOOTSTRAP_ADMIN_USERNAME", ""), "username for the bootstrap admin, created only if the users table is empty")
 	bootstrapAdminPass := flag.String("bootstrap-admin-password", envOr("BOOTSTRAP_ADMIN_PASSWORD", ""), "password for the bootstrap admin, created only if the users table is empty")
@@ -84,7 +86,7 @@ func main() {
 		log.Fatalf("migrate admin departments: %v", err)
 	}
 
-	if err := db.SeedScanInterval(gormDB, *intervalMin); err != nil {
+	if err := db.SeedScanInterval(gormDB, *intervalMin, *slaIntervalMin, *slaStreakThreshold); err != nil {
 		log.Printf("seed scan interval: %v", err)
 	}
 
@@ -190,6 +192,11 @@ func main() {
 	// admin panel (db.ScanSettings); *intervalMin only seeds its initial
 	// value and serves as a fallback if the setting can't be read.
 	server.StartScheduler(ctx, sc, store, time.Duration(*intervalMin)*time.Minute)
+
+	// Start the SLA scheduler — same shape as above but scans only URLs
+	// still under active SLA tracking, on its own (typically shorter)
+	// cadence; *slaIntervalMin is likewise only the seed/fallback value.
+	server.StartSLAScheduler(ctx, sc, store, time.Duration(*slaIntervalMin)*time.Minute)
 
 	// Start the WHOIS/RDAP refresher — re-fetches stale DomainWhois rows on
 	// a much slower cadence than the scan scheduler.

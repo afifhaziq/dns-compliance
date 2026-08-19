@@ -105,6 +105,12 @@ type ISPStatsStore interface {
 	ServerUptimeForDepartment(ctx context.Context, dnsServerID uint, since, until time.Time, departmentID uint) ([]ServerUptimeStat, error)
 	ResurfacedDomains(ctx context.Context) ([]ResurfacedDomain, error)
 	ResurfacedDomainsForDepartment(ctx context.Context, departmentID uint) ([]ResurfacedDomain, error)
+	// SLAActiveURLs returns the normalized URL values of watched domains
+	// still under active SLA tracking: DueDate has passed, and at least one
+	// enabled DNS server hasn't yet reached streakThreshold consecutive
+	// compliant scans for that (url, server) pair. See StartSLAScheduler
+	// (internal/server/scheduler.go).
+	SLAActiveURLs(ctx context.Context, streakThreshold int) ([]string, error)
 }
 
 // DepartmentStore is the departments table — admin-only by nature (cross-
@@ -192,6 +198,10 @@ type ScanSettingsStore interface {
 	SetScanEnabled(ctx context.Context, enabled bool) error
 	GetDNSWorkers(ctx context.Context) (int, error)
 	SetDNSWorkers(ctx context.Context, workers int) error
+	GetSLAInterval(ctx context.Context) (int, error)
+	SetSLAInterval(ctx context.Context, minutes int) error
+	GetSLAStreakThreshold(ctx context.Context) (int, error)
+	SetSLAStreakThreshold(ctx context.Context, scans int) error
 }
 
 // EnrichmentStore covers the fetch-once (or fetch-rarely) caches keyed by

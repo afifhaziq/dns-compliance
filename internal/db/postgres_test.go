@@ -1387,6 +1387,101 @@ func TestResurfacedDomains_RollsUpMultipleServersIntoOneDomainRow(t *testing.T) 
 	}
 }
 
+func TestSLAActiveURLs(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srvA, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "SLAISP", Name: "SLA DNS A", Address: "9.9.8.1:53", Protocol: "udp"})
+	srvB, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "SLAISP", Name: "SLA DNS B", Address: "9.9.8.2:53", Protocol: "udp"})
+	disabledSrv, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "SLAISP", Name: "SLA DNS Disabled", Address: "9.9.8.3:53", Protocol: "udp"})
+	if err := s.SetDNSServerEnabled(ctx, disabledSrv.ID, false); err != nil {
+		t.Fatalf("disable server: %v", err)
+	}
+	dept, _ := s.CreateDepartment(ctx, "SLADept")
+
+	past := time.Now().Add(-48 * time.Hour)
+	future := time.Now().Add(48 * time.Hour)
+
+	setDue := func(u db.URL, due time.Time) {
+		duePtr := &due
+		if _, err := s.UpdateURLCaseFields(ctx, dept.ID, u.ID, db.URLCaseFields{DueDate: &duePtr}); err != nil {
+			t.Fatalf("UpdateURLCaseFields for %s: %v", u.URL, err)
+		}
+	}
+	insert := func(u db.URL, srv db.DNSServer, compliant bool, at time.Time) {
+		run, _ := s.CreateScanRun(ctx, "manual")
+		if err := s.InsertResult(ctx, db.ScanResult{
+			ScanRunID: run.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srv.ID,
+			Compliant: compliant, ScannedAt: at,
+		}); err != nil {
+			t.Fatalf("InsertResult for %s: %v", u.URL, err)
+		}
+	}
+
+	// noDueDate: watched, no DueDate at all — never a candidate.
+	noDueDate, _ := s.AddURLToWatchlist(ctx, dept.ID, "sla-no-due.com")
+	_ = noDueDate
+
+	// notYetDue: DueDate is in the future — not active yet.
+	notYetDue, _ := s.AddURLToWatchlist(ctx, dept.ID, "sla-not-yet-due.com")
+	setDue(notYetDue, future)
+
+	// neverScanned: due in the past, zero scans — active (no streak at all).
+	neverScanned, _ := s.AddURLToWatchlist(ctx, dept.ID, "sla-never-scanned.com")
+	setDue(neverScanned, past)
+
+	// graduated: due in the past, last 3 scans on both enabled servers all
+	// compliant — graduated off SLA tracking.
+	graduated, _ := s.AddURLToWatchlist(ctx, dept.ID, "sla-graduated.com")
+	setDue(graduated, past)
+	for _, srv := range []db.DNSServer{srvA, srvB} {
+		for i := 0; i < 3; i++ {
+			insert(graduated, srv, true, past.Add(time.Duration(i)*time.Hour))
+		}
+	}
+
+	// partiallyGraduated: graduated on srvA but srvB's latest scan is a
+	// violation — still active, since not every enabled server qualifies.
+	partiallyGraduated, _ := s.AddURLToWatchlist(ctx, dept.ID, "sla-partial.com")
+	setDue(partiallyGraduated, past)
+	for i := 0; i < 3; i++ {
+		insert(partiallyGraduated, srvA, true, past.Add(time.Duration(i)*time.Hour))
+	}
+	insert(partiallyGraduated, srvB, false, past.Add(time.Hour))
+
+	// disabledServerOnly: only ever scanned against the disabled server —
+	// that server doesn't count, so the URL has no enabled-server streak
+	// at all and stays active.
+	disabledServerOnly, _ := s.AddURLToWatchlist(ctx, dept.ID, "sla-disabled-server.com")
+	setDue(disabledServerOnly, past)
+	insert(disabledServerOnly, disabledSrv, true, past.Add(time.Hour))
+
+	active, err := s.SLAActiveURLs(ctx, 3)
+	if err != nil {
+		t.Fatalf("SLAActiveURLs: %v", err)
+	}
+	got := make(map[string]bool, len(active))
+	for _, u := range active {
+		got[u] = true
+	}
+	want := map[string]bool{
+		"sla-never-scanned.com":   true,
+		"sla-partial.com":         true,
+		"sla-disabled-server.com": true,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("expected active set %v, got %v", want, got)
+	}
+	for u := range want {
+		if !got[u] {
+			t.Fatalf("expected %s to be SLA-active, got %v", u, got)
+		}
+	}
+	if got["sla-no-due.com"] || got["sla-not-yet-due.com"] || got["sla-graduated.com"] {
+		t.Fatalf("expected no-due/not-yet-due/graduated URLs to be excluded, got %v", got)
+	}
+}
+
 func TestResurfacedDomains_ScopesToDepartmentWatchlist(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

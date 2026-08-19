@@ -524,17 +524,35 @@ func (h *Handlers) GetScanInterval(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"interval_minutes": minutes, "enabled": enabled, "dns_workers": dnsWorkers})
+	slaInterval, err := h.store.GetSLAInterval(r.Context())
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	slaStreakThreshold, err := h.store.GetSLAStreakThreshold(r.Context())
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"interval_minutes":     minutes,
+		"enabled":              enabled,
+		"dns_workers":          dnsWorkers,
+		"sla_interval_minutes": slaInterval,
+		"sla_streak_threshold": slaStreakThreshold,
+	})
 }
 
 func (h *Handlers) SetScanInterval(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		IntervalMinutes int  `json:"interval_minutes"`
-		Enabled         bool `json:"enabled"`
-		DNSWorkers      int  `json:"dns_workers"`
+		IntervalMinutes    int  `json:"interval_minutes"`
+		Enabled            bool `json:"enabled"`
+		DNSWorkers         int  `json:"dns_workers"`
+		SLAIntervalMinutes int  `json:"sla_interval_minutes"`
+		SLAStreakThreshold int  `json:"sla_streak_threshold"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.IntervalMinutes < 1 || body.DNSWorkers < 1 || body.DNSWorkers > math.MaxInt32 {
-		writeError(w, http.StatusBadRequest, "interval_minutes and dns_workers must be positive integers")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.IntervalMinutes < 1 || body.DNSWorkers < 1 || body.DNSWorkers > math.MaxInt32 || body.SLAIntervalMinutes < 1 || body.SLAStreakThreshold < 1 {
+		writeError(w, http.StatusBadRequest, "interval_minutes, dns_workers, sla_interval_minutes, and sla_streak_threshold must be positive integers")
 		return
 	}
 	if err := h.store.SetScanInterval(r.Context(), body.IntervalMinutes); err != nil {
@@ -546,6 +564,14 @@ func (h *Handlers) SetScanInterval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.store.SetDNSWorkers(r.Context(), body.DNSWorkers); err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	if err := h.store.SetSLAInterval(r.Context(), body.SLAIntervalMinutes); err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	if err := h.store.SetSLAStreakThreshold(r.Context(), body.SLAStreakThreshold); err != nil {
 		writeInternalError(w, err)
 		return
 	}
