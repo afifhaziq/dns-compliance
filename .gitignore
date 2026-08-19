@@ -5,10 +5,11 @@ web/.tanstack/
 .go/
 .gocache/
 
-# Compiled binaries (go build -o server/crawler/import-crd) — regenerated, not source
+# Compiled binaries (go build -o server/crawler/import-crd/import-cmod) — regenerated, not source
 /server
 /crawler
 /import-crd
+/import-cmod
 
 # Skill installs from `npx skills add` — local tooling, not project source
 .agents/skills/
