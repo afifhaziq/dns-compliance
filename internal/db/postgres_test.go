@@ -2,6 +2,8 @@ package db_test
 
 import (
 	"context"
+	"reflect"
+	"sort"
 	"testing"
 	"time"
 
@@ -2193,5 +2195,47 @@ func TestGetURLByID(t *testing.T) {
 	}
 	if missing != nil {
 		t.Fatalf("expected nil for unknown id, got %+v", missing)
+	}
+}
+
+func TestListDepartmentURLs_DerivesCurrentReferenceAndRequestingDepartments(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	crd, _ := s.CreateDepartment(ctx, "CRD")
+	cmod, _ := s.CreateDepartment(ctx, "CMOD")
+	u, err := s.AddURLToWatchlist(ctx, crd.ID, "case-ref.com")
+	if err != nil {
+		t.Fatalf("AddURLToWatchlist: %v", err)
+	}
+
+	crdCase, err := s.CreateCase(ctx, crd.ID, u.ID, "requested")
+	if err != nil {
+		t.Fatalf("CreateCase (crd): %v", err)
+	}
+	letterDate := time.Now().Add(-time.Hour)
+	if _, err := s.AddCaseLetter(ctx, db.CaseLetter{
+		CaseID: crdCase.ID, Type: "Notice", ReferenceNumber: "REF-1",
+		LetterDate: &letterDate,
+	}); err != nil {
+		t.Fatalf("AddCaseLetter: %v", err)
+	}
+	if _, err := s.CreateCase(ctx, cmod.ID, u.ID, "requested"); err != nil {
+		t.Fatalf("CreateCase (cmod): %v", err)
+	}
+
+	entries, err := s.ListDepartmentURLs(ctx, crd.ID)
+	if err != nil {
+		t.Fatalf("ListDepartmentURLs: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("got %d entries, want 1", len(entries))
+	}
+	if entries[0].CurrentReferenceNumber != "REF-1" {
+		t.Errorf("CurrentReferenceNumber = %q, want REF-1", entries[0].CurrentReferenceNumber)
+	}
+	got := append([]string{}, entries[0].RequestingDepartments...)
+	sort.Strings(got)
+	if !reflect.DeepEqual(got, []string{"CMOD", "CRD"}) {
+		t.Errorf("RequestingDepartments = %v, want [CMOD CRD]", got)
 	}
 }

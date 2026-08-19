@@ -1314,6 +1314,17 @@ func (m *fullMockStore) HasRecentResurfacedNotification(_ context.Context, depar
 	return false, nil
 }
 
+func (m *fullMockStore) CreateCase(_ context.Context, departmentID, urlID uint, phase string) (db.Case, error) {
+	return db.Case{ID: 1, DepartmentID: departmentID}, nil
+}
+func (m *fullMockStore) AddCaseLetter(_ context.Context, letter db.CaseLetter) (db.CaseLetter, error) {
+	letter.ID = 1
+	return letter, nil
+}
+func (m *fullMockStore) ListCasesForURL(_ context.Context, urlValue string) ([]db.CaseWithLetters, error) {
+	return nil, nil
+}
+
 var _ db.Store = (*fullMockStore)(nil)
 
 func setupRouter(store db.Store, sc *server.Scanner) http.Handler {

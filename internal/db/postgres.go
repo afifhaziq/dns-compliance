@@ -557,12 +557,51 @@ func (s *postgresStore) ListDepartmentURLs(ctx context.Context, departmentID uin
 		Table("urls").
 		Select(`urls.id, urls.url, urls.created_at, du.enabled,
 			urls.due_date, urls.agency_id, agencies.name as agency_name,
-			urls.status, urls.requested_at`).
+			urls.status, urls.requested_at,
+			(SELECT cl.reference_number FROM case_letters cl
+			 JOIN cases c ON c.id = cl.case_id
+			 JOIN case_urls cu ON cu.case_id = c.id
+			 WHERE cu.url_id = urls.id
+			 ORDER BY cl.letter_date DESC LIMIT 1) AS current_reference_number`).
 		Joins("JOIN department_urls du ON du.url_id = urls.id AND du.department_id = ?", departmentID).
 		Joins("LEFT JOIN agencies ON agencies.id = urls.agency_id").
 		Order("urls.created_at asc").
 		Scan(&entries).Error
-	return entries, err
+	if err != nil {
+		return nil, err
+	}
+
+	// RequestingDepartments can't be a scalar subquery (it's genuinely
+	// multi-valued) — fetch separately and merge in Go rather than a
+	// database-specific array_agg, keeping this portable across Postgres
+	// and the SQLite test driver.
+	if len(entries) > 0 {
+		urlIDs := make([]uint, len(entries))
+		idxByURLID := make(map[uint]int, len(entries))
+		for i, e := range entries {
+			urlIDs[i] = e.ID
+			idxByURLID[e.ID] = i
+		}
+		type deptRow struct {
+			URLID uint
+			Name  string
+		}
+		var rows []deptRow
+		if err := s.db.WithContext(ctx).
+			Table("case_urls").
+			Select("DISTINCT case_urls.url_id as url_id, departments.name as name").
+			Joins("JOIN cases ON cases.id = case_urls.case_id").
+			Joins("JOIN departments ON departments.id = cases.department_id").
+			Where("case_urls.url_id IN ?", urlIDs).
+			Scan(&rows).Error; err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			i := idxByURLID[r.URLID]
+			entries[i].RequestingDepartments = append(entries[i].RequestingDepartments, r.Name)
+		}
+	}
+	return entries, nil
 }
 
 // AddURLToWatchlist gets-or-creates the URL by normalized value, then links

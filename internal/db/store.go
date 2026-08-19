@@ -328,4 +328,29 @@ type Store interface {
 	EnrichmentStore
 	LegalCitationStore
 	NotificationStore
+	CaseStore
+}
+
+// CaseStore is the cases/case_letters/case_urls aggregate.
+type CaseStore interface {
+	// CreateCase creates a Case for departmentID and links it to urlID
+	// with the given phase (requested | uplift | suspended) via CaseURL.
+	// Returns the created Case (zero letters — AddCaseLetter is separate).
+	CreateCase(ctx context.Context, departmentID, urlID uint, phase string) (Case, error)
+	// AddCaseLetter appends one CaseLetter row to an existing case.
+	AddCaseLetter(ctx context.Context, letter CaseLetter) (CaseLetter, error)
+	// ListCasesForURL returns every case covering urlValue, each with its
+	// letters (newest LetterDate first) and this url's own Phase from
+	// case_urls — ownership scoping happens at the handler layer
+	// (requireDomainOwnership), same split as ListOffencesByURL/
+	// AttachOffenceToURL already use.
+	ListCasesForURL(ctx context.Context, urlValue string) ([]CaseWithLetters, error)
+}
+
+// CaseWithLetters is Case plus its Letters and this url's Phase — the read
+// shape ListCasesForURL returns. Not a persisted table.
+type CaseWithLetters struct {
+	Case
+	Phase   string       `json:"phase"`
+	Letters []CaseLetter `json:"letters"`
 }
