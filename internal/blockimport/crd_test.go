@@ -37,7 +37,7 @@ func writeTestXLSX(t *testing.T, sheetName string, rows [][]string) string {
 
 func TestParseCRDRows_ResolvesColumnsByHeaderName(t *testing.T) {
 	path := writeTestXLSX(t, "2011-2026", [][]string{
-		{"No. Rujukan NMD", "No. Rujukan NMSMD", "URL", "Status", "Kategori", "Elemen", "Butiran Kesalahan", "Agensi", "Year"},
+		{"No. Rujukan NMD", "No. Rujukan NMSMD", "Alamat Laman Web", "Status", "Kategori", "Elemen", "Butiran Kesalahan", "Agensi", "Tahun"},
 		{"REF-1", "", "http://example.com", "Blocked", "Judi", "", "Seksyen 233", "PDRM", "2023"},
 	})
 	rows, err := ParseCRDRows(path)
@@ -54,7 +54,7 @@ func TestParseCRDRows_ResolvesColumnsByHeaderName(t *testing.T) {
 
 func TestParseCRDRows_FixesColumnShiftBug(t *testing.T) {
 	path := writeTestXLSX(t, "2011-2026", [][]string{
-		{"No. Rujukan NMD", "No. Rujukan NMSMD", "URL", "Status", "Kategori", "Elemen", "Butiran Kesalahan", "Agensi", "Year"},
+		{"No. Rujukan NMD", "No. Rujukan NMSMD", "Alamat Laman Web", "Status", "Kategori", "Elemen", "Butiran Kesalahan", "Agensi", "Tahun"},
 		{"REF-2", "", "http://shift.example.com", "Blocked", "", "Kepentingan Negara", "", "", "2020"},
 	})
 	rows, err := ParseCRDRows(path)
@@ -71,7 +71,7 @@ func TestParseCRDRows_FixesColumnShiftBug(t *testing.T) {
 
 func TestParseCRDRows_StripsNumberedListPrefix(t *testing.T) {
 	path := writeTestXLSX(t, "2011-2026", [][]string{
-		{"No. Rujukan NMD", "No. Rujukan NMSMD", "URL", "Status", "Kategori", "Elemen", "Butiran Kesalahan", "Agensi", "Year"},
+		{"No. Rujukan NMD", "No. Rujukan NMSMD", "Alamat Laman Web", "Status", "Kategori", "Elemen", "Butiran Kesalahan", "Agensi", "Tahun"},
 		{"REF-3", "", "19. http://www.example.net", "Blocked", "Judi", "", "", "", "2021"},
 	})
 	rows, err := ParseCRDRows(path)
@@ -83,9 +83,25 @@ func TestParseCRDRows_StripsNumberedListPrefix(t *testing.T) {
 	}
 }
 
+func TestParseCRDRows_SkipsPreambleRowsBeforeHeader(t *testing.T) {
+	path := writeTestXLSX(t, "2011-2026", [][]string{
+		{"", "Tahun", "", "", "Blocked"},
+		{"", "2011", "", "", "5"},
+		{"", "Tahun", "Alamat Laman Web", "Butiran Kesalahan", "Agensi", "Status", "No. Rujukan NMD", "Kategori", "Elemen"},
+		{"", "2023", "http://example.com", "Seksyen 233", "PDRM", "Blocked", "REF-1", "Judi", ""},
+	})
+	rows, err := ParseCRDRows(path)
+	if err != nil {
+		t.Fatalf("ParseCRDRows: %v", err)
+	}
+	if len(rows) != 1 || rows[0].ReferenceNumber != "REF-1" || rows[0].Domain != "http://example.com" || rows[0].Year != 2023 {
+		t.Fatalf("got %+v", rows)
+	}
+}
+
 func TestParseCRDRows_StripsStraySpaceAfterScheme(t *testing.T) {
 	path := writeTestXLSX(t, "2011-2026", [][]string{
-		{"No. Rujukan NMD", "No. Rujukan NMSMD", "URL", "Status", "Kategori", "Elemen", "Butiran Kesalahan", "Agensi", "Year"},
+		{"No. Rujukan NMD", "No. Rujukan NMSMD", "Alamat Laman Web", "Status", "Kategori", "Elemen", "Butiran Kesalahan", "Agensi", "Tahun"},
 		{"REF-4", "", "http:// www.foo.com", "Blocked", "Judi", "", "", "", "2021"},
 	})
 	rows, err := ParseCRDRows(path)

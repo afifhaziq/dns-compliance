@@ -129,6 +129,32 @@ func TestWriteCRDCases_SkipsUnnormalizableURL(t *testing.T) {
 	}
 }
 
+func TestWriteCRDCases_DedupesDomainsThatNormalizeToTheSameURL(t *testing.T) {
+	gdb := newTestGormDB(t)
+	crd := mustSeedDepartment(t, gdb, "CRD")
+	cases := []CollapsedCase{{
+		ReferenceNumber: "REF-1",
+		Domains: []CollapsedDomain{
+			{RawDomain: "http://example.com", Status: "Blocked"},
+			{RawDomain: "https://example.com/", Status: "Uplift"},
+		},
+		Categories: []string{"Judi"},
+	}}
+
+	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, false)
+	if err != nil {
+		t.Fatalf("WriteCRDCases: %v", err)
+	}
+	if summary.CasesCreated != 1 {
+		t.Fatalf("CasesCreated = %d, want 1", summary.CasesCreated)
+	}
+	var caseURLCount int64
+	gdb.Model(&db.CaseURL{}).Count(&caseURLCount)
+	if caseURLCount != 1 {
+		t.Fatalf("case_urls has %d rows, want 1 (deduped by normalized URL)", caseURLCount)
+	}
+}
+
 func TestWriteCRDCases_DryRunWritesNothing(t *testing.T) {
 	gdb := newTestGormDB(t)
 	crd := mustSeedDepartment(t, gdb, "CRD")

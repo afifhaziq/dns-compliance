@@ -98,18 +98,30 @@ func WriteCRDCases(ctx context.Context, gdb *gorm.DB, crdDeptID uint, cases []Co
 				return err
 			}
 
+			// Two raw domain spellings within the same reference can
+			// normalize to the same URL row (e.g. "http://foo.com" and
+			// "https://foo.com") even though CollapseCRDRows only dedupes
+			// on exact raw string — track by URLID here too, last-write-wins
+			// on Phase, to avoid a duplicate (case_id, url_id) insert.
+			caseURLByID := make(map[uint]*db.CaseURL)
 			for _, d := range cc.Domains {
 				u, err := createURL(ctx, tx, d.RawDomain)
 				if err != nil {
 					summary.URLsSkippedBadURL++
 					continue
 				}
-				caseURL := db.CaseURL{
+				if existing, dup := caseURLByID[u.ID]; dup {
+					existing.Phase = mapCRDStatus(d.Status)
+					continue
+				}
+				caseURLByID[u.ID] = &db.CaseURL{
 					CaseID: c.ID,
 					URLID:  u.ID,
 					Phase:  mapCRDStatus(d.Status),
 				}
-				if err := tx.WithContext(ctx).Create(&caseURL).Error; err != nil {
+			}
+			for _, caseURL := range caseURLByID {
+				if err := tx.WithContext(ctx).Create(caseURL).Error; err != nil {
 					return err
 				}
 			}

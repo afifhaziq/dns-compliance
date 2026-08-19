@@ -51,6 +51,19 @@ var (
 	strayScheseSpaceRe   = regexp.MustCompile(`^(https?://)\s+`)
 )
 
+// findHeaderRow returns the index of the first row containing anchorCol
+// (trimmed, exact match), or -1 if none does.
+func findHeaderRow(rows [][]string, anchorCol string) int {
+	for i, r := range rows {
+		for _, v := range r {
+			if strings.TrimSpace(v) == anchorCol {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
 func headerIndex(headers []string) map[string]int {
 	idx := make(map[string]int, len(headers))
 	for i, h := range headers {
@@ -94,7 +107,16 @@ func ParseCRDRows(path string) ([]CRDRow, error) {
 		return nil, fmt.Errorf("sheet %q has no rows", crdSheetName)
 	}
 
-	idx := headerIndex(rows[0])
+	// The real file has a multi-row legend/summary preamble above the real
+	// header row, so the header isn't always row 0 — locate it by scanning
+	// for the row containing the reference-number column, which is present
+	// in every version of this sheet.
+	headerRow := findHeaderRow(rows, "No. Rujukan NMD")
+	if headerRow == -1 {
+		return nil, fmt.Errorf("sheet %q: no header row found (looking for %q)", crdSheetName, "No. Rujukan NMD")
+	}
+
+	idx := headerIndex(rows[headerRow])
 	col := func(name string) int {
 		i, ok := idx[name]
 		if !ok {
@@ -104,16 +126,16 @@ func ParseCRDRows(path string) ([]CRDRow, error) {
 	}
 
 	refCol := col("No. Rujukan NMD")
-	urlCol := col("URL")
+	urlCol := col("Alamat Laman Web")
 	statusCol := col("Status")
 	categoryCol := col("Kategori")
 	elementCol := col("Elemen")
 	citationCol := col("Butiran Kesalahan")
 	agencyCol := col("Agensi")
-	yearCol := col("Year")
+	yearCol := col("Tahun")
 
 	var out []CRDRow
-	for _, r := range rows[1:] {
+	for _, r := range rows[headerRow+1:] {
 		category := cellAt(r, categoryCol)
 		element := cellAt(r, elementCol)
 		// 12 column-shift rows: Kategori blank, Elemen holds a category name.
