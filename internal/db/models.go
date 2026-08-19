@@ -587,6 +587,58 @@ type URLOffence struct {
 	RecordedAt   time.Time   `gorm:"not null" json:"recorded_at"`
 }
 
+// Case is a thin anchor, one row per real-world case/request — the same
+// role ScanRun already plays for ScanResult. Every case fact (reference
+// numbers, letters, subject, OIC, workflow status...) lives on CaseLetter,
+// not here, since the source data's real grain is one row per
+// letter/document, not one row per case.
+type Case struct {
+	ID           uint       `gorm:"primaryKey" json:"id"`
+	DepartmentID uint       `gorm:"not null;index" json:"department_id"`
+	Department   Department `gorm:"foreignKey:DepartmentID" json:"-"`
+	CreatedAt    time.Time  `json:"created_at"`
+}
+
+// CaseLetter is one row per actual letter/document (Memo, Notice, Memo
+// (Uplift), Notice (Uplift)) FK'd to a Case — a case with a block plus a
+// later uplift gets up to 4 rows here. Mirrors the source sheet's real
+// grain (one row per letter), which an earlier single-Case-row design
+// collapsed away.
+type CaseLetter struct {
+	ID              uint       `gorm:"primaryKey" json:"id"`
+	CaseID          uint       `gorm:"not null;index" json:"case_id"`
+	Type            string     `gorm:"not null" json:"type"` // Memo | Notice | Memo (Uplift) | Notice (Uplift)
+	ReferenceNumber string     `json:"reference_number,omitempty"`
+	WorkflowStatus  string     `json:"workflow_status,omitempty"` // CMOD-only: Draft | Pending Legal | Pending TSC | Submitted
+	LetterDate      *time.Time `json:"letter_date,omitempty"`
+	SubmittedAt     *time.Time `json:"submitted_at,omitempty"`
+	Subject         string     `json:"subject,omitempty"`
+	OICUserID       *uint      `gorm:"index" json:"oic_user_id,omitempty"`
+	OICUser         *User      `gorm:"foreignKey:OICUserID;constraint:OnDelete:SET NULL" json:"oic_user,omitempty"`
+	Requestor       string     `json:"requestor,omitempty"`
+	Remarks         string     `json:"remarks,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+}
+
+// CaseURL is the many-to-many join between cases and urls — a case
+// genuinely covers many urls (e.g. one Notice listing 10 URLs) and a url
+// genuinely belongs to many cases over its history (reblocked later under
+// a new reference). Carries its own Phase rather than being a plain
+// junction table: some urls within the same case reach a different
+// outcome than their siblings, so phase varies per url, not per letter.
+// Sole source of truth for the url<->reference-number relationship now
+// that URL.ReferenceNumber is gone — "current" reference/status for
+// display is derived by querying the most recent CaseLetter row for the
+// case (via LetterDate) joined through CaseURL, not stored as a scalar on
+// URL.
+type CaseURL struct {
+	CaseID uint   `gorm:"primaryKey;autoIncrement:false" json:"case_id"`
+	URLID  uint   `gorm:"primaryKey;autoIncrement:false" json:"url_id"`
+	Case   Case   `gorm:"foreignKey:CaseID;constraint:OnDelete:CASCADE" json:"-"`
+	URL    URL    `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
+	Phase  string `gorm:"not null" json:"phase"` // requested | uplift | suspended
+}
+
 // BuildProvisionSortKey returns a zero-padded, suffix-aware sortable
 // representation of a section/article number + its letter suffix, so a
 // plain ORDER BY doesn't put "4A" after "40". A nil num (a Part-only or
