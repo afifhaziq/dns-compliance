@@ -36,3 +36,21 @@ export async function fetchCaseLetters(page: number, pageSize: number): Promise<
   // See web/CLAUDE.md — a nil Go slice marshals to JSON null, not [].
   return { letters: Array.isArray(data.letters) ? data.letters : [], total: data.total ?? 0 }
 }
+
+// Loads every case_letters row by paging through the (deliberately capped,
+// see internal/server/CLAUDE.md) /api/case-letters endpoint, so the Docs
+// page can filter/sort/paginate entirely client-side — same shape as
+// fetchUrls(), which already does this for the (much larger) urls table.
+const CASE_LETTERS_FETCH_PAGE_SIZE = 100
+
+export async function fetchAllCaseLetters(): Promise<CaseLettersResponse['letters']> {
+  let page = 1
+  let all: CaseLettersResponse['letters'] = []
+  for (;;) {
+    const res = await fetchCaseLetters(page, CASE_LETTERS_FETCH_PAGE_SIZE)
+    all = all.concat(res.letters)
+    if (res.letters.length === 0 || all.length >= res.total) break
+    page++
+  }
+  return all
+}
