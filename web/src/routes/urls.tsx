@@ -48,7 +48,6 @@ import {
   PreviewLinkCardPanel,
   PreviewLinkCardImage,
 } from '@/components/animate-ui/components/base/preview-link-card'
-import { useAuth } from './__root'
 
 /* ─── Quick Add (single domain, favicon preview) ─────────────────────────── */
 
@@ -336,40 +335,26 @@ function AddUrlDialog({
   onClose,
   onAdded,
   agencies,
-  departments,
   duePresets,
-  defaultDepartmentId,
 }: {
   open: boolean
   onClose: () => void
   onAdded: () => void
   agencies: Agency[]
-  departments: Department[]
   duePresets: DueDatePreset[]
-  defaultDepartmentId: number | null
 }) {
   const [value, setValue] = useState('')
   const [offences, setOffences] = useState<StagedOffence[]>([])
   const [agencyId, setAgencyId] = useState<number | ''>('')
-  const [referenceNumber, setReferenceNumber] = useState('')
-  const [requestingDeptId, setRequestingDeptId] = useState<number | ''>('')
   const [status, setStatus] = useState('requested')
   const [dueDurationMinutes, setDueDurationMinutes] = useState('1440')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const pickerRef = useRef<MultiOffencePickerHandle>(null)
 
-  // Requesting Dept defaults to the current user's own department, but stays
-  // changeable — reset it whenever the dialog reopens (a stale value from a
-  // previous open shouldn't linger) or once the department list arrives.
-  useEffect(() => {
-    if (open) setRequestingDeptId(defaultDepartmentId ?? '')
-  }, [open, defaultDepartmentId])
-
   const reset = () => {
     setValue(''); setOffences([]); setError(null)
-    setAgencyId(''); setReferenceNumber(''); setRequestingDeptId(defaultDepartmentId ?? '')
-    setStatus('requested'); setDueDurationMinutes('1440')
+    setAgencyId(''); setStatus('requested'); setDueDurationMinutes('1440')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -383,8 +368,6 @@ function AddUrlDialog({
 
     const caseFields: Parameters<typeof setUrlFields>[1] = {}
     if (agencyId !== '') caseFields.agency_id = agencyId
-    if (referenceNumber.trim()) caseFields.reference_number = referenceNumber.trim()
-    if (requestingDeptId !== '') caseFields.requesting_dept_id = requestingDeptId
     if (status) caseFields.status = status
     if (dueDurationMinutes) caseFields.due_date = dueDateFromDurationMinutes(Number(dueDurationMinutes))
     const hasCaseFields = Object.keys(caseFields).length > 0
@@ -456,21 +439,6 @@ function AddUrlDialog({
             </div>
 
             <div className="form-field">
-              <label className="form-label" id="add-requesting-dept-label">Requesting Dept.</label>
-              <Select value={String(requestingDeptId)} onValueChange={v => setRequestingDeptId(v === '' ? '' : Number(v))} disabled={loading}>
-                <SelectTrigger aria-labelledby="add-requesting-dept-label" placeholder="—" className="w-full" />
-                <SelectContent>
-                  <SelectItem index={0} value="">—</SelectItem>
-                  {departments.map((d, i) => (
-                    <SelectItem key={d.id} index={i + 1} value={String(d.id)}>{d.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="form-row">
-            <div className="form-field">
               <label className="form-label" id="add-status-label">Status</label>
               <Select value={status} onValueChange={setStatus} disabled={loading}>
                 <SelectTrigger aria-labelledby="add-status-label" placeholder="—" className="w-full" />
@@ -495,19 +463,6 @@ function AddUrlDialog({
             </div>
           </div>
 
-          <div className="form-field">
-            <label className="form-label" htmlFor="add-reference-number">Reference No.</label>
-            <input
-              id="add-reference-number"
-              type="text"
-              className="form-input form-input-strong"
-              maxLength={255}
-              value={referenceNumber}
-              onChange={e => setReferenceNumber(e.target.value)}
-              disabled={loading}
-            />
-          </div>
-
           {error && <p className="form-error">{error}</p>}
           <DialogFooter>
             <button type="button" className="btn-ghost" onClick={handleClose} disabled={loading}>
@@ -528,29 +483,19 @@ function EditUrlDialog({
   open,
   onClose,
   agencies,
-  departments,
   duePresets,
   onAgencyChange,
-  onRequestingDeptChange,
   onStatusChange,
   onDueDurationChange,
-  onRefFocus,
-  onRefChange,
-  onRefBlur,
 }: {
   entry: URLEntry | null
   open: boolean
   onClose: () => void
   agencies: Agency[]
-  departments: Department[]
   duePresets: DueDatePreset[]
   onAgencyChange: (id: number, agencyId: number | null) => void
-  onRequestingDeptChange: (id: number, deptId: number | null) => void
   onStatusChange: (id: number, status: string) => void
   onDueDurationChange: (id: number, durationMinutes: string) => void
-  onRefFocus: (id: number, value: string) => void
-  onRefChange: (id: number, value: string) => void
-  onRefBlur: (id: number) => void
 }) {
   const url = entry?.url ?? null
   const [offences, setOffences] = useState<URLOffence[]>([])
@@ -676,24 +621,6 @@ function EditUrlDialog({
               </div>
 
               <div className="form-field">
-                <label className="form-label" id="edit-requesting-dept-label">Requesting Dept.</label>
-                <Select
-                  value={String(entry.requesting_dept_id ?? '')}
-                  onValueChange={v => onRequestingDeptChange(entry.id, v === '' ? null : Number(v))}
-                >
-                  <SelectTrigger aria-labelledby="edit-requesting-dept-label" placeholder="—" className="w-full" />
-                  <SelectContent>
-                    <SelectItem index={0} value="">—</SelectItem>
-                    {departments.map((d, i) => (
-                      <SelectItem key={d.id} index={i + 1} value={String(d.id)}>{d.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-field">
                 <label className="form-label" id="edit-status-label">Status</label>
                 <Select value={entry.status ?? ''} onValueChange={v => onStatusChange(entry.id, v)}>
                   <SelectTrigger aria-labelledby="edit-status-label" placeholder="—" className="w-full" />
@@ -719,20 +646,6 @@ function EditUrlDialog({
                   <p className="text-xs text-stone-muted">Deadline: {DUE_DATE_FMT.format(new Date(entry.due_date))}</p>
                 )}
               </div>
-            </div>
-
-            <div className="form-field">
-              <label className="form-label" htmlFor="edit-reference-number">Reference No.</label>
-              <input
-                id="edit-reference-number"
-                type="text"
-                className="form-input form-input-strong"
-                maxLength={255}
-                value={entry.reference_number ?? ''}
-                onFocus={e => onRefFocus(entry.id, e.target.value)}
-                onChange={e => onRefChange(entry.id, e.target.value)}
-                onBlur={() => onRefBlur(entry.id)}
-              />
             </div>
           </>
         )}
@@ -819,7 +732,6 @@ function matchesDateFilter(value: string | null | undefined, filter: Filter<stri
 }
 
 function URLsPage() {
-  const { me } = useAuth()
   const [urls, setUrls] = useState<URLEntry[]>([])
   const [agencies, setAgencies] = useState<Agency[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
@@ -848,10 +760,6 @@ function URLsPage() {
       setPageSize: pageSize => setPagination(p => ({ ...p, pageSize })),
     }
   )
-
-  // Snapshots the reference-number field's pre-edit value on focus so a
-  // failed blur-commit can roll back to it.
-  const refOriginalRef = useRef<Record<number, string>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -882,7 +790,7 @@ function URLsPage() {
 
   // Generic case-field commit: optimistic local update, roll back to the
   // previous URLEntry snapshot on failure. Shared by every select-style
-  // field (agency, requesting dept, status) and the date-picker/time pair.
+  // field (agency, status) and the date-picker/time pair.
   const commitField = useCallback(async (id: number, patch: Partial<URLEntry>, body: Parameters<typeof setUrlFields>[1]) => {
     const previous = urls.find(u => u.id === id)
     setUrls(prev => prev.map(u => u.id === id ? { ...u, ...patch } : u))
@@ -898,11 +806,6 @@ function URLsPage() {
     commitField(id, { agency_id: agencyId ?? undefined, agency_name: agency?.name }, { agency_id: agencyId })
   }, [agencies, commitField])
 
-  const handleRequestingDeptChange = useCallback((id: number, deptId: number | null) => {
-    const dept = departments.find(d => d.id === deptId)
-    commitField(id, { requesting_dept_id: deptId ?? undefined, requesting_dept_name: dept?.name }, { requesting_dept_id: deptId })
-  }, [departments, commitField])
-
   const handleStatusChange = useCallback((id: number, status: string) => {
     commitField(id, { status }, { status })
   }, [commitField])
@@ -915,28 +818,6 @@ function URLsPage() {
     const combined = dueDateFromDurationMinutes(Number(durationMinutes))
     commitField(id, { due_date: combined }, { due_date: combined })
   }, [commitField])
-
-  // Reference number commits on blur (not per keystroke) to avoid a PATCH
-  // per character — refOriginalRef snapshots the pre-edit value on focus so
-  // a failed commit can roll back to it.
-  const handleRefFocus = useCallback((id: number, value: string) => {
-    refOriginalRef.current[id] = value
-  }, [])
-
-  const handleRefChange = useCallback((id: number, value: string) => {
-    setUrls(prev => prev.map(u => u.id === id ? { ...u, reference_number: value } : u))
-  }, [])
-
-  const handleRefBlur = useCallback(async (id: number) => {
-    const original = refOriginalRef.current[id] ?? ''
-    const current = urls.find(u => u.id === id)?.reference_number ?? ''
-    if (current === original) return
-    try {
-      await setUrlFields(id, { reference_number: current })
-    } catch {
-      setUrls(prev => prev.map(u => u.id === id ? { ...u, reference_number: original } : u))
-    }
-  }, [urls])
 
   const handleDelete = async () => {
     if (!deleteTarget) return
@@ -955,6 +836,7 @@ function URLsPage() {
 
   const statusFilter = filters.find(f => f.field === 'status')?.values[0]
   const deptFilter = filters.find(f => f.field === 'requesting_dept')?.values[0]
+  const deptFilterName = deptFilter ? departments.find(d => String(d.id) === deptFilter)?.name : undefined
   const agencyFilter = filters.find(f => f.field === 'agency')?.values[0]
   const createdAtFilter = filters.find(f => f.field === 'created_at')
   const dueDateFilter = filters.find(f => f.field === 'due_date')
@@ -962,14 +844,14 @@ function URLsPage() {
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
     return urls.filter(u =>
-      (!query || u.url.toLowerCase().includes(query) || (u.reference_number ?? '').toLowerCase().includes(query)) &&
+      (!query || u.url.toLowerCase().includes(query) || (u.current_reference_number ?? '').toLowerCase().includes(query)) &&
       (!statusFilter || u.status === statusFilter) &&
-      (!deptFilter || String(u.requesting_dept_id ?? '') === deptFilter) &&
+      (!deptFilterName || (u.requesting_departments ?? []).includes(deptFilterName)) &&
       (!agencyFilter || String(u.agency_id ?? '') === agencyFilter) &&
       matchesDateFilter(u.created_at, createdAtFilter) &&
       matchesDateFilter(u.due_date, dueDateFilter)
     )
-  }, [urls, search, statusFilter, deptFilter, agencyFilter, createdAtFilter, dueDateFilter])
+  }, [urls, search, statusFilter, deptFilterName, agencyFilter, createdAtFilter, dueDateFilter])
 
   useEffect(() => { setPagination(p => ({ ...p, pageIndex: 0 })) }, [search, statusFilter, deptFilter, agencyFilter, createdAtFilter, dueDateFilter])
 
@@ -1020,20 +902,20 @@ function URLsPage() {
       cell: ({ row }) => <span className="dns-name">{row.original.agency_name ?? '—'}</span>,
     },
     {
-      id: 'reference_number',
-      accessorFn: u => u.reference_number ?? '',
+      id: 'current_reference_number',
+      accessorFn: u => u.current_reference_number ?? '',
       size: 130,
       header: 'Reference No.',
       meta: { headerTitle: 'Reference No.', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
-      cell: ({ row }) => <span className="dns-name">{row.original.reference_number || '—'}</span>,
+      cell: ({ row }) => <span className="dns-name">{row.original.current_reference_number || '—'}</span>,
     },
     {
-      id: 'requesting_dept',
-      accessorFn: u => u.requesting_dept_id ?? '',
-      size: 140,
+      id: 'requesting_departments',
+      accessorFn: u => (u.requesting_departments ?? []).join(', '),
+      size: 160,
       header: 'Requesting Dept.',
       meta: { headerTitle: 'Requesting Dept.', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
-      cell: ({ row }) => <span className="dns-name">{row.original.requesting_dept_name ?? '—'}</span>,
+      cell: ({ row }) => <span className="dns-name">{(row.original.requesting_departments ?? []).join(', ') || '—'}</span>,
     },
     {
       id: 'status',
@@ -1193,9 +1075,7 @@ function URLsPage() {
         onClose={() => setAddOpen(false)}
         onAdded={load}
         agencies={agencies}
-        departments={departments}
         duePresets={duePresets}
-        defaultDepartmentId={me?.department_id ?? null}
       />
 
       <DeleteConfirmDialog
@@ -1211,15 +1091,10 @@ function URLsPage() {
         open={editTargetId !== null}
         onClose={() => setEditTargetId(null)}
         agencies={agencies}
-        departments={departments}
         duePresets={duePresets}
         onAgencyChange={handleAgencyChange}
-        onRequestingDeptChange={handleRequestingDeptChange}
         onStatusChange={handleStatusChange}
         onDueDurationChange={handleDueDurationChange}
-        onRefFocus={handleRefFocus}
-        onRefChange={handleRefChange}
-        onRefBlur={handleRefBlur}
       />
     </div>
   )
