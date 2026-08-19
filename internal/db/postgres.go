@@ -623,12 +623,6 @@ func (s *postgresStore) UpdateURLCaseFields(ctx context.Context, departmentID, u
 	if fields.AgencyID != nil {
 		updates["agency_id"] = *fields.AgencyID
 	}
-	if fields.ReferenceNumber != nil {
-		updates["reference_number"] = *fields.ReferenceNumber
-	}
-	if fields.RequestingDeptID != nil {
-		updates["requesting_dept_id"] = *fields.RequestingDeptID
-	}
 	if fields.Status != nil {
 		updates["status"] = *fields.Status
 	}
