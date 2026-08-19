@@ -53,11 +53,35 @@ export type URLEntry = {
   due_date?: string
   agency_id?: number
   agency_name?: string
-  reference_number?: string
-  requesting_dept_id?: number
-  requesting_dept_name?: string
+  current_reference_number?: string
+  requesting_departments?: string[]
   status?: string
   requested_at?: string
+  created_at: string
+}
+
+// One row of GET /api/cases/*url — mirrors db.CaseWithLetters (Case
+// embedded + Phase from the url's CaseURL join + Letters).
+export type Case = {
+  id: number
+  department_id: number
+  created_at: string
+  phase: string
+  letters: CaseLetter[]
+}
+
+export type CaseLetter = {
+  id: number
+  case_id: number
+  type: string
+  reference_number?: string
+  workflow_status?: string
+  letter_date?: string
+  submitted_at?: string
+  subject?: string
+  oic_user_id?: number
+  requestor?: string
+  remarks?: string
   created_at: string
 }
 
