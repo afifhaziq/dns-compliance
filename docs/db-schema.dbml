@@ -16,6 +16,11 @@
 // GridPreference, and Notification tables that postdate the previous export,
 // and moves urls' case-metadata columns off department_urls (see that table's
 // Note below) to match the current models.go.
+//
+// Updated 2026-08-19: urls.reference_number/requesting_dept_id removed and
+// replaced by the cases/case_letters/case_urls tables (28-table AutoMigrate
+// list) — see urls' Note and the new tables below. Design history for this
+// change: docs/db-schema-proposed.dbml (now shipped, kept for archaeology).
 
 Table departments {
   id         integer   [pk, increment]
@@ -68,8 +73,6 @@ Table urls {
   created_at          timestamptz
   due_date            timestamptz [null, note: 'takedown-order SLA deadline, carries time-of-day']
   agency_id           integer     [null, note: 'indexed, FK OnDelete:SET NULL']
-  reference_number    varchar     [note: 'free text, Excel-sourced case metadata']
-  requesting_dept_id  integer     [null, note: 'indexed, FK to departments, OnDelete:SET NULL']
   status              varchar     [note: '"" | requested | uplift | suspended, validated server-side -- independent of the derived Compliant field']
   requested_at        timestamptz [null]
 
@@ -78,16 +81,24 @@ Table urls {
     domain, not one per watching department (two departments watching the
     same domain share the same takedown order), mirroring how
     DomainWhois/SubdomainScan/IPInfo are keyed by domain/IP rather than
-    department. These six case fields (due_date, agency_id,
-    reference_number, requesting_dept_id, status, requested_at) originally
-    lived on department_urls and were moved here the same day, before ever
-    being deployed with real data -- see department_urls' Note. Editing them
-    is visible to every department watching the domain (last-write-wins),
+    department. due_date/agency_id/status/requested_at originally lived on
+    department_urls and were moved here the same day, before ever being
+    deployed with real data -- see department_urls' Note. Editing them is
+    visible to every department watching the domain (last-write-wins),
     gated by UpdateURLCaseFields' department-ownership check.
+
+    reference_number and requesting_dept_id removed -- a url can carry many
+    reference numbers over its history and a single reference number
+    legitimately covers many urls (confirmed against real data: CRD's
+    No. Rujukan NMD has 1,840 distinct values across 38,156 rows, one
+    value alone covering 9,206 rows; 790 domains carry more than one
+    distinct ref across their own history). A scalar column can only hold
+    the last-imported one and silently discards the rest. Reference
+    numbers and every other case-level attribute now live on cases,
+    joined to urls many-to-many via case_urls.
   '''
 }
 Ref: urls.agency_id > agencies.id [delete: set null]
-Ref: urls.requesting_dept_id > departments.id [delete: set null]
 
 Table agencies {
   id         integer   [pk, increment]
@@ -396,6 +407,79 @@ Ref: url_offences.url_id > urls.id [delete: cascade]
 Ref: url_offences.category_id > categories.id [delete: cascade]
 Ref: url_offences.element_id > elements.id [delete: cascade]
 Ref: url_offences.sub_element_id > sub_elements.id [delete: cascade]
+
+Table cases {
+  id            integer   [pk, increment]
+  department_id integer   [not null, note: 'indexed -- which department this case came from']
+  created_at    timestamptz
+
+  Note: '''
+    Thin anchor -- one row per real-world case/request, same role
+    scan_runs already plays for scan_results. Every case fact (ref
+    numbers, letters, subject, OIC, workflow status...) lives on
+    case_letters, not here, since the sheet's real grain is one row per
+    letter/document, not one row per case.
+    UNRESOLVED CAVEAT: grouping CRD rows into a case at all assumes each
+    distinct reference number is one real request -- CRD's
+    "JK KPN(PR) 168/6" covering 9,206 rows suggests some values are a
+    generic/fallback reference reused across unrelated entries, not a
+    genuine single batch. See docs/cmod-blocking-list-migration-clarifications.md.
+  '''
+}
+Ref: cases.department_id > departments.id
+
+Table case_letters {
+  id                integer     [pk, increment]
+  case_id           integer     [not null, note: 'indexed']
+  type              varchar     [not null, note: 'Memo | Notice | Memo (Uplift) | Notice (Uplift)']
+  reference_number  varchar     [note: 'this letter\'s own citable ref -- CRD\'s No. Rujukan NMD row value, or CMOD\'s per-letter ref (memo and notice each get their own)']
+  workflow_status   varchar     [note: 'CMOD-only internal approval state: Draft | Pending Legal | Pending TSC | Submitted, null for CRD-sourced letters']
+  letter_date       timestamptz [null]
+  submitted_at      timestamptz [null, note: 'CMOD Submission column -- sparse, ~387/499 filled']
+  subject           varchar
+  oic_user_id       integer     [null, note: 'officer in charge -- FK to users. NOT YET VERIFIED that OIC names in the source sheet (Atiqah, Arishah, ...) actually match real users.username values']
+  requestor         varchar
+  remarks           varchar
+  created_at        timestamptz
+
+  Note: '''
+    One row per actual letter/document -- a case with a block + later
+    uplift gets up to 4 rows here (Memo, Notice, Memo (Uplift),
+    Notice (Uplift)), a CRD-sourced case typically gets 1. Mirrors the
+    source sheet's real grain (one row per letter), which is what an
+    earlier single-cases-row design collapsed away.
+  '''
+}
+Ref: case_letters.case_id > cases.id [delete: cascade]
+Ref: case_letters.oic_user_id > users.id [delete: set null]
+
+Table case_urls {
+  case_id integer [not null]
+  url_id  integer [not null]
+  phase   varchar [not null, note: 'requested | uplift | suspended -- this (case, url) pair\'s own outcome, same vocabulary urls.status carries']
+
+  indexes {
+    (case_id, url_id) [pk]
+  }
+
+  Note: '''
+    Many-to-many join -- one case lists every url it covers (e.g. CMOD's
+    "10 URLs in one Notice"); one url can belong to many cases over time
+    (reblocked under a new reference). Carries its own `phase` rather than
+    being a plain junction row: confirmed some urls within the same case
+    reach a different outcome than their siblings (2/65 CMOD cases, 96/1841
+    CRD ref-no groups have mixed status across their own urls -- e.g. CMOD
+    case 19 covers 16 domains, only capitalpost.com.my was ever uplifted).
+    phase stays here rather than on case_letters because it varies per url
+    within the same case, not per letter. Sole source of truth for the
+    url<->reference-number relationship now that urls.reference_number is
+    removed. "Current" reference/status for display is derived by querying
+    the most recent case_letters row for the case (via letter_date) joined
+    through case_urls, not stored as a scalar on urls.
+  '''
+}
+Ref: case_urls.case_id > cases.id [delete: cascade]
+Ref: case_urls.url_id > urls.id [delete: cascade]
 
 Table notifications {
   id            integer     [pk, increment]

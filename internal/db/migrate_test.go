@@ -288,9 +288,14 @@ func TestConnect_DropsObsoleteDepartmentURLCaseColumns(t *testing.T) {
 			t.Fatalf("expected department_urls.%s to be dropped", col)
 		}
 	}
-	for _, col := range []string{"due_date", "agency_id", "reference_number", "requesting_dept_id", "status", "requested_at"} {
+	for _, col := range []string{"due_date", "agency_id", "status", "requested_at"} {
 		if !newDB.Migrator().HasColumn(&db.URL{}, col) {
 			t.Fatalf("expected urls.%s to exist", col)
+		}
+	}
+	for _, col := range []string{"reference_number", "requesting_dept_id"} {
+		if newDB.Migrator().HasColumn(&db.URL{}, col) {
+			t.Fatalf("expected urls.%s to be dropped, superseded by cases", col)
 		}
 	}
 	if !newDB.Migrator().HasTable(&db.Agency{}) {
@@ -350,5 +355,153 @@ func TestConnect_FreshDBSkipsDropEntirely(t *testing.T) {
 		if newDB.Migrator().HasColumn(&db.DepartmentURL{}, col) {
 			t.Fatalf("fresh DB should never have department_urls.%s", col)
 		}
+	}
+}
+
+// legacyURL mirrors the urls table shape before this migration —
+// reference_number/requesting_dept_id still present as plain columns — to
+// simulate a pre-migration database (db.URL itself no longer declares
+// them).
+type legacyURL struct {
+	ID               uint   `gorm:"primaryKey"`
+	URL              string `gorm:"uniqueIndex;not null"`
+	CreatedAt        time.Time
+	DueDate          *time.Time
+	AgencyID         *uint
+	ReferenceNumber  string
+	RequestingDeptID *uint
+	Status           string
+	RequestedAt      *time.Time
+}
+
+func (legacyURL) TableName() string { return "urls" }
+
+// TestConnect_BackfillsReferenceNumberIntoCases simulates a pre-migration
+// database with a urls row carrying both reference_number and
+// requesting_dept_id, and confirms db.Connect losslessly moves that data
+// into cases/case_letters/case_urls before dropping the old columns.
+func TestConnect_BackfillsReferenceNumberIntoCases(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "backfill.db")
+
+	oldDB, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open old schema db: %v", err)
+	}
+	if err := oldDB.AutoMigrate(&db.Department{}, &legacyURL{}); err != nil {
+		t.Fatalf("migrate legacy schema: %v", err)
+	}
+	dept := db.Department{Name: "CRD"}
+	if err := oldDB.Create(&dept).Error; err != nil {
+		t.Fatalf("seed department: %v", err)
+	}
+	legacy := legacyURL{
+		URL:              "example.com",
+		ReferenceNumber:  "JK KPN(PR) 168/6",
+		RequestingDeptID: &dept.ID,
+		Status:           "uplift",
+	}
+	if err := oldDB.Create(&legacy).Error; err != nil {
+		t.Fatalf("seed legacy url: %v", err)
+	}
+	oldSQLDB, err := oldDB.DB()
+	if err != nil {
+		t.Fatalf("underlying sql.DB: %v", err)
+	}
+	if err := oldSQLDB.Close(); err != nil {
+		t.Fatalf("close old connection: %v", err)
+	}
+
+	newDB, err := db.Connect(sqlite.Open(dbPath))
+	if err != nil {
+		t.Fatalf("db.Connect: %v", err)
+	}
+
+	if newDB.Migrator().HasColumn(&db.URL{}, "reference_number") {
+		t.Fatal("expected urls.reference_number to be dropped")
+	}
+	if newDB.Migrator().HasColumn(&db.URL{}, "requesting_dept_id") {
+		t.Fatal("expected urls.requesting_dept_id to be dropped")
+	}
+
+	var cases []db.Case
+	if err := newDB.Find(&cases).Error; err != nil {
+		t.Fatalf("load cases: %v", err)
+	}
+	if len(cases) != 1 || cases[0].DepartmentID != dept.ID {
+		t.Fatalf("expected exactly one case for department %d, got %+v", dept.ID, cases)
+	}
+
+	var letters []db.CaseLetter
+	if err := newDB.Find(&letters).Error; err != nil {
+		t.Fatalf("load case_letters: %v", err)
+	}
+	if len(letters) != 1 || letters[0].CaseID != cases[0].ID || letters[0].Type != "Notice" || letters[0].ReferenceNumber != "JK KPN(PR) 168/6" {
+		t.Fatalf("expected exactly one Notice case_letter carrying the reference number, got %+v", letters)
+	}
+
+	var urlRow db.URL
+	if err := newDB.Where("url = ?", "example.com").First(&urlRow).Error; err != nil {
+		t.Fatalf("load url: %v", err)
+	}
+
+	var caseURLs []db.CaseURL
+	if err := newDB.Find(&caseURLs).Error; err != nil {
+		t.Fatalf("load case_urls: %v", err)
+	}
+	if len(caseURLs) != 1 || caseURLs[0].CaseID != cases[0].ID || caseURLs[0].URLID != urlRow.ID || caseURLs[0].Phase != "uplift" {
+		t.Fatalf("expected exactly one case_url with phase=uplift, got %+v", caseURLs)
+	}
+}
+
+// TestConnect_SkipsReferenceNumberWithNoDepartment covers a urls row that
+// carries a reference_number but no requesting_dept_id — there's no
+// department to attribute a case to, so db.Connect must log and skip
+// creating a case, still drop the old columns, and not error.
+func TestConnect_SkipsReferenceNumberWithNoDepartment(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "backfill_skip.db")
+
+	oldDB, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open old schema db: %v", err)
+	}
+	if err := oldDB.AutoMigrate(&legacyURL{}); err != nil {
+		t.Fatalf("migrate legacy schema: %v", err)
+	}
+	legacy := legacyURL{URL: "noref-dept.example.com", ReferenceNumber: "SOME-REF"}
+	if err := oldDB.Create(&legacy).Error; err != nil {
+		t.Fatalf("seed legacy url: %v", err)
+	}
+	oldSQLDB, err := oldDB.DB()
+	if err != nil {
+		t.Fatalf("underlying sql.DB: %v", err)
+	}
+	if err := oldSQLDB.Close(); err != nil {
+		t.Fatalf("close old connection: %v", err)
+	}
+
+	newDB, err := db.Connect(sqlite.Open(dbPath))
+	if err != nil {
+		t.Fatalf("db.Connect: %v", err)
+	}
+
+	var caseCount int64
+	if err := newDB.Model(&db.Case{}).Count(&caseCount).Error; err != nil {
+		t.Fatalf("count cases: %v", err)
+	}
+	if caseCount != 0 {
+		t.Fatalf("expected no case created without a requesting department, got %d", caseCount)
+	}
+	var letterCount, caseURLCount int64
+	newDB.Model(&db.CaseLetter{}).Count(&letterCount)
+	newDB.Model(&db.CaseURL{}).Count(&caseURLCount)
+	if letterCount != 0 || caseURLCount != 0 {
+		t.Fatalf("expected no case_letters/case_urls without a case, got %d/%d", letterCount, caseURLCount)
+	}
+
+	if newDB.Migrator().HasColumn(&db.URL{}, "reference_number") {
+		t.Fatal("expected urls.reference_number to be dropped even when skipped")
+	}
+	if newDB.Migrator().HasColumn(&db.URL{}, "requesting_dept_id") {
+		t.Fatal("expected urls.requesting_dept_id to be dropped even when skipped")
 	}
 }

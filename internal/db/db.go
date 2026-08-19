@@ -66,10 +66,88 @@ func Connect(dialector gorm.Dialector) (*gorm.DB, error) {
 		&Department{}, &User{}, &Session{}, &DNSServer{}, &URL{}, &DepartmentURL{}, &ScanRun{}, &ScanResult{}, &CompliantIP{}, &DomainWhois{}, &IPInfo{}, &Favicon{}, &ScanSettings{}, &SubdomainScan{}, &ISPLogo{},
 		&Instrument{}, &Citation{}, &Category{}, &Element{}, &SubElement{}, &URLOffence{},
 		&Agency{}, &DueDatePreset{}, &GridPreference{}, &Notification{},
+		&Case{}, &CaseLetter{}, &CaseURL{},
 	); err != nil {
 		return nil, fmt.Errorf("migrating schema: %w", err)
 	}
+	// urls.reference_number/urls.requesting_dept_id are replaced by the
+	// cases/case_letters/case_urls tables — a url can carry many reference
+	// numbers over its history and a single reference number legitimately
+	// covers many urls (see docs/db-schema.dbml's cases table note). Runs
+	// after AutoMigrate (which is purely additive — it never drops or
+	// renames the old columns) so cases/case_letters/case_urls already
+	// exist to receive the backfilled rows, then drops the two old columns
+	// once every row has been moved.
+	if err := backfillURLReferenceNumbersIntoCases(database); err != nil {
+		return nil, fmt.Errorf("backfilling urls.reference_number into cases: %w", err)
+	}
 	return database, nil
+}
+
+// backfillURLReferenceNumbersIntoCases losslessly moves any populated
+// urls.reference_number/urls.requesting_dept_id values into
+// cases/case_letters/case_urls, then drops both columns. Not reversible —
+// must complete in the same Connect call that reads the old columns, never
+// as a separate manual step. Idempotent: a no-op once the columns are gone,
+// including on a fresh DB where they never existed.
+func backfillURLReferenceNumbersIntoCases(database *gorm.DB) error {
+	if database.Migrator().HasColumn(&URL{}, "reference_number") || database.Migrator().HasColumn(&URL{}, "requesting_dept_id") {
+		if err := database.Transaction(func(tx *gorm.DB) error {
+			type legacyURLCaseRow struct {
+				ID               uint
+				ReferenceNumber  string
+				RequestingDeptID *uint
+				Status           string
+			}
+			var rows []legacyURLCaseRow
+			if err := tx.Table("urls").
+				Select("id, reference_number, requesting_dept_id, status").
+				Where("reference_number <> '' OR requesting_dept_id IS NOT NULL").
+				Find(&rows).Error; err != nil {
+				return fmt.Errorf("loading legacy case metadata: %w", err)
+			}
+
+			for _, row := range rows {
+				if row.RequestingDeptID == nil {
+					// A reference number with no requesting department has no
+					// department to attribute a case to — log and skip, same
+					// "log and skip, non-fatal" philosophy BackfillURLValues
+					// already uses for imperfect backfills.
+					log.Printf("db: urls.id=%d has reference_number %q but no requesting_dept_id, skipping case backfill", row.ID, row.ReferenceNumber)
+					continue
+				}
+				c := Case{DepartmentID: *row.RequestingDeptID}
+				if err := tx.Create(&c).Error; err != nil {
+					return fmt.Errorf("creating case for url id=%d: %w", row.ID, err)
+				}
+				if err := tx.Create(&CaseLetter{CaseID: c.ID, Type: "Notice", ReferenceNumber: row.ReferenceNumber}).Error; err != nil {
+					return fmt.Errorf("creating case_letter for url id=%d: %w", row.ID, err)
+				}
+				phase := row.Status
+				if phase == "" {
+					phase = "requested"
+				}
+				if err := tx.Create(&CaseURL{CaseID: c.ID, URLID: row.ID, Phase: phase}).Error; err != nil {
+					return fmt.Errorf("creating case_url for url id=%d: %w", row.ID, err)
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+	}
+
+	if database.Migrator().HasColumn(&URL{}, "reference_number") {
+		if err := database.Migrator().DropColumn(&URL{}, "reference_number"); err != nil {
+			return fmt.Errorf("dropping urls.reference_number: %w", err)
+		}
+	}
+	if database.Migrator().HasColumn(&URL{}, "requesting_dept_id") {
+		if err := database.Migrator().DropColumn(&URL{}, "requesting_dept_id"); err != nil {
+			return fmt.Errorf("dropping urls.requesting_dept_id: %w", err)
+		}
+	}
+	return nil
 }
 
 // Seed inserts default DNS servers if the dns_servers table is empty.

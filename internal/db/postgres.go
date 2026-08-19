@@ -557,11 +557,9 @@ func (s *postgresStore) ListDepartmentURLs(ctx context.Context, departmentID uin
 		Table("urls").
 		Select(`urls.id, urls.url, urls.created_at, du.enabled,
 			urls.due_date, urls.agency_id, agencies.name as agency_name,
-			urls.reference_number, urls.requesting_dept_id, departments.name as requesting_dept_name,
 			urls.status, urls.requested_at`).
 		Joins("JOIN department_urls du ON du.url_id = urls.id AND du.department_id = ?", departmentID).
 		Joins("LEFT JOIN agencies ON agencies.id = urls.agency_id").
-		Joins("LEFT JOIN departments ON departments.id = urls.requesting_dept_id").
 		Order("urls.created_at asc").
 		Scan(&entries).Error
 	return entries, err
@@ -622,12 +620,6 @@ func (s *postgresStore) UpdateURLCaseFields(ctx context.Context, departmentID, u
 	}
 	if fields.AgencyID != nil {
 		updates["agency_id"] = *fields.AgencyID
-	}
-	if fields.ReferenceNumber != nil {
-		updates["reference_number"] = *fields.ReferenceNumber
-	}
-	if fields.RequestingDeptID != nil {
-		updates["requesting_dept_id"] = *fields.RequestingDeptID
 	}
 	if fields.Status != nil {
 		updates["status"] = *fields.Status

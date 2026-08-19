@@ -843,14 +843,13 @@ func TestUpdateURLCaseFields_CaseMetadata(t *testing.T) {
 	ctx := context.Background()
 
 	dept, _ := s.CreateDepartment(ctx, "TestDept6")
-	reqDept, _ := s.CreateDepartment(ctx, "RequestingDept6")
 	agency, _ := s.CreateAgency(ctx, "MCMC")
 	u, _ := s.AddURLToWatchlist(ctx, dept.ID, "casefields.com")
 
-	ref, status := "REF-001", "requested"
-	agencyIDPtr, reqDeptIDPtr := &agency.ID, &reqDept.ID
+	status := "requested"
+	agencyIDPtr := &agency.ID
 	found, err := s.UpdateURLCaseFields(ctx, dept.ID, u.ID, db.URLCaseFields{
-		AgencyID: &agencyIDPtr, ReferenceNumber: &ref, RequestingDeptID: &reqDeptIDPtr, Status: &status,
+		AgencyID: &agencyIDPtr, Status: &status,
 	})
 	if err != nil || !found {
 		t.Fatalf("UpdateURLCaseFields(case metadata): found=%v err=%v", found, err)
@@ -861,7 +860,7 @@ func TestUpdateURLCaseFields_CaseMetadata(t *testing.T) {
 		t.Fatalf("want 1 entry, got %d", len(entries))
 	}
 	e := entries[0]
-	if e.AgencyName != agency.Name || e.ReferenceNumber != ref || e.RequestingDeptName != reqDept.Name || e.Status != status {
+	if e.AgencyName != agency.Name || e.Status != status {
 		t.Fatalf("expected case metadata to be set, got %+v", e)
 	}
 
@@ -876,7 +875,7 @@ func TestUpdateURLCaseFields_CaseMetadata(t *testing.T) {
 	if e.Status != newStatus {
 		t.Fatalf("expected status to be updated, got %q", e.Status)
 	}
-	if e.AgencyName != agency.Name || e.ReferenceNumber != ref || e.RequestingDeptName != reqDept.Name {
+	if e.AgencyName != agency.Name {
 		t.Fatalf("expected other case fields to remain untouched, got %+v", e)
 	}
 }

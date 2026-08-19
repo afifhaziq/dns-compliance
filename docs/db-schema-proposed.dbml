@@ -1,3 +1,5 @@
+// SHIPPED — see docs/db-schema.dbml. Kept for history; do not edit further.
+//
 // PROPOSED schema, not yet built -- internal/db/models.go and the
 // AutoMigrate list in internal/db/db.go are unchanged. This is a design
 // sketch for reconciling the CRD and CMOD Excel imports; see
