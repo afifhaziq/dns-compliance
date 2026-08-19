@@ -345,6 +345,10 @@ type CaseStore interface {
 	// (requireDomainOwnership), same split as ListOffencesByURL/
 	// AttachOffenceToURL already use.
 	ListCasesForURL(ctx context.Context, urlValue string) ([]CaseWithLetters, error)
+	// GetCase returns a case's own DepartmentID for an ownership check
+	// (a case belongs to exactly one requesting department, regardless of
+	// how many URLs it covers via case_urls), or gorm.ErrRecordNotFound.
+	GetCase(ctx context.Context, id uint) (Case, error)
 }
 
 // CaseWithLetters is Case plus its Letters and this url's Phase — the read

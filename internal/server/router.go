@@ -116,6 +116,16 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Post("/legal/offences/*", h.AttachOffence)
 			r.Delete("/legal/offences/{id}", h.DetachOffence)
 
+			// Cases <-> URL — department-ownership-scoped like the offence
+			// routes above; AddCaseLetter is keyed by the case's own
+			// surrogate ID, ownership resolved via the case's own
+			// DepartmentID (db.Store.GetCase), not URL watchlist
+			// membership — a case belongs to one department regardless of
+			// how many other departments also watch its URL(s).
+			r.Get("/cases/*", h.CasesByURL)
+			r.Post("/cases/*", h.CreateCaseForURL)
+			r.Post("/cases/{id}/letters", h.AddCaseLetter)
+
 			// Reachable by a super admin OR a department admin — DNS servers
 			// stay one shared/global catalog (no department scoping), while
 			// user management is scoped to the caller's own department for

@@ -16,6 +16,7 @@ import (
 	"github.com/afif/dns-tracking/internal/server"
 	"github.com/afif/dns-tracking/internal/urlnorm"
 	"github.com/go-chi/chi/v5"
+	"gorm.io/gorm"
 )
 
 // fullMockStore implements db.Store completely for handler tests.
@@ -45,6 +46,9 @@ type fullMockStore struct {
 	subElements        []db.SubElement
 	urlOffences        []db.URLOffence
 	notifications      []db.Notification
+	cases              []db.Case
+	caseURLs           []db.CaseURL
+	caseLetters        []db.CaseLetter
 	scheduleMu         sync.Mutex // guards the fields below; the scheduler goroutine reads them concurrently with test/handler writes
 	scanInterval       int
 	scanEnabled        bool
@@ -341,20 +345,13 @@ func (m *fullMockStore) ListDepartmentURLs(_ context.Context, departmentID uint)
 			if u.ID == du.URLID {
 				entry := db.URLEntry{
 					ID: u.ID, URL: u.URL, Enabled: du.Enabled, DueDate: u.DueDate,
-					AgencyID: u.AgencyID, ReferenceNumber: u.ReferenceNumber, RequestingDeptID: u.RequestingDeptID,
-					Status: u.Status, RequestedAt: u.RequestedAt, CreatedAt: u.CreatedAt,
+					AgencyID: u.AgencyID,
+					Status:   u.Status, RequestedAt: u.RequestedAt, CreatedAt: u.CreatedAt,
 				}
 				if u.AgencyID != nil {
 					for _, a := range m.agencies {
 						if a.ID == *u.AgencyID {
 							entry.AgencyName = a.Name
-						}
-					}
-				}
-				if u.RequestingDeptID != nil {
-					for _, d := range m.departments {
-						if d.ID == *u.RequestingDeptID {
-							entry.RequestingDeptName = d.Name
 						}
 					}
 				}
@@ -410,12 +407,6 @@ func (m *fullMockStore) UpdateURLCaseFields(_ context.Context, departmentID, url
 			}
 			if fields.AgencyID != nil {
 				m.urls[i].AgencyID = *fields.AgencyID
-			}
-			if fields.ReferenceNumber != nil {
-				m.urls[i].ReferenceNumber = *fields.ReferenceNumber
-			}
-			if fields.RequestingDeptID != nil {
-				m.urls[i].RequestingDeptID = *fields.RequestingDeptID
 			}
 			if fields.Status != nil {
 				m.urls[i].Status = *fields.Status
@@ -1315,14 +1306,54 @@ func (m *fullMockStore) HasRecentResurfacedNotification(_ context.Context, depar
 }
 
 func (m *fullMockStore) CreateCase(_ context.Context, departmentID, urlID uint, phase string) (db.Case, error) {
-	return db.Case{ID: 1, DepartmentID: departmentID}, nil
+	c := db.Case{ID: uint(len(m.cases) + 1), DepartmentID: departmentID}
+	m.cases = append(m.cases, c)
+	m.caseURLs = append(m.caseURLs, db.CaseURL{CaseID: c.ID, URLID: urlID, Phase: phase})
+	return c, nil
 }
 func (m *fullMockStore) AddCaseLetter(_ context.Context, letter db.CaseLetter) (db.CaseLetter, error) {
-	letter.ID = 1
+	letter.ID = uint(len(m.caseLetters) + 1)
+	m.caseLetters = append(m.caseLetters, letter)
 	return letter, nil
 }
 func (m *fullMockStore) ListCasesForURL(_ context.Context, urlValue string) ([]db.CaseWithLetters, error) {
-	return nil, nil
+	var u *db.URL
+	for i := range m.urls {
+		if m.urls[i].URL == urlValue {
+			u = &m.urls[i]
+			break
+		}
+	}
+	if u == nil {
+		return nil, nil
+	}
+	var out []db.CaseWithLetters
+	for _, cu := range m.caseURLs {
+		if cu.URLID != u.ID {
+			continue
+		}
+		for _, c := range m.cases {
+			if c.ID != cu.CaseID {
+				continue
+			}
+			var letters []db.CaseLetter
+			for _, l := range m.caseLetters {
+				if l.CaseID == c.ID {
+					letters = append(letters, l)
+				}
+			}
+			out = append(out, db.CaseWithLetters{Case: c, Phase: cu.Phase, Letters: letters})
+		}
+	}
+	return out, nil
+}
+func (m *fullMockStore) GetCase(_ context.Context, id uint) (db.Case, error) {
+	for _, c := range m.cases {
+		if c.ID == id {
+			return c, nil
+		}
+	}
+	return db.Case{}, gorm.ErrRecordNotFound
 }
 
 var _ db.Store = (*fullMockStore)(nil)
@@ -2481,7 +2512,7 @@ func TestToggleURL_UpdatesCaseFieldsWithoutClobbering(t *testing.T) {
 	}
 
 	body2, _ := json.Marshal(map[string]interface{}{
-		"agency_id": 7, "reference_number": "REF-123", "requesting_dept_id": 9,
+		"agency_id": 7,
 	})
 	req2 := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body2))
 	req2.Header.Set("Content-Type", "application/json")
@@ -2493,27 +2524,27 @@ func TestToggleURL_UpdatesCaseFieldsWithoutClobbering(t *testing.T) {
 		t.Fatalf("want 204, got %d: %s", w2.Code, w2.Body.String())
 	}
 	u := store.urls[0]
-	if u.AgencyID == nil || *u.AgencyID != 7 || u.ReferenceNumber != "REF-123" || u.RequestingDeptID == nil || *u.RequestingDeptID != 9 {
-		t.Fatalf("expected agency_id/reference_number/requesting_dept_id to be set, got %+v", u)
+	if u.AgencyID == nil || *u.AgencyID != 7 {
+		t.Fatalf("expected agency_id to be set, got %+v", u)
 	}
 	if u.Status != "uplift" {
 		t.Fatal("expected status from the previous request to remain untouched")
 	}
 }
 
-// TestToggleURL_ClearsAgencyAndRequestingDept exercises the 0-sentinel
-// clear path for the two ID fields (0 is never a real row id).
-func TestToggleURL_ClearsAgencyAndRequestingDept(t *testing.T) {
+// TestToggleURL_ClearsAgency exercises the 0-sentinel clear path for
+// AgencyID (0 is never a real row id).
+func TestToggleURL_ClearsAgency(t *testing.T) {
 	deptID := uint(1)
-	agencyID, deptRefID := uint(7), uint(9)
+	agencyID := uint(7)
 	store := &fullMockStore{
-		urls:           []db.URL{{ID: 1, URL: "example.com", AgencyID: &agencyID, RequestingDeptID: &deptRefID}},
+		urls:           []db.URL{{ID: 1, URL: "example.com", AgencyID: &agencyID}},
 		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1, Enabled: true}},
 	}
 	cookie := deptCookie(store, deptID)
 	r := setupRouter(store, nil)
 
-	body, _ := json.Marshal(map[string]interface{}{"agency_id": 0, "requesting_dept_id": 0})
+	body, _ := json.Marshal(map[string]interface{}{"agency_id": 0})
 	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
@@ -2523,8 +2554,8 @@ func TestToggleURL_ClearsAgencyAndRequestingDept(t *testing.T) {
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
 	}
-	if store.urls[0].AgencyID != nil || store.urls[0].RequestingDeptID != nil {
-		t.Fatalf("expected agency_id/requesting_dept_id to be cleared, got %+v", store.urls[0])
+	if store.urls[0].AgencyID != nil {
+		t.Fatalf("expected agency_id to be cleared, got %+v", store.urls[0])
 	}
 }
 

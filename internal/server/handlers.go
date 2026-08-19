@@ -257,14 +257,14 @@ func parseOptionalRFC3339(s string) (*time.Time, error) {
 }
 
 // ToggleURL updates a URL in the caller's department watchlist: the enabled
-// flag and/or the optional case-metadata fields (due date, agency,
-// reference number, requesting department, status, requested-at). Enabled
-// is department-scoped (only affects the caller's own watchlist entry); the
-// case-metadata fields are global on the URL row (see db.URL's doc
-// comment) — editing them is visible to every department watching the same
-// domain. Both still require the caller's department to actually be
-// watching the URL (enforced by SetURLEnabled/UpdateURLCaseFields). Only
-// fields present in the body are touched — omit a key to leave it untouched.
+// flag and/or the optional case-metadata fields (due date, agency, status,
+// requested-at). Enabled is department-scoped (only affects the caller's
+// own watchlist entry); the case-metadata fields are global on the URL row
+// (see db.URL's doc comment) — editing them is visible to every department
+// watching the same domain. Both still require the caller's department to
+// actually be watching the URL (enforced by SetURLEnabled/
+// UpdateURLCaseFields). Only fields present in the body are touched — omit
+// a key to leave it untouched.
 func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
 	if !ok {
@@ -285,15 +285,13 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Enabled *bool `json:"enabled"`
 		// DueDate/RequestedAt are RFC3339 when setting a value, or "" to
-		// clear. AgencyID/RequestingDeptID are real IDs when setting, or 0
-		// to clear (0 is never a real row id). Omit any key entirely to
-		// leave that field untouched.
-		DueDate          *string `json:"due_date"`
-		AgencyID         *uint   `json:"agency_id"`
-		ReferenceNumber  *string `json:"reference_number"`
-		RequestingDeptID *uint   `json:"requesting_dept_id"`
-		Status           *string `json:"status"`
-		RequestedAt      *string `json:"requested_at"`
+		// clear. AgencyID is a real ID when setting, or 0 to clear (0 is
+		// never a real row id). Omit any key entirely to leave that field
+		// untouched.
+		DueDate     *string `json:"due_date"`
+		AgencyID    *uint   `json:"agency_id"`
+		Status      *string `json:"status"`
+		RequestedAt *string `json:"requested_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
@@ -331,22 +329,6 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 			agencyID = body.AgencyID
 		}
 		fields.AgencyID = &agencyID
-		hasFields = true
-	}
-	if body.ReferenceNumber != nil {
-		if len(*body.ReferenceNumber) > 255 {
-			writeError(w, http.StatusBadRequest, "reference_number too long, max 255 characters")
-			return
-		}
-		fields.ReferenceNumber = body.ReferenceNumber
-		hasFields = true
-	}
-	if body.RequestingDeptID != nil {
-		var deptID *uint
-		if *body.RequestingDeptID != 0 {
-			deptID = body.RequestingDeptID
-		}
-		fields.RequestingDeptID = &deptID
 		hasFields = true
 	}
 	if body.Status != nil {

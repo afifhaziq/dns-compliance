@@ -22,6 +22,12 @@ func (s *postgresStore) AddCaseLetter(ctx context.Context, letter CaseLetter) (C
 	return letter, err
 }
 
+func (s *postgresStore) GetCase(ctx context.Context, id uint) (Case, error) {
+	var c Case
+	err := s.db.WithContext(ctx).First(&c, id).Error
+	return c, err
+}
+
 func (s *postgresStore) ListCasesForURL(ctx context.Context, urlValue string) ([]CaseWithLetters, error) {
 	u, err := s.GetURLByValue(ctx, urlValue)
 	if err != nil {
