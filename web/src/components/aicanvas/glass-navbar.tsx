@@ -8,6 +8,7 @@ const BASE_NAV_ITEMS = [
   { to: '/' as const, label: 'Overview' },
   { to: '/results' as const, label: 'Results' },
   { to: '/urls' as const, label: 'Watchlist' },
+  { to: '/docs' as const, label: 'Docs' },
   { to: '/dns-servers' as const, label: 'DNS Servers' },
   { to: '/legal-citations' as const, label: 'Legal Citations' },
 ]

@@ -76,7 +76,9 @@ export type CaseLetter = {
   type: string
   reference_number?: string
   workflow_status?: string
+  recipient?: string
   letter_date?: string
+  received_at?: string
   submitted_at?: string
   subject?: string
   oic_user_id?: number
@@ -84,6 +86,18 @@ export type CaseLetter = {
   remarks?: string
   created_at: string
 }
+
+// One row of GET /api/case-letters — a CaseLetter plus its case's
+// department and every URL the case covers (shared across all of a case's
+// letters, since URLs belong to the case, not the individual letter).
+// Backs the Docs page.
+export type CaseLetterEntry = CaseLetter & {
+  department_id: number
+  department_name: string
+  urls: string[]
+}
+
+export type CaseLettersResponse = { letters: CaseLetterEntry[]; total: number }
 
 export type Agency = { id: number; name: string; created_at: string }
 

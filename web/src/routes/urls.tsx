@@ -13,7 +13,9 @@ import {
 import { GripIcon } from '@/components/ui/grip'
 import { FileText } from 'lucide-react'
 import { CaseHistoryDialog } from '@/components/case-history-dialog'
+import { PHASE_OPTIONS as CASE_PHASE_OPTIONS, LETTER_TYPE_OPTIONS as CASE_LETTER_TYPE_OPTIONS } from '@/lib/case-options'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlFields } from '../api/urls'
+import { createCase, addCaseLetter, addUrlToCase } from '../api/cases'
 import { fetchAgencies } from '../api/agencies'
 import { fetchDepartmentsOpen } from '../api/departments'
 import { fetchDueDatePresets } from '../api/due-date-presets'
@@ -350,6 +352,10 @@ function AddUrlDialog({
   const [agencyId, setAgencyId] = useState<number | ''>('')
   const [status, setStatus] = useState('requested')
   const [dueDurationMinutes, setDueDurationMinutes] = useState('1440')
+  const [openCase, setOpenCase] = useState(false)
+  const [casePhase, setCasePhase] = useState('requested')
+  const [letterType, setLetterType] = useState('Notice')
+  const [referenceNumber, setReferenceNumber] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const pickerRef = useRef<MultiOffencePickerHandle>(null)
@@ -357,6 +363,7 @@ function AddUrlDialog({
   const reset = () => {
     setValue(''); setOffences([]); setError(null)
     setAgencyId(''); setStatus('requested'); setDueDurationMinutes('1440')
+    setOpenCase(false); setCasePhase('requested'); setLetterType('Notice'); setReferenceNumber('')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -378,9 +385,20 @@ function AddUrlDialog({
     setError(null)
     try {
       const created = await Promise.all(domains.map(d => createUrl(d)))
+      // Every domain in this batch shares one case (case_urls is many-to-many —
+      // matches CMOD's real "N URLs in one Notice" pattern), not one case per
+      // domain: open it on the first URL, then attach the rest.
+      const caseWork = openCase && created.length > 0
+        ? (async () => {
+            const c = await createCase(created[0].url, casePhase)
+            await Promise.all(created.slice(1).map(u => addUrlToCase(c.id, u.url, casePhase)))
+            await addCaseLetter(c.id, { type: letterType, reference_number: referenceNumber.trim() || undefined })
+          })()
+        : Promise.resolve()
       await Promise.all([
         ...created.flatMap(u => allOffences.map(o => attachOffence(u.url, o.categoryId, o.elementId, o.subElementId))),
         ...(hasCaseFields ? created.map(u => setUrlFields(u.id, caseFields)) : []),
+        caseWork,
       ])
       reset()
       onAdded()
@@ -393,6 +411,7 @@ function AddUrlDialog({
   }
 
   const handleClose = () => { reset(); onClose() }
+  const domainCount = value.split('\n').map(s => s.trim()).filter(Boolean).length
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
@@ -464,6 +483,60 @@ function AddUrlDialog({
               </Select>
             </div>
           </div>
+
+          <div className="form-field">
+            <div className="flex items-center gap-3">
+              <Switch
+                checked={openCase}
+                onCheckedChange={setOpenCase}
+                aria-label="Open a case for these domains"
+                disabled={loading}
+              />
+              <label className="form-label" style={{ marginBottom: 0 }}>
+                Open a case for {domainCount > 1 ? 'these domains' : 'this domain'}
+              </label>
+            </div>
+          </div>
+
+          {openCase && (
+            <>
+              <div className="form-field">
+                <label className="form-label" id="add-case-phase-label">Case Phase</label>
+                <Select value={casePhase} onValueChange={setCasePhase} disabled={loading}>
+                  <SelectTrigger aria-labelledby="add-case-phase-label" placeholder="—" className="w-full" />
+                  <SelectContent>
+                    {CASE_PHASE_OPTIONS.map((opt, i) => (
+                      <SelectItem key={opt.value} index={i} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="form-row">
+                <div className="form-field">
+                  <label className="form-label" id="add-case-letter-type-label">Letter Type</label>
+                  <Select value={letterType} onValueChange={setLetterType} disabled={loading}>
+                    <SelectTrigger aria-labelledby="add-case-letter-type-label" placeholder="—" className="w-full" />
+                    <SelectContent>
+                      {CASE_LETTER_TYPE_OPTIONS.map((opt, i) => (
+                        <SelectItem key={opt} index={i} value={opt}>{opt}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="form-field">
+                  <label className="form-label" htmlFor="add-case-reference-number">Case / Reference No.</label>
+                  <input
+                    id="add-case-reference-number"
+                    className="form-input"
+                    placeholder="e.g. MCMC(S)CMOD/BLK/2026(1-2)"
+                    value={referenceNumber}
+                    onChange={e => setReferenceNumber(e.target.value)}
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+            </>
+          )}
 
           {error && <p className="form-error">{error}</p>}
           <DialogFooter>

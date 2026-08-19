@@ -10,16 +10,7 @@ import {
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
 import { listCases, createCase, addCaseLetter } from '@/api/cases'
 import type { Case } from '@/api/types'
-
-const PHASE_OPTIONS = [
-  { value: 'requested', label: 'Requested' },
-  { value: 'uplift', label: 'Uplift' },
-  { value: 'suspended', label: 'Suspended' },
-]
-
-// Mirrors the four letter types CMOD tracks (docs/cmod-blocking-list-migration-clarifications.md);
-// CRD-sourced cases default to 'Notice' per docs/db-schema.dbml's resolved design note.
-const LETTER_TYPE_OPTIONS = ['Notice', 'Memo', 'Notice (Uplift)', 'Memo (Uplift)']
+import { PHASE_OPTIONS, LETTER_TYPE_OPTIONS } from '@/lib/case-options'
 
 export function CaseHistoryDialog({ open, onClose, url }: { open: boolean; onClose: () => void; url: string }) {
   const [cases, setCases] = useState<Case[]>([])
