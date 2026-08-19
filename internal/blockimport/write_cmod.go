@@ -124,7 +124,9 @@ func WriteCMODCases(ctx context.Context, gormDB *gorm.DB, cmodDeptID uint, cases
 					Type:            letter.Type,
 					ReferenceNumber: letter.ReferenceNumber,
 					WorkflowStatus:  letter.Status,
+					Recipient:       letter.Recipient,
 					LetterDate:      parseCMODDate(letter.LetterDate),
+					ReceivedAt:      parseCMODDate(letter.Received),
 					SubmittedAt:     parseCMODDate(letter.Submission),
 					Subject:         letter.Subject,
 					// ponytail: OICUserID left nil -- the CMOD EDA doc

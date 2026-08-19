@@ -434,7 +434,9 @@ Table case_letters {
   type              varchar     [not null, note: 'Memo | Notice | Memo (Uplift) | Notice (Uplift)']
   reference_number  varchar     [note: 'this letter\'s own citable ref -- CRD\'s No. Rujukan NMD row value, or CMOD\'s per-letter ref (memo and notice each get their own)']
   workflow_status   varchar     [note: 'CMOD-only internal approval state: Draft | Pending Legal | Pending TSC | Submitted, null for CRD-sourced letters']
+  recipient         varchar     [note: 'CMOD "Recipient" column -- who the letter was sent to, same grain as requestor/subject (per letter, not per URL)']
   letter_date       timestamptz [null]
+  received_at       timestamptz [null, note: 'CMOD "Received" column -- sparse/inconsistently formatted in the source sheet, same grain as submitted_at']
   submitted_at      timestamptz [null, note: 'CMOD Submission column -- sparse, ~387/499 filled']
   subject           varchar
   oic_user_id       integer     [null, note: 'officer in charge -- FK to users. NOT YET VERIFIED that OIC names in the source sheet (Atiqah, Arishah, ...) actually match real users.username values']
@@ -448,6 +450,19 @@ Table case_letters {
     Notice (Uplift)), a CRD-sourced case typically gets 1. Mirrors the
     source sheet's real grain (one row per letter), which is what an
     earlier single-cases-row design collapsed away.
+
+    CMOD BLK-sheet column placement decision (2026-08-19, see
+    docs/cmod-blocking-list-migration-clarifications.md §6): of the four
+    columns with no prior home, Recipient and Received are per-letter
+    metadata and got new columns here. Offence and Agency are NOT new
+    columns anywhere -- they already have a home on urls/url_offences
+    (Offence maps to the existing url_offences.category_id catalog per
+    URL in the case; Agency maps to the existing urls.agency_id FK), so
+    the importer links through those tables instead of duplicating the
+    data here. Offence/Agency import wiring is deferred pending the
+    still-open category/offence-splitting sign-off (compound values like
+    "Palsu, Jelik Melampau") -- a separate question from where the column
+    lives.
   '''
 }
 Ref: case_letters.case_id > cases.id [delete: cascade]
@@ -476,6 +491,11 @@ Table case_urls {
     removed. "Current" reference/status for display is derived by querying
     the most recent case_letters row for the case (via letter_date) joined
     through case_urls, not stored as a scalar on urls.
+
+    db.Store.AddURLToCase (POST /api/cases/{id}/urls) inserts additional
+    rows here directly, for building the "N URLs in one Notice" shape --
+    CreateCase itself still only ever links the one url a case is opened
+    for.
   '''
 }
 Ref: case_urls.case_id > cases.id [delete: cascade]

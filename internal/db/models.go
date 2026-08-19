@@ -612,7 +612,9 @@ type CaseLetter struct {
 	Type            string     `gorm:"not null" json:"type"` // Memo | Notice | Memo (Uplift) | Notice (Uplift)
 	ReferenceNumber string     `json:"reference_number,omitempty"`
 	WorkflowStatus  string     `json:"workflow_status,omitempty"` // CMOD-only: Draft | Pending Legal | Pending TSC | Submitted
+	Recipient       string     `json:"recipient,omitempty"` // CMOD's "Recipient" column -- who the letter was sent to, same grain as Requestor/Subject (per letter, not per URL)
 	LetterDate      *time.Time `json:"letter_date,omitempty"`
+	ReceivedAt      *time.Time `json:"received_at,omitempty"` // CMOD's "Received" column -- sparse/inconsistently formatted in the source sheet, same grain as SubmittedAt
 	SubmittedAt     *time.Time `json:"submitted_at,omitempty"`
 	Subject         string     `json:"subject,omitempty"`
 	OICUserID       *uint      `gorm:"index" json:"oic_user_id,omitempty"`
@@ -639,6 +641,17 @@ type CaseURL struct {
 	Case   Case   `gorm:"foreignKey:CaseID;constraint:OnDelete:CASCADE" json:"-"`
 	URL    URL    `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
 	Phase  string `gorm:"not null" json:"phase"` // requested | uplift | suspended
+}
+
+// CaseLetterEntry is one row for the Docs page: a CaseLetter plus its
+// case's department and every URL the case covers (via CaseURL — shared
+// across all of a case's letters, since URLs belong to the case, not the
+// individual letter). Not a persisted table.
+type CaseLetterEntry struct {
+	CaseLetter
+	DepartmentID   uint     `json:"department_id"`
+	DepartmentName string   `json:"department_name"`
+	URLs           []string `gorm:"-" json:"urls"`
 }
 
 // BuildProvisionSortKey returns a zero-padded, suffix-aware sortable

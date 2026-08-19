@@ -349,6 +349,20 @@ type CaseStore interface {
 	// (a case belongs to exactly one requesting department, regardless of
 	// how many URLs it covers via case_urls), or gorm.ErrRecordNotFound.
 	GetCase(ctx context.Context, id uint) (Case, error)
+	// AddURLToCase links an additional URL to an existing case via CaseURL
+	// — the "N URLs in one Notice" shape CreateCase alone can't build,
+	// since it only ever links the one URL a case is opened for. Callers
+	// building a batch (e.g. adding several domains under one case) call
+	// CreateCase once for the first URL, then this for each of the rest.
+	AddURLToCase(ctx context.Context, caseID, urlID uint, phase string) (CaseURL, error)
+	// ListCaseLetters returns every CaseLetter across every department,
+	// newest LetterDate first, each carrying its case's department and
+	// linked URLs — the Docs page's data source. Paginated like
+	// ListDomainSummaries (page is 1-indexed).
+	ListCaseLetters(ctx context.Context, page, pageSize int) ([]CaseLetterEntry, int, error)
+	// ListCaseLettersForDepartment is ListCaseLetters scoped to one
+	// department's own cases (cases.department_id), for non-admin callers.
+	ListCaseLettersForDepartment(ctx context.Context, page, pageSize int, departmentID uint) ([]CaseLetterEntry, int, error)
 }
 
 // CaseWithLetters is Case plus its Letters and this url's Phase — the read

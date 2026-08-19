@@ -28,6 +28,85 @@ func (s *postgresStore) GetCase(ctx context.Context, id uint) (Case, error) {
 	return c, err
 }
 
+func (s *postgresStore) AddURLToCase(ctx context.Context, caseID, urlID uint, phase string) (CaseURL, error) {
+	cu := CaseURL{CaseID: caseID, URLID: urlID, Phase: phase}
+	err := s.db.WithContext(ctx).Create(&cu).Error
+	return cu, err
+}
+
+func (s *postgresStore) ListCaseLetters(ctx context.Context, page, pageSize int) ([]CaseLetterEntry, int, error) {
+	return s.listCaseLetters(ctx, page, pageSize, nil)
+}
+
+func (s *postgresStore) ListCaseLettersForDepartment(ctx context.Context, page, pageSize int, departmentID uint) ([]CaseLetterEntry, int, error) {
+	return s.listCaseLetters(ctx, page, pageSize, &departmentID)
+}
+
+// caseLetterQuery returns a fresh case_letters query (optionally
+// department-scoped) each call, so the count query and the paginated
+// select below never share mutated clause state — same reasoning as
+// domainSummaryQuery in postgres.go.
+func (s *postgresStore) caseLetterQuery(ctx context.Context, departmentID *uint) *gorm.DB {
+	q := s.db.WithContext(ctx).
+		Table("case_letters").
+		Joins("JOIN cases ON cases.id = case_letters.case_id")
+	if departmentID != nil {
+		q = q.Where("cases.department_id = ?", *departmentID)
+	}
+	return q
+}
+
+func (s *postgresStore) listCaseLetters(ctx context.Context, page, pageSize int, departmentID *uint) ([]CaseLetterEntry, int, error) {
+	if page < 1 {
+		page = 1
+	}
+
+	var total int64
+	if err := s.caseLetterQuery(ctx, departmentID).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var entries []CaseLetterEntry
+	err := s.caseLetterQuery(ctx, departmentID).
+		Joins("JOIN departments ON departments.id = cases.department_id").
+		Select("case_letters.*, cases.department_id AS department_id, departments.name AS department_name").
+		Order("case_letters.letter_date desc").
+		Limit(pageSize).Offset((page - 1) * pageSize).
+		Scan(&entries).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(entries) == 0 {
+		return entries, int(total), nil
+	}
+
+	caseIDs := make([]uint, len(entries))
+	for i, e := range entries {
+		caseIDs[i] = e.CaseID
+	}
+	type urlRow struct {
+		CaseID uint
+		URL    string
+	}
+	var urlRows []urlRow
+	if err := s.db.WithContext(ctx).
+		Table("case_urls").
+		Select("case_urls.case_id AS case_id, urls.url AS url").
+		Joins("JOIN urls ON urls.id = case_urls.url_id").
+		Where("case_urls.case_id IN ?", caseIDs).
+		Scan(&urlRows).Error; err != nil {
+		return nil, 0, err
+	}
+	urlsByCaseID := make(map[uint][]string, len(caseIDs))
+	for _, r := range urlRows {
+		urlsByCaseID[r.CaseID] = append(urlsByCaseID[r.CaseID], r.URL)
+	}
+	for i := range entries {
+		entries[i].URLs = urlsByCaseID[entries[i].CaseID]
+	}
+	return entries, int(total), nil
+}
+
 func (s *postgresStore) ListCasesForURL(ctx context.Context, urlValue string) ([]CaseWithLetters, error) {
 	u, err := s.GetURLByValue(ctx, urlValue)
 	if err != nil {

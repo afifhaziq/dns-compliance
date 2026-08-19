@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/afif/dns-tracking/internal/db"
+	"github.com/afif/dns-tracking/internal/urlnorm"
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 )
@@ -119,7 +120,9 @@ func (h *Handlers) AddCaseLetter(w http.ResponseWriter, r *http.Request) {
 		Type            string     `json:"type"`
 		ReferenceNumber string     `json:"reference_number"`
 		WorkflowStatus  string     `json:"workflow_status"`
+		Recipient       string     `json:"recipient"`
 		LetterDate      *time.Time `json:"letter_date"`
+		ReceivedAt      *time.Time `json:"received_at"`
 		SubmittedAt     *time.Time `json:"submitted_at"`
 		Subject         string     `json:"subject"`
 		OICUserID       *uint      `json:"oic_user_id"`
@@ -136,7 +139,9 @@ func (h *Handlers) AddCaseLetter(w http.ResponseWriter, r *http.Request) {
 		Type:            body.Type,
 		ReferenceNumber: body.ReferenceNumber,
 		WorkflowStatus:  body.WorkflowStatus,
+		Recipient:       body.Recipient,
 		LetterDate:      body.LetterDate,
+		ReceivedAt:      body.ReceivedAt,
 		SubmittedAt:     body.SubmittedAt,
 		Subject:         body.Subject,
 		OICUserID:       body.OICUserID,
@@ -148,4 +153,104 @@ func (h *Handlers) AddCaseLetter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, letter)
+}
+
+// AddCaseURL links an additional URL to an existing case — the "N URLs in
+// one Notice" shape, needed when a batch of domains is added under one
+// case rather than one case per domain. Ownership via the case's own
+// DepartmentID, same rationale as AddCaseLetter above (a case belongs to
+// exactly one requesting department, not URL watchlist membership).
+func (h *Handlers) AddCaseURL(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	c, err := h.store.GetCase(r.Context(), uint(id))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		writeInternalError(w, err)
+		return
+	}
+	if !user.IsAdmin && (user.DepartmentID == nil || *user.DepartmentID != c.DepartmentID) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	var body struct {
+		URL   string `json:"url"`
+		Phase string `json:"phase"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" || !urlStatusAllowed[body.Phase] || body.Phase == "" {
+		writeError(w, http.StatusBadRequest, "url and phase are required, phase must be one of: requested, uplift, suspended")
+		return
+	}
+	normalized, err := urlnorm.Normalize(body.URL)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid url")
+		return
+	}
+	u, err := h.store.GetURLByValue(r.Context(), normalized)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	if u == nil {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	cu, err := h.store.AddURLToCase(r.Context(), uint(id), u.ID, body.Phase)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, cu)
+}
+
+// ListCaseLetters is the Docs page's data source — every CaseLetter across
+// every case, admin: global, non-admin: scoped to their own department's
+// cases (cases.department_id, same ownership axis AddCaseLetter checks),
+// paginated like DomainSummaries.
+func (h *Handlers) ListCaseLetters(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	page := 1
+	if p, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && p > 0 {
+		page = p
+	}
+	pageSize := defaultDomainSummaryPageSize
+	if ps, err := strconv.Atoi(r.URL.Query().Get("page_size")); err == nil && ps > 0 && ps <= maxDomainSummaryPageSize {
+		pageSize = ps
+	}
+
+	var letters []db.CaseLetterEntry
+	var total int
+	var err error
+	if user.IsAdmin {
+		letters, total, err = h.store.ListCaseLetters(r.Context(), page, pageSize)
+	} else {
+		if user.DepartmentID == nil {
+			writeError(w, http.StatusForbidden, "user has no department")
+			return
+		}
+		letters, total, err = h.store.ListCaseLettersForDepartment(r.Context(), page, pageSize, *user.DepartmentID)
+	}
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"letters": letters, "total": total})
 }

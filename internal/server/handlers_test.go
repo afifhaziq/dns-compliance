@@ -1355,6 +1355,55 @@ func (m *fullMockStore) GetCase(_ context.Context, id uint) (db.Case, error) {
 	}
 	return db.Case{}, gorm.ErrRecordNotFound
 }
+func (m *fullMockStore) AddURLToCase(_ context.Context, caseID, urlID uint, phase string) (db.CaseURL, error) {
+	cu := db.CaseURL{CaseID: caseID, URLID: urlID, Phase: phase}
+	m.caseURLs = append(m.caseURLs, cu)
+	return cu, nil
+}
+func (m *fullMockStore) listCaseLetters(departmentID *uint, page, pageSize int) ([]db.CaseLetterEntry, int, error) {
+	var entries []db.CaseLetterEntry
+	for _, l := range m.caseLetters {
+		var c db.Case
+		found := false
+		for _, cc := range m.cases {
+			if cc.ID == l.CaseID {
+				c, found = cc, true
+				break
+			}
+		}
+		if !found || (departmentID != nil && c.DepartmentID != *departmentID) {
+			continue
+		}
+		var urls []string
+		for _, cu := range m.caseURLs {
+			if cu.CaseID != l.CaseID {
+				continue
+			}
+			for _, u := range m.urls {
+				if u.ID == cu.URLID {
+					urls = append(urls, u.URL)
+				}
+			}
+		}
+		entries = append(entries, db.CaseLetterEntry{CaseLetter: l, DepartmentID: c.DepartmentID, URLs: urls})
+	}
+	total := len(entries)
+	start := (page - 1) * pageSize
+	if start > total {
+		start = total
+	}
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+	return entries[start:end], total, nil
+}
+func (m *fullMockStore) ListCaseLetters(_ context.Context, page, pageSize int) ([]db.CaseLetterEntry, int, error) {
+	return m.listCaseLetters(nil, page, pageSize)
+}
+func (m *fullMockStore) ListCaseLettersForDepartment(_ context.Context, page, pageSize int, departmentID uint) ([]db.CaseLetterEntry, int, error) {
+	return m.listCaseLetters(&departmentID, page, pageSize)
+}
 
 var _ db.Store = (*fullMockStore)(nil)
 
