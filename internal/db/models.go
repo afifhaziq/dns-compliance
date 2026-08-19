@@ -139,15 +139,17 @@ type URLCaseFields struct {
 // included too since the inline-edit dropdown needs the raw id to
 // preselect the current option.
 type URLEntry struct {
-	ID          uint       `json:"id"`
-	URL         string     `json:"url"`
-	Enabled     bool       `json:"enabled"`
-	DueDate     *time.Time `json:"due_date,omitempty"`
-	AgencyID    *uint      `json:"agency_id,omitempty"`
-	AgencyName  string     `json:"agency_name,omitempty"`
-	Status      string     `json:"status,omitempty"`
-	RequestedAt *time.Time `json:"requested_at,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID                     uint       `json:"id"`
+	URL                    string     `json:"url"`
+	Enabled                bool       `json:"enabled"`
+	DueDate                *time.Time `json:"due_date,omitempty"`
+	AgencyID               *uint      `json:"agency_id,omitempty"`
+	AgencyName             string     `json:"agency_name,omitempty"`
+	Status                 string     `json:"status,omitempty"`
+	RequestedAt            *time.Time `json:"requested_at,omitempty"`
+	CreatedAt              time.Time  `json:"created_at"`
+	CurrentReferenceNumber string     `json:"current_reference_number,omitempty"`
+	RequestingDepartments  []string   `gorm:"-" json:"requesting_departments,omitempty"`
 }
 
 // ScanSettings is a single-row (ID 1) table holding the admin-configurable
