@@ -8,7 +8,7 @@ import {
   DialogFooter,
 } from '@/components/animate-ui/components/radix/dialog'
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
-import { listCases, createCase } from '@/api/cases'
+import { listCases, createCase, addCaseLetter } from '@/api/cases'
 import type { Case } from '@/api/types'
 
 const PHASE_OPTIONS = [
@@ -17,11 +17,17 @@ const PHASE_OPTIONS = [
   { value: 'suspended', label: 'Suspended' },
 ]
 
+// Mirrors the four letter types CMOD tracks (docs/cmod-blocking-list-migration-clarifications.md);
+// CRD-sourced cases default to 'Notice' per docs/db-schema.dbml's resolved design note.
+const LETTER_TYPE_OPTIONS = ['Notice', 'Memo', 'Notice (Uplift)', 'Memo (Uplift)']
+
 export function CaseHistoryDialog({ open, onClose, url }: { open: boolean; onClose: () => void; url: string }) {
   const [cases, setCases] = useState<Case[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [newPhase, setNewPhase] = useState('requested')
+  const [letterType, setLetterType] = useState('Notice')
+  const [referenceNumber, setReferenceNumber] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -40,7 +46,14 @@ export function CaseHistoryDialog({ open, onClose, url }: { open: boolean; onClo
     setSubmitting(true)
     setError(null)
     try {
-      await createCase(url, newPhase)
+      const c = await createCase(url, newPhase)
+      // A case has no number of its own — it lives on the first letter
+      // (case_letters.reference_number), so open it in the same step.
+      await addCaseLetter(c.id, {
+        type: letterType,
+        reference_number: referenceNumber.trim() || undefined,
+      })
+      setReferenceNumber('')
       setCases(await listCases(url))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create case')
@@ -90,6 +103,31 @@ export function CaseHistoryDialog({ open, onClose, url }: { open: boolean; onClo
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="form-row">
+          <div className="form-field">
+            <label className="form-label" id="new-case-letter-type-label">Letter Type</label>
+            <Select value={letterType} onValueChange={setLetterType} disabled={submitting}>
+              <SelectTrigger aria-labelledby="new-case-letter-type-label" placeholder="—" className="w-full" />
+              <SelectContent>
+                {LETTER_TYPE_OPTIONS.map((opt, i) => (
+                  <SelectItem key={opt} index={i} value={opt}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="form-field">
+            <label className="form-label" htmlFor="new-case-reference-number">Case / Reference No.</label>
+            <input
+              id="new-case-reference-number"
+              className="form-input"
+              placeholder="e.g. MCMC(S)CMOD/BLK/2026(1-2)"
+              value={referenceNumber}
+              onChange={e => setReferenceNumber(e.target.value)}
+              disabled={submitting}
+            />
+          </div>
         </div>
 
         <DialogFooter>
