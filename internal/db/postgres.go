@@ -1280,10 +1280,17 @@ func (s *postgresStore) SLAActiveURLs(ctx context.Context, streakThreshold int) 
 		Model(&ScanResult{}).
 		Select("url_value, dns_server_id, compliant").
 		Where("url_value IN ? AND dns_server_id IN ?", urlValues, serverIDs).
+		// scanned_at alone isn't a strict total order — two scans landing in the
+		// same wall-clock second (e.g. this URL's due date passing right as
+		// StartSLAScheduler's own tick fires) tie, and ties don't count against
+		// each other in a plain "> scanned_at" comparison, so both would count
+		// as within the top streakThreshold and inflate st.count past the exact
+		// equality check below. id (monotonic on insert) breaks the tie.
 		Where(`(SELECT COUNT(*) FROM scan_results sr2
 			WHERE sr2.url_value = scan_results.url_value
 			AND sr2.dns_server_id = scan_results.dns_server_id
-			AND sr2.scanned_at > scan_results.scanned_at) < ?`, streakThreshold).
+			AND (sr2.scanned_at > scan_results.scanned_at
+				OR (sr2.scanned_at = scan_results.scanned_at AND sr2.id > scan_results.id))) < ?`, streakThreshold).
 		Scan(&rows).Error
 	if err != nil {
 		return nil, err

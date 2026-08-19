@@ -1440,6 +1440,23 @@ func TestSLAActiveURLs(t *testing.T) {
 		}
 	}
 
+	// graduatedWithTiedScan: due in the past, 4 compliant scans per enabled
+	// server, but the two OLDEST scans share an identical ScannedAt (as can
+	// happen when two different schedulers — e.g. the due-date notifier and
+	// StartSLAScheduler — fire within the same wall-clock second). The tie
+	// must not inflate the "3 most recent" count past streakThreshold and
+	// leave the URL wrongly active — regression for that bug in
+	// SLAActiveURLs' correlated subquery, which needs an id tiebreaker
+	// since scanned_at alone isn't a strict total order.
+	graduatedWithTiedScan, _ := s.AddURLToWatchlist(ctx, dept.ID, "sla-tied-scan.com")
+	setDue(graduatedWithTiedScan, past)
+	for _, srv := range []db.DNSServer{srvA, srvB} {
+		insert(graduatedWithTiedScan, srv, true, past)
+		insert(graduatedWithTiedScan, srv, true, past)
+		insert(graduatedWithTiedScan, srv, true, past.Add(time.Hour))
+		insert(graduatedWithTiedScan, srv, true, past.Add(2*time.Hour))
+	}
+
 	// partiallyGraduated: graduated on srvA but srvB's latest scan is a
 	// violation — still active, since not every enabled server qualifies.
 	partiallyGraduated, _ := s.AddURLToWatchlist(ctx, dept.ID, "sla-partial.com")
@@ -1477,8 +1494,8 @@ func TestSLAActiveURLs(t *testing.T) {
 			t.Fatalf("expected %s to be SLA-active, got %v", u, got)
 		}
 	}
-	if got["sla-no-due.com"] || got["sla-not-yet-due.com"] || got["sla-graduated.com"] {
-		t.Fatalf("expected no-due/not-yet-due/graduated URLs to be excluded, got %v", got)
+	if got["sla-no-due.com"] || got["sla-not-yet-due.com"] || got["sla-graduated.com"] || got["sla-tied-scan.com"] {
+		t.Fatalf("expected no-due/not-yet-due/graduated/tied-scan URLs to be excluded, got %v", got)
 	}
 }
 
