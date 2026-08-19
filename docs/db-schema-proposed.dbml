@@ -48,9 +48,35 @@
 //     (Atiqah, Arishah, ...) match real users.username values -- not yet
 //     checked against the actual users table.
 //
+// RESOLVED since the caveats above were written (2026-08-19 design review):
+//
+//   - urls.requesting_dept_id REMOVED (was a single-FK scalar -- a domain
+//     can now genuinely have cases open from both CRD and CMOD at once, so
+//     one column can't hold it). "Which department(s) are requesting this
+//     domain blocked" is now derived, not stored:
+//       SELECT DISTINCT c.department_id FROM cases c
+//       JOIN case_urls cu ON cu.case_id = c.id WHERE cu.url_id = ?
+//     "Set requesting department" in the UI becomes "attach a case"
+//     (department_id + a case_urls row) instead of writing a column --a
+//     bare case with zero case_letters rows is valid for this (nothing on
+//     cases requires a letter), so flagging a domain ad hoc, before any
+//     paperwork exists, still costs nothing more than today's dropdown did.
+//   - case_letters.type stays NOT NULL. CRD did not track a memo/notice
+//     paper trail in its sheet, but the department attests the documents
+//     exist in truth -- just unrecorded. So a CRD-sourced case gets exactly
+//     one case_letters row (not four, not a null-type placeholder): no row
+//     is inserted for a letter type CRD didn't track. That one row's type
+//     defaults to 'Notice', not a new CRD-only enum value -- CRD's own
+//     reference number matches CMOD's Notice ref 77% of the time where the
+//     two overlap (see the CMOD doc's ref-crosscheck table), i.e. CRD's ref
+//     is functionally the externally-citable one, same role a Notice plays
+//     for CMOD.
+//
 // due_date, status, and agency_id remain scalars on urls for now (same
 // last-write-wins shape, deliberately not addressed by this proposal --
-// open question, see the CMOD doc).
+// still an open question, see the CMOD doc). Unlike requesting_dept_id,
+// nothing in this review established that a domain needs more than one
+// live due_date/status/agency at a time -- revisit only if that changes.
 //
 // Everything else below is an unmodified copy of docs/db-schema.dbml as of
 // 2026-08-13 -- re-sync by hand if that file changes upstream of this one.
@@ -106,7 +132,6 @@ Table urls {
   created_at          timestamptz
   due_date            timestamptz [null, note: 'takedown-order SLA deadline, carries time-of-day']
   agency_id           integer     [null, note: 'indexed, FK OnDelete:SET NULL']
-  requesting_dept_id  integer     [null, note: 'indexed, FK to departments, OnDelete:SET NULL']
   status              varchar     [note: '"" | requested | uplift | suspended, validated server-side -- independent of the derived Compliant field']
   requested_at        timestamptz [null]
 
@@ -121,16 +146,21 @@ Table urls {
     numbers and every other case-level attribute now live on cases,
     joined to urls many-to-many via case_urls.
 
-    due_date/agency_id/requesting_dept_id/status/requested_at keep the
-    same shape as today (one case per domain, last-write-wins, editing
-    visible to every department watching the domain, gated by
-    UpdateURLCaseFields' department-ownership check) -- NOT addressed by
-    this proposal even though the same many-to-many argument could apply;
-    left as an open question.
+    requesting_dept_id also removed (RESOLVED, see file header) -- a
+    domain can have open cases from both CRD and CMOD at once, so a
+    single-FK scalar can't hold it either. "Requesting department(s)" is
+    now derived: DISTINCT cases.department_id joined through case_urls for
+    this url_id, not a stored column.
+
+    due_date/agency_id/status/requested_at keep the same shape as today
+    (one case per domain, last-write-wins, editing visible to every
+    department watching the domain, gated by UpdateURLCaseFields'
+    department-ownership check) -- NOT addressed by this proposal even
+    though the same many-to-many argument could apply; left as an open
+    question (see file header).
   '''
 }
 Ref: urls.agency_id > agencies.id [delete: set null]
-Ref: urls.requesting_dept_id > departments.id [delete: set null]
 
 Table agencies {
   id         integer   [pk, increment]
@@ -479,9 +509,16 @@ Table case_letters {
     PROPOSED, not yet built -- see docs/cmod-blocking-list-migration-clarifications.md.
     One row per actual letter/document -- a case with a block + later
     uplift gets up to 4 rows here (Memo, Notice, Memo (Uplift),
-    Notice (Uplift)), a CRD-sourced case typically gets 1. Mirrors the
+    Notice (Uplift)), a CRD-sourced case gets exactly 1. Mirrors the
     source sheet's real grain (one row per letter), which is what the
     earlier single-cases-row design collapsed away.
+
+    RESOLVED (see file header): CRD's sheet never tracked a memo/notice
+    split, but the department attests the documents exist in truth, just
+    unrecorded -- so a CRD case gets one case_letters row (type defaults
+    to 'Notice', CRD's ref is the externally-citable one, same role a
+    Notice plays for CMOD) rather than 4 placeholder rows or a null type.
+    No row is inserted for a letter type that wasn't tracked.
   '''
 }
 Ref: case_letters.case_id > cases.id [delete: cascade]
