@@ -14,12 +14,13 @@ import (
 // body otherwise completed without error.
 var errDryRunRollback = errors.New("blockimport: dry run rollback")
 
-// ImportSummary is what a run (dry or real) reports.
+// ImportSummary is what a run (dry or real) reports. Shared by both the CRD
+// and CMOD importers.
 type ImportSummary struct {
 	CasesCreated       int
 	CasesSkippedExist  int            // already imported (idempotency)
 	URLsSkippedBadURL  int            // failed urlnorm.Normalize
-	CategoriesObserved map[string]int // raw Category value -> row count, for visibility only
+	CategoriesObserved map[string]int // raw Category/Offence value -> row count, for visibility only
 }
 
 // mapCRDStatus maps the spreadsheet's Status values onto case_urls.phase's

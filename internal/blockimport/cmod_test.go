@@ -1,36 +1,12 @@
 package blockimport
 
 import (
-	"path/filepath"
 	"reflect"
 	"testing"
-
-	"github.com/xuri/excelize/v2"
 )
 
-// writeTestXLSX builds a small synthetic .xlsx fixture in t.TempDir() and
-// returns its path. Shared by every test in this file/package.
-func writeTestXLSX(t *testing.T, sheetName string, rows [][]string) string {
-	t.Helper()
-	f := excelize.NewFile()
-	f.SetSheetName("Sheet1", sheetName)
-	for r, row := range rows {
-		for c, val := range row {
-			cell, err := excelize.CoordinatesToCellName(c+1, r+1)
-			if err != nil {
-				t.Fatalf("CoordinatesToCellName: %v", err)
-			}
-			if err := f.SetCellValue(sheetName, cell, val); err != nil {
-				t.Fatalf("SetCellValue: %v", err)
-			}
-		}
-	}
-	path := filepath.Join(t.TempDir(), "test.xlsx")
-	if err := f.SaveAs(path); err != nil {
-		t.Fatalf("SaveAs: %v", err)
-	}
-	return path
-}
+// writeTestXLSX is defined once in crd_test.go and shared by every test in
+// this package.
 
 func TestParseCMODRows_ResolvesColumnsByHeaderName(t *testing.T) {
 	path := writeTestXLSX(t, "BLK", [][]string{

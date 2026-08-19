@@ -11,13 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// ImportSummary is what a run (dry or real) reports.
-type ImportSummary struct {
-	CasesCreated       int
-	CasesSkippedExist  int            // already imported (idempotency)
-	URLsSkippedBadURL  int            // failed urlnorm.Normalize
-	CategoriesObserved map[string]int // raw Offence value -> case count, for visibility only (see the plan's Global Constraints -- no Category/URLOffence rows are created)
-}
+// ImportSummary is defined once in write.go and shared by both importers.
 
 // cmodDateLayouts are the raw text formats seen in the sheet's date-ish
 // columns -- plain strings mixing abbreviated/full month names, with and

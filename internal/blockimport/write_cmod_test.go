@@ -5,27 +5,10 @@ import (
 	"testing"
 
 	"github.com/afif/dns-tracking/internal/db"
-	"github.com/glebarez/sqlite"
-	"gorm.io/gorm"
 )
 
-func newTestGormDB(t *testing.T) *gorm.DB {
-	t.Helper()
-	gormDB, err := db.Connect(sqlite.Open(":memory:"))
-	if err != nil {
-		t.Fatalf("db.Connect: %v", err)
-	}
-	return gormDB
-}
-
-func mustSeedDepartment(t *testing.T, gormDB *gorm.DB, name string) db.Department {
-	t.Helper()
-	dept := db.Department{Name: name}
-	if err := gormDB.Create(&dept).Error; err != nil {
-		t.Fatalf("seeding department %s: %v", name, err)
-	}
-	return dept
-}
+// newTestGormDB and mustSeedDepartment are defined once in write_test.go and
+// shared by every test in this package.
 
 func TestWriteCMODCases_CreatesFourLettersForFullLifecycle(t *testing.T) {
 	gdb := newTestGormDB(t)
