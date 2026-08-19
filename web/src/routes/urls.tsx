@@ -11,6 +11,8 @@ import {
   useReactTable,
 } from '@tanstack/react-table'
 import { GripIcon } from '@/components/ui/grip'
+import { FileText } from 'lucide-react'
+import { CaseHistoryDialog } from '@/components/case-history-dialog'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlFields } from '../api/urls'
 import { fetchAgencies } from '../api/agencies'
 import { fetchDepartmentsOpen } from '../api/departments'
@@ -744,6 +746,8 @@ function URLsPage() {
   // `urls` below and reflects its own edits (agency/status/etc.) immediately.
   const [editTargetId, setEditTargetId] = useState<number | null>(null)
   const editTarget = urls.find(u => u.id === editTargetId) ?? null
+  const [caseHistoryTargetId, setCaseHistoryTargetId] = useState<number | null>(null)
+  const caseHistoryTarget = urls.find(u => u.id === caseHistoryTargetId) ?? null
 
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<Filter<string>[]>([])
@@ -974,6 +978,15 @@ function URLsPage() {
               <button
                 type="button"
                 className="screenshot-icon-btn"
+                onClick={() => setCaseHistoryTargetId(u.id)}
+                aria-label={`Cases for ${u.url}`}
+                title="Cases"
+              >
+                <FileText size={16} />
+              </button>
+              <button
+                type="button"
+                className="screenshot-icon-btn"
                 onClick={() => setDeleteTarget(u)}
                 aria-label={`Delete ${u.url}`}
                 title="Delete"
@@ -1095,6 +1108,12 @@ function URLsPage() {
         onAgencyChange={handleAgencyChange}
         onStatusChange={handleStatusChange}
         onDueDurationChange={handleDueDurationChange}
+      />
+
+      <CaseHistoryDialog
+        open={caseHistoryTargetId !== null}
+        onClose={() => setCaseHistoryTargetId(null)}
+        url={caseHistoryTarget?.url ?? ''}
       />
     </div>
   )

@@ -1245,6 +1245,18 @@ th.th-left {
   @apply flex items-center justify-between gap-2 py-1 px-2.5 text-[13px] text-foreground bg-stone-panel border border-stone-border rounded-lg;
 }
 
+.case-history-list {
+  @apply flex flex-col gap-2 mb-2 max-h-64 overflow-y-auto;
+}
+
+.case-history-item {
+  @apply py-2 px-2.5 text-[13px] text-foreground bg-stone-panel border border-stone-border rounded-lg;
+}
+
+.case-history-letters {
+  @apply flex flex-col gap-1 mt-1.5 pl-3 text-[12px] text-stone-muted;
+}
+
 .back-link {
   @apply inline-flex items-center gap-1 text-[13px] font-medium text-stone-muted no-underline mb-3
     transition-colors duration-150 ease-snappy hover:text-foreground;

@@ -3,7 +3,9 @@ import type { Case, CaseLetter } from './types'
 
 export async function listCases(url: string): Promise<Case[]> {
   const data = await api.get<Case[]>(`/cases/${encodeURIComponent(url)}`)
-  return Array.isArray(data) ? data : [] // Go nil slice -> JSON null, see web/CLAUDE.md
+  // Go nil slice -> JSON null, see web/CLAUDE.md — applies both to the top-level
+  // array and to each case's `letters` (a case with no letters yet marshals as null).
+  return (Array.isArray(data) ? data : []).map(c => ({ ...c, letters: c.letters ?? [] }))
 }
 
 export function createCase(url: string, phase: string): Promise<Case> {
