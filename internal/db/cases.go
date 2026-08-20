@@ -6,8 +6,8 @@ import (
 	"gorm.io/gorm"
 )
 
-func (s *postgresStore) CreateCase(ctx context.Context, departmentID, urlID uint, phase string) (Case, error) {
-	c := Case{DepartmentID: departmentID}
+func (s *postgresStore) CreateCase(ctx context.Context, departmentID, urlID uint, phase string, opts CaseCreateOptions) (Case, error) {
+	c := Case{DepartmentID: departmentID, Status: phase, AgencyID: opts.AgencyID, DueDate: opts.DueDate}
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&c).Error; err != nil {
 			return err
@@ -17,9 +17,64 @@ func (s *postgresStore) CreateCase(ctx context.Context, departmentID, urlID uint
 	return c, err
 }
 
+// UpdateCaseURLPhase sets one (case, url) pair's own Phase — the per-domain
+// override of Case.Status. False if no such CaseURL row exists (caller has
+// already validated phase against urlStatusAllowed).
+func (s *postgresStore) UpdateCaseURLPhase(ctx context.Context, caseID, urlID uint, phase string) (bool, error) {
+	res := s.db.WithContext(ctx).
+		Model(&CaseURL{}).
+		Where("case_id = ? AND url_id = ?", caseID, urlID).
+		Update("phase", phase)
+	return res.RowsAffected > 0, res.Error
+}
+
+// UpdateCaseFields applies a partial update to a case's shared fields —
+// only non-nil fields in `fields` are touched. Ownership (departmentID owns
+// caseID) is already checked by the caller (handler layer); departmentID is
+// accepted here to mirror the old UpdateURLCaseFields signature but isn't
+// used to scope the write.
+func (s *postgresStore) UpdateCaseFields(ctx context.Context, departmentID, caseID uint, fields CaseFields) (bool, error) {
+	_ = departmentID
+	var count int64
+	if err := s.db.WithContext(ctx).Model(&Case{}).Where("id = ?", caseID).Count(&count).Error; err != nil {
+		return false, err
+	}
+	if count == 0 {
+		return false, nil
+	}
+
+	updates := map[string]interface{}{}
+	if fields.AgencyID != nil {
+		updates["agency_id"] = *fields.AgencyID
+	}
+	if fields.Status != nil {
+		updates["status"] = *fields.Status
+	}
+	if fields.DueDate != nil {
+		updates["due_date"] = *fields.DueDate
+	}
+	if fields.RequestedAt != nil {
+		updates["requested_at"] = *fields.RequestedAt
+	}
+	if len(updates) == 0 {
+		return true, nil // exists, but nothing in the body to apply
+	}
+	res := s.db.WithContext(ctx).Model(&Case{}).Where("id = ?", caseID).Updates(updates)
+	return res.RowsAffected > 0, res.Error
+}
+
 func (s *postgresStore) AddCaseLetter(ctx context.Context, letter CaseLetter) (CaseLetter, error) {
 	err := s.db.WithContext(ctx).Create(&letter).Error
 	return letter, err
+}
+
+// ListCaseURLIDs returns every URL id a case covers, via case_urls — used
+// to fan a case-level DueDate change out to a per-(department, url)
+// due-date-reached task for each url the case links (see UpdateCase).
+func (s *postgresStore) ListCaseURLIDs(ctx context.Context, caseID uint) ([]uint, error) {
+	var ids []uint
+	err := s.db.WithContext(ctx).Model(&CaseURL{}).Where("case_id = ?", caseID).Pluck("url_id", &ids).Error
+	return ids, err
 }
 
 func (s *postgresStore) GetCase(ctx context.Context, id uint) (Case, error) {

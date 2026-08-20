@@ -20,30 +20,16 @@ type DNSServer struct {
 // see internal/urlnorm) by the time it reaches the database — normalization
 // happens in the handler/store layer, not via a DB trigger.
 //
-// URL also carries the domain's legal case metadata — one case per domain,
-// not one per watching department, since e.g. two departments watching the
-// same domain share the same takedown order. This mirrors how
-// DomainWhois/SubdomainScan/IPInfo are already keyed by domain/IP, not
-// department. Editing these fields is therefore visible to every department
-// watching the domain (last-write-wins) — see UpdateURLCaseFields for the
-// department-ownership check that still gates who's allowed to write.
+// URL is purely domain identity now — no case metadata. Agency/Status/
+// DueDate/RequestedAt moved to Case (see Case's doc comment): a domain can
+// carry many cases over its history (reblocked under a new reference), so a
+// scalar column on URL could only ever hold the latest one. URLEntry still
+// exposes these under the same JSON field names for frontend compatibility,
+// derived from the URL's most-recently-created Case (see ListDepartmentURLs).
 type URL struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	URL       string    `gorm:"uniqueIndex;not null" json:"url"`
 	CreatedAt time.Time `json:"created_at"`
-
-	// DueDate is the takedown-order SLA deadline (carries time-of-day — some
-	// orders require blocking within 6h/24h).
-	DueDate *time.Time `json:"due_date,omitempty"`
-	// AgencyID is nullable (a domain may have no case yet) and
-	// OnDelete:SET NULL — deleting an Agency must not cascade-delete the URL.
-	AgencyID *uint   `gorm:"index" json:"agency_id,omitempty"`
-	Agency   *Agency `gorm:"foreignKey:AgencyID;constraint:OnDelete:SET NULL" json:"agency,omitempty"`
-	// Status is requested | uplift | suspended, validated server-side
-	// (internal/server/handlers.go) — independent of the derived Compliant
-	// field; blocked/not-blocked already comes from scan results.
-	Status      string     `json:"status,omitempty"`
-	RequestedAt *time.Time `json:"requested_at,omitempty"`
 }
 
 // Agency is an admin-managed lookup table for the government agency behind
@@ -122,7 +108,7 @@ type Session struct {
 }
 
 // DepartmentURL links a department's watchlist to a shared URL row. Carries
-// no case metadata — that's global on URL now (see URL's doc comment).
+// no case metadata — that lives on Case now (see Case's doc comment).
 // Removing a domain from a watchlist only deletes this row — it never
 // touches URL or ScanResult, so scan history is preserved even once no
 // department watches a domain anymore. Its OnDelete:CASCADE only fires on
@@ -135,27 +121,16 @@ type DepartmentURL struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-// URLCaseFields is a partial update to a URL's case metadata. Every field is
-// optional (nil = leave untouched) — one flexible update path instead of a
-// SetURLX method per column. DueDate/RequestedAt/AgencyID are double
-// pointers so "clear" is distinguishable from "not present in this
-// update": outer nil = don't touch, outer non-nil pointing at a nil inner =
-// clear, outer non-nil pointing at &v = set. AgencyID needs the same
-// three-state contract as the two date fields — unlike a string, an ID has
-// no natural empty-value sentinel to mean "clear".
-type URLCaseFields struct {
-	DueDate     **time.Time
-	AgencyID    **uint
-	Status      *string
-	RequestedAt **time.Time
-}
-
 // URLEntry is the department-scoped watchlist row shape returned to the
-// frontend: URL's case-metadata fields plus DepartmentURL's Enabled.
-// AgencyName is denormalized in so the frontend doesn't need to
-// cross-reference the Agency list just to render a cell; AgencyID is
-// included too since the inline-edit dropdown needs the raw id to
-// preselect the current option.
+// frontend: URL identity plus DepartmentURL's Enabled, plus case metadata
+// derived from the URL's most-recently-created Case (see
+// postgresStore.ListDepartmentURLs) — not stored on URL itself. Field names
+// and JSON tags are unchanged from when these lived directly on URL, for
+// frontend compatibility. AgencyName is denormalized in so the frontend
+// doesn't need to cross-reference the Agency list just to render a cell;
+// AgencyID is included too since the inline-edit dropdown needs the raw id
+// to preselect the current option. A URL with zero Cases yields all of
+// these as null/empty.
 type URLEntry struct {
 	ID                     uint       `json:"id"`
 	URL                    string     `json:"url"`
@@ -607,16 +582,55 @@ type URLOffence struct {
 	RecordedAt   time.Time   `gorm:"not null" json:"recorded_at"`
 }
 
-// Case is a thin anchor, one row per real-world case/request — the same
-// role ScanRun already plays for ScanResult. Every case fact (reference
-// numbers, letters, subject, OIC, workflow status...) lives on CaseLetter,
-// not here, since the source data's real grain is one row per
-// letter/document, not one row per case.
+// Case is one row per real-world case/request — the same role ScanRun
+// already plays for ScanResult. Letter-grain facts (reference numbers,
+// subject, OIC, workflow status...) still live on CaseLetter, since the
+// source data's real grain is one row per letter/document. Agency/Status/
+// DueDate/RequestedAt live here instead, as the case-level defaults shared
+// by every URL the case covers (formerly scalar columns on URL, before a
+// domain could carry more than one case) — CaseURL.Phase is the per-domain
+// override within this case (see CaseURL's doc comment).
 type Case struct {
 	ID           uint       `gorm:"primaryKey" json:"id"`
 	DepartmentID uint       `gorm:"not null;index" json:"department_id"`
 	Department   Department `gorm:"foreignKey:DepartmentID" json:"-"`
 	CreatedAt    time.Time  `json:"created_at"`
+
+	// DueDate is the takedown-order SLA deadline (carries time-of-day — some
+	// orders require blocking within 6h/24h).
+	DueDate *time.Time `json:"due_date,omitempty"`
+	// AgencyID is nullable and OnDelete:SET NULL — deleting an Agency must
+	// not cascade-delete the Case.
+	AgencyID *uint   `gorm:"index" json:"agency_id,omitempty"`
+	Agency   *Agency `gorm:"foreignKey:AgencyID;constraint:OnDelete:SET NULL" json:"agency,omitempty"`
+	// Status is requested | uplift | suspended, validated server-side
+	// (internal/server/handlers.go's urlStatusAllowed) — independent of the
+	// derived Compliant field; blocked/not-blocked already comes from scan
+	// results. This is the case-level default; CaseURL.Phase carries the
+	// same vocabulary as a per-domain override.
+	Status      string     `json:"status,omitempty"`
+	RequestedAt *time.Time `json:"requested_at,omitempty"`
+}
+
+// CaseFields is a partial update to a Case's shared fields, mirroring the
+// double-pointer clear-vs-untouched contract the old URLCaseFields used:
+// outer nil = don't touch, outer non-nil pointing at a nil inner = clear,
+// outer non-nil pointing at &v = set. AgencyID/DueDate/RequestedAt need this
+// three-state contract since none of them has a natural empty-value
+// sentinel to mean "clear". Status is a plain pointer since "" already
+// means clear (see urlStatusAllowed).
+type CaseFields struct {
+	AgencyID    **uint
+	Status      *string
+	DueDate     **time.Time
+	RequestedAt **time.Time
+}
+
+// CaseCreateOptions carries the optional case-level fields CreateCase can
+// set at creation time, alongside the always-required phase.
+type CaseCreateOptions struct {
+	AgencyID *uint
+	DueDate  *time.Time
 }
 
 // CaseLetter is one row per actual letter/document (Memo, Notice, Memo
@@ -625,21 +639,29 @@ type Case struct {
 // grain (one row per letter), which an earlier single-Case-row design
 // collapsed away.
 type CaseLetter struct {
-	ID              uint       `gorm:"primaryKey" json:"id"`
-	CaseID          uint       `gorm:"not null;index" json:"case_id"`
-	Type            string     `gorm:"not null" json:"type"` // Memo | Notice | Memo (Uplift) | Notice (Uplift)
-	ReferenceNumber string     `json:"reference_number,omitempty"`
-	WorkflowStatus  string     `json:"workflow_status,omitempty"` // CMOD-only: Draft | Pending Legal | Pending TSC | Submitted
-	Recipient       string     `json:"recipient,omitempty"` // CMOD's "Recipient" column -- who the letter was sent to, same grain as Requestor/Subject (per letter, not per URL)
-	LetterDate      *time.Time `json:"letter_date,omitempty"`
-	ReceivedAt      *time.Time `json:"received_at,omitempty"` // CMOD's "Received" column -- sparse/inconsistently formatted in the source sheet, same grain as SubmittedAt
-	SubmittedAt     *time.Time `json:"submitted_at,omitempty"`
-	Subject         string     `json:"subject,omitempty"`
-	OICUserID       *uint      `gorm:"index" json:"oic_user_id,omitempty"`
-	OICUser         *User      `gorm:"foreignKey:OICUserID;constraint:OnDelete:SET NULL" json:"oic_user,omitempty"`
-	Requestor       string     `json:"requestor,omitempty"`
-	Remarks         string     `json:"remarks,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
+	ID     uint   `gorm:"primaryKey" json:"id"`
+	CaseID uint   `gorm:"not null;index" json:"case_id"`
+	Type   string `gorm:"not null" json:"type"` // Memo | Notice | Memo (Uplift) | Notice (Uplift)
+	// ReferenceNumberExternal is "No. Rujukan NMD" — the citable reference
+	// that actually goes to the ISP/regulator; current_reference_number
+	// (URLEntry, ListDepartmentURLs) derives from this field on Notice-type
+	// letters. ReferenceNumberInternal is "No. Rujukan NMSMD" — MCMC-internal,
+	// never sent externally. Renamed/split from a single ReferenceNumber
+	// field (db.Connect's case_letters.reference_number -> ...external
+	// rename) since the two were previously conflated.
+	ReferenceNumberExternal string     `json:"reference_number_external,omitempty"`
+	ReferenceNumberInternal string     `json:"reference_number_internal,omitempty"`
+	WorkflowStatus          string     `json:"workflow_status,omitempty"` // CMOD-only: Draft | Pending Legal | Pending TSC | Submitted
+	Recipient               string     `json:"recipient,omitempty"`       // CMOD's "Recipient" column -- who the letter was sent to, same grain as Requestor/Subject (per letter, not per URL)
+	LetterDate              *time.Time `json:"letter_date,omitempty"`
+	ReceivedAt              *time.Time `json:"received_at,omitempty"` // CMOD's "Received" column -- sparse/inconsistently formatted in the source sheet, same grain as SubmittedAt
+	SubmittedAt             *time.Time `json:"submitted_at,omitempty"`
+	Subject                 string     `json:"subject,omitempty"`
+	OICUserID               *uint      `gorm:"index" json:"oic_user_id,omitempty"`
+	OICUser                 *User      `gorm:"foreignKey:OICUserID;constraint:OnDelete:SET NULL" json:"oic_user,omitempty"`
+	Requestor               string     `json:"requestor,omitempty"`
+	Remarks                 string     `json:"remarks,omitempty"`
+	CreatedAt               time.Time  `json:"created_at"`
 }
 
 // CaseURL is the many-to-many join between cases and urls — a case
@@ -648,11 +670,14 @@ type CaseLetter struct {
 // a new reference). Carries its own Phase rather than being a plain
 // junction table: some urls within the same case reach a different
 // outcome than their siblings, so phase varies per url, not per letter.
-// Sole source of truth for the url<->reference-number relationship now
-// that URL.ReferenceNumber is gone — "current" reference/status for
-// display is derived by querying the most recent CaseLetter row for the
-// case (via LetterDate) joined through CaseURL, not stored as a scalar on
-// URL.
+// Case.Status is this case's default status/phase (shared by every url it
+// covers); Phase here is that specific url's override within this case —
+// they start equal at creation (see CreateCase) and only diverge if
+// someone later calls UpdateCaseURLPhase for this one url. Sole source of
+// truth for the url<->reference-number relationship now that
+// URL.ReferenceNumber is gone — "current" reference/status for display is
+// derived by querying the most recent CaseLetter row for the case (via
+// LetterDate) joined through CaseURL, not stored as a scalar on URL.
 type CaseURL struct {
 	CaseID uint   `gorm:"primaryKey;autoIncrement:false" json:"case_id"`
 	URLID  uint   `gorm:"primaryKey;autoIncrement:false" json:"url_id"`

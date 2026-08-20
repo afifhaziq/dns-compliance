@@ -53,7 +53,7 @@ func TestWriteCRDCases_CreatesOneCasePerReference(t *testing.T) {
 	if err := gdb.First(&letter).Error; err != nil {
 		t.Fatalf("expected a CaseLetter row: %v", err)
 	}
-	if letter.ReferenceNumber != "REF-1" || letter.Type != "Notice" {
+	if letter.ReferenceNumberExternal != "REF-1" || letter.Type != "Notice" {
 		t.Fatalf("got letter %+v", letter)
 	}
 

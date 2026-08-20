@@ -337,6 +337,25 @@ func (m *fullMockStore) DeleteExpiredSessions(_ context.Context) (int64, error) 
 	return n, nil
 }
 
+// latestCaseForURL returns urlID's most-recently-created Case (mirroring
+// postgresStore.ListDepartmentURLs' correlated subquery), or nil if it has
+// none. m.cases is scanned in insertion order, which — since every test
+// seeds cases in chronological order and the mock's CreateCase appends —
+// is an adequate proxy for "most recently created" without needing a real
+// CreatedAt clock.
+func (m *fullMockStore) latestCaseForURL(urlID uint) *db.Case {
+	var latest *db.Case
+	for i := range m.cases {
+		c := &m.cases[i]
+		for _, cu := range m.caseURLs {
+			if cu.CaseID == c.ID && cu.URLID == urlID {
+				latest = c
+			}
+		}
+	}
+	return latest
+}
+
 func (m *fullMockStore) ListDepartmentURLs(_ context.Context, departmentID uint) ([]db.URLEntry, error) {
 	var out []db.URLEntry
 	for _, du := range m.departmentURLs {
@@ -345,15 +364,17 @@ func (m *fullMockStore) ListDepartmentURLs(_ context.Context, departmentID uint)
 		}
 		for _, u := range m.urls {
 			if u.ID == du.URLID {
-				entry := db.URLEntry{
-					ID: u.ID, URL: u.URL, Enabled: du.Enabled, DueDate: u.DueDate,
-					AgencyID: u.AgencyID,
-					Status:   u.Status, RequestedAt: u.RequestedAt, CreatedAt: u.CreatedAt,
-				}
-				if u.AgencyID != nil {
-					for _, a := range m.agencies {
-						if a.ID == *u.AgencyID {
-							entry.AgencyName = a.Name
+				entry := db.URLEntry{ID: u.ID, URL: u.URL, Enabled: du.Enabled, CreatedAt: u.CreatedAt}
+				if c := m.latestCaseForURL(u.ID); c != nil {
+					entry.DueDate = c.DueDate
+					entry.AgencyID = c.AgencyID
+					entry.Status = c.Status
+					entry.RequestedAt = c.RequestedAt
+					if c.AgencyID != nil {
+						for _, a := range m.agencies {
+							if a.ID == *c.AgencyID {
+								entry.AgencyName = a.Name
+							}
 						}
 					}
 				}
@@ -386,40 +407,6 @@ func (m *fullMockStore) SetURLEnabled(_ context.Context, departmentID, urlID uin
 		}
 	}
 	return false, nil
-}
-
-// UpdateURLCaseFields mirrors postgresStore's ownership-check-then-write
-// contract: the case fields live on the shared URL row, but a write is only
-// allowed once departmentID is confirmed to be watching urlID.
-func (m *fullMockStore) UpdateURLCaseFields(_ context.Context, departmentID, urlID uint, fields db.URLCaseFields) (bool, error) {
-	owns := false
-	for _, du := range m.departmentURLs {
-		if du.DepartmentID == departmentID && du.URLID == urlID {
-			owns = true
-			break
-		}
-	}
-	if !owns {
-		return false, nil
-	}
-	for i, u := range m.urls {
-		if u.ID == urlID {
-			if fields.DueDate != nil {
-				m.urls[i].DueDate = *fields.DueDate
-			}
-			if fields.AgencyID != nil {
-				m.urls[i].AgencyID = *fields.AgencyID
-			}
-			if fields.Status != nil {
-				m.urls[i].Status = *fields.Status
-			}
-			if fields.RequestedAt != nil {
-				m.urls[i].RequestedAt = *fields.RequestedAt
-			}
-			return true, nil
-		}
-	}
-	return true, nil
 }
 
 func (m *fullMockStore) ListAgencies(_ context.Context) ([]db.Agency, error) {
@@ -1367,11 +1354,41 @@ func (m *fullMockStore) HasRecentResurfacedNotification(_ context.Context, depar
 	return false, nil
 }
 
-func (m *fullMockStore) CreateCase(_ context.Context, departmentID, urlID uint, phase string) (db.Case, error) {
-	c := db.Case{ID: uint(len(m.cases) + 1), DepartmentID: departmentID}
+func (m *fullMockStore) CreateCase(_ context.Context, departmentID, urlID uint, phase string, opts db.CaseCreateOptions) (db.Case, error) {
+	c := db.Case{ID: uint(len(m.cases) + 1), DepartmentID: departmentID, Status: phase, AgencyID: opts.AgencyID, DueDate: opts.DueDate}
 	m.cases = append(m.cases, c)
 	m.caseURLs = append(m.caseURLs, db.CaseURL{CaseID: c.ID, URLID: urlID, Phase: phase})
 	return c, nil
+}
+func (m *fullMockStore) UpdateCaseURLPhase(_ context.Context, caseID, urlID uint, phase string) (bool, error) {
+	for i, cu := range m.caseURLs {
+		if cu.CaseID == caseID && cu.URLID == urlID {
+			m.caseURLs[i].Phase = phase
+			return true, nil
+		}
+	}
+	return false, nil
+}
+func (m *fullMockStore) UpdateCaseFields(_ context.Context, _ uint, caseID uint, fields db.CaseFields) (bool, error) {
+	for i, c := range m.cases {
+		if c.ID != caseID {
+			continue
+		}
+		if fields.AgencyID != nil {
+			m.cases[i].AgencyID = *fields.AgencyID
+		}
+		if fields.Status != nil {
+			m.cases[i].Status = *fields.Status
+		}
+		if fields.DueDate != nil {
+			m.cases[i].DueDate = *fields.DueDate
+		}
+		if fields.RequestedAt != nil {
+			m.cases[i].RequestedAt = *fields.RequestedAt
+		}
+		return true, nil
+	}
+	return false, nil
 }
 func (m *fullMockStore) AddCaseLetter(_ context.Context, letter db.CaseLetter) (db.CaseLetter, error) {
 	letter.ID = uint(len(m.caseLetters) + 1)
@@ -1421,6 +1438,15 @@ func (m *fullMockStore) AddURLToCase(_ context.Context, caseID, urlID uint, phas
 	cu := db.CaseURL{CaseID: caseID, URLID: urlID, Phase: phase}
 	m.caseURLs = append(m.caseURLs, cu)
 	return cu, nil
+}
+func (m *fullMockStore) ListCaseURLIDs(_ context.Context, caseID uint) ([]uint, error) {
+	var ids []uint
+	for _, cu := range m.caseURLs {
+		if cu.CaseID == caseID {
+			ids = append(ids, cu.URLID)
+		}
+	}
+	return ids, nil
 }
 func (m *fullMockStore) listCaseLetters(departmentID *uint, page, pageSize int) ([]db.CaseLetterEntry, int, error) {
 	var entries []db.CaseLetterEntry
@@ -2552,7 +2578,11 @@ func TestToggleURL_NotOnWatchlistReturns404(t *testing.T) {
 	}
 }
 
-func TestToggleURL_SetsDueDateWithoutTouchingEnabled(t *testing.T) {
+// TestToggleURL_IgnoresCaseMetadataFields covers PATCH /api/urls/{id}'s
+// narrowed body: due_date/agency_id/status/requested_at (now living on
+// Case, not URL — see PATCH /api/cases/{id}) are silently ignored rather
+// than rejected; only enabled is honored, and no Case is touched.
+func TestToggleURL_IgnoresCaseMetadataFields(t *testing.T) {
 	deptID := uint(1)
 	store := &fullMockStore{
 		urls:           []db.URL{{ID: 1, URL: "example.com"}},
@@ -2561,101 +2591,10 @@ func TestToggleURL_SetsDueDateWithoutTouchingEnabled(t *testing.T) {
 	cookie := deptCookie(store, deptID)
 	r := setupRouter(store, nil)
 
-	body, _ := json.Marshal(map[string]string{"due_date": "2026-01-15T00:00:00Z"})
-	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(cookie)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
-	}
-	if !store.departmentURLs[0].Enabled {
-		t.Fatal("expected Enabled to remain untouched by a due_date-only body")
-	}
-	if store.urls[0].DueDate == nil {
-		t.Fatal("expected due_date to be set")
-	}
-
-	// Clearing with an empty string
-	clearBody, _ := json.Marshal(map[string]string{"due_date": ""})
-	req2 := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(clearBody))
-	req2.Header.Set("Content-Type", "application/json")
-	req2.AddCookie(cookie)
-	w2 := httptest.NewRecorder()
-	r.ServeHTTP(w2, req2)
-	if w2.Code != http.StatusNoContent {
-		t.Fatalf("want 204 on clear, got %d: %s", w2.Code, w2.Body.String())
-	}
-	if store.urls[0].DueDate != nil {
-		t.Fatal("expected due_date to be cleared by an empty string")
-	}
-}
-
-func TestToggleURL_UpdatesCaseFieldsWithoutClobbering(t *testing.T) {
-	deptID := uint(1)
-	due := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
-	store := &fullMockStore{
-		urls:           []db.URL{{ID: 1, URL: "example.com", DueDate: &due}},
-		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1, Enabled: true}},
-		agencies:       []db.Agency{{ID: 7, Name: "MCMC"}},
-		departments:    []db.Department{{ID: 9, Name: "Ministry of X"}},
-	}
-	cookie := deptCookie(store, deptID)
-	r := setupRouter(store, nil)
-
-	body, _ := json.Marshal(map[string]string{"status": "uplift"})
-	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(cookie)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
-	}
-	if store.urls[0].Status != "uplift" {
-		t.Fatalf("expected status to be set to uplift, got %q", store.urls[0].Status)
-	}
-	if store.urls[0].DueDate == nil || !store.urls[0].DueDate.Equal(due) {
-		t.Fatal("expected due_date to remain untouched by a status-only body")
-	}
-
-	body2, _ := json.Marshal(map[string]interface{}{
-		"agency_id": 7,
+	body, _ := json.Marshal(map[string]interface{}{
+		"enabled": false, "due_date": "2026-01-15T00:00:00Z", "agency_id": 7,
+		"status": "uplift", "requested_at": "2026-01-01T00:00:00Z",
 	})
-	req2 := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body2))
-	req2.Header.Set("Content-Type", "application/json")
-	req2.AddCookie(cookie)
-	w2 := httptest.NewRecorder()
-	r.ServeHTTP(w2, req2)
-
-	if w2.Code != http.StatusNoContent {
-		t.Fatalf("want 204, got %d: %s", w2.Code, w2.Body.String())
-	}
-	u := store.urls[0]
-	if u.AgencyID == nil || *u.AgencyID != 7 {
-		t.Fatalf("expected agency_id to be set, got %+v", u)
-	}
-	if u.Status != "uplift" {
-		t.Fatal("expected status from the previous request to remain untouched")
-	}
-}
-
-// TestToggleURL_ClearsAgency exercises the 0-sentinel clear path for
-// AgencyID (0 is never a real row id).
-func TestToggleURL_ClearsAgency(t *testing.T) {
-	deptID := uint(1)
-	agencyID := uint(7)
-	store := &fullMockStore{
-		urls:           []db.URL{{ID: 1, URL: "example.com", AgencyID: &agencyID}},
-		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1, Enabled: true}},
-	}
-	cookie := deptCookie(store, deptID)
-	r := setupRouter(store, nil)
-
-	body, _ := json.Marshal(map[string]interface{}{"agency_id": 0})
 	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
@@ -2665,73 +2604,11 @@ func TestToggleURL_ClearsAgency(t *testing.T) {
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
 	}
-	if store.urls[0].AgencyID != nil {
-		t.Fatalf("expected agency_id to be cleared, got %+v", store.urls[0])
+	if store.departmentURLs[0].Enabled {
+		t.Fatal("expected Enabled=false after toggle")
 	}
-}
-
-// TestToggleURL_CaseFieldsNotOnWatchlistReturns404 is the handler-level
-// counterpart to the store's ownership test: a department that does not
-// watch this URL must not be able to edit its (now-global) case fields.
-func TestToggleURL_CaseFieldsNotOnWatchlistReturns404(t *testing.T) {
-	store := &fullMockStore{urls: []db.URL{{ID: 1, URL: "example.com"}}}
-	cookie := deptCookie(store, 1)
-	r := setupRouter(store, nil)
-
-	body, _ := json.Marshal(map[string]string{"status": "requested"})
-	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(cookie)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("want 404 for case-field edit on a URL not on this department's watchlist, got %d", w.Code)
-	}
-	if store.urls[0].Status != "" {
-		t.Fatalf("expected URL to remain untouched, got status=%q", store.urls[0].Status)
-	}
-}
-
-func TestToggleURL_InvalidStatusReturns400(t *testing.T) {
-	deptID := uint(1)
-	store := &fullMockStore{
-		urls:           []db.URL{{ID: 1, URL: "example.com"}},
-		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1, Enabled: true}},
-	}
-	cookie := deptCookie(store, deptID)
-	r := setupRouter(store, nil)
-
-	body, _ := json.Marshal(map[string]string{"status": "bogus"})
-	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(cookie)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("want 400 for invalid status, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestToggleURL_InvalidDueDateReturns400(t *testing.T) {
-	deptID := uint(1)
-	store := &fullMockStore{
-		urls:           []db.URL{{ID: 1, URL: "example.com"}},
-		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1, Enabled: true}},
-	}
-	cookie := deptCookie(store, deptID)
-	r := setupRouter(store, nil)
-
-	body, _ := json.Marshal(map[string]string{"due_date": "not-a-date"})
-	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(cookie)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("want 400 for invalid due_date, got %d: %s", w.Code, w.Body.String())
+	if len(store.cases) != 0 {
+		t.Fatalf("expected the case-metadata fields to be ignored, no Case created, got %+v", store.cases)
 	}
 }
 
@@ -3483,91 +3360,13 @@ func (f *fakeNotifier) RescheduleDueDate(departmentID, urlID uint, dueDate *time
 	return nil
 }
 
-func TestToggleURL_ReschedulesDueDateTask(t *testing.T) {
-	deptID := uint(1)
-	store := &fullMockStore{
-		urls:           []db.URL{{ID: 1, URL: "example.com"}},
-		departmentURLs: []db.DepartmentURL{{DepartmentID: deptID, URLID: 1, Enabled: true}},
-	}
-	cookie := deptCookie(store, deptID)
-	notifier := &fakeNotifier{}
-	r := chi.NewRouter()
-	server.RegisterRoutes(r, store, nil, nil, false, nil, nil, nil, nil, nil, notifier)
-	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		req.Header.Set("X-Requested-With", "fetch")
-		r.ServeHTTP(w, req)
-	})
-
-	body, _ := json.Marshal(map[string]string{"due_date": "2026-01-15T00:00:00Z"})
-	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(cookie)
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
-	}
-
-	notifier.mu.Lock()
-	defer notifier.mu.Unlock()
-	if len(notifier.calls) != 1 {
-		t.Fatalf("expected 1 RescheduleDueDate call, got %d", len(notifier.calls))
-	}
-	call := notifier.calls[0]
-	if call.departmentID != deptID || call.urlID != 1 {
-		t.Fatalf("unexpected call args: %+v", call)
-	}
-	if call.dueDate == nil {
-		t.Fatal("expected a non-nil due date")
-	}
-}
-
-func TestToggleURL_ReschedulesDueDateTaskForEveryWatchingDepartment(t *testing.T) {
-	deptA, deptB := uint(1), uint(2)
-	store := &fullMockStore{
-		urls: []db.URL{{ID: 1, URL: "example.com"}},
-		departmentURLs: []db.DepartmentURL{
-			{DepartmentID: deptA, URLID: 1, Enabled: true},
-			{DepartmentID: deptB, URLID: 1, Enabled: true},
-		},
-	}
-	cookie := deptCookie(store, deptA)
-	notifier := &fakeNotifier{}
-	r := chi.NewRouter()
-	server.RegisterRoutes(r, store, nil, nil, false, nil, nil, nil, nil, nil, notifier)
-	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		req.Header.Set("X-Requested-With", "fetch")
-		r.ServeHTTP(w, req)
-	})
-
-	body, _ := json.Marshal(map[string]string{"due_date": "2026-01-15T00:00:00Z"})
-	req := httptest.NewRequest(http.MethodPatch, "/api/urls/1", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(cookie)
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
-	}
-
-	notifier.mu.Lock()
-	defer notifier.mu.Unlock()
-	if len(notifier.calls) != 2 {
-		t.Fatalf("expected 2 RescheduleDueDate calls (one per watching department), got %d: %+v", len(notifier.calls), notifier.calls)
-	}
-	seen := map[uint]bool{}
-	for _, call := range notifier.calls {
-		if call.urlID != 1 || call.dueDate == nil {
-			t.Fatalf("unexpected call args: %+v", call)
-		}
-		seen[call.departmentID] = true
-	}
-	if !seen[deptA] || !seen[deptB] {
-		t.Fatalf("expected reschedule calls for both departments, got %+v", notifier.calls)
-	}
-}
+// ToggleURL no longer touches due_date at all (see
+// TestToggleURL_IgnoresCaseMetadataFields) — the old
+// TestToggleURL_ReschedulesDueDateTask[ForEveryWatchingDepartment] tests
+// exercised a fan-out that no longer has a trigger point on this route now
+// that DueDate lives on Case, not URL. Re-wired instead to
+// PATCH /api/cases/{id} — see TestUpdateCase_ReschedulesDueDateForEveryCaseURL
+// in case_handlers_test.go.
 
 func TestRemoveFromWatchlist_CancelsDueDateTask(t *testing.T) {
 	deptID := uint(1)

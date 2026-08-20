@@ -256,15 +256,13 @@ func parseOptionalRFC3339(s string) (*time.Time, error) {
 	return &t, nil
 }
 
-// ToggleURL updates a URL in the caller's department watchlist: the enabled
-// flag and/or the optional case-metadata fields (due date, agency, status,
-// requested-at). Enabled is department-scoped (only affects the caller's
-// own watchlist entry); the case-metadata fields are global on the URL row
-// (see db.URL's doc comment) — editing them is visible to every department
-// watching the same domain. Both still require the caller's department to
-// actually be watching the URL (enforced by SetURLEnabled/
-// UpdateURLCaseFields). Only fields present in the body are touched — omit
-// a key to leave it untouched.
+// ToggleURL toggles a URL's Enabled flag on the caller's department
+// watchlist — the only thing this route still does. The case-metadata
+// fields it used to accept (due_date/agency_id/status/requested_at) now
+// live on Case, not URL (see db.URL's doc comment) — edit them via
+// PATCH /api/cases/{id} instead. Any of those keys present in the body are
+// silently ignored, not rejected, matching this handler's existing
+// unknown-field-tolerant JSON decode.
 func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
 	if !ok {
@@ -284,14 +282,6 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 
 	var body struct {
 		Enabled *bool `json:"enabled"`
-		// DueDate/RequestedAt are RFC3339 when setting a value, or "" to
-		// clear. AgencyID is a real ID when setting, or 0 to clear (0 is
-		// never a real row id). Omit any key entirely to leave that field
-		// untouched.
-		DueDate     *string `json:"due_date"`
-		AgencyID    *uint   `json:"agency_id"`
-		Status      *string `json:"status"`
-		RequestedAt *string `json:"requested_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
@@ -306,70 +296,6 @@ func (h *Handlers) ToggleURL(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		found = found || f
-	}
-
-	var fields db.URLCaseFields
-	hasFields := false
-	var newDueDate *time.Time
-	dueDateTouched := false
-	if body.DueDate != nil {
-		dueDate, err := parseOptionalRFC3339(*body.DueDate)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid due_date, expected RFC3339")
-			return
-		}
-		fields.DueDate = &dueDate
-		hasFields = true
-		newDueDate = dueDate
-		dueDateTouched = true
-	}
-	if body.AgencyID != nil {
-		var agencyID *uint
-		if *body.AgencyID != 0 {
-			agencyID = body.AgencyID
-		}
-		fields.AgencyID = &agencyID
-		hasFields = true
-	}
-	if body.Status != nil {
-		if !urlStatusAllowed[*body.Status] {
-			writeError(w, http.StatusBadRequest, "invalid status, expected one of: requested, uplift, suspended")
-			return
-		}
-		fields.Status = body.Status
-		hasFields = true
-	}
-	if body.RequestedAt != nil {
-		requestedAt, err := parseOptionalRFC3339(*body.RequestedAt)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid requested_at, expected RFC3339")
-			return
-		}
-		fields.RequestedAt = &requestedAt
-		hasFields = true
-	}
-	if hasFields {
-		f, err := h.store.UpdateURLCaseFields(r.Context(), *user.DepartmentID, uint(id), fields)
-		if err != nil {
-			writeInternalError(w, err)
-			return
-		}
-		found = found || f
-		// DueDate is global on the URL row (shared across every department
-		// watching it), so a change fans out to every watching department's
-		// own scheduled due-date task, not just the one that made this PATCH.
-		if f && dueDateTouched && h.notify != nil {
-			deptIDs, err := h.store.DepartmentIDsWatchingURL(r.Context(), uint(id))
-			if err != nil {
-				log.Printf("notify: list departments watching url=%d: %v", id, err)
-				deptIDs = []uint{*user.DepartmentID} // fall back to at least the caller's own task
-			}
-			for _, deptID := range deptIDs {
-				if err := h.notify.RescheduleDueDate(deptID, uint(id), newDueDate); err != nil {
-					log.Printf("notify: reschedule due-date task for department=%d url=%d: %v", deptID, id, err)
-				}
-			}
-		}
 	}
 
 	if !found {

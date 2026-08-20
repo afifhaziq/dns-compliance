@@ -556,15 +556,25 @@ func (s *postgresStore) ListDepartmentURLs(ctx context.Context, departmentID uin
 	err := s.db.WithContext(ctx).
 		Table("urls").
 		Select(`urls.id, urls.url, urls.created_at, du.enabled,
-			urls.due_date, urls.agency_id, agencies.name as agency_name,
-			urls.status, urls.requested_at,
-			(SELECT cl.reference_number FROM case_letters cl
+			latest_case.due_date, latest_case.agency_id, agencies.name as agency_name,
+			latest_case.status, latest_case.requested_at,
+			(SELECT cl.reference_number_external FROM case_letters cl
 			 JOIN cases c ON c.id = cl.case_id
 			 JOIN case_urls cu ON cu.case_id = c.id
 			 WHERE cu.url_id = urls.id AND cl.type IN ('Notice', 'Notice (Uplift)')
 			 ORDER BY cl.letter_date DESC LIMIT 1) AS current_reference_number`).
 		Joins("JOIN department_urls du ON du.url_id = urls.id AND du.department_id = ?", departmentID).
-		Joins("LEFT JOIN agencies ON agencies.id = urls.agency_id").
+		// latest_case is this url's most-recently-created Case — the source
+		// of the case-metadata fields URLEntry exposes under the same JSON
+		// names these used to carry directly on urls (see URL/URLEntry's
+		// doc comments in models.go). A url with zero cases leaves these
+		// null via the LEFT JOIN.
+		Joins(`LEFT JOIN cases latest_case ON latest_case.id = (
+			SELECT c.id FROM cases c
+			JOIN case_urls cu ON cu.case_id = c.id
+			WHERE cu.url_id = urls.id
+			ORDER BY c.created_at DESC LIMIT 1)`).
+		Joins("LEFT JOIN agencies ON agencies.id = latest_case.agency_id").
 		Order("urls.created_at asc").
 		Scan(&entries).Error
 	if err != nil {
@@ -636,47 +646,10 @@ func (s *postgresStore) SetURLEnabled(ctx context.Context, departmentID, urlID u
 	return res.RowsAffected > 0, res.Error
 }
 
-// UpdateURLCaseFields applies a partial update to a URL's case-metadata
-// fields — only non-nil fields in `fields` are touched, via one map-based
-// UPDATE rather than one setter method per column. The write target (URL)
-// is shared across every department watching the domain, so — unlike the
-// old department-scoped UPDATE this replaces — authorization can't fall out
-// of the WHERE clause anymore; ownership is checked explicitly first.
-func (s *postgresStore) UpdateURLCaseFields(ctx context.Context, departmentID, urlID uint, fields URLCaseFields) (bool, error) {
-	var count int64
-	if err := s.db.WithContext(ctx).Model(&DepartmentURL{}).
-		Where("department_id = ? AND url_id = ?", departmentID, urlID).
-		Count(&count).Error; err != nil {
-		return false, err
-	}
-	if count == 0 {
-		return false, nil
-	}
-
-	updates := map[string]interface{}{}
-	if fields.DueDate != nil {
-		updates["due_date"] = *fields.DueDate
-	}
-	if fields.AgencyID != nil {
-		updates["agency_id"] = *fields.AgencyID
-	}
-	if fields.Status != nil {
-		updates["status"] = *fields.Status
-	}
-	if fields.RequestedAt != nil {
-		updates["requested_at"] = *fields.RequestedAt
-	}
-	if len(updates) == 0 {
-		return true, nil // owned, but nothing in the body to apply
-	}
-	res := s.db.WithContext(ctx).Model(&URL{}).Where("id = ?", urlID).Updates(updates)
-	return res.RowsAffected > 0, res.Error
-}
-
 // DepartmentIDsWatchingURL returns every department with a DepartmentURL
 // row for urlID, regardless of Enabled — a disabled watch still means that
-// department cares about the domain's case metadata (due date etc.), just
-// not its scan sweep inclusion.
+// department cares about the domain's cases, just not its scan sweep
+// inclusion.
 func (s *postgresStore) DepartmentIDsWatchingURL(ctx context.Context, urlID uint) ([]uint, error) {
 	var ids []uint
 	err := s.db.WithContext(ctx).Model(&DepartmentURL{}).
@@ -1304,6 +1277,17 @@ func (s *postgresStore) ResurfacedDomainsForDepartment(ctx context.Context, depa
 	return s.resurfacedDomains(ctx, &departmentID)
 }
 
+// urlDueDateSubquery resolves to a url's DueDate as of its most-recently-
+// created Case (via case_urls -> cases, ORDER BY cases.created_at DESC LIMIT
+// 1) — DueDate lives on Case now, not URL (see URL/Case's doc comments in
+// models.go), so every query that used to read urls.due_date directly reads
+// this correlated subquery instead. NULL (not IS NOT NULL) for a url with
+// zero cases, same as before.
+const urlDueDateSubquery = `(SELECT c.due_date FROM cases c
+	JOIN case_urls cu ON cu.case_id = c.id
+	WHERE cu.url_id = urls.id
+	ORDER BY c.created_at DESC LIMIT 1)`
+
 // SLAActiveURLs returns watched URLs whose DueDate has passed and that
 // haven't yet earned streakThreshold consecutive compliant scans on every
 // enabled DNS server — see StartSLAScheduler. "Last N per group" is found
@@ -1319,7 +1303,7 @@ func (s *postgresStore) SLAActiveURLs(ctx context.Context, streakThreshold int) 
 	if err := s.db.WithContext(ctx).
 		Distinct().
 		Joins("JOIN department_urls du ON du.url_id = urls.id AND du.enabled = true").
-		Where("urls.due_date IS NOT NULL AND urls.due_date <= ?", time.Now()).
+		Where(urlDueDateSubquery+" IS NOT NULL AND "+urlDueDateSubquery+" <= ?", time.Now()).
 		Find(&candidates).Error; err != nil {
 		return nil, err
 	}
@@ -1405,21 +1389,21 @@ func (s *postgresStore) SLAActiveURLs(ctx context.Context, streakThreshold int) 
 // scoped to one department's watchlist. Aggregated in Go, following the same
 // SQLite-portability reasoning as dailyTrend/DailyComplianceByURL.
 func (s *postgresStore) ispComplianceTiming(ctx context.Context, isp string, departmentID *uint) (ISPTimingResult, error) {
-	// DueDate is a single value per URL (case metadata is global, not
-	// per-department — see URL's doc comment), so there's no per-department
-	// min-reduction to do anymore. When department-scoped, the join to
-	// department_urls only narrows *which* domains count toward this
-	// department's aggregate (the denominator) — it can't introduce
-	// duplicate rows per url_id, since (department_id, url_id) is a
-	// composite primary key.
+	// DueDate is derived from each url's most-recently-created Case (see
+	// urlDueDateSubquery) — there's no per-department min-reduction to do,
+	// since a url's due date doesn't depend on which department is asking.
+	// When department-scoped, the join to department_urls only narrows
+	// *which* domains count toward this department's aggregate (the
+	// denominator) — it can't introduce duplicate rows per url_id, since
+	// (department_id, url_id) is a composite primary key.
 	type deptURLDueRow struct {
 		URLID   uint
 		DueDate time.Time
 	}
 	dueQuery := s.db.WithContext(ctx).
 		Table("urls").
-		Select("urls.id as url_id, urls.due_date").
-		Where("urls.due_date IS NOT NULL")
+		Select("urls.id as url_id, " + urlDueDateSubquery + " as due_date").
+		Where(urlDueDateSubquery + " IS NOT NULL")
 	if departmentID != nil {
 		dueQuery = dueQuery.Joins("JOIN department_urls du ON du.url_id = urls.id AND du.department_id = ?", *departmentID)
 	}

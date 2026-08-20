@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/afif/dns-tracking/internal/urlnorm"
 	"gorm.io/gorm"
@@ -131,4 +133,92 @@ func BackfillURLValues(ctx context.Context, database *gorm.DB) error {
 		}
 	}
 	return fmt.Errorf("backfilling scan_results.url_value: did not converge after %d iterations", backfillURLValuesMaxIterations)
+}
+
+// BackfillURLCaseMetadataBatchSize caps each read batch. Unlike
+// BackfillURLValues (one bulk UPDATE per batch), this backfill does
+// per-row Go logic — one Case+CaseURL per distinct department watching a
+// URL — so batching here bounds how many URL rows are loaded and processed
+// per iteration rather than bounding a single SQL statement.
+const BackfillURLCaseMetadataBatchSize = 500
+
+// BackfillURLCaseMetadataIntoCases moves the legacy case-metadata still on
+// urls (due_date/agency_id/status/requested_at — superseded by Case owning
+// these fields, see URL's doc comment in models.go) into one Case per URL
+// per distinct watching department, before those columns are dropped (see
+// db.Connect). Only touches URL rows with at least one of the four fields
+// set AND zero existing CaseURL rows — a URL that already has a case (via
+// the normal CreateCaseForURL flow, or a prior run of this backfill) is
+// left alone, making this idempotent and safe to call on every startup. A
+// URL with zero DepartmentURL rows has no department to attribute a Case
+// to and is skipped with a logged warning, non-fatal — same "log and skip"
+// philosophy BackfillURLValues/backfillURLReferenceNumbersIntoCases (db.go)
+// already use. Must run after AutoMigrate (Case needs its new
+// AgencyID/Status/DueDate/RequestedAt columns already added) and before the
+// old urls columns are dropped.
+func BackfillURLCaseMetadataIntoCases(ctx context.Context, database *gorm.DB) error {
+	type legacyURLRow struct {
+		ID          uint
+		DueDate     *time.Time
+		AgencyID    *uint
+		Status      string
+		RequestedAt *time.Time
+	}
+
+	lastID := uint(0)
+	for {
+		var rows []legacyURLRow
+		err := database.WithContext(ctx).
+			Table("urls").
+			Select("urls.id, urls.due_date, urls.agency_id, urls.status, urls.requested_at").
+			Where("urls.id > ?", lastID).
+			Where("urls.due_date IS NOT NULL OR urls.agency_id IS NOT NULL OR urls.status <> '' OR urls.requested_at IS NOT NULL").
+			Where("NOT EXISTS (SELECT 1 FROM case_urls WHERE case_urls.url_id = urls.id)").
+			Order("urls.id asc").
+			Limit(BackfillURLCaseMetadataBatchSize).
+			Find(&rows).Error
+		if err != nil {
+			return fmt.Errorf("loading legacy url case metadata: %w", err)
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+
+		for _, row := range rows {
+			lastID = row.ID
+
+			var deptIDs []uint
+			if err := database.WithContext(ctx).Model(&DepartmentURL{}).
+				Where("url_id = ?", row.ID).
+				Pluck("department_id", &deptIDs).Error; err != nil {
+				return fmt.Errorf("loading watching departments for url id=%d: %w", row.ID, err)
+			}
+			if len(deptIDs) == 0 {
+				log.Printf("db: urls.id=%d has case metadata but no watching department, skipping case backfill", row.ID)
+				continue
+			}
+
+			phase := row.Status
+			if phase == "" {
+				phase = "requested"
+			}
+			for _, deptID := range deptIDs {
+				c := Case{
+					DepartmentID: deptID,
+					AgencyID:     row.AgencyID,
+					Status:       row.Status,
+					DueDate:      row.DueDate,
+					RequestedAt:  row.RequestedAt,
+				}
+				if err := database.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+					if err := tx.Create(&c).Error; err != nil {
+						return err
+					}
+					return tx.Create(&CaseURL{CaseID: c.ID, URLID: row.ID, Phase: phase}).Error
+				}); err != nil {
+					return fmt.Errorf("backfilling case for url id=%d department=%d: %w", row.ID, deptID, err)
+				}
+			}
+		}
+	}
 }

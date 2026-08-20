@@ -20,20 +20,13 @@ type URLStore interface {
 	AddURLToWatchlist(ctx context.Context, departmentID uint, rawURL string) (URL, error)
 	RemoveURLFromWatchlist(ctx context.Context, departmentID, urlID uint) (bool, error)      // false if no row was deleted (not on that watchlist)
 	SetURLEnabled(ctx context.Context, departmentID, urlID uint, enabled bool) (bool, error) // false if the URL is not on that watchlist
-	// UpdateURLCaseFields writes to the shared URL row (case metadata is
-	// global, see URL's doc comment) but only after verifying departmentID
-	// actually watches urlID — the write target is no longer department-
-	// scoped, so authorization must be checked explicitly instead of
-	// falling out of a WHERE clause. Only non-nil fields in `fields` are
-	// applied; false if the URL is not on that department's watchlist.
-	UpdateURLCaseFields(ctx context.Context, departmentID, urlID uint, fields URLCaseFields) (bool, error)
-	ListWatchedURLs(ctx context.Context) ([]URL, error)    // urls with >=1 enabled DepartmentURL row — used by the scan sweep
-	ListUnassignedURLs(ctx context.Context) ([]URL, error) // admin view: urls with 0 DepartmentURL rows
+	ListWatchedURLs(ctx context.Context) ([]URL, error)                                      // urls with >=1 enabled DepartmentURL row — used by the scan sweep
+	ListUnassignedURLs(ctx context.Context) ([]URL, error)                                   // admin view: urls with 0 DepartmentURL rows
 	URLOwnedByDepartment(ctx context.Context, departmentID uint, urlValue string) (bool, error)
 	// DepartmentIDsWatchingURL returns every department with a DepartmentURL
-	// row for urlID (regardless of Enabled) — used to fan a global-on-URL
-	// case-field change (e.g. DueDate) out to every department that watches
-	// it, not just the one that made the PATCH.
+	// row for urlID (regardless of Enabled) — used to fan a case-field
+	// change out to every department that watches it, not just the one that
+	// made the PATCH.
 	DepartmentIDsWatchingURL(ctx context.Context, urlID uint) ([]uint, error)
 
 	// Watchlist activity — counts DepartmentURL rows (watchlist "requests")
@@ -353,9 +346,13 @@ type Store interface {
 // CaseStore is the cases/case_letters/case_urls aggregate.
 type CaseStore interface {
 	// CreateCase creates a Case for departmentID and links it to urlID
-	// with the given phase (requested | uplift | suspended) via CaseURL.
-	// Returns the created Case (zero letters — AddCaseLetter is separate).
-	CreateCase(ctx context.Context, departmentID, urlID uint, phase string) (Case, error)
+	// with the given phase (requested | uplift | suspended) via CaseURL —
+	// Case.Status is set to the same phase and CaseURL.Phase is kept in
+	// sync with it at creation (they only diverge later, if someone calls
+	// UpdateCaseURLPhase for this one url). opts optionally sets
+	// Case.AgencyID/DueDate at creation time. Returns the created Case
+	// (zero letters — AddCaseLetter is separate).
+	CreateCase(ctx context.Context, departmentID, urlID uint, phase string, opts CaseCreateOptions) (Case, error)
 	// AddCaseLetter appends one CaseLetter row to an existing case.
 	AddCaseLetter(ctx context.Context, letter CaseLetter) (CaseLetter, error)
 	// ListCasesForURL returns every case covering urlValue, each with its
@@ -374,6 +371,23 @@ type CaseStore interface {
 	// building a batch (e.g. adding several domains under one case) call
 	// CreateCase once for the first URL, then this for each of the rest.
 	AddURLToCase(ctx context.Context, caseID, urlID uint, phase string) (CaseURL, error)
+	// ListCaseURLIDs returns every URL id a case covers, via case_urls —
+	// used to fan a case-level DueDate change out to a per-url due-date-
+	// reached notification task for each url the case links.
+	ListCaseURLIDs(ctx context.Context, caseID uint) ([]uint, error)
+	// UpdateCaseURLPhase sets this one (case, url) pair's own Phase —
+	// the per-domain override of Case.Status, for the domain(s) within a
+	// case that diverge from the rest (see CaseURL's doc comment). phase is
+	// validated against urlStatusAllowed by the caller (handler layer).
+	// False if no such CaseURL row exists.
+	UpdateCaseURLPhase(ctx context.Context, caseID, urlID uint, phase string) (bool, error)
+	// UpdateCaseFields applies a partial update to a case's shared fields
+	// (AgencyID/Status/DueDate/RequestedAt), mirroring the old
+	// UpdateURLCaseFields' double-pointer clear-vs-untouched semantics.
+	// Ownership (departmentID must own caseID) is checked by the caller
+	// (handler layer, matching AddCaseLetter/AddCaseURL's existing direct
+	// check), not here. False if caseID doesn't exist.
+	UpdateCaseFields(ctx context.Context, departmentID, caseID uint, fields CaseFields) (bool, error)
 	// ListCaseLetters returns every CaseLetter across every department,
 	// newest LetterDate first, each carrying its case's department and
 	// linked URLs — the Docs page's data source. Paginated like

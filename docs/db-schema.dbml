@@ -21,6 +21,17 @@
 // replaced by the cases/case_letters/case_urls tables (28-table AutoMigrate
 // list) — see urls' Note and the new tables below. Design history for this
 // change: docs/db-schema-proposed.dbml (now shipped, kept for archaeology).
+//
+// Updated 2026-08-20: Case (not URL) now owns Agency/Status/DueDate/
+// RequestedAt — urls.due_date/agency_id/status/requested_at removed
+// entirely (a domain can carry many cases over its history, so a scalar
+// column on urls could only ever hold the latest one); cases gains those
+// four columns as case-level defaults shared by every url the case covers,
+// with case_urls.phase now explicitly documented as the per-url override.
+// case_letters.reference_number split into reference_number_external
+// ("No. Rujukan NMD", the citable reference sent to the ISP/regulator) and
+// reference_number_internal ("No. Rujukan NMSMD", MCMC-internal) —
+// previously conflated into one field.
 
 Table departments {
   id         integer   [pk, increment]
@@ -71,34 +82,23 @@ Table urls {
   id                  integer     [pk, increment]
   url                 varchar     [not null, unique, note: 'expected pre-normalized bare lowercase hostname, see internal/urlnorm']
   created_at          timestamptz
-  due_date            timestamptz [null, note: 'takedown-order SLA deadline, carries time-of-day']
-  agency_id           integer     [null, note: 'indexed, FK OnDelete:SET NULL']
-  status              varchar     [note: '"" | requested | uplift | suspended, validated server-side -- independent of the derived Compliant field']
-  requested_at        timestamptz [null]
 
   Note: '''
-    Carries the domain's legal case metadata directly -- one case per
-    domain, not one per watching department (two departments watching the
-    same domain share the same takedown order), mirroring how
-    DomainWhois/SubdomainScan/IPInfo are keyed by domain/IP rather than
-    department. due_date/agency_id/status/requested_at originally lived on
-    department_urls and were moved here the same day, before ever being
-    deployed with real data -- see department_urls' Note. Editing them is
-    visible to every department watching the domain (last-write-wins),
-    gated by UpdateURLCaseFields' department-ownership check.
-
-    reference_number and requesting_dept_id removed -- a url can carry many
-    reference numbers over its history and a single reference number
-    legitimately covers many urls (confirmed against real data: CRD's
-    No. Rujukan NMD has 1,840 distinct values across 38,156 rows, one
-    value alone covering 9,206 rows; 790 domains carry more than one
-    distinct ref across their own history). A scalar column can only hold
-    the last-imported one and silently discards the rest. Reference
-    numbers and every other case-level attribute now live on cases,
-    joined to urls many-to-many via case_urls.
+    Purely domain identity now -- no case metadata. due_date/agency_id/
+    status/requested_at (and, before them, reference_number/
+    requesting_dept_id) all removed: a domain can carry many cases over its
+    history (reblocked under a new reference), so a scalar column on urls
+    could only ever hold the latest one and silently discard the rest
+    (confirmed against real data: CRD's No. Rujukan NMD has 1,840 distinct
+    values across 38,156 rows, one value alone covering 9,206 rows; 790
+    domains carry more than one distinct ref across their own history).
+    Every case-level attribute now lives on cases, joined to urls
+    many-to-many via case_urls. The frontend-facing URLEntry read shape
+    (ListDepartmentURLs) still exposes due_date/agency_id/agency_name/
+    status/requested_at/current_reference_number under the same JSON names
+    as before, derived from the url's most-recently-created case.
   '''
 }
-Ref: urls.agency_id > agencies.id [delete: set null]
 
 Table agencies {
   id         integer   [pk, increment]
@@ -143,8 +143,8 @@ Table department_urls {
   }
 
   Note: '''
-    Composite PK, no surrogate id. Carries no case metadata -- that is
-    global on urls now (see that table's Note); this table used to hold
+    Composite PK, no surrogate id. Carries no case metadata -- that lives
+    on cases now (see that table's Note); this table used to hold
     due_date/agency/reference_number/requesting_dept/status/requested_at
     columns, dropped by a one-time idempotent migration in db.Connect since
     nothing had shipped with real data on that shape yet. Removing a URL
@@ -409,16 +409,26 @@ Ref: url_offences.element_id > elements.id [delete: cascade]
 Ref: url_offences.sub_element_id > sub_elements.id [delete: cascade]
 
 Table cases {
-  id            integer   [pk, increment]
-  department_id integer   [not null, note: 'indexed -- which department this case came from']
+  id            integer     [pk, increment]
+  department_id integer     [not null, note: 'indexed -- which department this case came from']
   created_at    timestamptz
+  due_date      timestamptz [null, note: 'takedown-order SLA deadline, carries time-of-day']
+  agency_id     integer     [null, note: 'indexed, FK OnDelete:SET NULL']
+  status        varchar     [note: '"" | requested | uplift | suspended, validated server-side -- independent of the derived Compliant field']
+  requested_at  timestamptz [null]
 
   Note: '''
-    Thin anchor -- one row per real-world case/request, same role
-    scan_runs already plays for scan_results. Every case fact (ref
-    numbers, letters, subject, OIC, workflow status...) lives on
-    case_letters, not here, since the sheet's real grain is one row per
-    letter/document, not one row per case.
+    One row per real-world case/request, same role scan_runs already plays
+    for scan_results. Letter-grain facts (ref numbers, subject, OIC,
+    workflow status...) still live on case_letters, since the sheet's real
+    grain is one row per letter/document. due_date/agency_id/status/
+    requested_at (2026-08-20) are the case-level defaults shared by every
+    url the case covers -- formerly scalar columns on urls, moved here
+    since a domain can carry more than one case over its history. Set at
+    creation (POST /api/cases/*url, phase becomes status) and editable via
+    PATCH /api/cases/{id}; case_urls.phase is the per-url override within
+    this case (see that table's Note) -- they start equal at creation and
+    only diverge via PATCH /api/cases/{id}/urls/{url_id}.
     UNRESOLVED CAVEAT: grouping CRD rows into a case at all assumes each
     distinct reference number is one real request -- CRD's
     "JK KPN(PR) 168/6" covering 9,206 rows suggests some values are a
@@ -427,12 +437,14 @@ Table cases {
   '''
 }
 Ref: cases.department_id > departments.id
+Ref: cases.agency_id > agencies.id [delete: set null]
 
 Table case_letters {
-  id                integer     [pk, increment]
-  case_id           integer     [not null, note: 'indexed']
-  type              varchar     [not null, note: 'Memo | Notice | Memo (Uplift) | Notice (Uplift)']
-  reference_number  varchar     [note: 'this letter\'s own citable ref -- CRD\'s No. Rujukan NMD row value, or CMOD\'s per-letter ref (memo and notice each get their own)']
+  id                        integer     [pk, increment]
+  case_id                   integer     [not null, note: 'indexed']
+  type                      varchar     [not null, note: 'Memo | Notice | Memo (Uplift) | Notice (Uplift)']
+  reference_number_external varchar     [note: '"No. Rujukan NMD" -- this letter\'s own citable ref, the one actually sent to the ISP/regulator; current_reference_number (URLEntry) derives from this on Notice-type letters. Renamed from reference_number (2026-08-20, plain ALTER TABLE RENAME COLUMN, data-preserving) when NMSMD split out below.']
+  reference_number_internal varchar     [note: '"No. Rujukan NMSMD" -- MCMC-internal, never sent externally. New column (2026-08-20), previously conflated with reference_number_external.']
   workflow_status   varchar     [note: 'CMOD-only internal approval state: Draft | Pending Legal | Pending TSC | Submitted, null for CRD-sourced letters']
   recipient         varchar     [note: 'CMOD "Recipient" column -- who the letter was sent to, same grain as requestor/subject (per letter, not per URL)']
   letter_date       timestamptz [null]
@@ -471,7 +483,7 @@ Ref: case_letters.oic_user_id > users.id [delete: set null]
 Table case_urls {
   case_id integer [not null]
   url_id  integer [not null]
-  phase   varchar [not null, note: 'requested | uplift | suspended -- this (case, url) pair\'s own outcome, same vocabulary urls.status carries']
+  phase   varchar [not null, note: 'requested | uplift | suspended -- this (case, url) pair\'s own outcome, same vocabulary cases.status carries']
 
   indexes {
     (case_id, url_id) [pk]
@@ -486,11 +498,15 @@ Table case_urls {
     CRD ref-no groups have mixed status across their own urls -- e.g. CMOD
     case 19 covers 16 domains, only capitalpost.com.my was ever uplifted).
     phase stays here rather than on case_letters because it varies per url
-    within the same case, not per letter. Sole source of truth for the
-    url<->reference-number relationship now that urls.reference_number is
-    removed. "Current" reference/status for display is derived by querying
-    the most recent case_letters row for the case (via letter_date) joined
-    through case_urls, not stored as a scalar on urls.
+    within the same case, not per letter. cases.status is this case's
+    default; phase here is that specific url's override within this case --
+    they start equal at creation (db.Store.CreateCase) and only diverge via
+    PATCH /api/cases/{id}/urls/{url_id} (UpdateCaseURLPhase). Sole source of
+    truth for the url<->reference-number relationship now that
+    urls.reference_number is removed. "Current" reference/status for
+    display is derived by querying the most recent case_letters row for the
+    case (via letter_date) joined through case_urls, not stored as a scalar
+    on urls.
 
     db.Store.AddURLToCase (POST /api/cases/{id}/urls) inserts additional
     rows here directly, for building the "N URLs in one Notice" shape --
