@@ -561,7 +561,7 @@ func (s *postgresStore) ListDepartmentURLs(ctx context.Context, departmentID uin
 			(SELECT cl.reference_number FROM case_letters cl
 			 JOIN cases c ON c.id = cl.case_id
 			 JOIN case_urls cu ON cu.case_id = c.id
-			 WHERE cu.url_id = urls.id
+			 WHERE cu.url_id = urls.id AND cl.type IN ('Notice', 'Notice (Uplift)')
 			 ORDER BY cl.letter_date DESC LIMIT 1) AS current_reference_number`).
 		Joins("JOIN department_urls du ON du.url_id = urls.id AND du.department_id = ?", departmentID).
 		Joins("LEFT JOIN agencies ON agencies.id = urls.agency_id").
