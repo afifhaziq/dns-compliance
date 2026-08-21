@@ -605,7 +605,11 @@ function ComboboxContentPanel({
           }
         }}
         style={{
-          pointerEvents: isPopupVisible ? undefined : "none",
+          // Explicit "auto" (not just omitting the property) because this popup
+          // portals to document.body as a sibling of any Radix Dialog it's opened
+          // inside — Dialog sets body { pointer-events: none } while modal, which
+          // this sibling would otherwise inherit, making it visible but click-through.
+          pointerEvents: isPopupVisible ? "auto" : "none",
           transformOrigin: "var(--transform-origin)",
         }}
         transition={
