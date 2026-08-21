@@ -288,3 +288,48 @@ func (s *postgresStore) ListCases(ctx context.Context) ([]CaseSummary, error) {
 func (s *postgresStore) ListCasesForDepartment(ctx context.Context, departmentID uint) ([]CaseSummary, error) {
 	return s.listCaseSummaries(ctx, &departmentID)
 }
+
+// UpdateCaseLetterFields applies a partial update to one CaseLetter's
+// fields, scoped by (caseID, letterID) — see CaseStore's doc comment.
+func (s *postgresStore) UpdateCaseLetterFields(ctx context.Context, caseID, letterID uint, fields CaseLetterFields) (bool, error) {
+	updates := map[string]interface{}{}
+	if fields.Subject != nil {
+		updates["subject"] = *fields.Subject
+	}
+	if fields.WorkflowStatus != nil {
+		updates["workflow_status"] = *fields.WorkflowStatus
+	}
+	if fields.ReferenceNumberExternal != nil {
+		updates["reference_number_external"] = *fields.ReferenceNumberExternal
+	}
+	if fields.ReferenceNumberInternal != nil {
+		updates["reference_number_internal"] = *fields.ReferenceNumberInternal
+	}
+	if fields.Recipient != nil {
+		updates["recipient"] = *fields.Recipient
+	}
+	if fields.Requestor != nil {
+		updates["requestor"] = *fields.Requestor
+	}
+	if fields.Remarks != nil {
+		updates["remarks"] = *fields.Remarks
+	}
+	if fields.LetterDate != nil {
+		updates["letter_date"] = *fields.LetterDate
+	}
+	if fields.ReceivedAt != nil {
+		updates["received_at"] = *fields.ReceivedAt
+	}
+	if fields.SubmittedAt != nil {
+		updates["submitted_at"] = *fields.SubmittedAt
+	}
+	if len(updates) == 0 {
+		var count int64
+		if err := s.db.WithContext(ctx).Model(&CaseLetter{}).Where("id = ? AND case_id = ?", letterID, caseID).Count(&count).Error; err != nil {
+			return false, err
+		}
+		return count > 0, nil
+	}
+	res := s.db.WithContext(ctx).Model(&CaseLetter{}).Where("id = ? AND case_id = ?", letterID, caseID).Updates(updates)
+	return res.RowsAffected > 0, res.Error
+}

@@ -562,3 +562,53 @@ func TestListCases_GlobalAcrossDepartments(t *testing.T) {
 		t.Fatalf("want 2 summaries globally, got %d", len(all))
 	}
 }
+
+// TestUpdateCaseLetterFields_PartialUpdateAndScoping covers the partial-
+// update contract (touching one field leaves the others alone) and that
+// the update is scoped by (caseID, letterID) — a letter can't be edited
+// through the wrong case id, same defense-in-depth UpdateCaseURLPhase uses.
+func TestUpdateCaseLetterFields_PartialUpdateAndScoping(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	dept, _ := store.CreateDepartment(ctx, "LetterFieldsDept")
+	u, _ := store.CreateURL(ctx, "letter-fields.com")
+	c, err := store.CreateCase(ctx, dept.ID, u.ID, "requested", db.CaseCreateOptions{})
+	if err != nil {
+		t.Fatalf("CreateCase: %v", err)
+	}
+	letter, err := store.AddCaseLetter(ctx, db.CaseLetter{CaseID: c.ID, Type: "Notice", Subject: "orig-subject", WorkflowStatus: "Draft"})
+	if err != nil {
+		t.Fatalf("AddCaseLetter: %v", err)
+	}
+
+	newSubject := "updated-subject"
+	found, err := store.UpdateCaseLetterFields(ctx, c.ID, letter.ID, db.CaseLetterFields{Subject: &newSubject})
+	if err != nil || !found {
+		t.Fatalf("UpdateCaseLetterFields: found=%v err=%v", found, err)
+	}
+
+	cases, err := store.ListCasesForURL(ctx, "letter-fields.com")
+	if err != nil {
+		t.Fatalf("ListCasesForURL: %v", err)
+	}
+	if len(cases) != 1 || len(cases[0].Letters) != 1 {
+		t.Fatalf("got %+v", cases)
+	}
+	got := cases[0].Letters[0]
+	if got.Subject != "updated-subject" {
+		t.Fatalf("Subject = %q, want updated-subject", got.Subject)
+	}
+	if got.WorkflowStatus != "Draft" {
+		t.Fatalf("WorkflowStatus = %q, want unchanged Draft", got.WorkflowStatus)
+	}
+
+	// Wrong case id — same letter id, different (wrong) case: no row matches.
+	found, err = store.UpdateCaseLetterFields(ctx, c.ID+999, letter.ID, db.CaseLetterFields{Subject: &newSubject})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if found {
+		t.Fatal("expected found=false when case id doesn't match the letter's own case")
+	}
+}
