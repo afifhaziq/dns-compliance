@@ -139,6 +139,10 @@ type URLEntry struct {
 	AgencyID               *uint      `json:"agency_id,omitempty"`
 	AgencyName             string     `json:"agency_name,omitempty"`
 	Status                 string     `json:"status,omitempty"`
+	// CaseID is the id of latest_case (see ListDepartmentURLs) — the target
+	// for a status edit via PATCH /api/cases/{id}, since Status itself is
+	// read-only/derived. Nil for a url with zero cases.
+	CaseID                 *uint      `json:"case_id,omitempty"`
 	RequestedAt            *time.Time `json:"requested_at,omitempty"`
 	CreatedAt              time.Time  `json:"created_at"`
 	CurrentReferenceNumber string     `json:"current_reference_number,omitempty"`

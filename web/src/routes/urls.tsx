@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import {
   type ColumnDef,
   type SortingState,
@@ -12,10 +12,9 @@ import {
 } from '@tanstack/react-table'
 import { GripIcon } from '@/components/ui/grip'
 import { FileText } from 'lucide-react'
-import { CaseHistoryDialog } from '@/components/case-history-dialog'
 import { PHASE_OPTIONS as CASE_PHASE_OPTIONS } from '@/lib/case-options'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled } from '../api/urls'
-import { createCase, addCaseLetter, addUrlToCase } from '../api/cases'
+import { createCase, addCaseLetter, addUrlToCase, updateCase } from '../api/cases'
 import { fetchAgencies } from '../api/agencies'
 import { fetchDepartmentsOpen } from '../api/departments'
 import { fetchDueDatePresets } from '../api/due-date-presets'
@@ -924,8 +923,6 @@ function URLsPage() {
   // `urls` below and reflects its own edits (agency/status/etc.) immediately.
   const [editTargetId, setEditTargetId] = useState<number | null>(null)
   const editTarget = urls.find(u => u.id === editTargetId) ?? null
-  const [caseHistoryTargetId, setCaseHistoryTargetId] = useState<number | null>(null)
-  const caseHistoryTarget = urls.find(u => u.id === caseHistoryTargetId) ?? null
 
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<Filter<string>[]>([])
@@ -971,6 +968,19 @@ function URLsPage() {
       await setUrlEnabled(id, enabled)
     } catch {
       setUrls(prev => prev.map(u => u.id === id ? { ...u, enabled: !enabled } : u))
+    }
+  }, [])
+
+  // `status` is derived from the url's latest Case (see internal/db/CLAUDE.md),
+  // so editing it patches that case via case_id, not a PATCH /api/urls/{id}.
+  const handleStatusChange = useCallback(async (entry: URLEntry, status: string) => {
+    if (!entry.case_id) return
+    const prevStatus = entry.status
+    setUrls(prev => prev.map(u => u.id === entry.id ? { ...u, status } : u))
+    try {
+      await updateCase(entry.case_id, { status })
+    } catch {
+      setUrls(prev => prev.map(u => u.id === entry.id ? { ...u, status: prevStatus } : u))
     }
   }, [])
 
@@ -1083,7 +1093,19 @@ function URLsPage() {
         cellClassName: 'col-status text-center',
         skeleton: <span className="skeleton" style={{ width: 90, height: 20, borderRadius: 4 }} />,
       },
-      cell: ({ row }) => <span className="dns-name">{STATUS_OPTIONS.find(o => o.value === row.original.status)?.label ?? '—'}</span>,
+      cell: ({ row }) => {
+        const u = row.original
+        return (
+          <Select value={u.status ?? ''} onValueChange={v => handleStatusChange(u, v)} disabled={!u.case_id}>
+            <SelectTrigger aria-label={`Status for ${u.url}`} placeholder="—" className="w-full" />
+            <SelectContent>
+              {STATUS_OPTIONS.map((opt, i) => (
+                <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )
+      },
     },
     {
       id: 'due_date',
@@ -1117,21 +1139,22 @@ function URLsPage() {
               aria-label={`${u.enabled ? 'Disable' : 'Enable'} ${u.url} in scan`}
             />
             <div className="flex items-center gap-1">
+              <Link
+                to="/domain/$url"
+                params={{ url: u.url }}
+                search={{ tab: 'overview' }}
+                className="screenshot-icon-btn"
+                aria-label={`View details for ${u.url}`}
+                title="View details"
+              >
+                <GripIcon size={16} />
+              </Link>
               <button
                 type="button"
                 className="screenshot-icon-btn"
                 onClick={() => setEditTargetId(u.id)}
                 aria-label={`Edit ${u.url}`}
                 title="Edit"
-              >
-                <GripIcon size={16} />
-              </button>
-              <button
-                type="button"
-                className="screenshot-icon-btn"
-                onClick={() => setCaseHistoryTargetId(u.id)}
-                aria-label={`Cases for ${u.url}`}
-                title="Cases"
               >
                 <FileText size={16} />
               </button>
@@ -1149,7 +1172,7 @@ function URLsPage() {
         )
       },
     },
-  ], [handleToggle])
+  ], [handleToggle, handleStatusChange])
 
   const table = useReactTable({
     data: filtered,
@@ -1255,15 +1278,6 @@ function URLsPage() {
         entry={editTarget}
         open={editTargetId !== null}
         onClose={() => setEditTargetId(null)}
-      />
-
-      <CaseHistoryDialog
-        open={caseHistoryTargetId !== null}
-        onClose={() => setCaseHistoryTargetId(null)}
-        url={caseHistoryTarget?.url ?? ''}
-        urlId={caseHistoryTarget?.id}
-        agencies={agencies}
-        duePresets={duePresets}
       />
     </div>
   )

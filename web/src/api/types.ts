@@ -56,6 +56,9 @@ export type URLEntry = {
   current_reference_number?: string
   requesting_departments?: string[]
   status?: string
+  // Latest case's id — the target for a status edit via PATCH /api/cases/{id}
+  // (updateCase), since `status` itself is a derived, read-only field.
+  case_id?: number
   requested_at?: string
   created_at: string
 }
