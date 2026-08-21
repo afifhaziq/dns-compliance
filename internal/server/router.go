@@ -137,6 +137,9 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			// non-admin: own department's cases only. See ListCaseLetters.
 			r.Get("/case-letters", h.ListCaseLetters)
 
+			// Cases view's data source — see ListCaseSummaries.
+			r.Get("/case-summaries", h.ListCaseSummaries)
+
 			// Reachable by a super admin OR a department admin — DNS servers
 			// stay one shared/global catalog (no department scoping), while
 			// user management is scoped to the caller's own department for

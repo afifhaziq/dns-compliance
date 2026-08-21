@@ -438,3 +438,31 @@ func (h *Handlers) ListCaseLetters(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"letters": letters, "total": total})
 }
+
+// ListCaseSummaries is the Cases view's data source (GET
+// /api/case-summaries) — one row per case with its own fields, its Notice
+// letter's fields, and every domain it covers. Same admin-global/non-admin-
+// department-scoped split as ListCaseLetters.
+func (h *Handlers) ListCaseSummaries(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	var summaries []db.CaseSummary
+	var err error
+	if user.IsAdmin {
+		summaries, err = h.store.ListCases(r.Context())
+	} else {
+		if user.DepartmentID == nil {
+			writeError(w, http.StatusForbidden, "user has no department")
+			return
+		}
+		summaries, err = h.store.ListCasesForDepartment(r.Context(), *user.DepartmentID)
+	}
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, summaries)
+}

@@ -523,3 +523,69 @@ func TestUpdateCaseURLPhase_UnknownPairReturns404(t *testing.T) {
 		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestListCaseSummaries_NonAdminScopedToOwnDepartment(t *testing.T) {
+	store := &fullMockStore{}
+	uA := db.URL{ID: 1, URL: "summaries-a.com"}
+	uB := db.URL{ID: 2, URL: "summaries-b.com"}
+	store.urls = append(store.urls, uA, uB)
+	store.cases = append(store.cases,
+		db.Case{ID: 1, DepartmentID: 1, Status: "requested"},
+		db.Case{ID: 2, DepartmentID: 2, Status: "requested"},
+	)
+	store.caseURLs = append(store.caseURLs,
+		db.CaseURL{CaseID: 1, URLID: uA.ID, Phase: "requested"},
+		db.CaseURL{CaseID: 2, URLID: uB.ID, Phase: "requested"},
+	)
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/case-summaries", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var summaries []db.CaseSummary
+	if err := json.Unmarshal(w.Body.Bytes(), &summaries); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(summaries) != 1 || summaries[0].ID != 1 {
+		t.Fatalf("expected only dept 1's case, got %+v", summaries)
+	}
+}
+
+func TestListCaseSummaries_AdminSeesGlobal(t *testing.T) {
+	store := &fullMockStore{}
+	uA := db.URL{ID: 1, URL: "summaries-a.com"}
+	uB := db.URL{ID: 2, URL: "summaries-b.com"}
+	store.urls = append(store.urls, uA, uB)
+	store.cases = append(store.cases,
+		db.Case{ID: 1, DepartmentID: 1, Status: "requested"},
+		db.Case{ID: 2, DepartmentID: 2, Status: "requested"},
+	)
+	store.caseURLs = append(store.caseURLs,
+		db.CaseURL{CaseID: 1, URLID: uA.ID, Phase: "requested"},
+		db.CaseURL{CaseID: 2, URLID: uB.ID, Phase: "requested"},
+	)
+	cookie := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/case-summaries", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var summaries []db.CaseSummary
+	if err := json.Unmarshal(w.Body.Bytes(), &summaries); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(summaries) != 2 {
+		t.Fatalf("expected both cases for admin, got %+v", summaries)
+	}
+}
