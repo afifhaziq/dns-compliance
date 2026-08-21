@@ -14,14 +14,14 @@ import { GripIcon } from '@/components/ui/grip'
 import { FileText } from 'lucide-react'
 import { PHASE_OPTIONS as CASE_PHASE_OPTIONS } from '@/lib/case-options'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled } from '../api/urls'
-import { createCase, addCaseLetter, addUrlToCase, updateCase } from '../api/cases'
+import { createCase, addCaseLetter, addUrlToCase, updateCase, updateCaseLetter } from '../api/cases'
 import { fetchAgencies } from '../api/agencies'
 import { fetchDepartmentsOpen } from '../api/departments'
 import { fetchDueDatePresets } from '../api/due-date-presets'
 import { fetchRecipients } from '../api/recipients'
 import { fetchRequestors } from '../api/requestors'
 import { useGridPreference } from '@/hooks/use-grid-preference'
-import type { URLEntry, Agency, Department, DueDatePreset, Instrument, Citation, LegalCategory, LegalElement, LegalSubElement, URLOffence, Recipient, Requestor } from '../api/types'
+import type { URLEntry, Agency, Department, DueDatePreset, Instrument, Citation, LegalCategory, LegalElement, LegalSubElement, URLOffence, Recipient, Requestor, CaseSummary } from '../api/types'
 import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, fetchSubElements, attachOffence, fetchOffencesByUrl, detachOffence, formatParsedCitation } from '../api/legal'
 import {
   Dialog,
@@ -326,6 +326,7 @@ function AddUrlDialog({
   duePresets,
   recipients,
   requestors,
+  editing,
 }: {
   open: boolean
   onClose: () => void
@@ -334,6 +335,7 @@ function AddUrlDialog({
   duePresets: DueDatePreset[]
   recipients: Recipient[]
   requestors: Requestor[]
+  editing: CaseSummary | null
 }) {
   const [value, setValue] = useState('')
   const [offences, setOffences] = useState<StagedOffence[]>([])
@@ -374,6 +376,33 @@ function AddUrlDialog({
     setLetterDate(''); setReceivedAt(''); setSubmittedAt(''); setRemarks('')
   }
 
+  useEffect(() => {
+    if (!open) return
+    if (editing) {
+      setValue(editing.domains.map(d => d.url).join('\n'))
+      setOffences([])
+      setAgencyId(editing.agency_id ?? '')
+      setDueDurationMinutes('') // existing due date shown read-only; picking a duration replaces it (see the read-only line in the form below)
+      setPhase(editing.status || 'requested')
+      setCreateLetter(true)
+      setReferenceNumberExternal(editing.notice_reference_number_external ?? '')
+      setReferenceNumberInternal(editing.notice_reference_number_internal ?? '')
+      setRecipient(editing.notice_recipient ?? '')
+      setNoticeSubject(editing.notice_subject ?? '')
+      setMemoSubject(editing.memo_subject ?? '')
+      setMemoReferenceNumberInternal(editing.memo_reference_number_internal ?? '')
+      setRequestor(editing.notice_requestor ?? '')
+      setWorkflowStatus(editing.notice_workflow_status ?? '')
+      setLetterDate(editing.notice_letter_date ? editing.notice_letter_date.slice(0, 10) : '')
+      setReceivedAt(editing.notice_received_at ? editing.notice_received_at.slice(0, 10) : '')
+      setSubmittedAt(editing.notice_submitted_at ? editing.notice_submitted_at.slice(0, 10) : '')
+      setRemarks(editing.notice_remarks ?? '')
+      setError(null)
+    } else {
+      reset()
+    }
+  }, [open, editing])
+
   const copySubjectFromMemo = () => setNoticeSubject(memoSubject)
   const copySubjectFromNotice = () => setMemoSubject(noticeSubject)
 
@@ -393,6 +422,75 @@ function AddUrlDialog({
     setLoading(true)
     setError(null)
     try {
+      if (editing) {
+        await updateCase(editing.id, {
+          status: phase,
+          agencyId: agencyId === '' ? null : agencyId,
+          ...(caseOpts.dueDate ? { dueDate: caseOpts.dueDate } : {}),
+        })
+
+        const existingURLs = new Set(editing.domains.map(d => d.url))
+        const newDomains = domains.filter(d => !existingURLs.has(d))
+        // Removing a line from the textarea is a deliberate no-op — there's
+        // no "unlink domain from case" endpoint (see the spec's Out of
+        // Scope section); only additions are applied.
+        await Promise.all(newDomains.map(d => addUrlToCase(editing.id, d, phase)))
+
+        const richFields = {
+          recipient: recipient.trim() || undefined,
+          requestor: requestor.trim() || undefined,
+          workflowStatus: workflowStatus || undefined,
+          letterDate: isoFromDateInput(letterDate),
+          receivedAt: isoFromDateInput(receivedAt),
+          submittedAt: isoFromDateInput(submittedAt),
+          remarks: remarks.trim() || undefined,
+        }
+        const letterWork: Promise<unknown>[] = []
+        if (editing.notice_letter_id) {
+          letterWork.push(updateCaseLetter(editing.id, editing.notice_letter_id, {
+            ...richFields,
+            subject: noticeSubject.trim() || undefined,
+            referenceNumberExternal: referenceNumberExternal.trim() || undefined,
+            referenceNumberInternal: referenceNumberInternal.trim() || undefined,
+          }))
+        } else {
+          letterWork.push(addCaseLetter(editing.id, {
+            type: 'Notice',
+            recipient: richFields.recipient, requestor: richFields.requestor,
+            workflow_status: richFields.workflowStatus, letter_date: richFields.letterDate,
+            received_at: richFields.receivedAt, submitted_at: richFields.submittedAt, remarks: richFields.remarks,
+            subject: noticeSubject.trim() || undefined,
+            reference_number_external: referenceNumberExternal.trim() || undefined,
+            reference_number_internal: referenceNumberInternal.trim() || undefined,
+          }))
+        }
+        if (editing.memo_letter_id) {
+          letterWork.push(updateCaseLetter(editing.id, editing.memo_letter_id, {
+            ...richFields,
+            subject: memoSubject.trim() || undefined,
+            referenceNumberInternal: memoReferenceNumberInternal.trim() || undefined,
+          }))
+        } else if (memoSubject.trim() || memoReferenceNumberInternal.trim()) {
+          letterWork.push(addCaseLetter(editing.id, {
+            type: 'Memo',
+            recipient: richFields.recipient, requestor: richFields.requestor,
+            workflow_status: richFields.workflowStatus, letter_date: richFields.letterDate,
+            received_at: richFields.receivedAt, submitted_at: richFields.submittedAt, remarks: richFields.remarks,
+            subject: memoSubject.trim() || undefined,
+            reference_number_external: referenceNumberExternal.trim() || undefined,
+            reference_number_internal: memoReferenceNumberInternal.trim() || undefined,
+          }))
+        }
+        await Promise.all([
+          ...letterWork,
+          ...newDomains.flatMap(d => allOffences.map(o => attachOffence(d, o.categoryId, o.elementId, o.subElementId))),
+        ])
+        reset()
+        onAdded()
+        onClose()
+        return
+      }
+
       const created = await Promise.all(domains.map(d => createUrl(d)))
       const caseWork = (async () => {
         const c = await createCase(created[0].url, phase, caseOpts)
@@ -437,7 +535,7 @@ function AddUrlDialog({
       onAdded()
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create case')
+      setError(err instanceof Error ? err.message : `Failed to ${editing ? 'save' : 'create'} case`)
     } finally {
       setLoading(false)
     }
@@ -450,9 +548,11 @@ function AddUrlDialog({
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
       <DialogContent showCloseButton={false} style={{ maxWidth: 560 }}>
         <DialogHeader>
-          <DialogTitle>Create Case</DialogTitle>
+          <DialogTitle>{editing ? 'Edit Case' : 'Create Case'}</DialogTitle>
           <DialogDescription>
-            Enter one or more domains or full URLs to monitor for DNS compliance — full URLs will have their domain automatically extracted, and multiple entries (one per line) share the case opened below. A case is required to add {domainCount > 1 ? 'these domains' : 'a domain'}; if a later batch covers a different offence, open a new case for it instead of reusing this one.
+            {editing
+              ? 'Update this case\'s shared fields. Adding a domain line links it to this case; removing a line here does not unlink it — remove a domain from Cases view instead.'
+              : <>Enter one or more domains or full URLs to monitor for DNS compliance — full URLs will have their domain automatically extracted, and multiple entries (one per line) share the case opened below. A case is required to add {domainCount > 1 ? 'these domains' : 'a domain'}; if a later batch covers a different offence, open a new case for it instead of reusing this one.</>}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -506,6 +606,11 @@ function AddUrlDialog({
 
             <div className="form-field">
               <label className="form-label" id="add-due-date-label">Time to Block</label>
+              {editing && (
+                <p className="text-xs text-stone-muted" style={{ marginTop: 0, marginBottom: 4 }}>
+                  Current deadline: {editing.due_date ? DUE_DATE_FMT.format(new Date(editing.due_date)) : '—'} — pick a duration below to replace it
+                </p>
+              )}
               <Select value={dueDurationMinutes} onValueChange={setDueDurationMinutes} disabled={loading}>
                 <SelectTrigger aria-labelledby="add-due-date-label" placeholder="—" className="w-full" />
                 <SelectContent>
@@ -705,7 +810,7 @@ function AddUrlDialog({
               Cancel
             </button>
             <button type="submit" className="btn-primary" disabled={loading}>
-              {loading ? 'Creating…' : 'Create Case'}
+              {editing ? (loading ? 'Saving…' : 'Save Changes') : (loading ? 'Creating…' : 'Create Case')}
             </button>
           </DialogFooter>
         </form>
@@ -1264,6 +1369,7 @@ function URLsPage() {
         duePresets={duePresets}
         recipients={recipients}
         requestors={requestors}
+        editing={null}
       />
 
       <DeleteConfirmDialog
