@@ -15,7 +15,9 @@ import { createUrl, fetchUrls } from '@/api/urls'
 import { fetchDepartmentsOpen } from '@/api/departments'
 import { fetchRecipients } from '@/api/recipients'
 import { fetchRequestors } from '@/api/requestors'
-import type { CaseLetterEntry, Department, Recipient, Requestor } from '@/api/types'
+import { fetchAgencies } from '@/api/agencies'
+import { fetchDueDatePresets } from '@/api/due-date-presets'
+import type { CaseLetterEntry, Department, Recipient, Requestor, Agency, DueDatePreset } from '@/api/types'
 import { PHASE_OPTIONS as CASE_PHASE_OPTIONS, LETTER_TYPE_OPTIONS as CASE_LETTER_TYPE_OPTIONS } from '@/lib/case-options'
 import {
   Dialog,
@@ -44,7 +46,6 @@ import { DataGridPagination } from '@/components/reui/data-grid/data-grid-pagina
 import { Filters, type Filter, type FilterFieldConfig } from '@/components/reui/filters'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Separator } from '@/components/ui/separator'
 import { SortableHeader, EmptyIcon } from '@/components/results-table-parts'
 import { useGridPreference } from '@/hooks/use-grid-preference'
 
@@ -67,38 +68,60 @@ function isoFromDateInput(value: string): string | undefined {
   return value ? new Date(value).toISOString() : undefined
 }
 
-/* ─── Add Document Dialog ────────────────────────────────────────────────── */
+// Mirrors urls.tsx's own dueDateOptionsFrom/dueDateFromDurationMinutes (not
+// imported from there — that file is owned by a parallel task) — same
+// "Time to Block" duration-picker convention: the case owner picks how long
+// from now the ISP has, not a calendar date.
+function dueDateOptionsFrom(presets: DueDatePreset[]): { value: string; label: string }[] {
+  return [{ value: '', label: '—' }, ...presets.map(p => ({ value: String(p.minutes), label: p.label }))]
+}
 
-// Opens a brand-new case (+ its first letter) for a domain — get-or-creates
-// the domain the same way AddUrlDialog does, so pointing this at an
-// already-watchlisted domain is idempotent. To add a *second* letter to an
-// already-open case, use that domain's Cases dialog on the Watchlist page
-// instead (this dialog has no case picker, only "open a new one").
+function dueDateFromDurationMinutes(minutes: number): string {
+  return new Date(Date.now() + minutes * 60 * 1000).toISOString()
+}
+
+// One selectable "existing case" option for AddDocumentDialog's case picker —
+// derived from the already-loaded case-letters list (see DocsPage's
+// `caseOptions`), not a separate fetch.
 type CaseOption = { id: number; label: string }
 
+/* ─── Add Document Dialog ────────────────────────────────────────────────── */
+
+// Records one letter, either against a brand-new case (pick/type a domain —
+// get-or-creates it the same way AddUrlDialog does, so an already-watchlisted
+// domain is idempotent) or against a case that's already open (pick it from
+// "Existing Case" instead) — mutually exclusive paths, see the two fields'
+// own disabled states below.
 function AddDocumentDialog({
   open,
   onClose,
   onAdded,
   domainOptions,
-  caseOptions,
   recipients,
   requestors,
+  agencies,
+  duePresets,
+  caseOptions,
 }: {
   open: boolean
   onClose: () => void
   onAdded: () => void
   domainOptions: string[]
-  caseOptions: CaseOption[]
   recipients: Recipient[]
   requestors: Requestor[]
+  agencies: Agency[]
+  duePresets: DueDatePreset[]
+  caseOptions: CaseOption[]
 }) {
   const [domains, setDomains] = useState<string[]>([])
   const [domainQuery, setDomainQuery] = useState('')
-  const [existingCaseId, setExistingCaseId] = useState<number | null>(null)
+  const [existingCaseId, setExistingCaseId] = useState<number | ''>('')
   const [phase, setPhase] = useState('requested')
+  const [agencyId, setAgencyId] = useState<number | ''>('')
+  const [dueDurationMinutes, setDueDurationMinutes] = useState('')
   const [type, setType] = useState('Notice')
-  const [referenceNumber, setReferenceNumber] = useState('')
+  const [referenceNumberExternal, setReferenceNumberExternal] = useState('')
+  const [referenceNumberInternal, setReferenceNumberInternal] = useState('')
   const [recipient, setRecipient] = useState('')
   const [subject, setSubject] = useState('')
   const [requestor, setRequestor] = useState('')
@@ -111,7 +134,9 @@ function AddDocumentDialog({
   const [loading, setLoading] = useState(false)
 
   const reset = () => {
-    setDomains([]); setDomainQuery(''); setExistingCaseId(null); setPhase('requested'); setType('Notice'); setReferenceNumber('')
+    setDomains([]); setDomainQuery(''); setExistingCaseId('')
+    setPhase('requested'); setAgencyId(''); setDueDurationMinutes('')
+    setType('Notice'); setReferenceNumberExternal(''); setReferenceNumberInternal('')
     setRecipient(''); setSubject(''); setRequestor(''); setWorkflowStatus('')
     setLetterDate(''); setReceivedAt(''); setSubmittedAt(''); setRemarks(''); setError(null)
   }
@@ -127,26 +152,17 @@ function AddDocumentDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!existingCaseId && domains.length === 0) { setError('Add a domain or pick an existing case'); return }
+    if (existingCaseId === '' && domains.length === 0) {
+      setError('Pick a domain (to open a new case) or an existing case')
+      return
+    }
     setLoading(true)
     setError(null)
     try {
-      let caseId: number
-      if (existingCaseId) {
-        caseId = existingCaseId
-      } else {
-        // Get-or-create every domain (idempotent for one already on a
-        // watchlist), then link them all to one shared case — matches
-        // AddUrlDialog's "N URLs in one Notice" batch shape rather than
-        // opening a separate case per domain.
-        const created = await Promise.all(domains.map(d => createUrl(d)))
-        const c = await createCase(created[0].url, phase)
-        await Promise.all(created.slice(1).map(u => addUrlToCase(c.id, u.url, phase)))
-        caseId = c.id
-      }
-      await addCaseLetter(caseId, {
+      const letterFields = {
         type,
-        reference_number: referenceNumber.trim() || undefined,
+        reference_number_external: referenceNumberExternal.trim() || undefined,
+        reference_number_internal: referenceNumberInternal.trim() || undefined,
         recipient: recipient.trim() || undefined,
         subject: subject.trim() || undefined,
         requestor: requestor.trim() || undefined,
@@ -155,7 +171,25 @@ function AddDocumentDialog({
         received_at: isoFromDateInput(receivedAt),
         submitted_at: isoFromDateInput(submittedAt),
         remarks: remarks.trim() || undefined,
-      })
+      }
+      if (existingCaseId !== '') {
+        // Linking to a case that's already open — no domain/case creation,
+        // just record this letter against it.
+        await addCaseLetter(existingCaseId, letterFields)
+      } else {
+        // Get-or-create every domain (idempotent for one already on a
+        // watchlist, and auto-linked to the caller's own department
+        // watchlist by AddToWatchlist), then link them all to one shared
+        // case — matches AddUrlDialog's "N URLs in one Notice" batch shape
+        // rather than opening a separate case per domain.
+        const created = await Promise.all(domains.map(d => createUrl(d)))
+        const caseOpts: { agencyId?: number; dueDate?: string } = {}
+        if (agencyId !== '') caseOpts.agencyId = agencyId
+        if (dueDurationMinutes) caseOpts.dueDate = dueDateFromDurationMinutes(Number(dueDurationMinutes))
+        const c = await createCase(created[0].url, phase, caseOpts)
+        await Promise.all(created.slice(1).map(u => addUrlToCase(c.id, u.url, phase)))
+        await addCaseLetter(c.id, letterFields)
+      }
       reset()
       onAdded()
       onClose()
@@ -174,18 +208,19 @@ function AddDocumentDialog({
         <DialogHeader>
           <DialogTitle>Add Document</DialogTitle>
           <DialogDescription>
-            Opens a new case linking one or more domains, or links to a case that's already open, and records a letter (Memo or Notice) against it.
+            Record a letter (Memo or Notice) either by opening a new case for one or more domains, or by picking a case that's already open.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="form-field">
-            <label className="form-label" htmlFor="add-doc-url">Domain(s)</label>
+            <label className="form-label" htmlFor="add-doc-url">Domain(s) — new case</label>
             <Combobox
               items={domainItems}
               value={domains}
-              onValueChange={v => { setDomains(v); if (v.length > 0) setExistingCaseId(null) }}
+              onValueChange={setDomains}
               onInputValueChange={setDomainQuery}
               multiple
+              disabled={loading || existingCaseId !== ''}
             >
               <ComboboxChips>
                 {domains.map(d => (
@@ -195,7 +230,7 @@ function AddDocumentDialog({
                   id="add-doc-url"
                   placeholder={domains.length === 0 ? 'Search or type a domain…' : undefined}
                   autoFocus
-                  disabled={loading || existingCaseId !== null}
+                  disabled={loading || existingCaseId !== ''}
                 />
               </ComboboxChips>
               <ComboboxContent>
@@ -209,12 +244,7 @@ function AddDocumentDialog({
                 </ComboboxList>
               </ComboboxContent>
             </Combobox>
-            <p className="text-xs text-stone-muted">Search existing watchlist domains or type a new one. All selected domains will share this one case.</p>
-          </div>
-
-          <div className="relative my-2">
-            <Separator />
-            <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-xs text-stone-muted">or</span>
+            <p className="text-xs text-stone-muted">Pick an already-watchlisted domain, or type a new one — either way it opens a new case, and gets added to your department's watchlist automatically. Mutually exclusive with linking to an existing case below.</p>
           </div>
 
           <div className="form-field">
@@ -222,7 +252,8 @@ function AddDocumentDialog({
             <Combobox
               items={caseOptions}
               value={caseOptions.find(c => c.id === existingCaseId) ?? null}
-              onValueChange={item => { setExistingCaseId(item ? item.id : null); if (item) { setDomains([]); setDomainQuery('') } }}
+              onValueChange={item => setExistingCaseId(item ? item.id : '')}
+              disabled={loading || domains.length > 0}
             >
               <ComboboxInput
                 id="add-doc-existing-case"
@@ -236,58 +267,95 @@ function AddDocumentDialog({
                 </ComboboxList>
               </ComboboxContent>
             </Combobox>
-            <p className="text-xs text-stone-muted">Link this letter to a case that's already open instead of starting a new one.</p>
+            <p className="text-xs text-stone-muted">Link this letter to a case that's already open, instead of opening a new one. Mutually exclusive with the domain picker above.</p>
+          </div>
+
+          {existingCaseId === '' && (
+            <div className="form-row">
+              <div className="form-field">
+                <label className="form-label" id="add-doc-phase-label">Case Phase</label>
+                <Select value={phase} onValueChange={setPhase} disabled={loading}>
+                  <SelectTrigger aria-labelledby="add-doc-phase-label" placeholder="—" className="w-full" />
+                  <SelectContent>
+                    {CASE_PHASE_OPTIONS.map((opt, i) => (
+                      <SelectItem key={opt.value} index={i} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="form-field">
+                <label className="form-label" id="add-doc-agency-label">Agency</label>
+                <Select value={String(agencyId)} onValueChange={v => setAgencyId(v === '' ? '' : Number(v))} disabled={loading}>
+                  <SelectTrigger aria-labelledby="add-doc-agency-label" placeholder="—" className="w-full" />
+                  <SelectContent>
+                    <SelectItem index={0} value="">—</SelectItem>
+                    {agencies.map((a, i) => (
+                      <SelectItem key={a.id} index={i + 1} value={String(a.id)}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="form-field">
+                <label className="form-label" id="add-doc-due-date-label">Time to Block</label>
+                <Select value={dueDurationMinutes} onValueChange={setDueDurationMinutes} disabled={loading}>
+                  <SelectTrigger aria-labelledby="add-doc-due-date-label" placeholder="—" className="w-full" />
+                  <SelectContent>
+                    {dueDateOptionsFrom(duePresets).map((opt, i) => (
+                      <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
+          <div className="form-field">
+            <label className="form-label" id="add-doc-type-label">Type</label>
+            <Select value={type} onValueChange={setType} disabled={loading}>
+              <SelectTrigger aria-labelledby="add-doc-type-label" placeholder="—" className="w-full" />
+              <SelectContent>
+                {CASE_LETTER_TYPE_OPTIONS.map((opt, i) => (
+                  <SelectItem key={opt} index={i} value={opt}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="form-row">
             <div className="form-field">
-              <label className="form-label" id="add-doc-phase-label">Case Phase</label>
-              <Select value={phase} onValueChange={setPhase} disabled={loading || existingCaseId !== null}>
-                <SelectTrigger aria-labelledby="add-doc-phase-label" placeholder="—" className="w-full" />
-                <SelectContent>
-                  {CASE_PHASE_OPTIONS.map((opt, i) => (
-                    <SelectItem key={opt.value} index={i} value={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="form-field">
-              <label className="form-label" id="add-doc-type-label">Type</label>
-              <Select value={type} onValueChange={setType} disabled={loading}>
-                <SelectTrigger aria-labelledby="add-doc-type-label" placeholder="—" className="w-full" />
-                <SelectContent>
-                  {CASE_LETTER_TYPE_OPTIONS.map((opt, i) => (
-                    <SelectItem key={opt} index={i} value={opt}>{opt}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="form-row">
-            <div className="form-field">
-              <label className="form-label" htmlFor="add-doc-reference">Reference No.</label>
+              <label className="form-label" htmlFor="add-doc-reference-external">External Ref. (No. Rujukan NMD)</label>
               <input
-                id="add-doc-reference"
+                id="add-doc-reference-external"
                 className="form-input"
                 placeholder="e.g. MCMC(S)CMOD/BLK/2026(1-2)"
-                value={referenceNumber}
-                onChange={e => setReferenceNumber(e.target.value)}
+                value={referenceNumberExternal}
+                onChange={e => setReferenceNumberExternal(e.target.value)}
                 disabled={loading}
               />
             </div>
             <div className="form-field">
-              <label className="form-label" id="add-doc-recipient-label">Recipient</label>
-              <Select value={recipient} onValueChange={setRecipient} disabled={loading}>
-                <SelectTrigger aria-labelledby="add-doc-recipient-label" placeholder="—" className="w-full" />
-                <SelectContent>
-                  <SelectItem index={0} value="">—</SelectItem>
-                  {recipients.map((r, i) => (
-                    <SelectItem key={r.id} index={i + 1} value={r.name}>{r.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <label className="form-label" htmlFor="add-doc-reference-internal">Internal Ref. (No. Rujukan NMSMD)</label>
+              <input
+                id="add-doc-reference-internal"
+                className="form-input"
+                value={referenceNumberInternal}
+                onChange={e => setReferenceNumberInternal(e.target.value)}
+                disabled={loading}
+              />
             </div>
+          </div>
+
+          <div className="form-field">
+            <label className="form-label" id="add-doc-recipient-label">Recipient</label>
+            <Select value={recipient} onValueChange={setRecipient} disabled={loading}>
+              <SelectTrigger aria-labelledby="add-doc-recipient-label" placeholder="—" className="w-full" />
+              <SelectContent>
+                <SelectItem index={0} value="">—</SelectItem>
+                {recipients.map((r, i) => (
+                  <SelectItem key={r.id} index={i + 1} value={r.name}>{r.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="form-field">
@@ -371,6 +439,8 @@ function DocsPage() {
   const [domainOptions, setDomainOptions] = useState<string[]>([])
   const [recipients, setRecipients] = useState<Recipient[]>([])
   const [requestors, setRequestors] = useState<Requestor[]>([])
+  const [agencies, setAgencies] = useState<Agency[]>([])
+  const [duePresets, setDuePresets] = useState<DueDatePreset[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -379,7 +449,10 @@ function DocsPage() {
   const [filters, setFilters] = useState<Filter<string>[]>([])
   const [sorting, setSorting] = useState<SortingState>([])
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+  // Internal ref. starts hidden — External is the operationally common one
+  // (matches urls.tsx's single-reference-number column); Internal is still
+  // reachable via the Columns toggle below.
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({ reference_number_internal: false })
 
   const { ready: gridPrefReady } = useGridPreference(
     'docs',
@@ -394,14 +467,17 @@ function DocsPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [l, d, u, rc, rq] = await Promise.all([
+      const [l, d, u, rc, rq, ag, dp] = await Promise.all([
         fetchAllCaseLetters(), fetchDepartmentsOpen(), fetchUrls(), fetchRecipients(), fetchRequestors(),
+        fetchAgencies(), fetchDueDatePresets(),
       ])
       setLetters(l)
       setDepartments(d)
       setDomainOptions(u.map(entry => entry.url))
       setRecipients(rc)
       setRequestors(rq)
+      setAgencies(ag)
+      setDuePresets(dp)
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load documents')
@@ -412,14 +488,19 @@ function DocsPage() {
 
   useEffect(() => { load() }, [load])
 
-  // One entry per distinct case_id, deduped from the flat letters list already
-  // loaded for the table — avoids a second endpoint just to list cases.
+  // One option per distinct case_id already seen among loaded letters —
+  // backs AddDocumentDialog's "Existing Case" picker without a separate
+  // fetch. A case with no letters yet never appears here, but it also can't
+  // exist without one (createCase always opens with a first letter).
   const caseOptions = useMemo<CaseOption[]>(() => {
-    const byId = new Map<number, string>()
+    const byId = new Map<number, string[]>()
     for (const l of letters) {
-      if (!byId.has(l.case_id)) byId.set(l.case_id, `${(l.urls ?? []).join(', ') || '—'} (Case #${l.case_id})`)
+      if (!byId.has(l.case_id)) byId.set(l.case_id, l.urls ?? [])
     }
-    return Array.from(byId, ([id, label]) => ({ id, label }))
+    return Array.from(byId.entries()).map(([id, urls]) => ({
+      id,
+      label: `Case #${id} — ${urls.length > 0 ? urls.join(', ') : 'no domains'}`,
+    }))
   }, [letters])
 
   const filterFields = useMemo<FilterFieldConfig<string>[]>(() => [
@@ -436,7 +517,8 @@ function DocsPage() {
     const query = search.trim().toLowerCase()
     const matchesQuery = (l: CaseLetterEntry) =>
       !query ||
-      (l.reference_number ?? '').toLowerCase().includes(query) ||
+      (l.reference_number_external ?? '').toLowerCase().includes(query) ||
+      (l.reference_number_internal ?? '').toLowerCase().includes(query) ||
       (l.recipient ?? '').toLowerCase().includes(query) ||
       (l.subject ?? '').toLowerCase().includes(query) ||
       (l.requestor ?? '').toLowerCase().includes(query) ||
@@ -467,11 +549,18 @@ function DocsPage() {
       meta: { headerTitle: 'Type', skeleton: <span className="skeleton" style={{ width: 70, height: 20, borderRadius: 4 }} /> },
     },
     {
-      id: 'reference_number',
-      accessorFn: l => l.reference_number ?? '',
-      header: 'Reference No.',
-      meta: { headerTitle: 'Reference No.', skeleton: <span className="skeleton" style={{ width: 160, height: 14 }} /> },
-      cell: ({ row }) => row.original.reference_number || '—',
+      id: 'reference_number_external',
+      accessorFn: l => l.reference_number_external ?? '',
+      header: 'External Ref.',
+      meta: { headerTitle: 'External Ref. (No. Rujukan NMD)', skeleton: <span className="skeleton" style={{ width: 160, height: 14 }} /> },
+      cell: ({ row }) => row.original.reference_number_external || '—',
+    },
+    {
+      id: 'reference_number_internal',
+      accessorFn: l => l.reference_number_internal ?? '',
+      header: 'Internal Ref.',
+      meta: { headerTitle: 'Internal Ref. (No. Rujukan NMSMD)', skeleton: <span className="skeleton" style={{ width: 160, height: 14 }} /> },
+      cell: ({ row }) => row.original.reference_number_internal || '—',
     },
     {
       id: 'recipient',
@@ -622,9 +711,11 @@ function DocsPage() {
         onClose={() => setAddOpen(false)}
         onAdded={load}
         domainOptions={domainOptions}
-        caseOptions={caseOptions}
         recipients={recipients}
         requestors={requestors}
+        agencies={agencies}
+        duePresets={duePresets}
+        caseOptions={caseOptions}
       />
     </div>
   )
