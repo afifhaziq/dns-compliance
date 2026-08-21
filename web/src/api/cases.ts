@@ -8,8 +8,47 @@ export async function listCases(url: string): Promise<Case[]> {
   return (Array.isArray(data) ? data : []).map(c => ({ ...c, letters: c.letters ?? [] }))
 }
 
-export function createCase(url: string, phase: string): Promise<Case> {
-  return api.post<Case>(`/cases/${encodeURIComponent(url)}`, { phase })
+// agencyId/dueDate optionally seed Case.AgencyID/DueDate at creation time —
+// omitted keys are left unset server-side (see db.CaseCreateOptions).
+export function createCase(
+  url: string,
+  phase: string,
+  opts?: { agencyId?: number; dueDate?: string },
+): Promise<Case> {
+  const body: Record<string, string | number> = { phase }
+  if (opts?.agencyId !== undefined) body.agency_id = opts.agencyId
+  if (opts?.dueDate !== undefined) body.due_date = opts.dueDate
+  return api.post<Case>(`/cases/${encodeURIComponent(url)}`, body)
+}
+
+export type CaseFields = {
+  agencyId?: number | null
+  status?: string
+  dueDate?: string | null
+  requestedAt?: string | null
+}
+
+// Partial update of a case's shared fields (PATCH /api/cases/{id}) — only
+// keys present in `fields` are sent. Pass null to clear a field: due_date/
+// requested_at clear via "", agency_id clears via 0 (never a real row id) —
+// same clear-sentinel convention the old PATCH /api/urls/{id} used (see
+// setUrlFields's prior implementation in urls.ts).
+export async function updateCase(caseId: number, fields: CaseFields): Promise<void> {
+  const body: Record<string, string | number> = {}
+  if (fields.agencyId !== undefined) body.agency_id = fields.agencyId ?? 0
+  if (fields.status !== undefined) body.status = fields.status
+  if (fields.dueDate !== undefined) body.due_date = fields.dueDate ?? ''
+  if (fields.requestedAt !== undefined) body.requested_at = fields.requestedAt ?? ''
+  await api.patch<void>(`/cases/${caseId}`, body)
+}
+
+// Sets one url's own CaseURL.Phase within a case — the per-domain override
+// of Case.status. Takes a numeric urlId (not a raw url string like
+// addUrlToCase above) since the route addresses it by path segment
+// (`/cases/{id}/urls/{url_id}`), not a body the server resolves — callers
+// need the url's id already (e.g. URLEntry.id).
+export async function updateCaseURLPhase(caseId: number, urlId: number, phase: string): Promise<void> {
+  await api.patch<void>(`/cases/${caseId}/urls/${urlId}`, { phase })
 }
 
 export function addCaseLetter(

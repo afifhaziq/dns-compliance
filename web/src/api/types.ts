@@ -61,11 +61,20 @@ export type URLEntry = {
 }
 
 // One row of GET /api/cases/*url — mirrors db.CaseWithLetters (Case
-// embedded + Phase from the url's CaseURL join + Letters).
+// embedded + Phase from the url's CaseURL join + Letters). agency_id/agency/
+// status/due_date/requested_at are the case-level defaults shared by every
+// URL the case covers (db.Case); `phase` is this url's own CaseURL.Phase
+// override within the case, unrelated to Case.status despite sharing the
+// same requested/uplift/suspended vocabulary.
 export type Case = {
   id: number
   department_id: number
   created_at: string
+  agency_id?: number
+  agency?: { id: number; name: string }
+  status?: string
+  due_date?: string
+  requested_at?: string
   phase: string
   letters: CaseLetter[]
 }
@@ -74,7 +83,8 @@ export type CaseLetter = {
   id: number
   case_id: number
   type: string
-  reference_number?: string
+  reference_number_external?: string
+  reference_number_internal?: string
   workflow_status?: string
   recipient?: string
   letter_date?: string
