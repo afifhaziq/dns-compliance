@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { Case, CaseLetter, CaseLettersResponse } from './types'
+import type { Case, CaseLetter, CaseLettersResponse, CaseSummary } from './types'
 
 export async function listCases(url: string): Promise<Case[]> {
   const data = await api.get<Case[]>(`/cases/${encodeURIComponent(url)}`)
@@ -92,4 +92,41 @@ export async function fetchAllCaseLetters(): Promise<CaseLettersResponse['letter
     page++
   }
   return all
+}
+
+export async function fetchCaseSummaries(): Promise<CaseSummary[]> {
+  const data = await api.get<CaseSummary[]>('/case-summaries')
+  return Array.isArray(data) ? data : []
+}
+
+export type CaseLetterFieldsUpdate = Partial<{
+  subject: string
+  workflowStatus: string
+  referenceNumberExternal: string
+  referenceNumberInternal: string
+  recipient: string
+  requestor: string
+  remarks: string
+  letterDate: string | null
+  receivedAt: string | null
+  submittedAt: string | null
+}>
+
+// Partial update of one CaseLetter's fields (PATCH
+// /api/cases/{caseId}/letters/{letterId}) — only keys present in `fields`
+// are sent. Date fields clear via null -> "" (same sentinel convention as
+// updateCase's dueDate/requestedAt above); string fields clear via "".
+export async function updateCaseLetter(caseId: number, letterId: number, fields: CaseLetterFieldsUpdate): Promise<void> {
+  const body: Record<string, string> = {}
+  if (fields.subject !== undefined) body.subject = fields.subject
+  if (fields.workflowStatus !== undefined) body.workflow_status = fields.workflowStatus
+  if (fields.referenceNumberExternal !== undefined) body.reference_number_external = fields.referenceNumberExternal
+  if (fields.referenceNumberInternal !== undefined) body.reference_number_internal = fields.referenceNumberInternal
+  if (fields.recipient !== undefined) body.recipient = fields.recipient
+  if (fields.requestor !== undefined) body.requestor = fields.requestor
+  if (fields.remarks !== undefined) body.remarks = fields.remarks
+  if (fields.letterDate !== undefined) body.letter_date = fields.letterDate ?? ''
+  if (fields.receivedAt !== undefined) body.received_at = fields.receivedAt ?? ''
+  if (fields.submittedAt !== undefined) body.submitted_at = fields.submittedAt ?? ''
+  await api.patch<void>(`/cases/${caseId}/letters/${letterId}`, body)
 }
