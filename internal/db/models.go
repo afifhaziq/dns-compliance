@@ -697,6 +697,62 @@ type CaseLetterEntry struct {
 	URLs           []string `gorm:"-" json:"urls"`
 }
 
+// CaseSummary is one row for the Cases view (GET /api/case-summaries): a
+// Case's own fields plus its Notice letter's fields (Notice chosen over
+// Memo when both exist, same convention as current_reference_number, see
+// ListDepartmentURLs) and every domain it covers. Not a persisted table.
+type CaseSummary struct {
+	ID                             uint                `json:"id"`
+	AgencyID                       *uint               `json:"agency_id,omitempty"`
+	AgencyName                     string              `json:"agency_name,omitempty"`
+	Status                         string              `json:"status,omitempty"`
+	DueDate                        *time.Time          `json:"due_date,omitempty"`
+	RequestedAt                    *time.Time          `json:"requested_at,omitempty"`
+	CreatedAt                      time.Time           `json:"created_at"`
+	NoticeLetterID                 *uint               `json:"notice_letter_id,omitempty"`
+	NoticeSubject                  string              `json:"notice_subject,omitempty"`
+	NoticeWorkflowStatus           string              `json:"notice_workflow_status,omitempty"`
+	NoticeReferenceNumberExternal  string              `json:"notice_reference_number_external,omitempty"`
+	NoticeReferenceNumberInternal  string              `json:"notice_reference_number_internal,omitempty"`
+	NoticeRecipient                string              `json:"notice_recipient,omitempty"`
+	NoticeRequestor                string              `json:"notice_requestor,omitempty"`
+	NoticeLetterDate               *time.Time          `json:"notice_letter_date,omitempty"`
+	NoticeReceivedAt               *time.Time          `json:"notice_received_at,omitempty"`
+	NoticeSubmittedAt              *time.Time          `json:"notice_submitted_at,omitempty"`
+	NoticeRemarks                  string              `json:"notice_remarks,omitempty"`
+	MemoLetterID                   *uint               `json:"memo_letter_id,omitempty"`
+	MemoSubject                    string              `json:"memo_subject,omitempty"`
+	MemoReferenceNumberInternal    string              `json:"memo_reference_number_internal,omitempty"`
+	Domains                        []CaseSummaryDomain `gorm:"-" json:"domains"`
+}
+
+// CaseSummaryDomain is one domain a CaseSummary covers, via CaseURL.
+type CaseSummaryDomain struct {
+	URLID uint   `json:"url_id"`
+	URL   string `json:"url"`
+	Phase string `json:"phase"`
+}
+
+// CaseLetterFields is a partial update to a CaseLetter's fields (PATCH
+// /api/cases/{id}/letters/{letter_id}). String fields use the same
+// present-but-empty-clears convention as CaseFields.Status (nil = don't
+// touch, non-nil "" = clear, non-nil non-"" = set); the three date fields
+// have no natural empty sentinel so they use CaseFields.DueDate's
+// double-pointer convention instead (outer nil = don't touch, outer
+// non-nil -> nil inner = clear, outer non-nil -> &v = set).
+type CaseLetterFields struct {
+	Subject                 *string
+	WorkflowStatus          *string
+	ReferenceNumberExternal *string
+	ReferenceNumberInternal *string
+	Recipient               *string
+	Requestor               *string
+	Remarks                 *string
+	LetterDate              **time.Time
+	ReceivedAt              **time.Time
+	SubmittedAt             **time.Time
+}
+
 // BuildProvisionSortKey returns a zero-padded, suffix-aware sortable
 // representation of a section/article number + its letter suffix, so a
 // plain ORDER BY doesn't put "4A" after "40". A nil num (a Part-only or
