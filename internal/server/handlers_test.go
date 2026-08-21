@@ -1493,6 +1493,94 @@ func (m *fullMockStore) ListCaseLettersForDepartment(_ context.Context, page, pa
 	return m.listCaseLetters(&departmentID, page, pageSize)
 }
 
+func (m *fullMockStore) listCaseSummaries(departmentID *uint) []db.CaseSummary {
+	var out []db.CaseSummary
+	for _, c := range m.cases {
+		if departmentID != nil && c.DepartmentID != *departmentID {
+			continue
+		}
+		cs := db.CaseSummary{ID: c.ID, AgencyID: c.AgencyID, Status: c.Status, DueDate: c.DueDate, RequestedAt: c.RequestedAt, CreatedAt: c.CreatedAt}
+		for _, l := range m.caseLetters {
+			if l.CaseID != c.ID {
+				continue
+			}
+			id := l.ID
+			switch l.Type {
+			case "Notice", "Notice (Uplift)":
+				cs.NoticeLetterID = &id
+				cs.NoticeSubject = l.Subject
+				cs.NoticeWorkflowStatus = l.WorkflowStatus
+				cs.NoticeReferenceNumberExternal = l.ReferenceNumberExternal
+				cs.NoticeReferenceNumberInternal = l.ReferenceNumberInternal
+			case "Memo", "Memo (Uplift)":
+				cs.MemoLetterID = &id
+				cs.MemoSubject = l.Subject
+				cs.MemoReferenceNumberInternal = l.ReferenceNumberInternal
+			}
+		}
+		for _, cu := range m.caseURLs {
+			if cu.CaseID != c.ID {
+				continue
+			}
+			for _, u := range m.urls {
+				if u.ID == cu.URLID {
+					cs.Domains = append(cs.Domains, db.CaseSummaryDomain{URLID: u.ID, URL: u.URL, Phase: cu.Phase})
+				}
+			}
+		}
+		out = append(out, cs)
+	}
+	return out
+}
+
+func (m *fullMockStore) ListCases(_ context.Context) ([]db.CaseSummary, error) {
+	return m.listCaseSummaries(nil), nil
+}
+
+func (m *fullMockStore) ListCasesForDepartment(_ context.Context, departmentID uint) ([]db.CaseSummary, error) {
+	return m.listCaseSummaries(&departmentID), nil
+}
+
+func (m *fullMockStore) UpdateCaseLetterFields(_ context.Context, caseID, letterID uint, fields db.CaseLetterFields) (bool, error) {
+	for i, l := range m.caseLetters {
+		if l.ID != letterID || l.CaseID != caseID {
+			continue
+		}
+		if fields.Subject != nil {
+			m.caseLetters[i].Subject = *fields.Subject
+		}
+		if fields.WorkflowStatus != nil {
+			m.caseLetters[i].WorkflowStatus = *fields.WorkflowStatus
+		}
+		if fields.ReferenceNumberExternal != nil {
+			m.caseLetters[i].ReferenceNumberExternal = *fields.ReferenceNumberExternal
+		}
+		if fields.ReferenceNumberInternal != nil {
+			m.caseLetters[i].ReferenceNumberInternal = *fields.ReferenceNumberInternal
+		}
+		if fields.Recipient != nil {
+			m.caseLetters[i].Recipient = *fields.Recipient
+		}
+		if fields.Requestor != nil {
+			m.caseLetters[i].Requestor = *fields.Requestor
+		}
+		if fields.Remarks != nil {
+			m.caseLetters[i].Remarks = *fields.Remarks
+		}
+		if fields.LetterDate != nil {
+			m.caseLetters[i].LetterDate = *fields.LetterDate
+		}
+		if fields.ReceivedAt != nil {
+			m.caseLetters[i].ReceivedAt = *fields.ReceivedAt
+		}
+		if fields.SubmittedAt != nil {
+			m.caseLetters[i].SubmittedAt = *fields.SubmittedAt
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
 var _ db.Store = (*fullMockStore)(nil)
 
 func setupRouter(store db.Store, sc *server.Scanner) http.Handler {
