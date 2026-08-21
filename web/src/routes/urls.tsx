@@ -14,7 +14,7 @@ import { GripIcon } from '@/components/ui/grip'
 import { FileText } from 'lucide-react'
 import { CaseHistoryDialog } from '@/components/case-history-dialog'
 import { PHASE_OPTIONS as CASE_PHASE_OPTIONS, LETTER_TYPE_OPTIONS as CASE_LETTER_TYPE_OPTIONS } from '@/lib/case-options'
-import { fetchUrls, createUrl, deleteUrl, setUrlEnabled, setUrlFields } from '../api/urls'
+import { fetchUrls, createUrl, deleteUrl, setUrlEnabled } from '../api/urls'
 import { createCase, addCaseLetter, addUrlToCase } from '../api/cases'
 import { fetchAgencies } from '../api/agencies'
 import { fetchDepartmentsOpen } from '../api/departments'
@@ -44,7 +44,6 @@ import { DatePicker } from '@/components/ui/date-picker'
 import { format, parseISO } from 'date-fns'
 import { SortableHeader, EmptyIcon } from '@/components/results-table-parts'
 import { XIcon } from '@/components/ui/x'
-import { FaviconSearch } from '@/components/unlumen-ui/favicon-search'
 import { faviconApiUrl } from '../api/domain'
 import {
   PreviewLinkCard,
@@ -52,41 +51,6 @@ import {
   PreviewLinkCardPanel,
   PreviewLinkCardImage,
 } from '@/components/animate-ui/components/base/preview-link-card'
-
-/* ─── Quick Add (single domain, favicon preview) ─────────────────────────── */
-
-function QuickAddFavicon({ onAdded }: { onAdded: () => void }) {
-  const [key, setKey] = useState(0) // bumped to reset FaviconSearch's internal input after a successful add
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  const handleSearch = async (value: string) => {
-    setLoading(true)
-    setError(null)
-    try {
-      await createUrl(value)
-      onAdded()
-      setKey(k => k + 1)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add domain')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="flex items-center gap-2">
-      <FaviconSearch
-        key={key}
-        placeholder="Quick add a domain…"
-        className="w-72"
-        onSearch={value => handleSearch(value)}
-      />
-      {loading && <span className="text-xs text-stone-muted">Adding…</span>}
-      {error && <span className="form-error">{error}</span>}
-    </div>
-  )
-}
 
 export const Route = createFileRoute('/urls')({ component: URLsPage })
 
@@ -334,6 +298,16 @@ const MultiOffencePicker = forwardRef<MultiOffencePickerHandle, {
   )
 })
 
+// Case creation is the mandatory entry point for adding a domain — there is
+// no standalone "add to watchlist" path on this page any more. Every domain
+// entered here is attached to one shared case (case_urls is many-to-many —
+// matches CMOD's real "N URLs in one Notice" pattern): the case is opened on
+// the first URL, the rest are attached via addUrlToCase. Phase sets both
+// Case.status (the case-level default) and every attached CaseURL.Phase at
+// creation, kept in sync until someone later diverges one domain via
+// CaseHistoryDialog's per-domain override; Agency/Due Date only ever seed
+// the case-level defaults (db.CaseCreateOptions carries no per-domain
+// variant of these two).
 function AddUrlDialog({
   open,
   onClose,
@@ -350,20 +324,20 @@ function AddUrlDialog({
   const [value, setValue] = useState('')
   const [offences, setOffences] = useState<StagedOffence[]>([])
   const [agencyId, setAgencyId] = useState<number | ''>('')
-  const [status, setStatus] = useState('requested')
   const [dueDurationMinutes, setDueDurationMinutes] = useState('1440')
-  const [openCase, setOpenCase] = useState(false)
-  const [casePhase, setCasePhase] = useState('requested')
+  const [phase, setPhase] = useState('requested')
   const [letterType, setLetterType] = useState('Notice')
-  const [referenceNumber, setReferenceNumber] = useState('')
+  const [referenceNumberExternal, setReferenceNumberExternal] = useState('')
+  const [referenceNumberInternal, setReferenceNumberInternal] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const pickerRef = useRef<MultiOffencePickerHandle>(null)
 
   const reset = () => {
     setValue(''); setOffences([]); setError(null)
-    setAgencyId(''); setStatus('requested'); setDueDurationMinutes('1440')
-    setOpenCase(false); setCasePhase('requested'); setLetterType('Notice'); setReferenceNumber('')
+    setAgencyId(''); setDueDurationMinutes('1440')
+    setPhase('requested'); setLetterType('Notice')
+    setReferenceNumberExternal(''); setReferenceNumberInternal('')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -375,36 +349,32 @@ function AddUrlDialog({
     const pending = pickerRef.current?.flush()
     const allOffences = pending ? [...offences, pending] : offences
 
-    const caseFields: Parameters<typeof setUrlFields>[1] = {}
-    if (agencyId !== '') caseFields.agency_id = agencyId
-    if (status) caseFields.status = status
-    if (dueDurationMinutes) caseFields.due_date = dueDateFromDurationMinutes(Number(dueDurationMinutes))
-    const hasCaseFields = Object.keys(caseFields).length > 0
+    const caseOpts: { agencyId?: number; dueDate?: string } = {}
+    if (agencyId !== '') caseOpts.agencyId = agencyId
+    if (dueDurationMinutes) caseOpts.dueDate = dueDateFromDurationMinutes(Number(dueDurationMinutes))
 
     setLoading(true)
     setError(null)
     try {
       const created = await Promise.all(domains.map(d => createUrl(d)))
-      // Every domain in this batch shares one case (case_urls is many-to-many —
-      // matches CMOD's real "N URLs in one Notice" pattern), not one case per
-      // domain: open it on the first URL, then attach the rest.
-      const caseWork = openCase && created.length > 0
-        ? (async () => {
-            const c = await createCase(created[0].url, casePhase)
-            await Promise.all(created.slice(1).map(u => addUrlToCase(c.id, u.url, casePhase)))
-            await addCaseLetter(c.id, { type: letterType, reference_number: referenceNumber.trim() || undefined })
-          })()
-        : Promise.resolve()
+      const caseWork = (async () => {
+        const c = await createCase(created[0].url, phase, caseOpts)
+        await Promise.all(created.slice(1).map(u => addUrlToCase(c.id, u.url, phase)))
+        await addCaseLetter(c.id, {
+          type: letterType,
+          reference_number_external: referenceNumberExternal.trim() || undefined,
+          reference_number_internal: referenceNumberInternal.trim() || undefined,
+        })
+      })()
       await Promise.all([
         ...created.flatMap(u => allOffences.map(o => attachOffence(u.url, o.categoryId, o.elementId, o.subElementId))),
-        ...(hasCaseFields ? created.map(u => setUrlFields(u.id, caseFields)) : []),
         caseWork,
       ])
       reset()
       onAdded()
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add domain')
+      setError(err instanceof Error ? err.message : 'Failed to create case')
     } finally {
       setLoading(false)
     }
@@ -417,9 +387,9 @@ function AddUrlDialog({
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
       <DialogContent showCloseButton={false} style={{ maxWidth: 560 }}>
         <DialogHeader>
-          <DialogTitle>Add Domain</DialogTitle>
+          <DialogTitle>Create Case</DialogTitle>
           <DialogDescription>
-            Enter one or more domains or full URLs to monitor for DNS compliance. Full URLs will have their domain automatically extracted. You can add multiple entries at once, just put each one on a new line. Case details below (if any) apply to every domain added.
+            Enter one or more domains or full URLs to monitor for DNS compliance — full URLs will have their domain automatically extracted, and multiple entries (one per line) share the case opened below. A case is required to add {domainCount > 1 ? 'these domains' : 'a domain'}; if a later batch covers a different offence, open a new case for it instead of reusing this one.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -460,12 +430,12 @@ function AddUrlDialog({
             </div>
 
             <div className="form-field">
-              <label className="form-label" id="add-status-label">Status</label>
-              <Select value={status} onValueChange={setStatus} disabled={loading}>
-                <SelectTrigger aria-labelledby="add-status-label" placeholder="—" className="w-full" />
+              <label className="form-label" id="add-case-phase-label">Phase</label>
+              <Select value={phase} onValueChange={setPhase} disabled={loading}>
+                <SelectTrigger aria-labelledby="add-case-phase-label" placeholder="—" className="w-full" />
                 <SelectContent>
-                  {STATUS_OPTIONS.map((opt, i) => (
-                    <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
+                  {CASE_PHASE_OPTIONS.map((opt, i) => (
+                    <SelectItem key={opt.value} index={i} value={opt.value}>{opt.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -484,59 +454,41 @@ function AddUrlDialog({
             </div>
           </div>
 
-          <div className="form-field">
-            <div className="flex items-center gap-3">
-              <Switch
-                checked={openCase}
-                onCheckedChange={setOpenCase}
-                aria-label="Open a case for these domains"
+          <div className="form-row">
+            <div className="form-field">
+              <label className="form-label" id="add-case-letter-type-label">Letter Type</label>
+              <Select value={letterType} onValueChange={setLetterType} disabled={loading}>
+                <SelectTrigger aria-labelledby="add-case-letter-type-label" placeholder="—" className="w-full" />
+                <SelectContent>
+                  {CASE_LETTER_TYPE_OPTIONS.map((opt, i) => (
+                    <SelectItem key={opt} index={i} value={opt}>{opt}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="form-field">
+              <label className="form-label" htmlFor="add-case-reference-number-external">External Ref. (No. Rujukan NMD)</label>
+              <input
+                id="add-case-reference-number-external"
+                className="form-input"
+                placeholder="e.g. MCMC(S)CMOD/BLK/2026(1-2)"
+                value={referenceNumberExternal}
+                onChange={e => setReferenceNumberExternal(e.target.value)}
                 disabled={loading}
               />
-              <label className="form-label" style={{ marginBottom: 0 }}>
-                Open a case for {domainCount > 1 ? 'these domains' : 'this domain'}
-              </label>
             </div>
           </div>
-
-          {openCase && (
-            <>
-              <div className="form-field">
-                <label className="form-label" id="add-case-phase-label">Case Phase</label>
-                <Select value={casePhase} onValueChange={setCasePhase} disabled={loading}>
-                  <SelectTrigger aria-labelledby="add-case-phase-label" placeholder="—" className="w-full" />
-                  <SelectContent>
-                    {CASE_PHASE_OPTIONS.map((opt, i) => (
-                      <SelectItem key={opt.value} index={i} value={opt.value}>{opt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="form-row">
-                <div className="form-field">
-                  <label className="form-label" id="add-case-letter-type-label">Letter Type</label>
-                  <Select value={letterType} onValueChange={setLetterType} disabled={loading}>
-                    <SelectTrigger aria-labelledby="add-case-letter-type-label" placeholder="—" className="w-full" />
-                    <SelectContent>
-                      {CASE_LETTER_TYPE_OPTIONS.map((opt, i) => (
-                        <SelectItem key={opt} index={i} value={opt}>{opt}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="form-field">
-                  <label className="form-label" htmlFor="add-case-reference-number">Case / Reference No.</label>
-                  <input
-                    id="add-case-reference-number"
-                    className="form-input"
-                    placeholder="e.g. MCMC(S)CMOD/BLK/2026(1-2)"
-                    value={referenceNumber}
-                    onChange={e => setReferenceNumber(e.target.value)}
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-            </>
-          )}
+          <div className="form-field">
+            <label className="form-label" htmlFor="add-case-reference-number-internal">Internal Ref. (No. Rujukan NMSMD)</label>
+            <input
+              id="add-case-reference-number-internal"
+              className="form-input"
+              placeholder="MCMC-internal only, never sent externally"
+              value={referenceNumberInternal}
+              onChange={e => setReferenceNumberInternal(e.target.value)}
+              disabled={loading}
+            />
+          </div>
 
           {error && <p className="form-error">{error}</p>}
           <DialogFooter>
@@ -544,7 +496,7 @@ function AddUrlDialog({
               Cancel
             </button>
             <button type="submit" className="btn-primary" disabled={loading}>
-              {loading ? 'Adding…' : 'Add Domain'}
+              {loading ? 'Creating…' : 'Create Case'}
             </button>
           </DialogFooter>
         </form>
@@ -557,20 +509,10 @@ function EditUrlDialog({
   entry,
   open,
   onClose,
-  agencies,
-  duePresets,
-  onAgencyChange,
-  onStatusChange,
-  onDueDurationChange,
 }: {
   entry: URLEntry | null
   open: boolean
   onClose: () => void
-  agencies: Agency[]
-  duePresets: DueDatePreset[]
-  onAgencyChange: (id: number, agencyId: number | null) => void
-  onStatusChange: (id: number, status: string) => void
-  onDueDurationChange: (id: number, durationMinutes: string) => void
 }) {
   const url = entry?.url ?? null
   const [offences, setOffences] = useState<URLOffence[]>([])
@@ -646,7 +588,7 @@ function EditUrlDialog({
     <Dialog open={open} onOpenChange={v => { if (!v) handleDone() }}>
       <DialogContent showCloseButton={false} style={{ maxWidth: 560 }}>
         <DialogHeader>
-          <DialogTitle>Edit Domain</DialogTitle>
+          <DialogTitle>Edit Offences</DialogTitle>
           <DialogDescription>{url}</DialogDescription>
         </DialogHeader>
 
@@ -675,55 +617,6 @@ function EditUrlDialog({
           )}
         </div>
         <MultiOffencePicker ref={pickerRef} value={staged} onChange={handleAddStaged} disabled={loading} />
-
-        {entry && (
-          <>
-            <div className="form-row">
-              <div className="form-field">
-                <label className="form-label" id="edit-agency-label">Agency</label>
-                <Select
-                  value={String(entry.agency_id ?? '')}
-                  onValueChange={v => onAgencyChange(entry.id, v === '' ? null : Number(v))}
-                >
-                  <SelectTrigger aria-labelledby="edit-agency-label" placeholder="—" className="w-full" />
-                  <SelectContent>
-                    <SelectItem index={0} value="">—</SelectItem>
-                    {agencies.map((a, i) => (
-                      <SelectItem key={a.id} index={i + 1} value={String(a.id)}>{a.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="form-field">
-                <label className="form-label" id="edit-status-label">Status</label>
-                <Select value={entry.status ?? ''} onValueChange={v => onStatusChange(entry.id, v)}>
-                  <SelectTrigger aria-labelledby="edit-status-label" placeholder="—" className="w-full" />
-                  <SelectContent>
-                    {STATUS_OPTIONS.map((opt, i) => (
-                      <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="form-field">
-                <label className="form-label" id="edit-due-date-label">Time to Block</label>
-                <Select value="" onValueChange={v => onDueDurationChange(entry.id, v)}>
-                  <SelectTrigger aria-labelledby="edit-due-date-label" placeholder="—" className="w-full" />
-                  <SelectContent>
-                    {dueDateOptionsFrom(duePresets).map((opt, i) => (
-                      <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {entry.due_date && (
-                  <p className="text-xs text-stone-muted">Deadline: {DUE_DATE_FMT.format(new Date(entry.due_date))}</p>
-                )}
-              </div>
-            </div>
-          </>
-        )}
 
         {error && <p className="form-error">{error}</p>}
         <DialogFooter>
@@ -864,37 +757,6 @@ function URLsPage() {
       setUrls(prev => prev.map(u => u.id === id ? { ...u, enabled: !enabled } : u))
     }
   }, [])
-
-  // Generic case-field commit: optimistic local update, roll back to the
-  // previous URLEntry snapshot on failure. Shared by every select-style
-  // field (agency, status) and the date-picker/time pair.
-  const commitField = useCallback(async (id: number, patch: Partial<URLEntry>, body: Parameters<typeof setUrlFields>[1]) => {
-    const previous = urls.find(u => u.id === id)
-    setUrls(prev => prev.map(u => u.id === id ? { ...u, ...patch } : u))
-    try {
-      await setUrlFields(id, body)
-    } catch {
-      if (previous) setUrls(prev => prev.map(u => u.id === id ? previous : u))
-    }
-  }, [urls])
-
-  const handleAgencyChange = useCallback((id: number, agencyId: number | null) => {
-    const agency = agencies.find(a => a.id === agencyId)
-    commitField(id, { agency_id: agencyId ?? undefined, agency_name: agency?.name }, { agency_id: agencyId })
-  }, [agencies, commitField])
-
-  const handleStatusChange = useCallback((id: number, status: string) => {
-    commitField(id, { status }, { status })
-  }, [commitField])
-
-  const handleDueDurationChange = useCallback((id: number, durationMinutes: string) => {
-    if (!durationMinutes) {
-      commitField(id, { due_date: undefined }, { due_date: null })
-      return
-    }
-    const combined = dueDateFromDurationMinutes(Number(durationMinutes))
-    commitField(id, { due_date: combined }, { due_date: combined })
-  }, [commitField])
 
   const handleDelete = async () => {
     if (!deleteTarget) return
@@ -1097,9 +959,8 @@ function URLsPage() {
         <h1 className="page-title mb-4">Domains</h1>
         <p className="page-subtitle">{!loading && `${urls.length} monitored`}</p>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <QuickAddFavicon onAdded={load} />
           <Button onClick={() => setAddOpen(true)}>
-            + Add Domain
+            + Create Case
           </Button>
         </div>
       </div>
@@ -1113,8 +974,8 @@ function URLsPage() {
         <div className="empty-state">
           <EmptyIcon />
           <p className="empty-heading">No domains yet</p>
-          <p className="empty-body">Add a domain to start monitoring DNS compliance.</p>
-          <button className="btn-primary" onClick={() => setAddOpen(true)}>Add Domain</button>
+          <p className="empty-body">Create a case to start monitoring a domain for DNS compliance.</p>
+          <button className="btn-primary" onClick={() => setAddOpen(true)}>Create Case</button>
         </div>
       ) : (
         <div className="flex flex-col items-stretch w-full gap-4 mt-4">
@@ -1176,17 +1037,15 @@ function URLsPage() {
         entry={editTarget}
         open={editTargetId !== null}
         onClose={() => setEditTargetId(null)}
-        agencies={agencies}
-        duePresets={duePresets}
-        onAgencyChange={handleAgencyChange}
-        onStatusChange={handleStatusChange}
-        onDueDurationChange={handleDueDurationChange}
       />
 
       <CaseHistoryDialog
         open={caseHistoryTargetId !== null}
         onClose={() => setCaseHistoryTargetId(null)}
         url={caseHistoryTarget?.url ?? ''}
+        urlId={caseHistoryTarget?.id}
+        agencies={agencies}
+        duePresets={duePresets}
       />
     </div>
   )
