@@ -464,3 +464,101 @@ func TestConnect_BackfillsURLCaseMetadataIntoCases(t *testing.T) {
 		t.Fatalf("expected no case created for a url with no watching department, got %d", unwatchedCaseCount)
 	}
 }
+
+// TestListCasesForDepartment_PicksNoticeOverMemoAndListsDomains covers the
+// Cases view's core aggregate: a case with both a Notice and a Memo letter
+// surfaces the Notice's fields (not the Memo's), and every domain the case
+// covers (via CaseURL, including one added later via AddURLToCase) appears
+// in Domains.
+func TestListCasesForDepartment_PicksNoticeOverMemoAndListsDomains(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	dept, err := store.CreateDepartment(ctx, "SummaryDept")
+	if err != nil {
+		t.Fatalf("CreateDepartment: %v", err)
+	}
+	agency, err := store.CreateAgency(ctx, "MCMC")
+	if err != nil {
+		t.Fatalf("CreateAgency: %v", err)
+	}
+	u1, err := store.CreateURL(ctx, "summary-a.com")
+	if err != nil {
+		t.Fatalf("CreateURL: %v", err)
+	}
+	u2, err := store.CreateURL(ctx, "summary-b.com")
+	if err != nil {
+		t.Fatalf("CreateURL: %v", err)
+	}
+
+	c, err := store.CreateCase(ctx, dept.ID, u1.ID, "requested", db.CaseCreateOptions{AgencyID: &agency.ID})
+	if err != nil {
+		t.Fatalf("CreateCase: %v", err)
+	}
+	if _, err := store.AddURLToCase(ctx, c.ID, u2.ID, "requested"); err != nil {
+		t.Fatalf("AddURLToCase: %v", err)
+	}
+
+	earlier := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	later := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := store.AddCaseLetter(ctx, db.CaseLetter{CaseID: c.ID, Type: "Memo", Subject: "memo-subject", LetterDate: &earlier}); err != nil {
+		t.Fatalf("AddCaseLetter(Memo): %v", err)
+	}
+	if _, err := store.AddCaseLetter(ctx, db.CaseLetter{CaseID: c.ID, Type: "Notice", Subject: "notice-subject", LetterDate: &later}); err != nil {
+		t.Fatalf("AddCaseLetter(Notice): %v", err)
+	}
+
+	summaries, err := store.ListCasesForDepartment(ctx, dept.ID)
+	if err != nil {
+		t.Fatalf("ListCasesForDepartment: %v", err)
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("want 1 summary, got %d", len(summaries))
+	}
+	s := summaries[0]
+	if s.NoticeSubject != "notice-subject" {
+		t.Fatalf("NoticeSubject = %q, want notice-subject", s.NoticeSubject)
+	}
+	if s.MemoSubject != "memo-subject" {
+		t.Fatalf("MemoSubject = %q, want memo-subject", s.MemoSubject)
+	}
+	if s.AgencyName != "MCMC" {
+		t.Fatalf("AgencyName = %q, want MCMC", s.AgencyName)
+	}
+	if len(s.Domains) != 2 {
+		t.Fatalf("want 2 domains, got %+v", s.Domains)
+	}
+	gotURLs := map[string]bool{}
+	for _, d := range s.Domains {
+		gotURLs[d.URL] = true
+	}
+	if !gotURLs["summary-a.com"] || !gotURLs["summary-b.com"] {
+		t.Fatalf("expected both domains, got %+v", s.Domains)
+	}
+}
+
+// TestListCases_GlobalAcrossDepartments covers the admin/global variant —
+// same split as ListCaseLetters/ListCaseLettersForDepartment.
+func TestListCases_GlobalAcrossDepartments(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	deptA, _ := store.CreateDepartment(ctx, "GlobalDeptA")
+	deptB, _ := store.CreateDepartment(ctx, "GlobalDeptB")
+	uA, _ := store.CreateURL(ctx, "global-a.com")
+	uB, _ := store.CreateURL(ctx, "global-b.com")
+	if _, err := store.CreateCase(ctx, deptA.ID, uA.ID, "requested", db.CaseCreateOptions{}); err != nil {
+		t.Fatalf("CreateCase A: %v", err)
+	}
+	if _, err := store.CreateCase(ctx, deptB.ID, uB.ID, "requested", db.CaseCreateOptions{}); err != nil {
+		t.Fatalf("CreateCase B: %v", err)
+	}
+
+	all, err := store.ListCases(ctx)
+	if err != nil {
+		t.Fatalf("ListCases: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("want 2 summaries globally, got %d", len(all))
+	}
+}

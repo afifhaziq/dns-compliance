@@ -396,6 +396,13 @@ type CaseStore interface {
 	// ListCaseLettersForDepartment is ListCaseLetters scoped to one
 	// department's own cases (cases.department_id), for non-admin callers.
 	ListCaseLettersForDepartment(ctx context.Context, page, pageSize int, departmentID uint) ([]CaseLetterEntry, int, error)
+
+	// ListCases/ListCasesForDepartment back the Cases view (GET
+	// /api/case-summaries) — one row per case with its own fields, its
+	// Notice letter's fields, and every domain it covers. Same admin-global
+	// vs department-scoped split as ListCaseLetters/ForDepartment.
+	ListCases(ctx context.Context) ([]CaseSummary, error)
+	ListCasesForDepartment(ctx context.Context, departmentID uint) ([]CaseSummary, error)
 }
 
 // CaseWithLetters is Case plus its Letters and this url's Phase — the read
