@@ -21,6 +21,12 @@
 // replaced by the cases/case_letters/case_urls tables (28-table AutoMigrate
 // list) — see urls' Note and the new tables below. Design history for this
 // change: docs/db-schema-proposed.dbml (now shipped, kept for archaeology).
+//
+// Updated 2026-08-20: adds recipients/requestors (30-table AutoMigrate list)
+// — admin-managed lookup tables backing the Recipient/Requestor dropdowns on
+// the Docs page's Add Document dialog, same shared/global-catalog shape as
+// agencies. case_letters.recipient/requestor stay free-text columns, not
+// FK'd to these — they're autocomplete sources, not a referential constraint.
 
 Table departments {
   id         integer   [pk, increment]
@@ -111,6 +117,32 @@ Table agencies {
     authenticated role; create/delete gated to admin-or-dept-admin, same
     shared/global-catalog pattern as dns_servers/isp_logos/the legal
     citation catalog.
+  '''
+}
+
+Table recipients {
+  id         integer   [pk, increment]
+  name       varchar   [not null, unique]
+  created_at timestamptz
+
+  Note: '''
+    Admin-managed lookup table backing the Recipient dropdown on the Docs
+    page's Add Document dialog -- same read-open/write-admin-or-dept-admin
+    shared/global-catalog pattern as agencies. case_letters.recipient stores
+    the chosen name as free text (not an FK here) -- this table is purely an
+    autocomplete/dropdown source, not a referential constraint.
+  '''
+}
+
+Table requestors {
+  id         integer   [pk, increment]
+  name       varchar   [not null, unique]
+  created_at timestamptz
+
+  Note: '''
+    Admin-managed lookup table backing the Requestor dropdown on the Docs
+    page's Add Document dialog -- same shape as recipients/agencies.
+    case_letters.requestor stores the chosen name as free text, not an FK.
   '''
 }
 

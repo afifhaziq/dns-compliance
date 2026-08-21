@@ -33,6 +33,7 @@ import {
   ComboboxChipsInput,
   ComboboxContent,
   ComboboxEmpty,
+  ComboboxInput,
   ComboboxItem,
   ComboboxList,
 } from '@/components/ui/b-combobox'
@@ -43,6 +44,7 @@ import { DataGridPagination } from '@/components/reui/data-grid/data-grid-pagina
 import { Filters, type Filter, type FilterFieldConfig } from '@/components/reui/filters'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
 import { SortableHeader, EmptyIcon } from '@/components/results-table-parts'
 import { useGridPreference } from '@/hooks/use-grid-preference'
 
@@ -72,11 +74,14 @@ function isoFromDateInput(value: string): string | undefined {
 // already-watchlisted domain is idempotent. To add a *second* letter to an
 // already-open case, use that domain's Cases dialog on the Watchlist page
 // instead (this dialog has no case picker, only "open a new one").
+type CaseOption = { id: number; label: string }
+
 function AddDocumentDialog({
   open,
   onClose,
   onAdded,
   domainOptions,
+  caseOptions,
   recipients,
   requestors,
 }: {
@@ -84,11 +89,13 @@ function AddDocumentDialog({
   onClose: () => void
   onAdded: () => void
   domainOptions: string[]
+  caseOptions: CaseOption[]
   recipients: Recipient[]
   requestors: Requestor[]
 }) {
   const [domains, setDomains] = useState<string[]>([])
   const [domainQuery, setDomainQuery] = useState('')
+  const [existingCaseId, setExistingCaseId] = useState<number | null>(null)
   const [phase, setPhase] = useState('requested')
   const [type, setType] = useState('Notice')
   const [referenceNumber, setReferenceNumber] = useState('')
@@ -104,7 +111,7 @@ function AddDocumentDialog({
   const [loading, setLoading] = useState(false)
 
   const reset = () => {
-    setDomains([]); setDomainQuery(''); setPhase('requested'); setType('Notice'); setReferenceNumber('')
+    setDomains([]); setDomainQuery(''); setExistingCaseId(null); setPhase('requested'); setType('Notice'); setReferenceNumber('')
     setRecipient(''); setSubject(''); setRequestor(''); setWorkflowStatus('')
     setLetterDate(''); setReceivedAt(''); setSubmittedAt(''); setRemarks(''); setError(null)
   }
@@ -120,18 +127,24 @@ function AddDocumentDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (domains.length === 0) { setError('At least one domain is required'); return }
+    if (!existingCaseId && domains.length === 0) { setError('Add a domain or pick an existing case'); return }
     setLoading(true)
     setError(null)
     try {
-      // Get-or-create every domain (idempotent for one already on a
-      // watchlist), then link them all to one shared case — matches
-      // AddUrlDialog's "N URLs in one Notice" batch shape rather than
-      // opening a separate case per domain.
-      const created = await Promise.all(domains.map(d => createUrl(d)))
-      const c = await createCase(created[0].url, phase)
-      await Promise.all(created.slice(1).map(u => addUrlToCase(c.id, u.url, phase)))
-      await addCaseLetter(c.id, {
+      let caseId: number
+      if (existingCaseId) {
+        caseId = existingCaseId
+      } else {
+        // Get-or-create every domain (idempotent for one already on a
+        // watchlist), then link them all to one shared case — matches
+        // AddUrlDialog's "N URLs in one Notice" batch shape rather than
+        // opening a separate case per domain.
+        const created = await Promise.all(domains.map(d => createUrl(d)))
+        const c = await createCase(created[0].url, phase)
+        await Promise.all(created.slice(1).map(u => addUrlToCase(c.id, u.url, phase)))
+        caseId = c.id
+      }
+      await addCaseLetter(caseId, {
         type,
         reference_number: referenceNumber.trim() || undefined,
         recipient: recipient.trim() || undefined,
@@ -161,7 +174,7 @@ function AddDocumentDialog({
         <DialogHeader>
           <DialogTitle>Add Document</DialogTitle>
           <DialogDescription>
-            Opens a new case linking one or more domains and records its first letter (Memo or Notice). To add a second letter to a case that's already open, use that domain's Cases dialog on the Watchlist page instead.
+            Opens a new case linking one or more domains, or links to a case that's already open, and records a letter (Memo or Notice) against it.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -170,7 +183,7 @@ function AddDocumentDialog({
             <Combobox
               items={domainItems}
               value={domains}
-              onValueChange={setDomains}
+              onValueChange={v => { setDomains(v); if (v.length > 0) setExistingCaseId(null) }}
               onInputValueChange={setDomainQuery}
               multiple
             >
@@ -182,7 +195,7 @@ function AddDocumentDialog({
                   id="add-doc-url"
                   placeholder={domains.length === 0 ? 'Search or type a domain…' : undefined}
                   autoFocus
-                  disabled={loading}
+                  disabled={loading || existingCaseId !== null}
                 />
               </ComboboxChips>
               <ComboboxContent>
@@ -199,10 +212,37 @@ function AddDocumentDialog({
             <p className="text-xs text-stone-muted">Search existing watchlist domains or type a new one. All selected domains will share this one case.</p>
           </div>
 
+          <div className="relative my-2">
+            <Separator />
+            <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-xs text-stone-muted">or</span>
+          </div>
+
+          <div className="form-field">
+            <label className="form-label" htmlFor="add-doc-existing-case">Existing Case</label>
+            <Combobox
+              items={caseOptions}
+              value={caseOptions.find(c => c.id === existingCaseId) ?? null}
+              onValueChange={item => { setExistingCaseId(item ? item.id : null); if (item) { setDomains([]); setDomainQuery('') } }}
+            >
+              <ComboboxInput
+                id="add-doc-existing-case"
+                placeholder="Search cases by domain…"
+                disabled={loading || domains.length > 0}
+              />
+              <ComboboxContent>
+                <ComboboxEmpty>No cases found.</ComboboxEmpty>
+                <ComboboxList>
+                  {(item: CaseOption) => <ComboboxItem key={item.id} value={item}>{item.label}</ComboboxItem>}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
+            <p className="text-xs text-stone-muted">Link this letter to a case that's already open instead of starting a new one.</p>
+          </div>
+
           <div className="form-row">
             <div className="form-field">
               <label className="form-label" id="add-doc-phase-label">Case Phase</label>
-              <Select value={phase} onValueChange={setPhase} disabled={loading}>
+              <Select value={phase} onValueChange={setPhase} disabled={loading || existingCaseId !== null}>
                 <SelectTrigger aria-labelledby="add-doc-phase-label" placeholder="—" className="w-full" />
                 <SelectContent>
                   {CASE_PHASE_OPTIONS.map((opt, i) => (
@@ -371,6 +411,16 @@ function DocsPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // One entry per distinct case_id, deduped from the flat letters list already
+  // loaded for the table — avoids a second endpoint just to list cases.
+  const caseOptions = useMemo<CaseOption[]>(() => {
+    const byId = new Map<number, string>()
+    for (const l of letters) {
+      if (!byId.has(l.case_id)) byId.set(l.case_id, `${(l.urls ?? []).join(', ') || '—'} (Case #${l.case_id})`)
+    }
+    return Array.from(byId, ([id, label]) => ({ id, label }))
+  }, [letters])
 
   const filterFields = useMemo<FilterFieldConfig<string>[]>(() => [
     { key: 'type', label: 'Type', type: 'select', operators: IS_ONLY, options: CASE_LETTER_TYPE_OPTIONS.map(t => ({ value: t, label: t })) },
@@ -572,6 +622,7 @@ function DocsPage() {
         onClose={() => setAddOpen(false)}
         onAdded={load}
         domainOptions={domainOptions}
+        caseOptions={caseOptions}
         recipients={recipients}
         requestors={requestors}
       />
