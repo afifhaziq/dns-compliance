@@ -128,8 +128,10 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			// how many other departments also watch its URL(s).
 			r.Get("/cases/*", h.CasesByURL)
 			r.Post("/cases/*", h.CreateCaseForURL)
+			r.Patch("/cases/{id}", h.UpdateCase)
 			r.Post("/cases/{id}/letters", h.AddCaseLetter)
 			r.Post("/cases/{id}/urls", h.AddCaseURL)
+			r.Patch("/cases/{id}/urls/{url_id}", h.UpdateCaseURLPhase)
 
 			// Docs page data source — every CaseLetter, admin: global,
 			// non-admin: own department's cases only. See ListCaseLetters.

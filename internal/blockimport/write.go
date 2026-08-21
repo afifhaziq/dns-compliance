@@ -76,7 +76,7 @@ func WriteCRDCases(ctx context.Context, gdb *gorm.DB, crdDeptID uint, cases []Co
 			var existing db.CaseLetter
 			err := tx.WithContext(ctx).
 				Joins("JOIN cases ON cases.id = case_letters.case_id").
-				Where("case_letters.reference_number = ? AND case_letters.type = ? AND cases.department_id = ?", cc.ReferenceNumber, "Notice", crdDeptID).
+				Where("case_letters.reference_number_external = ? AND case_letters.type = ? AND cases.department_id = ?", cc.ReferenceNumber, "Notice", crdDeptID).
 				First(&existing).Error
 			if err == nil {
 				summary.CasesSkippedExist++
@@ -91,9 +91,9 @@ func WriteCRDCases(ctx context.Context, gdb *gorm.DB, crdDeptID uint, cases []Co
 				return err
 			}
 			letter := db.CaseLetter{
-				CaseID:          c.ID,
-				Type:            "Notice",
-				ReferenceNumber: cc.ReferenceNumber,
+				CaseID:                  c.ID,
+				Type:                    "Notice",
+				ReferenceNumberExternal: cc.ReferenceNumber,
 			}
 			if err := tx.WithContext(ctx).Create(&letter).Error; err != nil {
 				return err

@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -38,7 +39,11 @@ func (h *Handlers) CasesByURL(w http.ResponseWriter, r *http.Request) {
 // CreateCaseForURL creates a case anchored to urlValue for the caller's own
 // department — department_id is never client-supplied, mirroring how
 // AddToWatchlist always uses the caller's own DepartmentID rather than
-// trusting the request body.
+// trusting the request body. agency_id/due_date are optional case-level
+// defaults set at creation time (0/omitted agency_id, omitted/empty
+// due_date just leave the field unset) — phase stays required/validated as
+// before, and doubles as Case.Status and the first CaseURL.Phase, kept in
+// sync at creation (see db.Store.CreateCase).
 func (h *Handlers) CreateCaseForURL(w http.ResponseWriter, r *http.Request) {
 	urlValue, err := urlParamFromRequest(r)
 	if err != nil {
@@ -59,11 +64,25 @@ func (h *Handlers) CreateCaseForURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Phase string `json:"phase"`
+		Phase    string  `json:"phase"`
+		AgencyID *uint   `json:"agency_id"`
+		DueDate  *string `json:"due_date"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !urlStatusAllowed[body.Phase] || body.Phase == "" {
 		writeError(w, http.StatusBadRequest, "phase is required and must be one of: requested, uplift, suspended")
 		return
+	}
+	var opts db.CaseCreateOptions
+	if body.AgencyID != nil && *body.AgencyID != 0 {
+		opts.AgencyID = body.AgencyID
+	}
+	if body.DueDate != nil {
+		dueDate, err := parseOptionalRFC3339(*body.DueDate)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid due_date, expected RFC3339")
+			return
+		}
+		opts.DueDate = dueDate
 	}
 
 	u, err := h.store.GetURLByValue(r.Context(), urlValue)
@@ -76,12 +95,175 @@ func (h *Handlers) CreateCaseForURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c, err := h.store.CreateCase(r.Context(), *user.DepartmentID, u.ID, body.Phase)
+	c, err := h.store.CreateCase(r.Context(), *user.DepartmentID, u.ID, body.Phase, opts)
 	if err != nil {
 		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, c)
+}
+
+// UpdateCase applies a partial update to a case's shared fields
+// (agency_id/status/due_date/requested_at) — Case's own case-level
+// defaults, editable independently of any one url's CaseURL.Phase override
+// (see UpdateCaseURLPhase). Ownership: the case's own DepartmentID must
+// match the caller's (404, not 403, same non-confirming pattern as
+// AddCaseLetter/AddCaseURL), admin bypasses. Clear sentinels match
+// PATCH /api/urls/{id}'s old convention: 0 clears agency_id, "" clears
+// due_date/requested_at; status is validated against urlStatusAllowed
+// ("" clears it). Only keys present in the body are touched.
+func (h *Handlers) UpdateCase(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	c, err := h.store.GetCase(r.Context(), uint(id))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		writeInternalError(w, err)
+		return
+	}
+	if !user.IsAdmin && (user.DepartmentID == nil || *user.DepartmentID != c.DepartmentID) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	var body struct {
+		AgencyID    *uint   `json:"agency_id"`
+		Status      *string `json:"status"`
+		DueDate     *string `json:"due_date"`
+		RequestedAt *string `json:"requested_at"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+
+	var fields db.CaseFields
+	if body.AgencyID != nil {
+		var agencyID *uint
+		if *body.AgencyID != 0 {
+			agencyID = body.AgencyID
+		}
+		fields.AgencyID = &agencyID
+	}
+	if body.Status != nil {
+		if !urlStatusAllowed[*body.Status] {
+			writeError(w, http.StatusBadRequest, "invalid status, expected one of: requested, uplift, suspended")
+			return
+		}
+		fields.Status = body.Status
+	}
+	if body.DueDate != nil {
+		dueDate, err := parseOptionalRFC3339(*body.DueDate)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid due_date, expected RFC3339")
+			return
+		}
+		fields.DueDate = &dueDate
+	}
+	if body.RequestedAt != nil {
+		requestedAt, err := parseOptionalRFC3339(*body.RequestedAt)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid requested_at, expected RFC3339")
+			return
+		}
+		fields.RequestedAt = &requestedAt
+	}
+
+	found, err := h.store.UpdateCaseFields(r.Context(), c.DepartmentID, uint(id), fields)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	// DueDate lives on Case now, not URL — this is the only remaining
+	// trigger point for (re)scheduling the due-date-reached task per url
+	// the case covers (PATCH /api/urls/{id} lost this ability when it was
+	// narrowed to {enabled} only). Only fires when this request actually
+	// touched due_date, mirroring ToggleURL's cancel-on-remove call: fetch
+	// urlIDs are best-effort, logged not fatal, since the field update
+	// above already succeeded and shouldn't roll back over a notify hiccup.
+	if h.notify != nil && fields.DueDate != nil {
+		urlIDs, err := h.store.ListCaseURLIDs(r.Context(), uint(id))
+		if err != nil {
+			log.Printf("notify: list urls for case=%d due-date reschedule: %v", id, err)
+		}
+		for _, urlID := range urlIDs {
+			if err := h.notify.RescheduleDueDate(c.DepartmentID, urlID, *fields.DueDate); err != nil {
+				log.Printf("notify: reschedule due-date task for department=%d url=%d: %v", c.DepartmentID, urlID, err)
+			}
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// UpdateCaseURLPhase sets one url's own Phase within a case — the
+// per-domain override of Case.Status (see CaseURL's doc comment).
+// Ownership check identical to AddCaseURL's.
+func (h *Handlers) UpdateCaseURLPhase(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	urlID, err := strconv.ParseUint(chi.URLParam(r, "url_id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid url_id")
+		return
+	}
+
+	c, err := h.store.GetCase(r.Context(), uint(id))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		writeInternalError(w, err)
+		return
+	}
+	if !user.IsAdmin && (user.DepartmentID == nil || *user.DepartmentID != c.DepartmentID) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	var body struct {
+		Phase string `json:"phase"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !urlStatusAllowed[body.Phase] || body.Phase == "" {
+		writeError(w, http.StatusBadRequest, "phase is required and must be one of: requested, uplift, suspended")
+		return
+	}
+
+	found, err := h.store.UpdateCaseURLPhase(r.Context(), uint(id), uint(urlID), body.Phase)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // AddCaseLetter appends one letter to an existing case, keyed by the case's
@@ -117,17 +299,18 @@ func (h *Handlers) AddCaseLetter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Type            string     `json:"type"`
-		ReferenceNumber string     `json:"reference_number"`
-		WorkflowStatus  string     `json:"workflow_status"`
-		Recipient       string     `json:"recipient"`
-		LetterDate      *time.Time `json:"letter_date"`
-		ReceivedAt      *time.Time `json:"received_at"`
-		SubmittedAt     *time.Time `json:"submitted_at"`
-		Subject         string     `json:"subject"`
-		OICUserID       *uint      `json:"oic_user_id"`
-		Requestor       string     `json:"requestor"`
-		Remarks         string     `json:"remarks"`
+		Type                    string     `json:"type"`
+		ReferenceNumberExternal string     `json:"reference_number_external"`
+		ReferenceNumberInternal string     `json:"reference_number_internal"`
+		WorkflowStatus          string     `json:"workflow_status"`
+		Recipient               string     `json:"recipient"`
+		LetterDate              *time.Time `json:"letter_date"`
+		ReceivedAt              *time.Time `json:"received_at"`
+		SubmittedAt             *time.Time `json:"submitted_at"`
+		Subject                 string     `json:"subject"`
+		OICUserID               *uint      `json:"oic_user_id"`
+		Requestor               string     `json:"requestor"`
+		Remarks                 string     `json:"remarks"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Type == "" {
 		writeError(w, http.StatusBadRequest, "type is required")
@@ -135,18 +318,19 @@ func (h *Handlers) AddCaseLetter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	letter, err := h.store.AddCaseLetter(r.Context(), db.CaseLetter{
-		CaseID:          uint(id),
-		Type:            body.Type,
-		ReferenceNumber: body.ReferenceNumber,
-		WorkflowStatus:  body.WorkflowStatus,
-		Recipient:       body.Recipient,
-		LetterDate:      body.LetterDate,
-		ReceivedAt:      body.ReceivedAt,
-		SubmittedAt:     body.SubmittedAt,
-		Subject:         body.Subject,
-		OICUserID:       body.OICUserID,
-		Requestor:       body.Requestor,
-		Remarks:         body.Remarks,
+		CaseID:                  uint(id),
+		Type:                    body.Type,
+		ReferenceNumberExternal: body.ReferenceNumberExternal,
+		ReferenceNumberInternal: body.ReferenceNumberInternal,
+		WorkflowStatus:          body.WorkflowStatus,
+		Recipient:               body.Recipient,
+		LetterDate:              body.LetterDate,
+		ReceivedAt:              body.ReceivedAt,
+		SubmittedAt:             body.SubmittedAt,
+		Subject:                 body.Subject,
+		OICUserID:               body.OICUserID,
+		Requestor:               body.Requestor,
+		Remarks:                 body.Remarks,
 	})
 	if err != nil {
 		writeInternalError(w, err)

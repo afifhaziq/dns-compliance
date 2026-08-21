@@ -104,7 +104,7 @@ func WriteCMODCases(ctx context.Context, gormDB *gorm.DB, cmodDeptID uint, cases
 			key := c.Letters[0]
 			var existing db.CaseLetter
 			err := tx.Joins("JOIN cases ON cases.id = case_letters.case_id").
-				Where("cases.department_id = ? AND case_letters.reference_number = ? AND case_letters.type = ?", cmodDeptID, key.ReferenceNumber, key.Type).
+				Where("cases.department_id = ? AND case_letters.reference_number_external = ? AND case_letters.type = ?", cmodDeptID, key.ReferenceNumber, key.Type).
 				First(&existing).Error
 			if err == nil {
 				summary.CasesSkippedExist++
@@ -120,15 +120,15 @@ func WriteCMODCases(ctx context.Context, gormDB *gorm.DB, cmodDeptID uint, cases
 
 			for _, letter := range c.Letters {
 				cl := db.CaseLetter{
-					CaseID:          newCase.ID,
-					Type:            letter.Type,
-					ReferenceNumber: letter.ReferenceNumber,
-					WorkflowStatus:  letter.Status,
-					Recipient:       letter.Recipient,
-					LetterDate:      parseCMODDate(letter.LetterDate),
-					ReceivedAt:      parseCMODDate(letter.Received),
-					SubmittedAt:     parseCMODDate(letter.Submission),
-					Subject:         letter.Subject,
+					CaseID:                  newCase.ID,
+					Type:                    letter.Type,
+					ReferenceNumberExternal: letter.ReferenceNumber,
+					WorkflowStatus:          letter.Status,
+					Recipient:               letter.Recipient,
+					LetterDate:              parseCMODDate(letter.LetterDate),
+					ReceivedAt:              parseCMODDate(letter.Received),
+					SubmittedAt:             parseCMODDate(letter.Submission),
+					Subject:                 letter.Subject,
 					// ponytail: OICUserID left nil -- the CMOD EDA doc
 					// (docs/cmod-blocking-list-migration-clarifications.md)
 					// flags that OIC free-text names (Atiqah, Arishah, ...)

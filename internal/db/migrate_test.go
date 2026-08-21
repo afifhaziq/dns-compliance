@@ -250,7 +250,8 @@ func (legacyDepartmentURL) TableName() string { return "department_urls" }
 // still on the earlier-today shape: department_urls carrying the six
 // case-metadata columns. db.Connect must drop them (this feature was never
 // deployed with real data, so this is a plain drop, not a data-preserving
-// migration) and AutoMigrate the same fields onto urls instead.
+// migration); those fields now live on cases, not urls (see
+// BackfillURLCaseMetadataIntoCases), so urls should carry none of them.
 func TestConnect_DropsObsoleteDepartmentURLCaseColumns(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "migrate.db")
 
@@ -289,8 +290,8 @@ func TestConnect_DropsObsoleteDepartmentURLCaseColumns(t *testing.T) {
 		}
 	}
 	for _, col := range []string{"due_date", "agency_id", "status", "requested_at"} {
-		if !newDB.Migrator().HasColumn(&db.URL{}, col) {
-			t.Fatalf("expected urls.%s to exist", col)
+		if newDB.Migrator().HasColumn(&db.URL{}, col) {
+			t.Fatalf("expected urls.%s to be dropped, superseded by cases owning it now", col)
 		}
 	}
 	for _, col := range []string{"reference_number", "requesting_dept_id"} {
@@ -305,7 +306,9 @@ func TestConnect_DropsObsoleteDepartmentURLCaseColumns(t *testing.T) {
 
 // TestConnect_DropIsIdempotent runs db.Connect twice against the same
 // already-migrated database (the normal case for every restart after the
-// first) and confirms it doesn't error the second time.
+// first) and confirms it doesn't error the second time, and that a Case's
+// fields (which replaced the urls.due_date column this test used to seed
+// directly) survive the second run untouched.
 func TestConnect_DropIsIdempotent(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "migrate_idempotent.db")
 
@@ -313,11 +316,14 @@ func TestConnect_DropIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first db.Connect: %v", err)
 	}
+	dept := db.Department{Name: "IdempotentDept"}
+	if err := firstDB.Create(&dept).Error; err != nil {
+		t.Fatalf("seed department: %v", err)
+	}
 	due := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
-	if err := firstDB.Table("urls").Create(map[string]interface{}{
-		"url": "idempotent.com", "due_date": due,
-	}).Error; err != nil {
-		t.Fatalf("seed row: %v", err)
+	c := db.Case{DepartmentID: dept.ID, DueDate: &due, Status: "requested"}
+	if err := firstDB.Create(&c).Error; err != nil {
+		t.Fatalf("seed case: %v", err)
 	}
 	firstSQLDB, err := firstDB.DB()
 	if err != nil {
@@ -331,15 +337,12 @@ func TestConnect_DropIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second db.Connect: %v", err)
 	}
-	var got struct{ DueDate *time.Time }
-	if err := secondDB.Table("urls").
-		Select("due_date").
-		Where("url = ?", "idempotent.com").
-		Scan(&got).Error; err != nil {
-		t.Fatalf("query due_date: %v", err)
+	var got db.Case
+	if err := secondDB.First(&got, c.ID).Error; err != nil {
+		t.Fatalf("reload case: %v", err)
 	}
-	if got.DueDate == nil || !got.DueDate.Equal(due) {
-		t.Fatalf("expected due_date to survive a second Connect call, got %+v", got.DueDate)
+	if got.DueDate == nil || !got.DueDate.Equal(due) || got.Status != "requested" {
+		t.Fatalf("expected case fields to survive a second Connect call, got %+v", got)
 	}
 }
 
@@ -435,7 +438,7 @@ func TestConnect_BackfillsReferenceNumberIntoCases(t *testing.T) {
 	if err := newDB.Find(&letters).Error; err != nil {
 		t.Fatalf("load case_letters: %v", err)
 	}
-	if len(letters) != 1 || letters[0].CaseID != cases[0].ID || letters[0].Type != "Notice" || letters[0].ReferenceNumber != "JK KPN(PR) 168/6" {
+	if len(letters) != 1 || letters[0].CaseID != cases[0].ID || letters[0].Type != "Notice" || letters[0].ReferenceNumberExternal != "JK KPN(PR) 168/6" {
 		t.Fatalf("expected exactly one Notice case_letter carrying the reference number, got %+v", letters)
 	}
 

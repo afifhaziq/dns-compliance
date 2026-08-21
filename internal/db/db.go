@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -62,6 +63,21 @@ func Connect(dialector gorm.Dialector) (*gorm.DB, error) {
 			return nil, fmt.Errorf("dropping due_date_presets.hours: %w", err)
 		}
 	}
+	// CaseLetter.ReferenceNumber was split into ReferenceNumberExternal
+	// ("No. Rujukan NMD", the citable reference sent to the ISP/regulator)
+	// and ReferenceNumberInternal ("No. Rujukan NMSMD", MCMC-internal, new
+	// column, added additively by AutoMigrate below) — previously conflated
+	// into one field. Unlike DueDatePreset's hours->minutes rename, this is
+	// a pure rename with no value transform, so a plain RENAME COLUMN
+	// suffices; must still run before AutoMigrate (which only adds columns
+	// matching current struct tags, never renames), or AutoMigrate would add
+	// reference_number_external as a fresh NULL column and leave the old
+	// reference_number column's data stranded.
+	if database.Migrator().HasColumn(&CaseLetter{}, "reference_number") && !database.Migrator().HasColumn(&CaseLetter{}, "reference_number_external") {
+		if err := database.Exec("ALTER TABLE case_letters RENAME COLUMN reference_number TO reference_number_external").Error; err != nil {
+			return nil, fmt.Errorf("renaming case_letters.reference_number: %w", err)
+		}
+	}
 	if err := database.AutoMigrate(
 		&Department{}, &User{}, &Session{}, &DNSServer{}, &URL{}, &DepartmentURL{}, &ScanRun{}, &ScanResult{}, &CompliantIP{}, &DomainWhois{}, &IPInfo{}, &Favicon{}, &ScanSettings{}, &SubdomainScan{}, &ISPLogo{},
 		&Instrument{}, &Citation{}, &Category{}, &Element{}, &SubElement{}, &URLOffence{},
@@ -80,6 +96,28 @@ func Connect(dialector gorm.Dialector) (*gorm.DB, error) {
 	// once every row has been moved.
 	if err := backfillURLReferenceNumbersIntoCases(database); err != nil {
 		return nil, fmt.Errorf("backfilling urls.reference_number into cases: %w", err)
+	}
+	// Case (not URL) now owns Agency/Status/DueDate/RequestedAt — a domain
+	// can carry many cases over its history, so a scalar column on urls
+	// could only ever hold the latest one (see URL's doc comment in
+	// models.go). BackfillURLCaseMetadataIntoCases moves any already-set
+	// values into a proper Case per distinct watching department before the
+	// four old urls columns are dropped below; must run after AutoMigrate
+	// (Case needs its new columns already added) and before the drop. Only
+	// runs at all if the legacy columns still exist — AutoMigrate never
+	// creates them (URL no longer declares the fields), so a fresh or
+	// already-migrated database has nothing to query.
+	if database.Migrator().HasColumn(&URL{}, "due_date") {
+		if err := BackfillURLCaseMetadataIntoCases(context.Background(), database); err != nil {
+			return nil, fmt.Errorf("backfilling urls case metadata into cases: %w", err)
+		}
+	}
+	for _, col := range []string{"due_date", "agency_id", "status", "requested_at"} {
+		if database.Migrator().HasColumn(&URL{}, col) {
+			if err := database.Migrator().DropColumn(&URL{}, col); err != nil {
+				return nil, fmt.Errorf("dropping urls.%s: %w", col, err)
+			}
+		}
 	}
 	return database, nil
 }
@@ -120,7 +158,7 @@ func backfillURLReferenceNumbersIntoCases(database *gorm.DB) error {
 				if err := tx.Create(&c).Error; err != nil {
 					return fmt.Errorf("creating case for url id=%d: %w", row.ID, err)
 				}
-				if err := tx.Create(&CaseLetter{CaseID: c.ID, Type: "Notice", ReferenceNumber: row.ReferenceNumber}).Error; err != nil {
+				if err := tx.Create(&CaseLetter{CaseID: c.ID, Type: "Notice", ReferenceNumberExternal: row.ReferenceNumber}).Error; err != nil {
 					return fmt.Errorf("creating case_letter for url id=%d: %w", row.ID, err)
 				}
 				phase := row.Status
