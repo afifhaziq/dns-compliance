@@ -5,6 +5,7 @@ export const PHASE_OPTIONS = [
   { value: 'requested', label: 'Requested' },
   { value: 'uplift', label: 'Uplift' },
   { value: 'suspended', label: 'Suspended' },
+  { value: 'internal', label: 'Internal' },
 ]
 
 // Mirrors the four letter types CMOD tracks (docs/cmod-blocking-list-migration-clarifications.md);

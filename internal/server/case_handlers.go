@@ -69,7 +69,7 @@ func (h *Handlers) CreateCaseForURL(w http.ResponseWriter, r *http.Request) {
 		DueDate  *string `json:"due_date"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !urlStatusAllowed[body.Phase] || body.Phase == "" {
-		writeError(w, http.StatusBadRequest, "phase is required and must be one of: requested, uplift, suspended")
+		writeError(w, http.StatusBadRequest, "phase is required and must be one of: requested, uplift, suspended, internal")
 		return
 	}
 	var opts db.CaseCreateOptions
@@ -159,7 +159,7 @@ func (h *Handlers) UpdateCase(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Status != nil {
 		if !urlStatusAllowed[*body.Status] {
-			writeError(w, http.StatusBadRequest, "invalid status, expected one of: requested, uplift, suspended")
+			writeError(w, http.StatusBadRequest, "invalid status, expected one of: requested, uplift, suspended, internal")
 			return
 		}
 		fields.Status = body.Status
@@ -250,7 +250,7 @@ func (h *Handlers) UpdateCaseURLPhase(w http.ResponseWriter, r *http.Request) {
 		Phase string `json:"phase"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !urlStatusAllowed[body.Phase] || body.Phase == "" {
-		writeError(w, http.StatusBadRequest, "phase is required and must be one of: requested, uplift, suspended")
+		writeError(w, http.StatusBadRequest, "phase is required and must be one of: requested, uplift, suspended, internal")
 		return
 	}
 
@@ -375,7 +375,7 @@ func (h *Handlers) AddCaseURL(w http.ResponseWriter, r *http.Request) {
 		Phase string `json:"phase"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" || !urlStatusAllowed[body.Phase] || body.Phase == "" {
-		writeError(w, http.StatusBadRequest, "url and phase are required, phase must be one of: requested, uplift, suspended")
+		writeError(w, http.StatusBadRequest, "url and phase are required, phase must be one of: requested, uplift, suspended, internal")
 		return
 	}
 	normalized, err := urlnorm.Normalize(body.URL)

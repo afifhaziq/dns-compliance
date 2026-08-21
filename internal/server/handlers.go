@@ -241,7 +241,7 @@ func (h *Handlers) RemoveFromWatchlist(w http.ResponseWriter, r *http.Request) {
 // string column (not a DB enum), matching this codebase's existing
 // string-enum convention (Instrument.Type, ScanRun.Status, etc). "" clears
 // the field.
-var urlStatusAllowed = map[string]bool{"": true, "requested": true, "uplift": true, "suspended": true}
+var urlStatusAllowed = map[string]bool{"": true, "requested": true, "uplift": true, "suspended": true, "internal": true}
 
 // parseOptionalRFC3339 parses an RFC3339 timestamp, or returns nil for an
 // empty string (clears the field).

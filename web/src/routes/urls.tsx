@@ -13,14 +13,16 @@ import {
 import { GripIcon } from '@/components/ui/grip'
 import { FileText } from 'lucide-react'
 import { CaseHistoryDialog } from '@/components/case-history-dialog'
-import { PHASE_OPTIONS as CASE_PHASE_OPTIONS, LETTER_TYPE_OPTIONS as CASE_LETTER_TYPE_OPTIONS } from '@/lib/case-options'
+import { PHASE_OPTIONS as CASE_PHASE_OPTIONS } from '@/lib/case-options'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled } from '../api/urls'
 import { createCase, addCaseLetter, addUrlToCase } from '../api/cases'
 import { fetchAgencies } from '../api/agencies'
 import { fetchDepartmentsOpen } from '../api/departments'
 import { fetchDueDatePresets } from '../api/due-date-presets'
+import { fetchRecipients } from '../api/recipients'
+import { fetchRequestors } from '../api/requestors'
 import { useGridPreference } from '@/hooks/use-grid-preference'
-import type { URLEntry, Agency, Department, DueDatePreset, Instrument, Citation, LegalCategory, LegalElement, LegalSubElement, URLOffence } from '../api/types'
+import type { URLEntry, Agency, Department, DueDatePreset, Instrument, Citation, LegalCategory, LegalElement, LegalSubElement, URLOffence, Recipient, Requestor } from '../api/types'
 import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, fetchSubElements, attachOffence, fetchOffencesByUrl, detachOffence, formatParsedCitation } from '../api/legal'
 import {
   Dialog,
@@ -61,6 +63,7 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'requested', label: 'Requested' },
   { value: 'uplift', label: 'Uplift' },
   { value: 'suspended', label: 'Suspended' },
+  { value: 'internal', label: 'Internal' },
 ]
 
 // due_date is the ISP's block deadline (some takedown orders require
@@ -82,6 +85,14 @@ function dueDateOptionsFrom(presets: DueDatePreset[]): { value: string; label: s
 
 function dueDateFromDurationMinutes(minutes: number): string {
   return new Date(Date.now() + minutes * 60 * 1000).toISOString()
+}
+
+// Mirrors docs.tsx's own WORKFLOW_STATUS_OPTIONS/isoFromDateInput (not
+// imported — parallel-owned files, see dueDateOptionsFrom above).
+const WORKFLOW_STATUS_OPTIONS = ['Draft', 'Pending Legal', 'Pending TSC', 'Submitted']
+
+function isoFromDateInput(value: string): string | undefined {
+  return value ? new Date(value).toISOString() : undefined
 }
 
 /* ─── Add Domain Dialog ──────────────────────────────────────────────────── */
@@ -314,21 +325,42 @@ function AddUrlDialog({
   onAdded,
   agencies,
   duePresets,
+  recipients,
+  requestors,
 }: {
   open: boolean
   onClose: () => void
   onAdded: () => void
   agencies: Agency[]
   duePresets: DueDatePreset[]
+  recipients: Recipient[]
+  requestors: Requestor[]
 }) {
   const [value, setValue] = useState('')
   const [offences, setOffences] = useState<StagedOffence[]>([])
   const [agencyId, setAgencyId] = useState<number | ''>('')
   const [dueDurationMinutes, setDueDurationMinutes] = useState('1440')
   const [phase, setPhase] = useState('requested')
-  const [letterType, setLetterType] = useState('Notice')
+  const [createLetter, setCreateLetter] = useState(false)
+  // CRD doesn't need the full letter form to track a case — External/
+  // Internal ref alone (always visible, outside the Create Letter switch)
+  // are enough, and always get recorded as a Notice-type CaseLetter
+  // (current_reference_number, ListDepartmentURLs, derives from exactly
+  // that). Internal ref is case-level here (unlike docs.tsx's CMOD form,
+  // where Notice/Memo genuinely carry different internal refs), so the
+  // Notice section below just mirrors it read-only; Memo gets its own.
   const [referenceNumberExternal, setReferenceNumberExternal] = useState('')
   const [referenceNumberInternal, setReferenceNumberInternal] = useState('')
+  const [recipient, setRecipient] = useState('')
+  const [noticeSubject, setNoticeSubject] = useState('')
+  const [memoSubject, setMemoSubject] = useState('')
+  const [memoReferenceNumberInternal, setMemoReferenceNumberInternal] = useState('')
+  const [requestor, setRequestor] = useState('')
+  const [workflowStatus, setWorkflowStatus] = useState('')
+  const [letterDate, setLetterDate] = useState('')
+  const [receivedAt, setReceivedAt] = useState('')
+  const [submittedAt, setSubmittedAt] = useState('')
+  const [remarks, setRemarks] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const pickerRef = useRef<MultiOffencePickerHandle>(null)
@@ -336,9 +368,15 @@ function AddUrlDialog({
   const reset = () => {
     setValue(''); setOffences([]); setError(null)
     setAgencyId(''); setDueDurationMinutes('1440')
-    setPhase('requested'); setLetterType('Notice')
+    setPhase('requested'); setCreateLetter(false)
     setReferenceNumberExternal(''); setReferenceNumberInternal('')
+    setRecipient(''); setNoticeSubject(''); setMemoSubject(''); setMemoReferenceNumberInternal('')
+    setRequestor(''); setWorkflowStatus('')
+    setLetterDate(''); setReceivedAt(''); setSubmittedAt(''); setRemarks('')
   }
+
+  const copySubjectFromMemo = () => setNoticeSubject(memoSubject)
+  const copySubjectFromNotice = () => setMemoSubject(noticeSubject)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -360,11 +398,37 @@ function AddUrlDialog({
       const caseWork = (async () => {
         const c = await createCase(created[0].url, phase, caseOpts)
         await Promise.all(created.slice(1).map(u => addUrlToCase(c.id, u.url, phase)))
-        await addCaseLetter(c.id, {
-          type: letterType,
+        // External/Internal ref are recorded regardless of the "Create
+        // Letter" switch — CRD needs current_reference_number tracked even
+        // when nobody fills in the fuller letter detail below.
+        const richFields = createLetter ? {
+          recipient: recipient.trim() || undefined,
+          requestor: requestor.trim() || undefined,
+          workflow_status: workflowStatus || undefined,
+          letter_date: isoFromDateInput(letterDate),
+          received_at: isoFromDateInput(receivedAt),
+          submitted_at: isoFromDateInput(submittedAt),
+          remarks: remarks.trim() || undefined,
+        } : {}
+        const letters = [{
+          ...richFields,
+          type: 'Notice',
+          subject: createLetter ? (noticeSubject.trim() || undefined) : undefined,
           reference_number_external: referenceNumberExternal.trim() || undefined,
           reference_number_internal: referenceNumberInternal.trim() || undefined,
-        })
+        }]
+        // Memo is fully optional even with the switch on — only add it if
+        // the user actually put something in its section.
+        if (createLetter && (memoSubject.trim() || memoReferenceNumberInternal.trim())) {
+          letters.push({
+            ...richFields,
+            type: 'Memo',
+            subject: memoSubject.trim() || undefined,
+            reference_number_external: referenceNumberExternal.trim() || undefined,
+            reference_number_internal: memoReferenceNumberInternal.trim() || undefined,
+          })
+        }
+        await Promise.all(letters.map(l => addCaseLetter(c.id, l)))
       })()
       await Promise.all([
         ...created.flatMap(u => allOffences.map(o => attachOffence(u.url, o.categoryId, o.elementId, o.subElementId))),
@@ -456,17 +520,6 @@ function AddUrlDialog({
 
           <div className="form-row">
             <div className="form-field">
-              <label className="form-label" id="add-case-letter-type-label">Letter Type</label>
-              <Select value={letterType} onValueChange={setLetterType} disabled={loading}>
-                <SelectTrigger aria-labelledby="add-case-letter-type-label" placeholder="—" className="w-full" />
-                <SelectContent>
-                  {CASE_LETTER_TYPE_OPTIONS.map((opt, i) => (
-                    <SelectItem key={opt} index={i} value={opt}>{opt}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="form-field">
               <label className="form-label" htmlFor="add-case-reference-number-external">External Ref. (No. Rujukan NMD)</label>
               <input
                 id="add-case-reference-number-external"
@@ -477,18 +530,175 @@ function AddUrlDialog({
                 disabled={loading}
               />
             </div>
+            <div className="form-field">
+              <label className="form-label" htmlFor="add-case-reference-number-internal">Internal Ref. (No. Rujukan NMSMD)</label>
+              <input
+                id="add-case-reference-number-internal"
+                className="form-input"
+                placeholder="MCMC-internal only, never sent externally"
+                value={referenceNumberInternal}
+                onChange={e => setReferenceNumberInternal(e.target.value)}
+                disabled={loading}
+              />
+            </div>
           </div>
+          <p className="text-xs text-stone-muted" style={{ marginTop: '-0.5rem', marginBottom: '0.75rem' }}>
+            Recorded as a Notice against this case regardless of "Create Letter" below.
+          </p>
+
           <div className="form-field">
-            <label className="form-label" htmlFor="add-case-reference-number-internal">Internal Ref. (No. Rujukan NMSMD)</label>
-            <input
-              id="add-case-reference-number-internal"
-              className="form-input"
-              placeholder="MCMC-internal only, never sent externally"
-              value={referenceNumberInternal}
-              onChange={e => setReferenceNumberInternal(e.target.value)}
-              disabled={loading}
-            />
+            <label className="form-label flex items-center justify-between" htmlFor="add-case-create-letter">
+              Create Letter
+              <Switch
+                id="add-case-create-letter"
+                checked={createLetter}
+                onCheckedChange={setCreateLetter}
+                disabled={loading}
+              />
+            </label>
           </div>
+
+          {createLetter && (
+            <>
+              <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '0.75rem', marginBottom: '0.75rem' }}>
+                <div className="flex items-center justify-between" style={{ marginBottom: '0.5rem' }}>
+                  <span className="form-label" style={{ margin: 0 }}>Notice</span>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    style={{ fontSize: 12, padding: '2px 8px' }}
+                    onClick={copySubjectFromMemo}
+                    disabled={loading || !memoSubject.trim() || !!noticeSubject.trim()}
+                  >
+                    Copy subject from Memo
+                  </button>
+                </div>
+                <div className="form-field">
+                  <label className="form-label" htmlFor="add-case-notice-subject">Subject</label>
+                  <input
+                    id="add-case-notice-subject"
+                    className="form-input"
+                    value={noticeSubject}
+                    onChange={e => setNoticeSubject(e.target.value)}
+                    disabled={loading}
+                  />
+                </div>
+                <div className="form-field">
+                  <label className="form-label" htmlFor="add-case-notice-reference-internal">Internal Ref. (No. Rujukan NMSMD)</label>
+                  <input
+                    id="add-case-notice-reference-internal"
+                    className="form-input"
+                    value={referenceNumberInternal}
+                    disabled
+                    style={{ background: 'var(--muted)', color: 'var(--stone-muted)' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '0.75rem', marginBottom: '0.75rem' }}>
+                <div className="flex items-center justify-between" style={{ marginBottom: '0.5rem' }}>
+                  <span className="form-label" style={{ margin: 0 }}>Memo</span>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    style={{ fontSize: 12, padding: '2px 8px' }}
+                    onClick={copySubjectFromNotice}
+                    disabled={loading || !noticeSubject.trim() || !!memoSubject.trim()}
+                  >
+                    Copy subject from Notice
+                  </button>
+                </div>
+                <div className="form-field">
+                  <label className="form-label" htmlFor="add-case-memo-subject">Subject</label>
+                  <input
+                    id="add-case-memo-subject"
+                    className="form-input"
+                    value={memoSubject}
+                    onChange={e => setMemoSubject(e.target.value)}
+                    disabled={loading}
+                  />
+                </div>
+                <div className="form-field">
+                  <label className="form-label" htmlFor="add-case-memo-reference-internal">Internal Ref. (No. Rujukan NMSMD)</label>
+                  <input
+                    id="add-case-memo-reference-internal"
+                    className="form-input"
+                    value={memoReferenceNumberInternal}
+                    onChange={e => setMemoReferenceNumberInternal(e.target.value)}
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+
+              <div className="form-field">
+                <label className="form-label" id="add-case-letter-recipient-label">Recipient</label>
+                <Select value={recipient} onValueChange={setRecipient} disabled={loading}>
+                  <SelectTrigger aria-labelledby="add-case-letter-recipient-label" placeholder="—" className="w-full" />
+                  <SelectContent>
+                    <SelectItem index={0} value="">—</SelectItem>
+                    {recipients.map((r, i) => (
+                      <SelectItem key={r.id} index={i + 1} value={r.name}>{r.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="form-row">
+                <div className="form-field">
+                  <label className="form-label" id="add-case-letter-requestor-label">Requestor</label>
+                  <Select value={requestor} onValueChange={setRequestor} disabled={loading}>
+                    <SelectTrigger aria-labelledby="add-case-letter-requestor-label" placeholder="—" className="w-full" />
+                    <SelectContent>
+                      <SelectItem index={0} value="">—</SelectItem>
+                      {requestors.map((r, i) => (
+                        <SelectItem key={r.id} index={i + 1} value={r.name}>{r.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="form-field">
+                  <label className="form-label" id="add-case-letter-workflow-label">Workflow Status</label>
+                  <Select value={workflowStatus} onValueChange={setWorkflowStatus} disabled={loading}>
+                    <SelectTrigger aria-labelledby="add-case-letter-workflow-label" placeholder="—" className="w-full" />
+                    <SelectContent>
+                      <SelectItem index={0} value="">—</SelectItem>
+                      {WORKFLOW_STATUS_OPTIONS.map((opt, i) => (
+                        <SelectItem key={opt} index={i + 1} value={opt}>{opt}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-field">
+                  <label className="form-label" htmlFor="add-case-letter-date">Letter Date</label>
+                  <input id="add-case-letter-date" type="date" className="form-input" value={letterDate} onChange={e => setLetterDate(e.target.value)} disabled={loading} />
+                </div>
+                <div className="form-field">
+                  <label className="form-label" htmlFor="add-case-letter-received">Received</label>
+                  <input id="add-case-letter-received" type="date" className="form-input" value={receivedAt} onChange={e => setReceivedAt(e.target.value)} disabled={loading} />
+                </div>
+                <div className="form-field">
+                  <label className="form-label" htmlFor="add-case-letter-submission">Submission</label>
+                  <input id="add-case-letter-submission" type="date" className="form-input" value={submittedAt} onChange={e => setSubmittedAt(e.target.value)} disabled={loading} />
+                </div>
+              </div>
+
+              <div className="form-field">
+                <label className="form-label" htmlFor="add-case-letter-remarks">Remarks</label>
+                <textarea
+                  id="add-case-letter-remarks"
+                  className="form-input"
+                  rows={2}
+                  value={remarks}
+                  onChange={e => setRemarks(e.target.value)}
+                  disabled={loading}
+                  style={{ resize: 'vertical', fontFamily: 'inherit' }}
+                />
+              </div>
+            </>
+          )}
 
           {error && <p className="form-error">{error}</p>}
           <DialogFooter>
@@ -704,6 +914,8 @@ function URLsPage() {
   const [agencies, setAgencies] = useState<Agency[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [duePresets, setDuePresets] = useState<DueDatePreset[]>([])
+  const [recipients, setRecipients] = useState<Recipient[]>([])
+  const [requestors, setRequestors] = useState<Requestor[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -735,11 +947,15 @@ function URLsPage() {
     setLoading(true)
     try {
       setError(null)
-      const [u, a, d, p] = await Promise.all([fetchUrls(), fetchAgencies(), fetchDepartmentsOpen(), fetchDueDatePresets()])
+      const [u, a, d, p, rc, rq] = await Promise.all([
+        fetchUrls(), fetchAgencies(), fetchDepartmentsOpen(), fetchDueDatePresets(), fetchRecipients(), fetchRequestors(),
+      ])
       setUrls(u)
       setAgencies(a)
       setDepartments(d)
       setDuePresets(p)
+      setRecipients(rc)
+      setRequestors(rq)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load domains')
     } finally {
@@ -1023,6 +1239,8 @@ function URLsPage() {
         onAdded={load}
         agencies={agencies}
         duePresets={duePresets}
+        recipients={recipients}
+        requestors={requestors}
       />
 
       <DeleteConfirmDialog

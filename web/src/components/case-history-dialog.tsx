@@ -23,6 +23,7 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'requested', label: 'Requested' },
   { value: 'uplift', label: 'Uplift' },
   { value: 'suspended', label: 'Suspended' },
+  { value: 'internal', label: 'Internal' },
 ]
 
 // Same duration-picker convention as urls.tsx's AddUrlDialog/EditUrlDialog —

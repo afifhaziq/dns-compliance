@@ -119,11 +119,20 @@ function AddDocumentDialog({
   const [phase, setPhase] = useState('requested')
   const [agencyId, setAgencyId] = useState<number | ''>('')
   const [dueDurationMinutes, setDueDurationMinutes] = useState('')
-  const [type, setType] = useState('Notice')
+  // External ref is shared — one citable reference covers both letters of
+  // a pair. Internal ref is per-letter (Notice and Memo get their own "No.
+  // Rujukan NMSMD"), same as Subject below.
   const [referenceNumberExternal, setReferenceNumberExternal] = useState('')
-  const [referenceNumberInternal, setReferenceNumberInternal] = useState('')
   const [recipient, setRecipient] = useState('')
-  const [subject, setSubject] = useState('')
+  // Two type-segmented subject/internal-ref fields, one per letter this
+  // dialog always records (Notice + Memo, matching CaseLetter's real grain
+  // — see db.CaseLetter's comment on a block getting up to 4 rows, 2 per
+  // action). The "Copy" buttons below let the user autofill an empty
+  // subject from the other section instead of retyping it.
+  const [noticeSubject, setNoticeSubject] = useState('')
+  const [noticeReferenceNumberInternal, setNoticeReferenceNumberInternal] = useState('')
+  const [memoSubject, setMemoSubject] = useState('')
+  const [memoReferenceNumberInternal, setMemoReferenceNumberInternal] = useState('')
   const [requestor, setRequestor] = useState('')
   const [workflowStatus, setWorkflowStatus] = useState('')
   const [letterDate, setLetterDate] = useState('')
@@ -136,10 +145,15 @@ function AddDocumentDialog({
   const reset = () => {
     setDomains([]); setDomainQuery(''); setExistingCaseId('')
     setPhase('requested'); setAgencyId(''); setDueDurationMinutes('')
-    setType('Notice'); setReferenceNumberExternal(''); setReferenceNumberInternal('')
-    setRecipient(''); setSubject(''); setRequestor(''); setWorkflowStatus('')
+    setReferenceNumberExternal('')
+    setRecipient(''); setNoticeSubject(''); setNoticeReferenceNumberInternal('')
+    setMemoSubject(''); setMemoReferenceNumberInternal('')
+    setRequestor(''); setWorkflowStatus('')
     setLetterDate(''); setReceivedAt(''); setSubmittedAt(''); setRemarks(''); setError(null)
   }
+
+  const copySubjectFromMemo = () => setNoticeSubject(memoSubject)
+  const copySubjectFromNotice = () => setMemoSubject(noticeSubject)
 
   // The typed-but-not-yet-selected query is offered back as a pickable item
   // itself (labeled "Add …") so this stays create-or-pick like the old
@@ -156,15 +170,18 @@ function AddDocumentDialog({
       setError('Pick a domain (to open a new case) or an existing case')
       return
     }
+    const trimmedNotice = noticeSubject.trim()
+    const trimmedMemo = memoSubject.trim()
+    if (!trimmedNotice && !trimmedMemo) {
+      setError('Enter a subject for the Notice or the Memo')
+      return
+    }
     setLoading(true)
     setError(null)
     try {
-      const letterFields = {
-        type,
+      const commonFields = {
         reference_number_external: referenceNumberExternal.trim() || undefined,
-        reference_number_internal: referenceNumberInternal.trim() || undefined,
         recipient: recipient.trim() || undefined,
-        subject: subject.trim() || undefined,
         requestor: requestor.trim() || undefined,
         workflow_status: workflowStatus || undefined,
         letter_date: isoFromDateInput(letterDate),
@@ -172,10 +189,17 @@ function AddDocumentDialog({
         submitted_at: isoFromDateInput(submittedAt),
         remarks: remarks.trim() || undefined,
       }
+      // One row each, per CaseLetter's real grain. Subject/internal ref are
+      // each section's own — use the "Copy" button beforehand to autofill
+      // one from the other instead of relying on an implicit fallback here.
+      const letters = [
+        { ...commonFields, type: 'Notice', subject: trimmedNotice || undefined, reference_number_internal: noticeReferenceNumberInternal.trim() || undefined },
+        { ...commonFields, type: 'Memo', subject: trimmedMemo || undefined, reference_number_internal: memoReferenceNumberInternal.trim() || undefined },
+      ]
       if (existingCaseId !== '') {
         // Linking to a case that's already open — no domain/case creation,
-        // just record this letter against it.
-        await addCaseLetter(existingCaseId, letterFields)
+        // just record these letters against it.
+        await Promise.all(letters.map(l => addCaseLetter(existingCaseId, l)))
       } else {
         // Get-or-create every domain (idempotent for one already on a
         // watchlist, and auto-linked to the caller's own department
@@ -188,7 +212,7 @@ function AddDocumentDialog({
         if (dueDurationMinutes) caseOpts.dueDate = dueDateFromDurationMinutes(Number(dueDurationMinutes))
         const c = await createCase(created[0].url, phase, caseOpts)
         await Promise.all(created.slice(1).map(u => addUrlToCase(c.id, u.url, phase)))
-        await addCaseLetter(c.id, letterFields)
+        await Promise.all(letters.map(l => addCaseLetter(c.id, l)))
       }
       reset()
       onAdded()
@@ -245,6 +269,12 @@ function AddDocumentDialog({
               </ComboboxContent>
             </Combobox>
             <p className="text-xs text-stone-muted">Pick an already-watchlisted domain, or type a new one — either way it opens a new case, and gets added to your department's watchlist automatically. Mutually exclusive with linking to an existing case below.</p>
+          </div>
+
+          <div className="flex items-center gap-2" style={{ margin: '0.5rem 0' }}>
+            <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+            <span className="text-xs text-stone-muted">or</span>
+            <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
           </div>
 
           <div className="form-field">
@@ -310,36 +340,82 @@ function AddDocumentDialog({
           )}
 
           <div className="form-field">
-            <label className="form-label" id="add-doc-type-label">Type</label>
-            <Select value={type} onValueChange={setType} disabled={loading}>
-              <SelectTrigger aria-labelledby="add-doc-type-label" placeholder="—" className="w-full" />
-              <SelectContent>
-                {CASE_LETTER_TYPE_OPTIONS.map((opt, i) => (
-                  <SelectItem key={opt} index={i} value={opt}>{opt}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <label className="form-label" htmlFor="add-doc-reference-external">External Ref. (No. Rujukan NMD) — shared</label>
+            <input
+              id="add-doc-reference-external"
+              className="form-input"
+              placeholder="e.g. MCMC(S)CMOD/BLK/2026(1-2)"
+              value={referenceNumberExternal}
+              onChange={e => setReferenceNumberExternal(e.target.value)}
+              disabled={loading}
+            />
           </div>
 
-          <div className="form-row">
+          <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '0.75rem', marginBottom: '0.75rem' }}>
+            <div className="flex items-center justify-between" style={{ marginBottom: '0.5rem' }}>
+              <span className="form-label" style={{ margin: 0 }}>Notice</span>
+              <button
+                type="button"
+                className="btn-ghost"
+                style={{ fontSize: 12, padding: '2px 8px' }}
+                onClick={copySubjectFromMemo}
+                disabled={loading || !memoSubject.trim() || !!noticeSubject.trim()}
+              >
+                Copy subject from Memo
+              </button>
+            </div>
             <div className="form-field">
-              <label className="form-label" htmlFor="add-doc-reference-external">External Ref. (No. Rujukan NMD)</label>
+              <label className="form-label" htmlFor="add-doc-notice-subject">Subject</label>
               <input
-                id="add-doc-reference-external"
+                id="add-doc-notice-subject"
                 className="form-input"
-                placeholder="e.g. MCMC(S)CMOD/BLK/2026(1-2)"
-                value={referenceNumberExternal}
-                onChange={e => setReferenceNumberExternal(e.target.value)}
+                value={noticeSubject}
+                onChange={e => setNoticeSubject(e.target.value)}
                 disabled={loading}
               />
             </div>
             <div className="form-field">
-              <label className="form-label" htmlFor="add-doc-reference-internal">Internal Ref. (No. Rujukan NMSMD)</label>
+              <label className="form-label" htmlFor="add-doc-notice-reference-internal">Internal Ref. (No. Rujukan NMSMD)</label>
               <input
-                id="add-doc-reference-internal"
+                id="add-doc-notice-reference-internal"
                 className="form-input"
-                value={referenceNumberInternal}
-                onChange={e => setReferenceNumberInternal(e.target.value)}
+                value={noticeReferenceNumberInternal}
+                onChange={e => setNoticeReferenceNumberInternal(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+          </div>
+
+          <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '0.75rem', marginBottom: '0.75rem' }}>
+            <div className="flex items-center justify-between" style={{ marginBottom: '0.5rem' }}>
+              <span className="form-label" style={{ margin: 0 }}>Memo</span>
+              <button
+                type="button"
+                className="btn-ghost"
+                style={{ fontSize: 12, padding: '2px 8px' }}
+                onClick={copySubjectFromNotice}
+                disabled={loading || !noticeSubject.trim() || !!memoSubject.trim()}
+              >
+                Copy subject from Notice
+              </button>
+            </div>
+            <div className="form-field">
+              <label className="form-label" htmlFor="add-doc-memo-subject">Subject</label>
+              <input
+                id="add-doc-memo-subject"
+                className="form-input"
+                value={memoSubject}
+                onChange={e => setMemoSubject(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+            <div className="form-field">
+              <label className="form-label" htmlFor="add-doc-memo-reference-internal">Internal Ref. (No. Rujukan NMSMD)</label>
+              <input
+                id="add-doc-memo-reference-internal"
+                className="form-input"
+                value={memoReferenceNumberInternal}
+                onChange={e => setMemoReferenceNumberInternal(e.target.value)}
                 disabled={loading}
               />
             </div>
@@ -356,11 +432,6 @@ function AddDocumentDialog({
                 ))}
               </SelectContent>
             </Select>
-          </div>
-
-          <div className="form-field">
-            <label className="form-label" htmlFor="add-doc-subject">Subject</label>
-            <input id="add-doc-subject" className="form-input" value={subject} onChange={e => setSubject(e.target.value)} disabled={loading} />
           </div>
 
           <div className="form-row">
