@@ -20,6 +20,7 @@ import { SquarePenIcon } from '@/components/ui/square-pen'
 import { DataGridTableRowExpand } from '@/components/reui/data-grid/data-grid-table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled } from '../api/urls'
+import { normalizeForClient } from './__root'
 import { createCase, addCaseLetter, addUrlToCase, updateCase, updateCaseLetter, fetchCaseSummaries, updateCaseURLPhase } from '../api/cases'
 import { fetchAgencies } from '../api/agencies'
 import { fetchDepartmentsOpen } from '../api/departments'
@@ -440,36 +441,49 @@ function AddUrlDialog({
           ...(caseOpts.dueDate ? { dueDate: caseOpts.dueDate } : {}),
         })
 
+        // editing.domains (from the backend) is already server-normalized;
+        // the raw textarea input isn't, so normalize before diffing or an
+        // already-attached domain typed in a different raw form (e.g.
+        // "https://example.com/" vs the stored "example.com") looks new.
+        const normalizedTyped = domains.map(normalizeForClient)
         const existingURLs = new Set(editing.domains.map(d => d.url))
-        const newDomains = domains.filter(d => !existingURLs.has(d))
+        const newDomains = normalizedTyped.filter(d => !existingURLs.has(d))
         // Removing a line from the textarea is a deliberate no-op — there's
         // no "unlink domain from case" endpoint (see the spec's Out of
-        // Scope section); only additions are applied.
-        await Promise.all(newDomains.map(d => addUrlToCase(editing.id, d, phase)))
+        // Scope section); only additions are applied. New domains must be
+        // get-or-created first (mirrors create mode below) — addUrlToCase
+        // 404s on a url that doesn't already exist as a db.URL row.
+        const createdDomains = await Promise.all(newDomains.map(d => createUrl(d)))
+        await Promise.all(createdDomains.map(u => addUrlToCase(editing.id, u.url, phase)))
 
+        // Unconditional (not `|| undefined`) so a field the user blanked out
+        // actually reaches updateCaseLetter's PATCH body instead of being
+        // silently omitted — updateCaseLetter only sends keys that are
+        // `!== undefined`. Date fields use `?? null` for the same reason:
+        // isoFromDateInput('') is undefined, which would otherwise vanish.
         const richFields = {
-          recipient: recipient.trim() || undefined,
-          requestor: requestor.trim() || undefined,
-          workflowStatus: workflowStatus || undefined,
-          letterDate: isoFromDateInput(letterDate),
-          receivedAt: isoFromDateInput(receivedAt),
-          submittedAt: isoFromDateInput(submittedAt),
-          remarks: remarks.trim() || undefined,
+          recipient: recipient.trim(),
+          requestor: requestor.trim(),
+          workflowStatus: workflowStatus,
+          letterDate: isoFromDateInput(letterDate) ?? null,
+          receivedAt: isoFromDateInput(receivedAt) ?? null,
+          submittedAt: isoFromDateInput(submittedAt) ?? null,
+          remarks: remarks.trim(),
         }
         const letterWork: Promise<unknown>[] = []
         if (editing.notice_letter_id) {
           letterWork.push(updateCaseLetter(editing.id, editing.notice_letter_id, {
             ...richFields,
-            subject: noticeSubject.trim() || undefined,
-            referenceNumberExternal: referenceNumberExternal.trim() || undefined,
-            referenceNumberInternal: referenceNumberInternal.trim() || undefined,
+            subject: noticeSubject.trim(),
+            referenceNumberExternal: referenceNumberExternal.trim(),
+            referenceNumberInternal: referenceNumberInternal.trim(),
           }))
         } else {
           letterWork.push(addCaseLetter(editing.id, {
             type: 'Notice',
             recipient: richFields.recipient, requestor: richFields.requestor,
-            workflow_status: richFields.workflowStatus, letter_date: richFields.letterDate,
-            received_at: richFields.receivedAt, submitted_at: richFields.submittedAt, remarks: richFields.remarks,
+            workflow_status: richFields.workflowStatus, letter_date: richFields.letterDate ?? undefined,
+            received_at: richFields.receivedAt ?? undefined, submitted_at: richFields.submittedAt ?? undefined, remarks: richFields.remarks,
             subject: noticeSubject.trim() || undefined,
             reference_number_external: referenceNumberExternal.trim() || undefined,
             reference_number_internal: referenceNumberInternal.trim() || undefined,
@@ -478,15 +492,15 @@ function AddUrlDialog({
         if (editing.memo_letter_id) {
           letterWork.push(updateCaseLetter(editing.id, editing.memo_letter_id, {
             ...richFields,
-            subject: memoSubject.trim() || undefined,
-            referenceNumberInternal: memoReferenceNumberInternal.trim() || undefined,
+            subject: memoSubject.trim(),
+            referenceNumberInternal: memoReferenceNumberInternal.trim(),
           }))
         } else if (memoSubject.trim() || memoReferenceNumberInternal.trim()) {
           letterWork.push(addCaseLetter(editing.id, {
             type: 'Memo',
             recipient: richFields.recipient, requestor: richFields.requestor,
-            workflow_status: richFields.workflowStatus, letter_date: richFields.letterDate,
-            received_at: richFields.receivedAt, submitted_at: richFields.submittedAt, remarks: richFields.remarks,
+            workflow_status: richFields.workflowStatus, letter_date: richFields.letterDate ?? undefined,
+            received_at: richFields.receivedAt ?? undefined, submitted_at: richFields.submittedAt ?? undefined, remarks: richFields.remarks,
             subject: memoSubject.trim() || undefined,
             reference_number_external: referenceNumberExternal.trim() || undefined,
             reference_number_internal: memoReferenceNumberInternal.trim() || undefined,
@@ -494,7 +508,7 @@ function AddUrlDialog({
         }
         await Promise.all([
           ...letterWork,
-          ...newDomains.flatMap(d => allOffences.map(o => attachOffence(d, o.categoryId, o.elementId, o.subElementId))),
+          ...createdDomains.flatMap(u => allOffences.map(o => attachOffence(u.url, o.categoryId, o.elementId, o.subElementId))),
         ])
         reset()
         onAdded()
@@ -1398,14 +1412,14 @@ function URLsPage() {
       meta: { headerTitle: 'Case #', headerClassName: 'col-domain th-left', cellClassName: 'col-domain' },
       cell: ({ row }) => {
         const original = row.original
-        if (original.kind === 'domain') {
-          return <span className="dns-name">{original.domain.url}</span>
-        }
-        const expandControl = original.subRows.length > 0 ? (
+        const expandControl = (
           <DataGridTableRowExpand row={row}>
             <ChevronRight className={`expand-icon${row.getIsExpanded() ? ' expanded' : ''}`} />
           </DataGridTableRowExpand>
-        ) : null
+        )
+        if (original.kind === 'domain') {
+          return <span className="flex items-center gap-[2px]">{expandControl}<span className="dns-name">{original.domain.url}</span></span>
+        }
         return <span className="flex items-center gap-[2px]">{expandControl}<span className="hostname">#{original.summary.id}</span></span>
       },
     },
@@ -1515,9 +1529,6 @@ function URLsPage() {
             <Link to="/domain/$url" params={{ url: original.domain.url }} search={{ tab: 'overview' }} className="screenshot-icon-btn" aria-label={`View details for ${original.domain.url}`} title="View details">
               <GripIcon size={16} />
             </Link>
-            <button type="button" className="screenshot-icon-btn" onClick={() => setDeleteTarget({ id: original.domain.url_id, url: original.domain.url })} aria-label={`Delete ${original.domain.url}`} title="Delete">
-              <XIcon size={16} />
-            </button>
           </div>
         )
       },
