@@ -1184,7 +1184,31 @@ function URLsPage() {
     )
   }, [urls, search, statusFilter, deptFilterName, agencyFilter, createdAtFilter, dueDateFilter])
 
-  useEffect(() => { setPagination(p => ({ ...p, pageIndex: 0 })) }, [search, statusFilter, deptFilter, agencyFilter, createdAtFilter, dueDateFilter])
+  const urlDeptMap = useMemo(() => {
+    const m = new Map<string, string[]>()
+    urls.forEach(u => m.set(u.url, u.requesting_departments ?? []))
+    return m
+  }, [urls])
+
+  const filteredCases = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    return caseSummaries.filter(c => {
+      const matchesSearch = !query
+        || (c.notice_reference_number_external ?? '').toLowerCase().includes(query)
+        || c.domains.some(d => d.url.toLowerCase().includes(query))
+      const matchesStatus = !statusFilter || (c.status ?? '') === statusFilter
+      const matchesDept = !deptFilterName || c.domains.some(d => (urlDeptMap.get(d.url) ?? []).includes(deptFilterName))
+      const matchesAgency = !agencyFilter || String(c.agency_id ?? '') === agencyFilter
+      return matchesSearch && matchesStatus && matchesDept && matchesAgency
+        && matchesDateFilter(c.created_at, createdAtFilter)
+        && matchesDateFilter(c.due_date, dueDateFilter)
+    })
+  }, [caseSummaries, search, statusFilter, deptFilterName, agencyFilter, createdAtFilter, dueDateFilter, urlDeptMap])
+
+  useEffect(() => {
+    setPagination(p => ({ ...p, pageIndex: 0 }))
+    setCasesPagination(p => ({ ...p, pageIndex: 0 }))
+  }, [search, statusFilter, deptFilter, agencyFilter, createdAtFilter, dueDateFilter])
 
   const columns = useMemo<ColumnDef<URLEntry>[]>(() => [
     {
@@ -1358,11 +1382,11 @@ function URLsPage() {
   // already in its final shape instead of flashing plain defaults first.
   const gridLoading = loading || !gridPrefReady
 
-  const caseTreeData = useMemo<CaseRow[]>(() => caseSummaries.map(summary => ({
+  const caseTreeData = useMemo<CaseRow[]>(() => filteredCases.map(summary => ({
     kind: 'case',
     summary,
     subRows: summary.domains.map(domain => ({ kind: 'domain', caseId: summary.id, status: summary.status ?? '', domain })),
-  })), [caseSummaries])
+  })), [filteredCases])
 
   const caseColumns = useMemo<ColumnDef<CaseTreeRow>[]>(() => [
     {
@@ -1625,18 +1649,24 @@ function URLsPage() {
               </div>
             </div>
             <div className="results-wrap w-full">
-              <DataGrid
-                table={casesTable}
-                recordCount={caseTreeData.length}
-                isLoading={casesGridLoading}
-                tableClassNames={{ base: 'results-table results-table--pinned' }}
-                tableLayout={{ columnsPinnable: true }}
-              >
-                <DataGridContainer className="overflow-x-auto overflow-y-visible mb-5">
-                  <DataGridTable />
-                </DataGridContainer>
-                <DataGridPagination sizes={[10, 25, 50, 100]} />
-              </DataGrid>
+              {!casesGridLoading && filteredCases.length === 0 ? (
+                <div className="empty-state" style={{ padding: '3rem 0' }}>
+                  <p className="empty-heading">No cases match the current filters</p>
+                </div>
+              ) : (
+                <DataGrid
+                  table={casesTable}
+                  recordCount={caseTreeData.length}
+                  isLoading={casesGridLoading}
+                  tableClassNames={{ base: 'results-table results-table--pinned' }}
+                  tableLayout={{ columnsPinnable: true }}
+                >
+                  <DataGridContainer className="overflow-x-auto overflow-y-visible mb-5">
+                    <DataGridTable />
+                  </DataGridContainer>
+                  <DataGridPagination sizes={[10, 25, 50, 100]} />
+                </DataGrid>
+              )}
             </div>
           </div>
         )
