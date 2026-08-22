@@ -209,3 +209,127 @@ func (s *postgresStore) ListCasesForURL(ctx context.Context, urlValue string) ([
 	}
 	return result, nil
 }
+
+// caseSummaryQuery is the shared Select/Joins for the Cases view's per-case
+// row, optionally scoped to one department — used by both ListCases and
+// ListCasesForDepartment (mirrors caseLetterQuery's department-scoping
+// pattern above, and postgresStore.ListDepartmentURLs's latest-Notice/
+// latest-Memo correlated-subquery pattern in postgres.go).
+func (s *postgresStore) caseSummaryQuery(ctx context.Context, departmentID *uint) *gorm.DB {
+	q := s.db.WithContext(ctx).
+		Table("cases").
+		Select(`cases.id, cases.agency_id, agencies.name as agency_name,
+			cases.status, cases.due_date, cases.requested_at, cases.created_at,
+			notice.id as notice_letter_id, notice.subject as notice_subject,
+			notice.workflow_status as notice_workflow_status,
+			notice.reference_number_external as notice_reference_number_external,
+			notice.reference_number_internal as notice_reference_number_internal,
+			notice.recipient as notice_recipient, notice.requestor as notice_requestor,
+			notice.letter_date as notice_letter_date, notice.received_at as notice_received_at,
+			notice.submitted_at as notice_submitted_at, notice.remarks as notice_remarks,
+			memo.id as memo_letter_id, memo.subject as memo_subject,
+			memo.reference_number_internal as memo_reference_number_internal`).
+		Joins("LEFT JOIN agencies ON agencies.id = cases.agency_id").
+		Joins(`LEFT JOIN case_letters notice ON notice.id = (
+			SELECT cl.id FROM case_letters cl
+			WHERE cl.case_id = cases.id AND cl.type IN ('Notice', 'Notice (Uplift)')
+			ORDER BY cl.letter_date DESC LIMIT 1)`).
+		Joins(`LEFT JOIN case_letters memo ON memo.id = (
+			SELECT cl.id FROM case_letters cl
+			WHERE cl.case_id = cases.id AND cl.type IN ('Memo', 'Memo (Uplift)')
+			ORDER BY cl.letter_date DESC LIMIT 1)`)
+	if departmentID != nil {
+		q = q.Where("cases.department_id = ?", *departmentID)
+	}
+	return q
+}
+
+func (s *postgresStore) listCaseSummaries(ctx context.Context, departmentID *uint) ([]CaseSummary, error) {
+	var summaries []CaseSummary
+	if err := s.caseSummaryQuery(ctx, departmentID).Order("cases.created_at desc").Scan(&summaries).Error; err != nil {
+		return nil, err
+	}
+	if len(summaries) == 0 {
+		return summaries, nil
+	}
+
+	caseIDs := make([]uint, len(summaries))
+	idxByCaseID := make(map[uint]int, len(summaries))
+	for i, c := range summaries {
+		caseIDs[i] = c.ID
+		idxByCaseID[c.ID] = i
+	}
+	type domainRow struct {
+		CaseID uint
+		URLID  uint
+		URL    string
+		Phase  string
+	}
+	var rows []domainRow
+	if err := s.db.WithContext(ctx).
+		Table("case_urls").
+		Select("case_urls.case_id as case_id, case_urls.url_id as url_id, urls.url as url, case_urls.phase as phase").
+		Joins("JOIN urls ON urls.id = case_urls.url_id").
+		Where("case_urls.case_id IN ?", caseIDs).
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		i := idxByCaseID[r.CaseID]
+		summaries[i].Domains = append(summaries[i].Domains, CaseSummaryDomain{URLID: r.URLID, URL: r.URL, Phase: r.Phase})
+	}
+	return summaries, nil
+}
+
+func (s *postgresStore) ListCases(ctx context.Context) ([]CaseSummary, error) {
+	return s.listCaseSummaries(ctx, nil)
+}
+
+func (s *postgresStore) ListCasesForDepartment(ctx context.Context, departmentID uint) ([]CaseSummary, error) {
+	return s.listCaseSummaries(ctx, &departmentID)
+}
+
+// UpdateCaseLetterFields applies a partial update to one CaseLetter's
+// fields, scoped by (caseID, letterID) — see CaseStore's doc comment.
+func (s *postgresStore) UpdateCaseLetterFields(ctx context.Context, caseID, letterID uint, fields CaseLetterFields) (bool, error) {
+	updates := map[string]interface{}{}
+	if fields.Subject != nil {
+		updates["subject"] = *fields.Subject
+	}
+	if fields.WorkflowStatus != nil {
+		updates["workflow_status"] = *fields.WorkflowStatus
+	}
+	if fields.ReferenceNumberExternal != nil {
+		updates["reference_number_external"] = *fields.ReferenceNumberExternal
+	}
+	if fields.ReferenceNumberInternal != nil {
+		updates["reference_number_internal"] = *fields.ReferenceNumberInternal
+	}
+	if fields.Recipient != nil {
+		updates["recipient"] = *fields.Recipient
+	}
+	if fields.Requestor != nil {
+		updates["requestor"] = *fields.Requestor
+	}
+	if fields.Remarks != nil {
+		updates["remarks"] = *fields.Remarks
+	}
+	if fields.LetterDate != nil {
+		updates["letter_date"] = *fields.LetterDate
+	}
+	if fields.ReceivedAt != nil {
+		updates["received_at"] = *fields.ReceivedAt
+	}
+	if fields.SubmittedAt != nil {
+		updates["submitted_at"] = *fields.SubmittedAt
+	}
+	if len(updates) == 0 {
+		var count int64
+		if err := s.db.WithContext(ctx).Model(&CaseLetter{}).Where("id = ? AND case_id = ?", letterID, caseID).Count(&count).Error; err != nil {
+			return false, err
+		}
+		return count > 0, nil
+	}
+	res := s.db.WithContext(ctx).Model(&CaseLetter{}).Where("id = ? AND case_id = ?", letterID, caseID).Updates(updates)
+	return res.RowsAffected > 0, res.Error
+}

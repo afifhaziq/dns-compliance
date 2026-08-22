@@ -132,10 +132,14 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Post("/cases/{id}/letters", h.AddCaseLetter)
 			r.Post("/cases/{id}/urls", h.AddCaseURL)
 			r.Patch("/cases/{id}/urls/{url_id}", h.UpdateCaseURLPhase)
+			r.Patch("/cases/{id}/letters/{letter_id}", h.UpdateCaseLetter)
 
 			// Docs page data source — every CaseLetter, admin: global,
 			// non-admin: own department's cases only. See ListCaseLetters.
 			r.Get("/case-letters", h.ListCaseLetters)
+
+			// Cases view's data source — see ListCaseSummaries.
+			r.Get("/case-summaries", h.ListCaseSummaries)
 
 			// Reachable by a super admin OR a department admin — DNS servers
 			// stay one shared/global catalog (no department scoping), while

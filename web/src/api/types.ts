@@ -56,6 +56,9 @@ export type URLEntry = {
   current_reference_number?: string
   requesting_departments?: string[]
   status?: string
+  // Latest case's id — the target for a status edit via PATCH /api/cases/{id}
+  // (updateCase), since `status` itself is a derived, read-only field.
+  case_id?: number
   requested_at?: string
   created_at: string
 }
@@ -108,6 +111,37 @@ export type CaseLetterEntry = CaseLetter & {
 }
 
 export type CaseLettersResponse = { letters: CaseLetterEntry[]; total: number }
+
+// One row of GET /api/case-summaries — the Cases view's per-case row: a
+// Case's own fields plus its Notice letter's fields (Notice chosen over
+// Memo when both exist, same convention as current_reference_number) and
+// every domain it covers.
+export type CaseSummaryDomain = { url_id: number; url: string; phase: string }
+
+export type CaseSummary = {
+  id: number
+  agency_id?: number
+  agency_name?: string
+  status?: string
+  due_date?: string
+  requested_at?: string
+  created_at: string
+  notice_letter_id?: number
+  notice_subject?: string
+  notice_workflow_status?: string
+  notice_reference_number_external?: string
+  notice_reference_number_internal?: string
+  notice_recipient?: string
+  notice_requestor?: string
+  notice_letter_date?: string
+  notice_received_at?: string
+  notice_submitted_at?: string
+  notice_remarks?: string
+  memo_letter_id?: number
+  memo_subject?: string
+  memo_reference_number_internal?: string
+  domains: CaseSummaryDomain[]
+}
 
 export type Agency = { id: number; name: string; created_at: string }
 

@@ -523,3 +523,119 @@ func TestUpdateCaseURLPhase_UnknownPairReturns404(t *testing.T) {
 		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestListCaseSummaries_NonAdminScopedToOwnDepartment(t *testing.T) {
+	store := &fullMockStore{}
+	uA := db.URL{ID: 1, URL: "summaries-a.com"}
+	uB := db.URL{ID: 2, URL: "summaries-b.com"}
+	store.urls = append(store.urls, uA, uB)
+	store.cases = append(store.cases,
+		db.Case{ID: 1, DepartmentID: 1, Status: "requested"},
+		db.Case{ID: 2, DepartmentID: 2, Status: "requested"},
+	)
+	store.caseURLs = append(store.caseURLs,
+		db.CaseURL{CaseID: 1, URLID: uA.ID, Phase: "requested"},
+		db.CaseURL{CaseID: 2, URLID: uB.ID, Phase: "requested"},
+	)
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/case-summaries", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var summaries []db.CaseSummary
+	if err := json.Unmarshal(w.Body.Bytes(), &summaries); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(summaries) != 1 || summaries[0].ID != 1 {
+		t.Fatalf("expected only dept 1's case, got %+v", summaries)
+	}
+}
+
+func TestListCaseSummaries_AdminSeesGlobal(t *testing.T) {
+	store := &fullMockStore{}
+	uA := db.URL{ID: 1, URL: "summaries-a.com"}
+	uB := db.URL{ID: 2, URL: "summaries-b.com"}
+	store.urls = append(store.urls, uA, uB)
+	store.cases = append(store.cases,
+		db.Case{ID: 1, DepartmentID: 1, Status: "requested"},
+		db.Case{ID: 2, DepartmentID: 2, Status: "requested"},
+	)
+	store.caseURLs = append(store.caseURLs,
+		db.CaseURL{CaseID: 1, URLID: uA.ID, Phase: "requested"},
+		db.CaseURL{CaseID: 2, URLID: uB.ID, Phase: "requested"},
+	)
+	cookie := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/case-summaries", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var summaries []db.CaseSummary
+	if err := json.Unmarshal(w.Body.Bytes(), &summaries); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(summaries) != 2 {
+		t.Fatalf("expected both cases for admin, got %+v", summaries)
+	}
+}
+
+func TestUpdateCaseLetter_PartialUpdate(t *testing.T) {
+	store := &fullMockStore{}
+	u := db.URL{ID: 1, URL: "update-letter.com"}
+	store.urls = append(store.urls, u)
+	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
+	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID, Phase: "requested"})
+	store.caseLetters = append(store.caseLetters, db.CaseLetter{ID: 1, CaseID: 1, Type: "Notice", Subject: "orig", WorkflowStatus: "Draft"})
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]string{"subject": "updated"})
+	req := httptest.NewRequest(http.MethodPatch, "/api/cases/1/letters/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if store.caseLetters[0].Subject != "updated" {
+		t.Fatalf("Subject = %q, want updated", store.caseLetters[0].Subject)
+	}
+	if store.caseLetters[0].WorkflowStatus != "Draft" {
+		t.Fatalf("WorkflowStatus = %q, want unchanged Draft", store.caseLetters[0].WorkflowStatus)
+	}
+}
+
+func TestUpdateCaseLetter_NonOwningDepartment404(t *testing.T) {
+	store := &fullMockStore{}
+	u := db.URL{ID: 1, URL: "update-letter-2.com"}
+	store.urls = append(store.urls, u)
+	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
+	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID, Phase: "requested"})
+	store.caseLetters = append(store.caseLetters, db.CaseLetter{ID: 1, CaseID: 1, Type: "Notice"})
+	cookie := deptCookie(store, 2)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]string{"subject": "updated"})
+	req := httptest.NewRequest(http.MethodPatch, "/api/cases/1/letters/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}

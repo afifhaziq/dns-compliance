@@ -396,6 +396,21 @@ type CaseStore interface {
 	// ListCaseLettersForDepartment is ListCaseLetters scoped to one
 	// department's own cases (cases.department_id), for non-admin callers.
 	ListCaseLettersForDepartment(ctx context.Context, page, pageSize int, departmentID uint) ([]CaseLetterEntry, int, error)
+
+	// ListCases/ListCasesForDepartment back the Cases view (GET
+	// /api/case-summaries) — one row per case with its own fields, its
+	// Notice letter's fields, and every domain it covers. Same admin-global
+	// vs department-scoped split as ListCaseLetters/ForDepartment.
+	ListCases(ctx context.Context) ([]CaseSummary, error)
+	ListCasesForDepartment(ctx context.Context, departmentID uint) ([]CaseSummary, error)
+
+	// UpdateCaseLetterFields applies a partial update to one CaseLetter's
+	// fields, scoped by (caseID, letterID) so a letter can't be edited
+	// through a case it doesn't belong to — same defense-in-depth scoping
+	// UpdateCaseURLPhase uses. Ownership (departmentID owns caseID) is
+	// checked by the caller (handler layer), same as UpdateCaseFields.
+	// False if no such (case, letter) pair exists.
+	UpdateCaseLetterFields(ctx context.Context, caseID, letterID uint, fields CaseLetterFields) (bool, error)
 }
 
 // CaseWithLetters is Case plus its Letters and this url's Phase — the read

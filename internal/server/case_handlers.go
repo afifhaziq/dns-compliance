@@ -438,3 +438,127 @@ func (h *Handlers) ListCaseLetters(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"letters": letters, "total": total})
 }
+
+// ListCaseSummaries is the Cases view's data source (GET
+// /api/case-summaries) — one row per case with its own fields, its Notice
+// letter's fields, and every domain it covers. Same admin-global/non-admin-
+// department-scoped split as ListCaseLetters.
+func (h *Handlers) ListCaseSummaries(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	var summaries []db.CaseSummary
+	var err error
+	if user.IsAdmin {
+		summaries, err = h.store.ListCases(r.Context())
+	} else {
+		if user.DepartmentID == nil {
+			writeError(w, http.StatusForbidden, "user has no department")
+			return
+		}
+		summaries, err = h.store.ListCasesForDepartment(r.Context(), *user.DepartmentID)
+	}
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, summaries)
+}
+
+// UpdateCaseLetter applies a partial update to one CaseLetter's fields —
+// the Cases view's edit form writes Notice/Memo subject, workflow status,
+// reference numbers, recipient/requestor, dates, and remarks through this.
+// Ownership: same case-DepartmentID check as AddCaseLetter/UpdateCase; the
+// store call further scopes by (case, letter) so a letter can't be edited
+// through the wrong case id (see UpdateCaseLetterFields).
+func (h *Handlers) UpdateCaseLetter(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	letterID, err := strconv.ParseUint(chi.URLParam(r, "letter_id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid letter_id")
+		return
+	}
+
+	c, err := h.store.GetCase(r.Context(), uint(id))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		writeInternalError(w, err)
+		return
+	}
+	if !user.IsAdmin && (user.DepartmentID == nil || *user.DepartmentID != c.DepartmentID) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	var body struct {
+		Subject                 *string `json:"subject"`
+		WorkflowStatus          *string `json:"workflow_status"`
+		ReferenceNumberExternal *string `json:"reference_number_external"`
+		ReferenceNumberInternal *string `json:"reference_number_internal"`
+		Recipient               *string `json:"recipient"`
+		Requestor               *string `json:"requestor"`
+		Remarks                 *string `json:"remarks"`
+		LetterDate              *string `json:"letter_date"`
+		ReceivedAt              *string `json:"received_at"`
+		SubmittedAt             *string `json:"submitted_at"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+
+	fields := db.CaseLetterFields{
+		Subject: body.Subject, WorkflowStatus: body.WorkflowStatus,
+		ReferenceNumberExternal: body.ReferenceNumberExternal, ReferenceNumberInternal: body.ReferenceNumberInternal,
+		Recipient: body.Recipient, Requestor: body.Requestor, Remarks: body.Remarks,
+	}
+	if body.LetterDate != nil {
+		t, err := parseOptionalRFC3339(*body.LetterDate)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid letter_date, expected RFC3339")
+			return
+		}
+		fields.LetterDate = &t
+	}
+	if body.ReceivedAt != nil {
+		t, err := parseOptionalRFC3339(*body.ReceivedAt)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid received_at, expected RFC3339")
+			return
+		}
+		fields.ReceivedAt = &t
+	}
+	if body.SubmittedAt != nil {
+		t, err := parseOptionalRFC3339(*body.SubmittedAt)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid submitted_at, expected RFC3339")
+			return
+		}
+		fields.SubmittedAt = &t
+	}
+
+	found, err := h.store.UpdateCaseLetterFields(r.Context(), uint(id), uint(letterID), fields)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

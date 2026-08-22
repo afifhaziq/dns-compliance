@@ -556,6 +556,7 @@ func (s *postgresStore) ListDepartmentURLs(ctx context.Context, departmentID uin
 	err := s.db.WithContext(ctx).
 		Table("urls").
 		Select(`urls.id, urls.url, urls.created_at, du.enabled,
+			latest_case.id as case_id,
 			latest_case.due_date, latest_case.agency_id, agencies.name as agency_name,
 			latest_case.status, latest_case.requested_at,
 			(SELECT cl.reference_number_external FROM case_letters cl
