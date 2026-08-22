@@ -1,27 +1,33 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import {
   type ColumnDef,
   type SortingState,
   type PaginationState,
   type VisibilityState,
+  type ExpandedState,
   getCoreRowModel,
   getSortedRowModel,
   getPaginationRowModel,
+  getExpandedRowModel,
   useReactTable,
 } from '@tanstack/react-table'
 import { GripIcon } from '@/components/ui/grip'
 import { FileText } from 'lucide-react'
 import { PHASE_OPTIONS as CASE_PHASE_OPTIONS } from '@/lib/case-options'
+import { ChevronRight } from '@/components/ui/chevron-right'
+import { SquarePenIcon } from '@/components/ui/square-pen'
+import { DataGridTableRowExpand } from '@/components/reui/data-grid/data-grid-table'
+import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled } from '../api/urls'
-import { createCase, addCaseLetter, addUrlToCase, updateCase, updateCaseLetter } from '../api/cases'
+import { createCase, addCaseLetter, addUrlToCase, updateCase, updateCaseLetter, fetchCaseSummaries, updateCaseURLPhase } from '../api/cases'
 import { fetchAgencies } from '../api/agencies'
 import { fetchDepartmentsOpen } from '../api/departments'
 import { fetchDueDatePresets } from '../api/due-date-presets'
 import { fetchRecipients } from '../api/recipients'
 import { fetchRequestors } from '../api/requestors'
 import { useGridPreference } from '@/hooks/use-grid-preference'
-import type { URLEntry, Agency, Department, DueDatePreset, Instrument, Citation, LegalCategory, LegalElement, LegalSubElement, URLOffence, Recipient, Requestor, CaseSummary } from '../api/types'
+import type { URLEntry, Agency, Department, DueDatePreset, Instrument, Citation, LegalCategory, LegalElement, LegalSubElement, URLOffence, Recipient, Requestor, CaseSummary, CaseSummaryDomain } from '../api/types'
 import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, fetchSubElements, attachOffence, fetchOffencesByUrl, detachOffence, formatParsedCitation } from '../api/legal'
 import {
   Dialog,
@@ -53,7 +59,12 @@ import {
   PreviewLinkCardImage,
 } from '@/components/animate-ui/components/base/preview-link-card'
 
-export const Route = createFileRoute('/urls')({ component: URLsPage })
+export const Route = createFileRoute('/urls')({
+  validateSearch: (search: Record<string, unknown>): { view: 'domains' | 'cases' } => ({
+    view: search.view === 'cases' ? 'cases' : 'domains',
+  }),
+  component: URLsPage,
+})
 
 /* ─── Case metadata (shared by the Add Domain form + inline table cells) ─── */
 
@@ -1013,7 +1024,33 @@ function matchesDateFilter(value: string | null | undefined, filter: Filter<stri
   }
 }
 
+type DomainSubRow = { kind: 'domain'; caseId: number; status: string; domain: CaseSummaryDomain }
+type CaseRow = { kind: 'case'; summary: CaseSummary; subRows: DomainSubRow[] }
+type CaseTreeRow = CaseRow | DomainSubRow
+
 function URLsPage() {
+  const { view } = Route.useSearch()
+  const navigate = useNavigate({ from: Route.fullPath })
+
+  const [caseSummaries, setCaseSummaries] = useState<CaseSummary[]>([])
+  const [addOpen, setAddOpen] = useState(false)
+  const [editingCase, setEditingCase] = useState<CaseSummary | null>(null)
+
+  const [casesSorting, setCasesSorting] = useState<SortingState>([])
+  const [casesPagination, setCasesPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
+  const [casesColumnVisibility, setCasesColumnVisibility] = useState<VisibilityState>({})
+  const [casesExpanded, setCasesExpanded] = useState<ExpandedState>({})
+
+  const { ready: casesGridPrefReady } = useGridPreference(
+    'urls-cases',
+    { sorting: casesSorting, columnVisibility: casesColumnVisibility, pageSize: casesPagination.pageSize },
+    {
+      setSorting: setCasesSorting,
+      setColumnVisibility: setCasesColumnVisibility,
+      setPageSize: pageSize => setCasesPagination(p => ({ ...p, pageSize })),
+    }
+  )
+
   const [urls, setUrls] = useState<URLEntry[]>([])
   const [agencies, setAgencies] = useState<Agency[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
@@ -1022,8 +1059,7 @@ function URLsPage() {
   const [requestors, setRequestors] = useState<Requestor[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [addOpen, setAddOpen] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<URLEntry | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; url: string } | null>(null)
   // id, not a URLEntry snapshot, so the dialog re-reads the live row out of
   // `urls` below and reflects its own edits (agency/status/etc.) immediately.
   const [editTargetId, setEditTargetId] = useState<number | null>(null)
@@ -1049,8 +1085,8 @@ function URLsPage() {
     setLoading(true)
     try {
       setError(null)
-      const [u, a, d, p, rc, rq] = await Promise.all([
-        fetchUrls(), fetchAgencies(), fetchDepartmentsOpen(), fetchDueDatePresets(), fetchRecipients(), fetchRequestors(),
+      const [u, a, d, p, rc, rq, cs] = await Promise.all([
+        fetchUrls(), fetchAgencies(), fetchDepartmentsOpen(), fetchDueDatePresets(), fetchRecipients(), fetchRequestors(), fetchCaseSummaries(),
       ])
       setUrls(u)
       setAgencies(a)
@@ -1058,6 +1094,7 @@ function URLsPage() {
       setDuePresets(p)
       setRecipients(rc)
       setRequestors(rq)
+      setCaseSummaries(cs)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load domains')
     } finally {
@@ -1095,6 +1132,30 @@ function URLsPage() {
     setDeleteTarget(null)
     load()
   }
+
+  const handleCaseStatusChange = useCallback(async (caseId: number, status: string) => {
+    const prev = caseSummaries.find(c => c.id === caseId)?.status
+    setCaseSummaries(prevList => prevList.map(c => c.id === caseId ? { ...c, status } : c))
+    try {
+      await updateCase(caseId, { status })
+    } catch {
+      setCaseSummaries(prevList => prevList.map(c => c.id === caseId ? { ...c, status: prev } : c))
+    }
+  }, [caseSummaries])
+
+  const handlePhaseChange = useCallback(async (caseId: number, domain: CaseSummaryDomain, phase: string) => {
+    const prevPhase = domain.phase
+    setCaseSummaries(prevList => prevList.map(c => c.id === caseId
+      ? { ...c, domains: c.domains.map(d => d.url_id === domain.url_id ? { ...d, phase } : d) }
+      : c))
+    try {
+      await updateCaseURLPhase(caseId, domain.url_id, phase)
+    } catch {
+      setCaseSummaries(prevList => prevList.map(c => c.id === caseId
+        ? { ...c, domains: c.domains.map(d => d.url_id === domain.url_id ? { ...d, phase: prevPhase } : d) }
+        : c))
+    }
+  }, [])
 
   const filterFields = useMemo<FilterFieldConfig<string>[]>(() => [
     { key: 'status', label: 'Status', type: 'select', operators: IS_ONLY, options: STATUS_OPTIONS.filter(o => o.value).map(o => ({ value: o.value, label: o.label })) },
@@ -1297,11 +1358,184 @@ function URLsPage() {
   // already in its final shape instead of flashing plain defaults first.
   const gridLoading = loading || !gridPrefReady
 
+  const caseTreeData = useMemo<CaseRow[]>(() => caseSummaries.map(summary => ({
+    kind: 'case',
+    summary,
+    subRows: summary.domains.map(domain => ({ kind: 'domain', caseId: summary.id, status: summary.status ?? '', domain })),
+  })), [caseSummaries])
+
+  const caseColumns = useMemo<ColumnDef<CaseTreeRow>[]>(() => [
+    {
+      id: 'case',
+      accessorFn: r => r.kind === 'case' ? r.summary.id : r.domain.url,
+      header: ({ column }) => <SortableHeader column={column} title="Case #" />,
+      enableHiding: false,
+      size: 220,
+      meta: { headerTitle: 'Case #', headerClassName: 'col-domain th-left', cellClassName: 'col-domain' },
+      cell: ({ row }) => {
+        const original = row.original
+        if (original.kind === 'domain') {
+          return <span className="dns-name">{original.domain.url}</span>
+        }
+        const expandControl = original.subRows.length > 0 ? (
+          <DataGridTableRowExpand row={row}>
+            <ChevronRight className={`expand-icon${row.getIsExpanded() ? ' expanded' : ''}`} />
+          </DataGridTableRowExpand>
+        ) : null
+        return <span className="flex items-center gap-[2px]">{expandControl}<span className="hostname">#{original.summary.id}</span></span>
+      },
+    },
+    {
+      id: 'agency',
+      header: 'Agency',
+      accessorFn: r => r.kind === 'case' ? (r.summary.agency_name ?? '') : '',
+      meta: { headerTitle: 'Agency', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => row.original.kind === 'case' ? <span className="dns-name">{row.original.summary.agency_name ?? '—'}</span> : null,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      accessorFn: r => r.kind === 'case' ? (r.summary.status ?? '') : r.status,
+      meta: { headerTitle: 'Status', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => {
+        const original = row.original
+        if (original.kind === 'case') {
+          return <span className="dns-name">{STATUS_OPTIONS.find(o => o.value === (original.summary.status ?? ''))?.label ?? '—'}</span>
+        }
+        return (
+          <Select value={original.status} onValueChange={v => handleCaseStatusChange(original.caseId, v)}>
+            <SelectTrigger aria-label={`Status for ${original.domain.url}`} placeholder="—" className="w-full" />
+            <SelectContent>
+              {STATUS_OPTIONS.map((opt, i) => (
+                <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )
+      },
+    },
+    {
+      id: 'phase',
+      header: 'Phase',
+      accessorFn: r => r.kind === 'domain' ? r.domain.phase : '',
+      meta: { headerTitle: 'Phase', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => {
+        const original = row.original
+        if (original.kind !== 'domain') return null
+        return (
+          <Select value={original.domain.phase} onValueChange={v => handlePhaseChange(original.caseId, original.domain, v)}>
+            <SelectTrigger aria-label={`Phase for ${original.domain.url}`} placeholder="—" className="w-full" />
+            <SelectContent>
+              {CASE_PHASE_OPTIONS.map((opt, i) => (
+                <SelectItem key={opt.value} index={i} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )
+      },
+    },
+    {
+      id: 'due_date',
+      accessorFn: r => r.kind === 'case' ? (r.summary.due_date ?? '') : '',
+      header: ({ column }) => <SortableHeader column={column} title="Due Date" />,
+      meta: { headerTitle: 'Due Date', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => row.original.kind === 'case'
+        ? <span className="dns-name">{row.original.summary.due_date ? DUE_DATE_FMT.format(new Date(row.original.summary.due_date)) : '—'}</span>
+        : null,
+    },
+    {
+      id: 'reference_number',
+      header: 'Ref No.',
+      accessorFn: r => r.kind === 'case' ? (r.summary.notice_reference_number_external ?? '') : '',
+      meta: { headerTitle: 'Ref No.', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => row.original.kind === 'case' ? <span className="dns-name">{row.original.summary.notice_reference_number_external || '—'}</span> : null,
+    },
+    {
+      id: 'domain_count',
+      header: 'Domains',
+      accessorFn: r => r.kind === 'case' ? r.summary.domains.length : '',
+      meta: { headerTitle: 'Domains', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => row.original.kind === 'case' ? <span className="dns-name">{row.original.summary.domains.length}</span> : null,
+    },
+    {
+      id: 'subject',
+      header: 'Subject',
+      accessorFn: r => r.kind === 'case' ? (r.summary.notice_subject ?? '') : '',
+      meta: { headerTitle: 'Subject', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => row.original.kind === 'case' ? <span className="dns-name">{row.original.summary.notice_subject || '—'}</span> : null,
+    },
+    {
+      id: 'workflow_status',
+      header: 'Workflow Status',
+      accessorFn: r => r.kind === 'case' ? (r.summary.notice_workflow_status ?? '') : '',
+      meta: { headerTitle: 'Workflow Status', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => row.original.kind === 'case' ? <span className="dns-name">{row.original.summary.notice_workflow_status || '—'}</span> : null,
+    },
+    {
+      id: 'action',
+      header: 'Action',
+      enableHiding: false,
+      size: 140,
+      meta: { headerClassName: 'th-center', cellClassName: 'text-center' },
+      cell: ({ row }) => {
+        const original = row.original
+        if (original.kind === 'case') {
+          return (
+            <button type="button" className="screenshot-icon-btn" onClick={() => setEditingCase(original.summary)} aria-label={`Edit case #${original.summary.id}`} title="Edit">
+              <SquarePenIcon size={16} />
+            </button>
+          )
+        }
+        return (
+          <div className="flex items-center justify-center gap-1">
+            <Link to="/domain/$url" params={{ url: original.domain.url }} search={{ tab: 'overview' }} className="screenshot-icon-btn" aria-label={`View details for ${original.domain.url}`} title="View details">
+              <GripIcon size={16} />
+            </Link>
+            <button type="button" className="screenshot-icon-btn" onClick={() => setDeleteTarget({ id: original.domain.url_id, url: original.domain.url })} aria-label={`Delete ${original.domain.url}`} title="Delete">
+              <XIcon size={16} />
+            </button>
+          </div>
+        )
+      },
+    },
+  ], [handleCaseStatusChange, handlePhaseChange])
+
+  const casesTable = useReactTable({
+    data: caseTreeData,
+    columns: caseColumns,
+    initialState: { columnPinning: { left: ['case'], right: ['action'] } },
+    state: { sorting: casesSorting, pagination: casesPagination, columnVisibility: casesColumnVisibility, expanded: casesExpanded },
+    onSortingChange: setCasesSorting,
+    onPaginationChange: setCasesPagination,
+    onColumnVisibilityChange: setCasesColumnVisibility,
+    onExpandedChange: setCasesExpanded,
+    getRowId: r => r.kind === 'case' ? `case:${r.summary.id}` : `case-domain:${r.caseId}:${r.domain.url_id}`,
+    getSubRows: r => r.kind === 'case' ? r.subRows : undefined,
+    getRowCanExpand: row => row.original.kind === 'case' && row.original.subRows.length > 0,
+    paginateExpandedRows: false,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getExpandedRowModel: getExpandedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+  })
+
+  const casesGridLoading = loading || !casesGridPrefReady
+
   return (
     <div className="mx-20 mt-10 mb-10">
       <div className="page-header">
         <h1 className="page-title mb-4">Domains</h1>
         <p className="page-subtitle">{!loading && `${urls.length} monitored`}</p>
+        <ToggleGroup
+          type="single"
+          value={view}
+          onValueChange={v => { if (v) navigate({ to: '/urls', search: { view: v as 'domains' | 'cases' }, replace: true }) }}
+          variant="outline"
+          aria-label="View"
+        >
+          <ToggleGroupItem value="domains">Domain</ToggleGroupItem>
+          <ToggleGroupItem value="cases">Cases</ToggleGroupItem>
+        </ToggleGroup>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <Button onClick={() => setAddOpen(true)}>
             + Create Case
@@ -1309,45 +1543,92 @@ function URLsPage() {
         </div>
       </div>
 
-      {error ? (
-        <div className="error-state">
-          <p className="error-message">{error}</p>
-          <button className="btn-primary" onClick={load}>Retry</button>
-        </div>
-      ) : !gridLoading && urls.length === 0 ? (
-        <div className="empty-state">
-          <EmptyIcon />
-          <p className="empty-heading">No domains yet</p>
-          <p className="empty-body">Create a case to start monitoring a domain for DNS compliance.</p>
-          <button className="btn-primary" onClick={() => setAddOpen(true)}>Create Case</button>
-        </div>
-      ) : (
-        <div className="flex flex-col items-stretch w-full gap-4 mt-4">
-          <div className="filter-bar flex flex-row items-center justify-start gap-4 w-full">
-            <Input
-              type="search"
-              placeholder="Search domain..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="max-w-64"
-              aria-label="Search domain"
-            />
-            <Filters filters={filters} fields={filterFields} onChange={setFilters} />
-            <div style={{ marginLeft: 'auto' }}>
-              <DataGridColumnVisibility table={table} trigger={<Button variant="outline">Columns</Button>} />
+      {view === 'domains' ? (
+        error ? (
+          <div className="error-state">
+            <p className="error-message">{error}</p>
+            <button className="btn-primary" onClick={load}>Retry</button>
+          </div>
+        ) : !gridLoading && urls.length === 0 ? (
+          <div className="empty-state">
+            <EmptyIcon />
+            <p className="empty-heading">No domains yet</p>
+            <p className="empty-body">Create a case to start monitoring a domain for DNS compliance.</p>
+            <button className="btn-primary" onClick={() => setAddOpen(true)}>Create Case</button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-stretch w-full gap-4 mt-4">
+            <div className="filter-bar flex flex-row items-center justify-start gap-4 w-full">
+              <Input
+                type="search"
+                placeholder="Search domain..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="max-w-64"
+                aria-label="Search domain"
+              />
+              <Filters filters={filters} fields={filterFields} onChange={setFilters} />
+              <div style={{ marginLeft: 'auto' }}>
+                <DataGridColumnVisibility table={table} trigger={<Button variant="outline">Columns</Button>} />
+              </div>
+            </div>
+
+            <div className="results-wrap w-full">
+              {!gridLoading && filtered.length === 0 ? (
+                <div className="empty-state" style={{ padding: '3rem 0' }}>
+                  <p className="empty-heading">No domains match the current filters</p>
+                </div>
+              ) : (
+                <DataGrid
+                  table={table}
+                  recordCount={filtered.length}
+                  isLoading={gridLoading}
+                  tableClassNames={{ base: 'results-table results-table--pinned' }}
+                  tableLayout={{ columnsPinnable: true }}
+                >
+                  <DataGridContainer className="overflow-x-auto overflow-y-visible mb-5">
+                    <DataGridTable />
+                  </DataGridContainer>
+                  <DataGridPagination sizes={[10, 25, 50, 100]} />
+                </DataGrid>
+              )}
             </div>
           </div>
-
-          <div className="results-wrap w-full">
-            {!gridLoading && filtered.length === 0 ? (
-              <div className="empty-state" style={{ padding: '3rem 0' }}>
-                <p className="empty-heading">No domains match the current filters</p>
+        )
+      ) : (
+        error ? (
+          <div className="error-state">
+            <p className="error-message">{error}</p>
+            <button className="btn-primary" onClick={load}>Retry</button>
+          </div>
+        ) : !casesGridLoading && caseSummaries.length === 0 ? (
+          <div className="empty-state">
+            <EmptyIcon />
+            <p className="empty-heading">No cases yet</p>
+            <p className="empty-body">Create a case to start monitoring a domain for DNS compliance.</p>
+            <button className="btn-primary" onClick={() => setAddOpen(true)}>Create Case</button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-stretch w-full gap-4 mt-4">
+            <div className="filter-bar flex flex-row items-center justify-start gap-4 w-full">
+              <Input
+                type="search"
+                placeholder="Search case ref. or domain..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="max-w-64"
+                aria-label="Search cases"
+              />
+              <Filters filters={filters} fields={filterFields} onChange={setFilters} />
+              <div style={{ marginLeft: 'auto' }}>
+                <DataGridColumnVisibility table={casesTable} trigger={<Button variant="outline">Columns</Button>} />
               </div>
-            ) : (
+            </div>
+            <div className="results-wrap w-full">
               <DataGrid
-                table={table}
-                recordCount={filtered.length}
-                isLoading={gridLoading}
+                table={casesTable}
+                recordCount={caseTreeData.length}
+                isLoading={casesGridLoading}
                 tableClassNames={{ base: 'results-table results-table--pinned' }}
                 tableLayout={{ columnsPinnable: true }}
               >
@@ -1356,20 +1637,20 @@ function URLsPage() {
                 </DataGridContainer>
                 <DataGridPagination sizes={[10, 25, 50, 100]} />
               </DataGrid>
-            )}
+            </div>
           </div>
-        </div>
+        )
       )}
 
       <AddUrlDialog
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
+        open={addOpen || editingCase !== null}
+        onClose={() => { setAddOpen(false); setEditingCase(null) }}
         onAdded={load}
         agencies={agencies}
         duePresets={duePresets}
         recipients={recipients}
         requestors={requestors}
-        editing={null}
+        editing={editingCase}
       />
 
       <DeleteConfirmDialog
