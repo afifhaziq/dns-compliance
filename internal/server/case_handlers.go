@@ -41,9 +41,9 @@ func (h *Handlers) CasesByURL(w http.ResponseWriter, r *http.Request) {
 // AddToWatchlist always uses the caller's own DepartmentID rather than
 // trusting the request body. agency_id/due_date are optional case-level
 // defaults set at creation time (0/omitted agency_id, omitted/empty
-// due_date just leave the field unset) — phase stays required/validated as
-// before, and doubles as Case.Status and the first CaseURL.Phase, kept in
-// sync at creation (see db.Store.CreateCase).
+// due_date just leave the field unset) — status is required/validated and
+// becomes this url's own CaseURL.Status (see db.Store.CreateCase; status is
+// per-url, not stored on Case itself).
 func (h *Handlers) CreateCaseForURL(w http.ResponseWriter, r *http.Request) {
 	urlValue, err := urlParamFromRequest(r)
 	if err != nil {
@@ -64,12 +64,12 @@ func (h *Handlers) CreateCaseForURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Phase    string  `json:"phase"`
+		Status   string  `json:"status"`
 		AgencyID *uint   `json:"agency_id"`
 		DueDate  *string `json:"due_date"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !urlStatusAllowed[body.Phase] || body.Phase == "" {
-		writeError(w, http.StatusBadRequest, "phase is required and must be one of: requested, uplift, suspended, internal")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !urlStatusAllowed[body.Status] || body.Status == "" {
+		writeError(w, http.StatusBadRequest, "status is required and must be one of: requested, uplift, suspended, internal")
 		return
 	}
 	var opts db.CaseCreateOptions
@@ -95,7 +95,7 @@ func (h *Handlers) CreateCaseForURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c, err := h.store.CreateCase(r.Context(), *user.DepartmentID, u.ID, body.Phase, opts)
+	c, err := h.store.CreateCase(r.Context(), *user.DepartmentID, u.ID, body.Status, opts)
 	if err != nil {
 		writeInternalError(w, err)
 		return
@@ -104,14 +104,13 @@ func (h *Handlers) CreateCaseForURL(w http.ResponseWriter, r *http.Request) {
 }
 
 // UpdateCase applies a partial update to a case's shared fields
-// (agency_id/status/due_date/requested_at) — Case's own case-level
-// defaults, editable independently of any one url's CaseURL.Phase override
-// (see UpdateCaseURLPhase). Ownership: the case's own DepartmentID must
+// (agency_id/due_date/requested_at) — Case's own case-level defaults,
+// shared by every url the case covers. Status is NOT here — it's per-url,
+// see UpdateCaseURLStatus. Ownership: the case's own DepartmentID must
 // match the caller's (404, not 403, same non-confirming pattern as
-// AddCaseLetter/AddCaseURL), admin bypasses. Clear sentinels match
-// PATCH /api/urls/{id}'s old convention: 0 clears agency_id, "" clears
-// due_date/requested_at; status is validated against urlStatusAllowed
-// ("" clears it). Only keys present in the body are touched.
+// AddCaseLetter/AddCaseURL), admin bypasses. Clear sentinels match PATCH
+// /api/urls/{id}'s old convention: 0 clears agency_id, "" clears
+// due_date/requested_at. Only keys present in the body are touched.
 func (h *Handlers) UpdateCase(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
 	if !ok {
@@ -140,7 +139,6 @@ func (h *Handlers) UpdateCase(w http.ResponseWriter, r *http.Request) {
 
 	var body struct {
 		AgencyID    *uint   `json:"agency_id"`
-		Status      *string `json:"status"`
 		DueDate     *string `json:"due_date"`
 		RequestedAt *string `json:"requested_at"`
 	}
@@ -156,13 +154,6 @@ func (h *Handlers) UpdateCase(w http.ResponseWriter, r *http.Request) {
 			agencyID = body.AgencyID
 		}
 		fields.AgencyID = &agencyID
-	}
-	if body.Status != nil {
-		if !urlStatusAllowed[*body.Status] {
-			writeError(w, http.StatusBadRequest, "invalid status, expected one of: requested, uplift, suspended, internal")
-			return
-		}
-		fields.Status = body.Status
 	}
 	if body.DueDate != nil {
 		dueDate, err := parseOptionalRFC3339(*body.DueDate)
@@ -208,60 +199,6 @@ func (h *Handlers) UpdateCase(w http.ResponseWriter, r *http.Request) {
 				log.Printf("notify: reschedule due-date task for department=%d url=%d: %v", c.DepartmentID, urlID, err)
 			}
 		}
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// UpdateCaseURLPhase sets one url's own Phase within a case — the
-// per-domain override of Case.Status (see CaseURL's doc comment).
-// Ownership check identical to AddCaseURL's.
-func (h *Handlers) UpdateCaseURLPhase(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "not authenticated")
-		return
-	}
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid id")
-		return
-	}
-	urlID, err := strconv.ParseUint(chi.URLParam(r, "url_id"), 10, 64)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid url_id")
-		return
-	}
-
-	c, err := h.store.GetCase(r.Context(), uint(id))
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			writeError(w, http.StatusNotFound, "not found")
-			return
-		}
-		writeInternalError(w, err)
-		return
-	}
-	if !user.IsAdmin && (user.DepartmentID == nil || *user.DepartmentID != c.DepartmentID) {
-		writeError(w, http.StatusNotFound, "not found")
-		return
-	}
-
-	var body struct {
-		Phase string `json:"phase"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !urlStatusAllowed[body.Phase] || body.Phase == "" {
-		writeError(w, http.StatusBadRequest, "phase is required and must be one of: requested, uplift, suspended, internal")
-		return
-	}
-
-	found, err := h.store.UpdateCaseURLPhase(r.Context(), uint(id), uint(urlID), body.Phase)
-	if err != nil {
-		writeInternalError(w, err)
-		return
-	}
-	if !found {
-		writeError(w, http.StatusNotFound, "not found")
-		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -371,11 +308,11 @@ func (h *Handlers) AddCaseURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		URL   string `json:"url"`
-		Phase string `json:"phase"`
+		URL    string `json:"url"`
+		Status string `json:"status"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" || !urlStatusAllowed[body.Phase] || body.Phase == "" {
-		writeError(w, http.StatusBadRequest, "url and phase are required, phase must be one of: requested, uplift, suspended, internal")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" || !urlStatusAllowed[body.Status] || body.Status == "" {
+		writeError(w, http.StatusBadRequest, "url and status are required, status must be one of: requested, uplift, suspended, internal")
 		return
 	}
 	normalized, err := urlnorm.Normalize(body.URL)
@@ -393,12 +330,66 @@ func (h *Handlers) AddCaseURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cu, err := h.store.AddURLToCase(r.Context(), uint(id), u.ID, body.Phase)
+	cu, err := h.store.AddURLToCase(r.Context(), uint(id), u.ID, body.Status)
 	if err != nil {
 		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, cu)
+}
+
+// UpdateCaseURLStatus sets one url's own Status within a case — the
+// per-domain field a case's urls can diverge on. Ownership check identical
+// to AddCaseURL's.
+func (h *Handlers) UpdateCaseURLStatus(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	urlID, err := strconv.ParseUint(chi.URLParam(r, "url_id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid url_id")
+		return
+	}
+
+	c, err := h.store.GetCase(r.Context(), uint(id))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		writeInternalError(w, err)
+		return
+	}
+	if !user.IsAdmin && (user.DepartmentID == nil || *user.DepartmentID != c.DepartmentID) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	var body struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !urlStatusAllowed[body.Status] || body.Status == "" {
+		writeError(w, http.StatusBadRequest, "status is required and must be one of: requested, uplift, suspended, internal")
+		return
+	}
+
+	found, err := h.store.UpdateCaseURLStatus(r.Context(), uint(id), uint(urlID), body.Status)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ListCaseLetters is the Docs page's data source — every CaseLetter across
@@ -552,6 +543,53 @@ func (h *Handlers) UpdateCaseLetter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	found, err := h.store.UpdateCaseLetterFields(r.Context(), uint(id), uint(letterID), fields)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DeleteCaseLetter removes one of a case's letters (Notice or Memo) — the
+// Docs page's per-row delete action. Ownership: same case-DepartmentID
+// check as UpdateCaseLetter; the store call further scopes by (case,
+// letter) so a letter can't be deleted through the wrong case id.
+func (h *Handlers) DeleteCaseLetter(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	letterID, err := strconv.ParseUint(chi.URLParam(r, "letter_id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid letter_id")
+		return
+	}
+
+	c, err := h.store.GetCase(r.Context(), uint(id))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		writeInternalError(w, err)
+		return
+	}
+	if !user.IsAdmin && (user.DepartmentID == nil || *user.DepartmentID != c.DepartmentID) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	found, err := h.store.DeleteCaseLetter(r.Context(), uint(id), uint(letterID))
 	if err != nil {
 		writeInternalError(w, err)
 		return

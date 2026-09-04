@@ -346,17 +346,15 @@ type Store interface {
 // CaseStore is the cases/case_letters/case_urls aggregate.
 type CaseStore interface {
 	// CreateCase creates a Case for departmentID and links it to urlID
-	// with the given phase (requested | uplift | suspended) via CaseURL —
-	// Case.Status is set to the same phase and CaseURL.Phase is kept in
-	// sync with it at creation (they only diverge later, if someone calls
-	// UpdateCaseURLPhase for this one url). opts optionally sets
-	// Case.AgencyID/DueDate at creation time. Returns the created Case
-	// (zero letters — AddCaseLetter is separate).
-	CreateCase(ctx context.Context, departmentID, urlID uint, phase string, opts CaseCreateOptions) (Case, error)
+	// with the given status (requested | uplift | suspended) via CaseURL —
+	// status is per-domain (CaseURL.Status), not stored anywhere on Case
+	// itself. opts optionally sets Case.AgencyID/DueDate at creation time.
+	// Returns the created Case (zero letters — AddCaseLetter is separate).
+	CreateCase(ctx context.Context, departmentID, urlID uint, status string, opts CaseCreateOptions) (Case, error)
 	// AddCaseLetter appends one CaseLetter row to an existing case.
 	AddCaseLetter(ctx context.Context, letter CaseLetter) (CaseLetter, error)
 	// ListCasesForURL returns every case covering urlValue, each with its
-	// letters (newest LetterDate first) and this url's own Phase from
+	// letters (newest LetterDate first) and this url's own Status from
 	// case_urls — ownership scoping happens at the handler layer
 	// (requireDomainOwnership), same split as ListOffencesByURL/
 	// AttachOffenceToURL already use.
@@ -366,27 +364,27 @@ type CaseStore interface {
 	// how many URLs it covers via case_urls), or gorm.ErrRecordNotFound.
 	GetCase(ctx context.Context, id uint) (Case, error)
 	// AddURLToCase links an additional URL to an existing case via CaseURL
-	// — the "N URLs in one Notice" shape CreateCase alone can't build,
-	// since it only ever links the one URL a case is opened for. Callers
-	// building a batch (e.g. adding several domains under one case) call
-	// CreateCase once for the first URL, then this for each of the rest.
-	AddURLToCase(ctx context.Context, caseID, urlID uint, phase string) (CaseURL, error)
+	// with its own status — the "N URLs in one Notice" shape CreateCase
+	// alone can't build, since it only ever links the one URL a case is
+	// opened for. Callers building a batch (e.g. adding several domains
+	// under one case) call CreateCase once for the first URL, then this for
+	// each of the rest.
+	AddURLToCase(ctx context.Context, caseID, urlID uint, status string) (CaseURL, error)
 	// ListCaseURLIDs returns every URL id a case covers, via case_urls —
 	// used to fan a case-level DueDate change out to a per-url due-date-
 	// reached notification task for each url the case links.
 	ListCaseURLIDs(ctx context.Context, caseID uint) ([]uint, error)
-	// UpdateCaseURLPhase sets this one (case, url) pair's own Phase —
-	// the per-domain override of Case.Status, for the domain(s) within a
-	// case that diverge from the rest (see CaseURL's doc comment). phase is
+	// UpdateCaseURLStatus sets this one (case, url) pair's own Status, for
+	// the domain(s) within a case that diverge from the rest. status is
 	// validated against urlStatusAllowed by the caller (handler layer).
 	// False if no such CaseURL row exists.
-	UpdateCaseURLPhase(ctx context.Context, caseID, urlID uint, phase string) (bool, error)
+	UpdateCaseURLStatus(ctx context.Context, caseID, urlID uint, status string) (bool, error)
 	// UpdateCaseFields applies a partial update to a case's shared fields
-	// (AgencyID/Status/DueDate/RequestedAt), mirroring the old
-	// UpdateURLCaseFields' double-pointer clear-vs-untouched semantics.
-	// Ownership (departmentID must own caseID) is checked by the caller
-	// (handler layer, matching AddCaseLetter/AddCaseURL's existing direct
-	// check), not here. False if caseID doesn't exist.
+	// (AgencyID/DueDate/RequestedAt), mirroring the old UpdateURLCaseFields'
+	// double-pointer clear-vs-untouched semantics. Ownership (departmentID
+	// must own caseID) is checked by the caller (handler layer, matching
+	// AddCaseLetter/AddCaseURL's existing direct check), not here. False if
+	// caseID doesn't exist.
 	UpdateCaseFields(ctx context.Context, departmentID, caseID uint, fields CaseFields) (bool, error)
 	// ListCaseLetters returns every CaseLetter across every department,
 	// newest LetterDate first, each carrying its case's department and
@@ -406,17 +404,20 @@ type CaseStore interface {
 
 	// UpdateCaseLetterFields applies a partial update to one CaseLetter's
 	// fields, scoped by (caseID, letterID) so a letter can't be edited
-	// through a case it doesn't belong to — same defense-in-depth scoping
-	// UpdateCaseURLPhase uses. Ownership (departmentID owns caseID) is
-	// checked by the caller (handler layer), same as UpdateCaseFields.
-	// False if no such (case, letter) pair exists.
+	// through a case it doesn't belong to. Ownership (departmentID owns
+	// caseID) is checked by the caller (handler layer), same as
+	// UpdateCaseFields. False if no such (case, letter) pair exists.
 	UpdateCaseLetterFields(ctx context.Context, caseID, letterID uint, fields CaseLetterFields) (bool, error)
+	// DeleteCaseLetter removes one CaseLetter, scoped by (caseID, letterID)
+	// same as UpdateCaseLetterFields. False if no such (case, letter) pair
+	// exists.
+	DeleteCaseLetter(ctx context.Context, caseID, letterID uint) (bool, error)
 }
 
-// CaseWithLetters is Case plus its Letters and this url's Phase — the read
+// CaseWithLetters is Case plus its Letters and this url's Status — the read
 // shape ListCasesForURL returns. Not a persisted table.
 type CaseWithLetters struct {
 	Case
-	Phase   string       `json:"phase"`
+	Status  string       `json:"status"`
 	Letters []CaseLetter `json:"letters"`
 }

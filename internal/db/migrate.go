@@ -198,15 +198,14 @@ func BackfillURLCaseMetadataIntoCases(ctx context.Context, database *gorm.DB) er
 				continue
 			}
 
-			phase := row.Status
-			if phase == "" {
-				phase = "requested"
+			status := row.Status
+			if status == "" {
+				status = "requested"
 			}
 			for _, deptID := range deptIDs {
 				c := Case{
 					DepartmentID: deptID,
 					AgencyID:     row.AgencyID,
-					Status:       row.Status,
 					DueDate:      row.DueDate,
 					RequestedAt:  row.RequestedAt,
 				}
@@ -214,7 +213,7 @@ func BackfillURLCaseMetadataIntoCases(ctx context.Context, database *gorm.DB) er
 					if err := tx.Create(&c).Error; err != nil {
 						return err
 					}
-					return tx.Create(&CaseURL{CaseID: c.ID, URLID: row.ID, Phase: phase}).Error
+					return tx.Create(&CaseURL{CaseID: c.ID, URLID: row.ID, Status: status}).Error
 				}); err != nil {
 					return fmt.Errorf("backfilling case for url id=%d department=%d: %w", row.ID, deptID, err)
 				}

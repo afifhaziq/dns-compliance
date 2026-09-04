@@ -19,7 +19,7 @@ func TestCasesByURL_OwningDepartment(t *testing.T) {
 	store.urls = append(store.urls, u)
 	store.departmentURLs = append(store.departmentURLs, db.DepartmentURL{DepartmentID: 1, URLID: u.ID, Enabled: true})
 	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
-	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID, Phase: "requested"})
+	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID})
 	cookie := deptCookie(store, 1)
 	r := setupRouter(store, nil)
 
@@ -35,8 +35,8 @@ func TestCasesByURL_OwningDepartment(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &cases); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if len(cases) != 1 || cases[0].Phase != "requested" {
-		t.Fatalf("expected 1 case with phase requested, got %+v", cases)
+	if len(cases) != 1 || cases[0].ID != 1 {
+		t.Fatalf("expected 1 case, got %+v", cases)
 	}
 }
 
@@ -68,7 +68,7 @@ func TestCreateCaseForURL_UsesCallersOwnDepartment(t *testing.T) {
 	cookie := deptCookie(store, 1)
 	r := setupRouter(store, nil)
 
-	body, _ := json.Marshal(map[string]string{"phase": "requested"})
+	body, _ := json.Marshal(map[string]string{"status": "requested"})
 	req := httptest.NewRequest(http.MethodPost, "/api/cases/example.com", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
@@ -95,7 +95,7 @@ func TestCreateCaseForURL_NonOwningDepartment404(t *testing.T) {
 	cookie := deptCookie(store, 2)
 	r := setupRouter(store, nil)
 
-	body, _ := json.Marshal(map[string]string{"phase": "requested"})
+	body, _ := json.Marshal(map[string]string{"status": "requested"})
 	req := httptest.NewRequest(http.MethodPost, "/api/cases/example.com", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
@@ -107,7 +107,7 @@ func TestCreateCaseForURL_NonOwningDepartment404(t *testing.T) {
 	}
 }
 
-func TestCreateCaseForURL_InvalidPhaseRejected(t *testing.T) {
+func TestCreateCaseForURL_InvalidStatusRejected(t *testing.T) {
 	store := &fullMockStore{}
 	u := db.URL{ID: 1, URL: "example.com"}
 	store.urls = append(store.urls, u)
@@ -115,7 +115,7 @@ func TestCreateCaseForURL_InvalidPhaseRejected(t *testing.T) {
 	cookie := deptCookie(store, 1)
 	r := setupRouter(store, nil)
 
-	body, _ := json.Marshal(map[string]string{"phase": "bogus"})
+	body, _ := json.Marshal(map[string]string{"status": "bogus"})
 	req := httptest.NewRequest(http.MethodPost, "/api/cases/example.com", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
@@ -133,7 +133,7 @@ func TestAddCaseLetter_OwningDepartmentSucceeds(t *testing.T) {
 	store.urls = append(store.urls, u)
 	store.departmentURLs = append(store.departmentURLs, db.DepartmentURL{DepartmentID: 1, URLID: u.ID, Enabled: true})
 	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
-	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID, Phase: "requested"})
+	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID})
 	cookie := deptCookie(store, 1)
 	r := setupRouter(store, nil)
 
@@ -158,7 +158,7 @@ func TestAddCaseLetter_NonOwningDepartment404(t *testing.T) {
 	store.urls = append(store.urls, u)
 	store.departmentURLs = append(store.departmentURLs, db.DepartmentURL{DepartmentID: 1, URLID: u.ID, Enabled: true})
 	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
-	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID, Phase: "requested"})
+	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID})
 	cookie := deptCookie(store, 2)
 	r := setupRouter(store, nil)
 
@@ -191,7 +191,7 @@ func TestAddCaseLetter_WatchesURLButDoesNotOwnCase404(t *testing.T) {
 		db.DepartmentURL{DepartmentID: 2, URLID: u.ID, Enabled: true},
 	)
 	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
-	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID, Phase: "requested"})
+	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID})
 	cookie := deptCookie(store, 2) // watches the URL, but doesn't own the case
 	r := setupRouter(store, nil)
 
@@ -240,7 +240,7 @@ func TestUpdateCase_OwningDepartmentSetsFields(t *testing.T) {
 	r := setupRouter(store, nil)
 
 	body, _ := json.Marshal(map[string]interface{}{
-		"agency_id": 7, "status": "uplift", "due_date": "2026-01-15T00:00:00Z", "requested_at": "2026-01-01T00:00:00Z",
+		"agency_id": 7, "due_date": "2026-01-15T00:00:00Z", "requested_at": "2026-01-01T00:00:00Z",
 	})
 	req := httptest.NewRequest(http.MethodPatch, "/api/cases/1", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -255,9 +255,6 @@ func TestUpdateCase_OwningDepartmentSetsFields(t *testing.T) {
 	if c.AgencyID == nil || *c.AgencyID != 7 {
 		t.Fatalf("expected agency_id to be set, got %+v", c)
 	}
-	if c.Status != "uplift" {
-		t.Fatalf("expected status to be set, got %q", c.Status)
-	}
 	if c.DueDate == nil || c.RequestedAt == nil {
 		t.Fatalf("expected due_date/requested_at to be set, got %+v", c)
 	}
@@ -271,8 +268,8 @@ func TestUpdateCase_ReschedulesDueDateForEveryCaseURL(t *testing.T) {
 	store := &fullMockStore{
 		cases: []db.Case{{ID: 1, DepartmentID: 1}},
 		caseURLs: []db.CaseURL{
-			{CaseID: 1, URLID: 10, Phase: "requested"},
-			{CaseID: 1, URLID: 11, Phase: "requested"},
+			{CaseID: 1, URLID: 10},
+			{CaseID: 1, URLID: 11},
 		},
 	}
 	cookie := deptCookie(store, 1)
@@ -319,7 +316,7 @@ func TestUpdateCase_ReschedulesDueDateForEveryCaseURL(t *testing.T) {
 func TestUpdateCase_StatusOnlyUpdateDoesNotRescheduleDueDate(t *testing.T) {
 	store := &fullMockStore{
 		cases:    []db.Case{{ID: 1, DepartmentID: 1}},
-		caseURLs: []db.CaseURL{{CaseID: 1, URLID: 10, Phase: "requested"}},
+		caseURLs: []db.CaseURL{{CaseID: 1, URLID: 10}},
 	}
 	cookie := deptCookie(store, 1)
 	notifier := &fakeNotifier{}
@@ -381,7 +378,7 @@ func TestUpdateCase_NonOwningDepartment404(t *testing.T) {
 	cookie := deptCookie(store, 2)
 	r := setupRouter(store, nil)
 
-	body, _ := json.Marshal(map[string]string{"status": "uplift"})
+	body, _ := json.Marshal(map[string]interface{}{"agency_id": 7})
 	req := httptest.NewRequest(http.MethodPatch, "/api/cases/1", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
@@ -391,25 +388,8 @@ func TestUpdateCase_NonOwningDepartment404(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
-	if store.cases[0].Status != "" {
+	if store.cases[0].AgencyID != nil {
 		t.Fatalf("expected case to remain untouched, got %+v", store.cases[0])
-	}
-}
-
-func TestUpdateCase_InvalidStatusReturns400(t *testing.T) {
-	store := &fullMockStore{cases: []db.Case{{ID: 1, DepartmentID: 1}}}
-	cookie := deptCookie(store, 1)
-	r := setupRouter(store, nil)
-
-	body, _ := json.Marshal(map[string]string{"status": "bogus"})
-	req := httptest.NewRequest(http.MethodPatch, "/api/cases/1", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(cookie)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -431,19 +411,19 @@ func TestUpdateCase_UnknownCase404(t *testing.T) {
 }
 
 // PATCH /api/cases/{id}/urls/{url_id} — ownership identical to AddCaseURL's,
-// plus phase validation.
+// plus status validation.
 
-func TestUpdateCaseURLPhase_OwningDepartmentSucceeds(t *testing.T) {
+func TestUpdateCaseURLStatus_OwningDepartmentSucceeds(t *testing.T) {
 	u := db.URL{ID: 1, URL: "example.com"}
 	store := &fullMockStore{
 		urls:     []db.URL{u},
 		cases:    []db.Case{{ID: 1, DepartmentID: 1}},
-		caseURLs: []db.CaseURL{{CaseID: 1, URLID: u.ID, Phase: "requested"}},
+		caseURLs: []db.CaseURL{{CaseID: 1, URLID: u.ID, Status: "requested"}},
 	}
 	cookie := deptCookie(store, 1)
 	r := setupRouter(store, nil)
 
-	body, _ := json.Marshal(map[string]string{"phase": "uplift"})
+	body, _ := json.Marshal(map[string]string{"status": "uplift"})
 	req := httptest.NewRequest(http.MethodPatch, "/api/cases/1/urls/1", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
@@ -453,22 +433,22 @@ func TestUpdateCaseURLPhase_OwningDepartmentSucceeds(t *testing.T) {
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
 	}
-	if store.caseURLs[0].Phase != "uplift" {
-		t.Fatalf("expected phase to be updated, got %q", store.caseURLs[0].Phase)
+	if store.caseURLs[0].Status != "uplift" {
+		t.Fatalf("expected status to be updated, got %q", store.caseURLs[0].Status)
 	}
 }
 
-func TestUpdateCaseURLPhase_NonOwningDepartment404(t *testing.T) {
+func TestUpdateCaseURLStatus_NonOwningDepartment404(t *testing.T) {
 	u := db.URL{ID: 1, URL: "example.com"}
 	store := &fullMockStore{
 		urls:     []db.URL{u},
 		cases:    []db.Case{{ID: 1, DepartmentID: 1}},
-		caseURLs: []db.CaseURL{{CaseID: 1, URLID: u.ID, Phase: "requested"}},
+		caseURLs: []db.CaseURL{{CaseID: 1, URLID: u.ID, Status: "requested"}},
 	}
 	cookie := deptCookie(store, 2)
 	r := setupRouter(store, nil)
 
-	body, _ := json.Marshal(map[string]string{"phase": "uplift"})
+	body, _ := json.Marshal(map[string]string{"status": "uplift"})
 	req := httptest.NewRequest(http.MethodPatch, "/api/cases/1/urls/1", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
@@ -478,22 +458,22 @@ func TestUpdateCaseURLPhase_NonOwningDepartment404(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
-	if store.caseURLs[0].Phase != "requested" {
-		t.Fatalf("expected phase to remain untouched, got %q", store.caseURLs[0].Phase)
+	if store.caseURLs[0].Status != "requested" {
+		t.Fatalf("expected status to remain untouched, got %q", store.caseURLs[0].Status)
 	}
 }
 
-func TestUpdateCaseURLPhase_InvalidPhaseReturns400(t *testing.T) {
+func TestUpdateCaseURLStatus_InvalidStatusReturns400(t *testing.T) {
 	u := db.URL{ID: 1, URL: "example.com"}
 	store := &fullMockStore{
 		urls:     []db.URL{u},
 		cases:    []db.Case{{ID: 1, DepartmentID: 1}},
-		caseURLs: []db.CaseURL{{CaseID: 1, URLID: u.ID, Phase: "requested"}},
+		caseURLs: []db.CaseURL{{CaseID: 1, URLID: u.ID, Status: "requested"}},
 	}
 	cookie := deptCookie(store, 1)
 	r := setupRouter(store, nil)
 
-	body, _ := json.Marshal(map[string]string{"phase": "bogus"})
+	body, _ := json.Marshal(map[string]string{"status": "bogus"})
 	req := httptest.NewRequest(http.MethodPatch, "/api/cases/1/urls/1", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
@@ -505,14 +485,14 @@ func TestUpdateCaseURLPhase_InvalidPhaseReturns400(t *testing.T) {
 	}
 }
 
-func TestUpdateCaseURLPhase_UnknownPairReturns404(t *testing.T) {
+func TestUpdateCaseURLStatus_UnknownPairReturns404(t *testing.T) {
 	store := &fullMockStore{
 		cases: []db.Case{{ID: 1, DepartmentID: 1}},
 	}
 	cookie := deptCookie(store, 1)
 	r := setupRouter(store, nil)
 
-	body, _ := json.Marshal(map[string]string{"phase": "uplift"})
+	body, _ := json.Marshal(map[string]string{"status": "uplift"})
 	req := httptest.NewRequest(http.MethodPatch, "/api/cases/1/urls/999", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
@@ -530,12 +510,12 @@ func TestListCaseSummaries_NonAdminScopedToOwnDepartment(t *testing.T) {
 	uB := db.URL{ID: 2, URL: "summaries-b.com"}
 	store.urls = append(store.urls, uA, uB)
 	store.cases = append(store.cases,
-		db.Case{ID: 1, DepartmentID: 1, Status: "requested"},
-		db.Case{ID: 2, DepartmentID: 2, Status: "requested"},
+		db.Case{ID: 1, DepartmentID: 1},
+		db.Case{ID: 2, DepartmentID: 2},
 	)
 	store.caseURLs = append(store.caseURLs,
-		db.CaseURL{CaseID: 1, URLID: uA.ID, Phase: "requested"},
-		db.CaseURL{CaseID: 2, URLID: uB.ID, Phase: "requested"},
+		db.CaseURL{CaseID: 1, URLID: uA.ID, Status: "requested"},
+		db.CaseURL{CaseID: 2, URLID: uB.ID, Status: "requested"},
 	)
 	cookie := deptCookie(store, 1)
 	r := setupRouter(store, nil)
@@ -563,12 +543,12 @@ func TestListCaseSummaries_AdminSeesGlobal(t *testing.T) {
 	uB := db.URL{ID: 2, URL: "summaries-b.com"}
 	store.urls = append(store.urls, uA, uB)
 	store.cases = append(store.cases,
-		db.Case{ID: 1, DepartmentID: 1, Status: "requested"},
-		db.Case{ID: 2, DepartmentID: 2, Status: "requested"},
+		db.Case{ID: 1, DepartmentID: 1},
+		db.Case{ID: 2, DepartmentID: 2},
 	)
 	store.caseURLs = append(store.caseURLs,
-		db.CaseURL{CaseID: 1, URLID: uA.ID, Phase: "requested"},
-		db.CaseURL{CaseID: 2, URLID: uB.ID, Phase: "requested"},
+		db.CaseURL{CaseID: 1, URLID: uA.ID, Status: "requested"},
+		db.CaseURL{CaseID: 2, URLID: uB.ID, Status: "requested"},
 	)
 	cookie := adminCookie(store)
 	r := setupRouter(store, nil)
@@ -595,7 +575,7 @@ func TestUpdateCaseLetter_PartialUpdate(t *testing.T) {
 	u := db.URL{ID: 1, URL: "update-letter.com"}
 	store.urls = append(store.urls, u)
 	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
-	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID, Phase: "requested"})
+	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID})
 	store.caseLetters = append(store.caseLetters, db.CaseLetter{ID: 1, CaseID: 1, Type: "Notice", Subject: "orig", WorkflowStatus: "Draft"})
 	cookie := deptCookie(store, 1)
 	r := setupRouter(store, nil)
@@ -623,7 +603,7 @@ func TestUpdateCaseLetter_NonOwningDepartment404(t *testing.T) {
 	u := db.URL{ID: 1, URL: "update-letter-2.com"}
 	store.urls = append(store.urls, u)
 	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
-	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID, Phase: "requested"})
+	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID})
 	store.caseLetters = append(store.caseLetters, db.CaseLetter{ID: 1, CaseID: 1, Type: "Notice"})
 	cookie := deptCookie(store, 2)
 	r := setupRouter(store, nil)

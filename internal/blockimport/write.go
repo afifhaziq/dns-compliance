@@ -23,11 +23,11 @@ type ImportSummary struct {
 	CategoriesObserved map[string]int // raw Category/Offence value -> row count, for visibility only
 }
 
-// mapCRDStatus maps the spreadsheet's Status values onto case_urls.phase's
+// mapCRDStatus maps the spreadsheet's Status values onto case_urls.status's
 // vocabulary (requested | uplift | suspended).
 //
 // ponytail: "Not Blocked"/"Not blocked"/empty map to "requested" as a
-// placeholder — case_urls.phase is NOT NULL and there's no clean mapping for
+// placeholder — case_urls.status is NOT NULL and there's no clean mapping for
 // these per docs/blocking-list-migration-clarifications.md Question 1
 // (open, pending product sign-off). Revisit once that lands.
 func mapCRDStatus(raw string) string {
@@ -59,7 +59,7 @@ func createURL(ctx context.Context, gdb *gorm.DB, rawURL string) (db.URL, error)
 
 // WriteCRDCases creates one Case (DepartmentID = the CRD department's ID)
 // per CollapsedCase, one CaseLetter (Type: "Notice") carrying the reference
-// number, and one CaseURL per domain (Phase mapped from the domain's Status
+// number, and one CaseURL per domain (Status mapped from the domain's Status
 // via mapCRDStatus). Does NOT create Category/Citation/URLOffence rows — see
 // the plan's Global Constraints. dryRun=true does every lookup/validation
 // but wraps all writes in a transaction that's always rolled back, so
@@ -103,7 +103,7 @@ func WriteCRDCases(ctx context.Context, gdb *gorm.DB, crdDeptID uint, cases []Co
 			// normalize to the same URL row (e.g. "http://foo.com" and
 			// "https://foo.com") even though CollapseCRDRows only dedupes
 			// on exact raw string — track by URLID here too, last-write-wins
-			// on Phase, to avoid a duplicate (case_id, url_id) insert.
+			// on Status, to avoid a duplicate (case_id, url_id) insert.
 			caseURLByID := make(map[uint]*db.CaseURL)
 			for _, d := range cc.Domains {
 				u, err := createURL(ctx, tx, d.RawDomain)
@@ -112,13 +112,13 @@ func WriteCRDCases(ctx context.Context, gdb *gorm.DB, crdDeptID uint, cases []Co
 					continue
 				}
 				if existing, dup := caseURLByID[u.ID]; dup {
-					existing.Phase = mapCRDStatus(d.Status)
+					existing.Status = mapCRDStatus(d.Status)
 					continue
 				}
 				caseURLByID[u.ID] = &db.CaseURL{
 					CaseID: c.ID,
 					URLID:  u.ID,
-					Phase:  mapCRDStatus(d.Status),
+					Status: mapCRDStatus(d.Status),
 				}
 			}
 			for _, caseURL := range caseURLByID {

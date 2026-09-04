@@ -14,14 +14,14 @@ import {
 } from '@tanstack/react-table'
 import { GripIcon } from '@/components/ui/grip'
 import { FileText } from 'lucide-react'
-import { PHASE_OPTIONS as CASE_PHASE_OPTIONS } from '@/lib/case-options'
+import { CASE_STATUS_OPTIONS } from '@/lib/case-options'
 import { ChevronRight } from '@/components/ui/chevron-right'
 import { SquarePenIcon } from '@/components/ui/square-pen'
 import { DataGridTableRowExpand } from '@/components/reui/data-grid/data-grid-table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled } from '../api/urls'
 import { normalizeForClient } from './__root'
-import { createCase, addCaseLetter, addUrlToCase, updateCase, updateCaseLetter, fetchCaseSummaries, updateCaseURLPhase } from '../api/cases'
+import { createCase, addCaseLetter, addUrlToCase, updateCase, updateCaseURLStatus, updateCaseLetter, fetchCaseSummaries } from '../api/cases'
 import { fetchAgencies } from '../api/agencies'
 import { fetchDepartmentsOpen } from '../api/departments'
 import { fetchDueDatePresets } from '../api/due-date-presets'
@@ -62,7 +62,7 @@ import {
 
 export const Route = createFileRoute('/urls')({
   validateSearch: (search: Record<string, unknown>): { view: 'domains' | 'cases' } => ({
-    view: search.view === 'cases' ? 'cases' : 'domains',
+    view: search.view === 'domains' ? 'domains' : 'cases',
   }),
   component: URLsPage,
 })
@@ -324,12 +324,12 @@ const MultiOffencePicker = forwardRef<MultiOffencePickerHandle, {
 // no standalone "add to watchlist" path on this page any more. Every domain
 // entered here is attached to one shared case (case_urls is many-to-many —
 // matches CMOD's real "N URLs in one Notice" pattern): the case is opened on
-// the first URL, the rest are attached via addUrlToCase. Phase sets both
-// Case.status (the case-level default) and every attached CaseURL.Phase at
-// creation, kept in sync until someone later diverges one domain via
-// CaseHistoryDialog's per-domain override; Agency/Due Date only ever seed
-// the case-level defaults (db.CaseCreateOptions carries no per-domain
-// variant of these two).
+// the first URL, the rest are attached via addUrlToCase. Status is per-url
+// (CaseURL.Status) — this dialog's Status field sets the initial status for
+// every url created in this submission (create mode: all of them; edit
+// mode: only newly-added domains, since an existing domain's own status is
+// edited inline in the grid, not here). Agency/Due Date remain case-level
+// defaults.
 function AddUrlDialog({
   open,
   onClose,
@@ -353,7 +353,7 @@ function AddUrlDialog({
   const [offences, setOffences] = useState<StagedOffence[]>([])
   const [agencyId, setAgencyId] = useState<number | ''>('')
   const [dueDurationMinutes, setDueDurationMinutes] = useState('1440')
-  const [phase, setPhase] = useState('requested')
+  const [status, setStatus] = useState('requested')
   const [createLetter, setCreateLetter] = useState(false)
   // CRD doesn't need the full letter form to track a case — External/
   // Internal ref alone (always visible, outside the Create Letter switch)
@@ -381,7 +381,7 @@ function AddUrlDialog({
   const reset = () => {
     setValue(''); setOffences([]); setError(null)
     setAgencyId(''); setDueDurationMinutes('1440')
-    setPhase('requested'); setCreateLetter(false)
+    setStatus('requested'); setCreateLetter(false)
     setReferenceNumberExternal(''); setReferenceNumberInternal('')
     setRecipient(''); setNoticeSubject(''); setMemoSubject(''); setMemoReferenceNumberInternal('')
     setRequestor(''); setWorkflowStatus('')
@@ -395,7 +395,7 @@ function AddUrlDialog({
       setOffences([])
       setAgencyId(editing.agency_id ?? '')
       setDueDurationMinutes('') // existing due date shown read-only; picking a duration replaces it (see the read-only line in the form below)
-      setPhase(editing.status || 'requested')
+      setStatus('requested') // status is per-domain now; this only seeds newly-added domains, not the case's existing ones
       setCreateLetter(true)
       setReferenceNumberExternal(editing.notice_reference_number_external ?? '')
       setReferenceNumberInternal(editing.notice_reference_number_internal ?? '')
@@ -436,7 +436,6 @@ function AddUrlDialog({
     try {
       if (editing) {
         await updateCase(editing.id, {
-          status: phase,
           agencyId: agencyId === '' ? null : agencyId,
           ...(caseOpts.dueDate ? { dueDate: caseOpts.dueDate } : {}),
         })
@@ -454,7 +453,7 @@ function AddUrlDialog({
         // get-or-created first (mirrors create mode below) — addUrlToCase
         // 404s on a url that doesn't already exist as a db.URL row.
         const createdDomains = await Promise.all(newDomains.map(d => createUrl(d)))
-        await Promise.all(createdDomains.map(u => addUrlToCase(editing.id, u.url, phase)))
+        await Promise.all(createdDomains.map(u => addUrlToCase(editing.id, u.url, status)))
 
         // Unconditional (not `|| undefined`) so a field the user blanked out
         // actually reaches updateCaseLetter's PATCH body instead of being
@@ -518,8 +517,8 @@ function AddUrlDialog({
 
       const created = await Promise.all(domains.map(d => createUrl(d)))
       const caseWork = (async () => {
-        const c = await createCase(created[0].url, phase, caseOpts)
-        await Promise.all(created.slice(1).map(u => addUrlToCase(c.id, u.url, phase)))
+        const c = await createCase(created[0].url, status, caseOpts)
+        await Promise.all(created.slice(1).map(u => addUrlToCase(c.id, u.url, status)))
         // External/Internal ref are recorded regardless of the "Create
         // Letter" switch — CRD needs current_reference_number tracked even
         // when nobody fills in the fuller letter detail below.
@@ -618,11 +617,11 @@ function AddUrlDialog({
             </div>
 
             <div className="form-field">
-              <label className="form-label" id="add-case-phase-label">Phase</label>
-              <Select value={phase} onValueChange={setPhase} disabled={loading}>
-                <SelectTrigger aria-labelledby="add-case-phase-label" placeholder="—" className="w-full" />
+              <label className="form-label" id="add-case-status-label">Status</label>
+              <Select value={status} onValueChange={setStatus} disabled={loading}>
+                <SelectTrigger aria-labelledby="add-case-status-label" placeholder="—" className="w-full" />
                 <SelectContent>
-                  {CASE_PHASE_OPTIONS.map((opt, i) => (
+                  {CASE_STATUS_OPTIONS.map((opt, i) => (
                     <SelectItem key={opt.value} index={i} value={opt.value}>{opt.label}</SelectItem>
                   ))}
                 </SelectContent>
@@ -983,6 +982,20 @@ const DUE_DATE_FMT = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Kuala_Lumpur',
 })
 
+// Renders a table cell for a multi-valued column (e.g. one of the offence
+// sub-fields, which a domain can have several of) as one line per instance,
+// wrapping the row's height rather than truncating — shared by the
+// Domain-view and Cases-view offence columns below.
+function joinedCell(values: (string | undefined)[]) {
+  const list = values.filter((v): v is string => !!v)
+  if (list.length === 0) return <span className="dns-name">—</span>
+  return (
+    <div className="flex flex-col gap-1">
+      {list.map((v, i) => <span key={i} className="dns-name">{v}</span>)}
+    </div>
+  )
+}
+
 const PAGE_SIZE = 25
 
 const IS_ONLY = [{ value: 'is', label: 'is' }]
@@ -1127,14 +1140,15 @@ function URLsPage() {
     }
   }, [])
 
-  // `status` is derived from the url's latest Case (see internal/db/CLAUDE.md),
-  // so editing it patches that case via case_id, not a PATCH /api/urls/{id}.
+  // `status` is derived from the url's own CaseURL row within its latest
+  // Case (see internal/db/CLAUDE.md), so editing it patches that (case, url)
+  // pair via case_id, not a PATCH /api/urls/{id}.
   const handleStatusChange = useCallback(async (entry: URLEntry, status: string) => {
     if (!entry.case_id) return
     const prevStatus = entry.status
     setUrls(prev => prev.map(u => u.id === entry.id ? { ...u, status } : u))
     try {
-      await updateCase(entry.case_id, { status })
+      await updateCaseURLStatus(entry.case_id, entry.id, status)
     } catch {
       setUrls(prev => prev.map(u => u.id === entry.id ? { ...u, status: prevStatus } : u))
     }
@@ -1147,29 +1161,21 @@ function URLsPage() {
     load()
   }
 
-  const handleCaseStatusChange = useCallback(async (caseId: number, status: string) => {
-    const prev = caseSummaries.find(c => c.id === caseId)?.status
-    setCaseSummaries(prevList => prevList.map(c => c.id === caseId ? { ...c, status } : c))
-    try {
-      await updateCase(caseId, { status })
-    } catch {
-      setCaseSummaries(prevList => prevList.map(c => c.id === caseId ? { ...c, status: prev } : c))
-    }
-  }, [caseSummaries])
-
-  const handlePhaseChange = useCallback(async (caseId: number, domain: CaseSummaryDomain, phase: string) => {
-    const prevPhase = domain.phase
+  // Status is per-domain (CaseURL.Status) — updating one domain's status
+  // within a case must not touch its sibling domains' own status values.
+  const handleDomainStatusChange = useCallback(async (caseId: number, urlId: number, status: string) => {
+    const prev = caseSummaries.find(c => c.id === caseId)?.domains.find(d => d.url_id === urlId)?.status
     setCaseSummaries(prevList => prevList.map(c => c.id === caseId
-      ? { ...c, domains: c.domains.map(d => d.url_id === domain.url_id ? { ...d, phase } : d) }
+      ? { ...c, domains: c.domains.map(d => d.url_id === urlId ? { ...d, status } : d) }
       : c))
     try {
-      await updateCaseURLPhase(caseId, domain.url_id, phase)
+      await updateCaseURLStatus(caseId, urlId, status)
     } catch {
       setCaseSummaries(prevList => prevList.map(c => c.id === caseId
-        ? { ...c, domains: c.domains.map(d => d.url_id === domain.url_id ? { ...d, phase: prevPhase } : d) }
+        ? { ...c, domains: c.domains.map(d => d.url_id === urlId ? { ...d, status: prev ?? d.status } : d) }
         : c))
     }
-  }, [])
+  }, [caseSummaries])
 
   const filterFields = useMemo<FilterFieldConfig<string>[]>(() => [
     { key: 'status', label: 'Status', type: 'select', operators: IS_ONLY, options: STATUS_OPTIONS.filter(o => o.value).map(o => ({ value: o.value, label: o.label })) },
@@ -1210,7 +1216,7 @@ function URLsPage() {
       const matchesSearch = !query
         || (c.notice_reference_number_external ?? '').toLowerCase().includes(query)
         || c.domains.some(d => d.url.toLowerCase().includes(query))
-      const matchesStatus = !statusFilter || (c.status ?? '') === statusFilter
+      const matchesStatus = !statusFilter || c.domains.some(d => d.status === statusFilter)
       const matchesDept = !deptFilterName || c.domains.some(d => (urlDeptMap.get(d.url) ?? []).includes(deptFilterName))
       const matchesAgency = !agencyFilter || String(c.agency_id ?? '') === agencyFilter
       return matchesSearch && matchesStatus && matchesDept && matchesAgency
@@ -1285,6 +1291,38 @@ function URLsPage() {
       header: 'Requesting Dept.',
       meta: { headerTitle: 'Requesting Dept.', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
       cell: ({ row }) => <span className="dns-name">{(row.original.requesting_departments ?? []).join(', ') || '—'}</span>,
+    },
+    {
+      id: 'offence_citation',
+      accessorFn: u => (u.offences ?? []).map(o => o.citation).join('; '),
+      size: 220,
+      header: 'Offence Details',
+      meta: { headerTitle: 'Offence Details', headerClassName: 'col-status', cellClassName: 'col-status' },
+      cell: ({ row }) => joinedCell((row.original.offences ?? []).map(o => o.citation)),
+    },
+    {
+      id: 'offence_category',
+      accessorFn: u => (u.offences ?? []).map(o => o.category).join('; '),
+      size: 140,
+      header: 'Category',
+      meta: { headerTitle: 'Category', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => joinedCell((row.original.offences ?? []).map(o => o.category)),
+    },
+    {
+      id: 'offence_element',
+      accessorFn: u => (u.offences ?? []).map(o => o.element ?? '').join('; '),
+      size: 140,
+      header: 'Element',
+      meta: { headerTitle: 'Element', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => joinedCell((row.original.offences ?? []).map(o => o.element)),
+    },
+    {
+      id: 'offence_sub_element',
+      accessorFn: u => (u.offences ?? []).map(o => o.sub_element ?? '').join('; '),
+      size: 140,
+      header: 'Sub-Element',
+      meta: { headerTitle: 'Sub-Element', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => joinedCell((row.original.offences ?? []).map(o => o.sub_element)),
     },
     {
       id: 'status',
@@ -1399,7 +1437,7 @@ function URLsPage() {
   const caseTreeData = useMemo<CaseRow[]>(() => filteredCases.map(summary => ({
     kind: 'case',
     summary,
-    subRows: summary.domains.map(domain => ({ kind: 'domain', caseId: summary.id, status: summary.status ?? '', domain })),
+    subRows: summary.domains.map(domain => ({ kind: 'domain', caseId: summary.id, status: domain.status, domain })),
   })), [filteredCases])
 
   const caseColumns = useMemo<ColumnDef<CaseTreeRow>[]>(() => [
@@ -1433,15 +1471,18 @@ function URLsPage() {
     {
       id: 'status',
       header: 'Status',
-      accessorFn: r => r.kind === 'case' ? (r.summary.status ?? '') : r.status,
+      // Status is per-domain — a case row has no single status of its own
+      // (its domains can each carry a different one), so it's left blank
+      // here and only shown/edited on domain subrows.
+      accessorFn: r => r.kind === 'domain' ? r.status : '',
       meta: { headerTitle: 'Status', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
       cell: ({ row }) => {
         const original = row.original
         if (original.kind === 'case') {
-          return <span className="dns-name">{STATUS_OPTIONS.find(o => o.value === (original.summary.status ?? ''))?.label ?? '—'}</span>
+          return <span className="dns-name">—</span>
         }
         return (
-          <Select value={original.status} onValueChange={v => handleCaseStatusChange(original.caseId, v)}>
+          <Select value={original.status} onValueChange={v => handleDomainStatusChange(original.caseId, original.domain.url_id, v)}>
             <SelectTrigger aria-label={`Status for ${original.domain.url}`} placeholder="—" className="w-full" />
             <SelectContent>
               {STATUS_OPTIONS.map((opt, i) => (
@@ -1453,23 +1494,45 @@ function URLsPage() {
       },
     },
     {
-      id: 'phase',
-      header: 'Phase',
-      accessorFn: r => r.kind === 'domain' ? r.domain.phase : '',
-      meta: { headerTitle: 'Phase', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      id: 'offence_citation',
+      header: 'Offence Details',
+      // Same reasoning as status above — offences are per-domain, so a case
+      // row (whose domains can each carry different ones) is left blank.
+      accessorFn: r => r.kind === 'domain' ? (r.domain.offences ?? []).map(o => o.citation).join('; ') : '',
+      meta: { headerTitle: 'Offence Details', headerClassName: 'col-status', cellClassName: 'col-status' },
       cell: ({ row }) => {
         const original = row.original
-        if (original.kind !== 'domain') return null
-        return (
-          <Select value={original.domain.phase} onValueChange={v => handlePhaseChange(original.caseId, original.domain, v)}>
-            <SelectTrigger aria-label={`Phase for ${original.domain.url}`} placeholder="—" className="w-full" />
-            <SelectContent>
-              {CASE_PHASE_OPTIONS.map((opt, i) => (
-                <SelectItem key={opt.value} index={i} value={opt.value}>{opt.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )
+        return original.kind === 'case' ? <span className="dns-name">—</span> : joinedCell((original.domain.offences ?? []).map(o => o.citation))
+      },
+    },
+    {
+      id: 'offence_category',
+      header: 'Category',
+      accessorFn: r => r.kind === 'domain' ? (r.domain.offences ?? []).map(o => o.category).join('; ') : '',
+      meta: { headerTitle: 'Category', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => {
+        const original = row.original
+        return original.kind === 'case' ? <span className="dns-name">—</span> : joinedCell((original.domain.offences ?? []).map(o => o.category))
+      },
+    },
+    {
+      id: 'offence_element',
+      header: 'Element',
+      accessorFn: r => r.kind === 'domain' ? (r.domain.offences ?? []).map(o => o.element ?? '').join('; ') : '',
+      meta: { headerTitle: 'Element', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => {
+        const original = row.original
+        return original.kind === 'case' ? <span className="dns-name">—</span> : joinedCell((original.domain.offences ?? []).map(o => o.element))
+      },
+    },
+    {
+      id: 'offence_sub_element',
+      header: 'Sub-Element',
+      accessorFn: r => r.kind === 'domain' ? (r.domain.offences ?? []).map(o => o.sub_element ?? '').join('; ') : '',
+      meta: { headerTitle: 'Sub-Element', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => {
+        const original = row.original
+        return original.kind === 'case' ? <span className="dns-name">—</span> : joinedCell((original.domain.offences ?? []).map(o => o.sub_element))
       },
     },
     {
@@ -1519,7 +1582,7 @@ function URLsPage() {
         const original = row.original
         if (original.kind === 'case') {
           return (
-            <button type="button" className="screenshot-icon-btn" onClick={() => setEditingCase(original.summary)} aria-label={`Edit case #${original.summary.id}`} title="Edit">
+            <button type="button" className="screenshot-icon-btn" onClick={e => { e.stopPropagation(); setEditingCase(original.summary) }} aria-label={`Edit case #${original.summary.id}`} title="Edit">
               <SquarePenIcon size={16} />
             </button>
           )
@@ -1533,7 +1596,7 @@ function URLsPage() {
         )
       },
     },
-  ], [handleCaseStatusChange, handlePhaseChange])
+  ], [handleDomainStatusChange])
 
   const casesTable = useReactTable({
     data: caseTreeData,
@@ -1568,8 +1631,8 @@ function URLsPage() {
           variant="outline"
           aria-label="View"
         >
-          <ToggleGroupItem value="domains">Domain</ToggleGroupItem>
           <ToggleGroupItem value="cases">Cases</ToggleGroupItem>
+          <ToggleGroupItem value="domains">Domain</ToggleGroupItem>
         </ToggleGroup>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <Button onClick={() => setAddOpen(true)}>
@@ -1671,6 +1734,7 @@ function URLsPage() {
                   isLoading={casesGridLoading}
                   tableClassNames={{ base: 'results-table results-table--pinned' }}
                   tableLayout={{ columnsPinnable: true }}
+                  onRowClick={row => { if (row.kind === 'case') casesTable.getRow(`case:${row.summary.id}`).toggleExpanded() }}
                 >
                   <DataGridContainer className="overflow-x-auto overflow-y-visible mb-5">
                     <DataGridTable />

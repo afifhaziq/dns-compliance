@@ -46,6 +46,16 @@ export type GroupedResult = {
   latestScannedAt: string
 }
 
+// One attached offence's citation/category/element/sub-element, kept as
+// separate fields (mirroring the Excel source's own Butiran Kesalahan/
+// Kategori/Elemen/Sub-Elemen column split) rather than one formatted label.
+export type OffenceEntry = {
+  citation: string
+  category: string
+  element?: string
+  sub_element?: string
+}
+
 export type URLEntry = {
   id: number
   url: string
@@ -55,30 +65,30 @@ export type URLEntry = {
   agency_name?: string
   current_reference_number?: string
   requesting_departments?: string[]
+  offences?: OffenceEntry[]
   status?: string
-  // Latest case's id — the target for a status edit via PATCH /api/cases/{id}
-  // (updateCase), since `status` itself is a derived, read-only field.
+  // Latest case's id — the target for a status edit via
+  // PATCH /api/cases/{case_id}/urls/{id} (updateCaseURLStatus), since
+  // `status` itself is a derived, read-only field.
   case_id?: number
   requested_at?: string
   created_at: string
 }
 
 // One row of GET /api/cases/*url — mirrors db.CaseWithLetters (Case
-// embedded + Phase from the url's CaseURL join + Letters). agency_id/agency/
-// status/due_date/requested_at are the case-level defaults shared by every
-// URL the case covers (db.Case); `phase` is this url's own CaseURL.Phase
-// override within the case, unrelated to Case.status despite sharing the
-// same requested/uplift/suspended vocabulary.
+// embedded + Letters + Status from the url's CaseURL join). agency_id/
+// agency/due_date/requested_at are the case-level defaults shared by every
+// URL the case covers (db.Case); `status` is this url's own CaseURL.Status,
+// independent per url within the same case.
 export type Case = {
   id: number
   department_id: number
   created_at: string
   agency_id?: number
   agency?: { id: number; name: string }
-  status?: string
   due_date?: string
   requested_at?: string
-  phase: string
+  status: string
   letters: CaseLetter[]
 }
 
@@ -115,14 +125,14 @@ export type CaseLettersResponse = { letters: CaseLetterEntry[]; total: number }
 // One row of GET /api/case-summaries — the Cases view's per-case row: a
 // Case's own fields plus its Notice letter's fields (Notice chosen over
 // Memo when both exist, same convention as current_reference_number) and
-// every domain it covers.
-export type CaseSummaryDomain = { url_id: number; url: string; phase: string }
+// every domain it covers. There's no case-level status — see
+// CaseSummaryDomain.status.
+export type CaseSummaryDomain = { url_id: number; url: string; status: string; offences?: OffenceEntry[] }
 
 export type CaseSummary = {
   id: number
   agency_id?: number
   agency_name?: string
-  status?: string
   due_date?: string
   requested_at?: string
   created_at: string
@@ -281,7 +291,7 @@ export type LegalCitationParsed = {
 
 export type Instrument = {
   id: number
-  type: 'ACT' | 'ORDINANCE' | 'ENACTMENT' | 'SUBSIDIARY' | 'CONSTITUTION'
+  type: 'ACT' | 'ORDINANCE' | 'ENACTMENT' | 'SUBSIDIARY' | 'REGULATION' | 'CONSTITUTION'
   jurisdiction: string
   number: string
   year?: number

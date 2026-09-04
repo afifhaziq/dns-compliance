@@ -38,6 +38,19 @@
 // ("No. Rujukan NMD", the citable reference sent to the ISP/regulator) and
 // reference_number_internal ("No. Rujukan NMSMD", MCMC-internal) —
 // previously conflated into one field.
+//
+// Updated 2026-08-26: case_urls.phase (the per-url override of cases.status)
+// removed — every url a case covers now just shares the case's own status.
+// See case_urls' Note for what this discarded and how internal/blockimport's
+// CRD importer adapted (collapses a reference's domains to one most-common
+// status per case instead).
+//
+// Reverted 2026-08-26 (later same day): the 2026-08-26 change above turned
+// out to be the wrong direction — status genuinely needs to vary per url
+// within a case (confirmed against real usage). cases.status is removed
+// entirely; case_urls regains its per-url status column, renamed status
+// (was phase). internal/blockimport's CRD/CMOD importers revert to setting
+// it per-domain instead of collapsing to one most-common value per case.
 
 Table departments {
   id         integer   [pk, increment]
@@ -446,21 +459,19 @@ Table cases {
   created_at    timestamptz
   due_date      timestamptz [null, note: 'takedown-order SLA deadline, carries time-of-day']
   agency_id     integer     [null, note: 'indexed, FK OnDelete:SET NULL']
-  status        varchar     [note: '"" | requested | uplift | suspended, validated server-side -- independent of the derived Compliant field']
   requested_at  timestamptz [null]
 
   Note: '''
     One row per real-world case/request, same role scan_runs already plays
     for scan_results. Letter-grain facts (ref numbers, subject, OIC,
     workflow status...) still live on case_letters, since the sheet's real
-    grain is one row per letter/document. due_date/agency_id/status/
-    requested_at (2026-08-20) are the case-level defaults shared by every
-    url the case covers -- formerly scalar columns on urls, moved here
-    since a domain can carry more than one case over its history. Set at
-    creation (POST /api/cases/*url, phase becomes status) and editable via
-    PATCH /api/cases/{id}; case_urls.phase is the per-url override within
-    this case (see that table's Note) -- they start equal at creation and
-    only diverge via PATCH /api/cases/{id}/urls/{url_id}.
+    grain is one row per letter/document. due_date/agency_id/requested_at
+    (2026-08-20) are the case-level defaults shared by every url the case
+    covers -- formerly scalar columns on urls, moved here since a domain
+    can carry more than one case over its history. Set at creation
+    (POST /api/cases/*url) and editable via PATCH /api/cases/{id}. Status
+    is NOT here -- see case_urls.status, since some urls within the same
+    case reach a different outcome than their siblings.
     UNRESOLVED CAVEAT: grouping CRD rows into a case at all assumes each
     distinct reference number is one real request -- CRD's
     "JK KPN(PR) 168/6" covering 9,206 rows suggests some values are a
@@ -515,7 +526,7 @@ Ref: case_letters.oic_user_id > users.id [delete: set null]
 Table case_urls {
   case_id integer [not null]
   url_id  integer [not null]
-  phase   varchar [not null, note: 'requested | uplift | suspended -- this (case, url) pair\'s own outcome, same vocabulary cases.status carries']
+  status  varchar [not null, note: 'requested | uplift | suspended -- this url\'s own status within the case, independent of any other url the same case covers']
 
   indexes {
     (case_id, url_id) [pk]
@@ -524,26 +535,25 @@ Table case_urls {
   Note: '''
     Many-to-many join -- one case lists every url it covers (e.g. CMOD's
     "10 URLs in one Notice"); one url can belong to many cases over time
-    (reblocked under a new reference). Carries its own `phase` rather than
-    being a plain junction row: confirmed some urls within the same case
-    reach a different outcome than their siblings (2/65 CMOD cases, 96/1841
-    CRD ref-no groups have mixed status across their own urls -- e.g. CMOD
-    case 19 covers 16 domains, only capitalpost.com.my was ever uplifted).
-    phase stays here rather than on case_letters because it varies per url
-    within the same case, not per letter. cases.status is this case's
-    default; phase here is that specific url's override within this case --
-    they start equal at creation (db.Store.CreateCase) and only diverge via
-    PATCH /api/cases/{id}/urls/{url_id} (UpdateCaseURLPhase). Sole source of
-    truth for the url<->reference-number relationship now that
-    urls.reference_number is removed. "Current" reference/status for
-    display is derived by querying the most recent case_letters row for the
-    case (via letter_date) joined through case_urls, not stored as a scalar
-    on urls.
+    (reblocked under a new reference). Carries its own `status` rather than
+    being a plain junction table: some urls within the same case reach a
+    different outcome than their siblings, so status varies per url, not
+    per case (real divergence confirmed in the source data -- 2/65 CMOD
+    cases, 96/1841 CRD ref-no groups had mixed status across their own
+    urls, e.g. CMOD case 19 covers 16 domains, only capitalpost.com.my was
+    ever uplifted -- a brief 2026-08-26 attempt to collapse this column
+    into cases.status lost that divergence and was reverted the same day).
+    Sole source of truth for the url<->reference-number relationship now
+    that urls.reference_number is removed. "Current" reference for display
+    is derived by querying the most recent case_letters row for the case
+    (via letter_date) joined through case_urls, not stored as a scalar on
+    urls.
 
     db.Store.AddURLToCase (POST /api/cases/{id}/urls) inserts additional
     rows here directly, for building the "N URLs in one Notice" shape --
     CreateCase itself still only ever links the one url a case is opened
-    for.
+    for. db.Store.UpdateCaseURLStatus (PATCH /api/cases/{id}/urls/{url_id})
+    updates just this one (case, url) pair's status.
   '''
 }
 Ref: case_urls.case_id > cases.id [delete: cascade]

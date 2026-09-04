@@ -6,25 +6,25 @@ import (
 	"gorm.io/gorm"
 )
 
-func (s *postgresStore) CreateCase(ctx context.Context, departmentID, urlID uint, phase string, opts CaseCreateOptions) (Case, error) {
-	c := Case{DepartmentID: departmentID, Status: phase, AgencyID: opts.AgencyID, DueDate: opts.DueDate}
+func (s *postgresStore) CreateCase(ctx context.Context, departmentID, urlID uint, status string, opts CaseCreateOptions) (Case, error) {
+	c := Case{DepartmentID: departmentID, AgencyID: opts.AgencyID, DueDate: opts.DueDate}
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&c).Error; err != nil {
 			return err
 		}
-		return tx.Create(&CaseURL{CaseID: c.ID, URLID: urlID, Phase: phase}).Error
+		return tx.Create(&CaseURL{CaseID: c.ID, URLID: urlID, Status: status}).Error
 	})
 	return c, err
 }
 
-// UpdateCaseURLPhase sets one (case, url) pair's own Phase — the per-domain
-// override of Case.Status. False if no such CaseURL row exists (caller has
-// already validated phase against urlStatusAllowed).
-func (s *postgresStore) UpdateCaseURLPhase(ctx context.Context, caseID, urlID uint, phase string) (bool, error) {
+// UpdateCaseURLStatus sets one (case, url) pair's own Status. False if no
+// such CaseURL row exists (caller has already validated status against
+// urlStatusAllowed).
+func (s *postgresStore) UpdateCaseURLStatus(ctx context.Context, caseID, urlID uint, status string) (bool, error) {
 	res := s.db.WithContext(ctx).
 		Model(&CaseURL{}).
 		Where("case_id = ? AND url_id = ?", caseID, urlID).
-		Update("phase", phase)
+		Update("status", status)
 	return res.RowsAffected > 0, res.Error
 }
 
@@ -46,9 +46,6 @@ func (s *postgresStore) UpdateCaseFields(ctx context.Context, departmentID, case
 	updates := map[string]interface{}{}
 	if fields.AgencyID != nil {
 		updates["agency_id"] = *fields.AgencyID
-	}
-	if fields.Status != nil {
-		updates["status"] = *fields.Status
 	}
 	if fields.DueDate != nil {
 		updates["due_date"] = *fields.DueDate
@@ -83,8 +80,8 @@ func (s *postgresStore) GetCase(ctx context.Context, id uint) (Case, error) {
 	return c, err
 }
 
-func (s *postgresStore) AddURLToCase(ctx context.Context, caseID, urlID uint, phase string) (CaseURL, error) {
-	cu := CaseURL{CaseID: caseID, URLID: urlID, Phase: phase}
+func (s *postgresStore) AddURLToCase(ctx context.Context, caseID, urlID uint, status string) (CaseURL, error) {
+	cu := CaseURL{CaseID: caseID, URLID: urlID, Status: status}
 	err := s.db.WithContext(ctx).Create(&cu).Error
 	return cu, err
 }
@@ -175,10 +172,10 @@ func (s *postgresStore) ListCasesForURL(ctx context.Context, urlValue string) ([
 	if err := s.db.WithContext(ctx).Where("url_id = ?", u.ID).Find(&caseURLs).Error; err != nil {
 		return nil, err
 	}
-	phaseByCaseID := make(map[uint]string, len(caseURLs))
+	statusByCaseID := make(map[uint]string, len(caseURLs))
 	caseIDs := make([]uint, 0, len(caseURLs))
 	for _, cu := range caseURLs {
-		phaseByCaseID[cu.CaseID] = cu.Phase
+		statusByCaseID[cu.CaseID] = cu.Status
 		caseIDs = append(caseIDs, cu.CaseID)
 	}
 	if len(caseIDs) == 0 {
@@ -203,7 +200,7 @@ func (s *postgresStore) ListCasesForURL(ctx context.Context, urlValue string) ([
 	for _, c := range cases {
 		result = append(result, CaseWithLetters{
 			Case:    c,
-			Phase:   phaseByCaseID[c.ID],
+			Status:  statusByCaseID[c.ID],
 			Letters: lettersByCaseID[c.ID],
 		})
 	}
@@ -219,7 +216,7 @@ func (s *postgresStore) caseSummaryQuery(ctx context.Context, departmentID *uint
 	q := s.db.WithContext(ctx).
 		Table("cases").
 		Select(`cases.id, cases.agency_id, agencies.name as agency_name,
-			cases.status, cases.due_date, cases.requested_at, cases.created_at,
+			cases.due_date, cases.requested_at, cases.created_at,
 			notice.id as notice_letter_id, notice.subject as notice_subject,
 			notice.workflow_status as notice_workflow_status,
 			notice.reference_number_external as notice_reference_number_external,
@@ -263,20 +260,28 @@ func (s *postgresStore) listCaseSummaries(ctx context.Context, departmentID *uin
 		CaseID uint
 		URLID  uint
 		URL    string
-		Phase  string
+		Status string
 	}
 	var rows []domainRow
 	if err := s.db.WithContext(ctx).
 		Table("case_urls").
-		Select("case_urls.case_id as case_id, case_urls.url_id as url_id, urls.url as url, case_urls.phase as phase").
+		Select("case_urls.case_id as case_id, case_urls.url_id as url_id, urls.url as url, case_urls.status as status").
 		Joins("JOIN urls ON urls.id = case_urls.url_id").
 		Where("case_urls.case_id IN ?", caseIDs).
 		Scan(&rows).Error; err != nil {
 		return nil, err
 	}
+	domainURLIDs := make([]uint, len(rows))
+	for i, r := range rows {
+		domainURLIDs[i] = r.URLID
+	}
+	offMap, err := s.offencesByURLIDs(ctx, domainURLIDs)
+	if err != nil {
+		return nil, err
+	}
 	for _, r := range rows {
 		i := idxByCaseID[r.CaseID]
-		summaries[i].Domains = append(summaries[i].Domains, CaseSummaryDomain{URLID: r.URLID, URL: r.URL, Phase: r.Phase})
+		summaries[i].Domains = append(summaries[i].Domains, CaseSummaryDomain{URLID: r.URLID, URL: r.URL, Status: r.Status, Offences: offMap[r.URLID]})
 	}
 	return summaries, nil
 }
@@ -331,5 +336,12 @@ func (s *postgresStore) UpdateCaseLetterFields(ctx context.Context, caseID, lett
 		return count > 0, nil
 	}
 	res := s.db.WithContext(ctx).Model(&CaseLetter{}).Where("id = ? AND case_id = ?", letterID, caseID).Updates(updates)
+	return res.RowsAffected > 0, res.Error
+}
+
+// DeleteCaseLetter removes one CaseLetter, scoped by (caseID, letterID) —
+// see CaseStore's doc comment.
+func (s *postgresStore) DeleteCaseLetter(ctx context.Context, caseID, letterID uint) (bool, error) {
+	res := s.db.WithContext(ctx).Where("id = ? AND case_id = ?", letterID, caseID).Delete(&CaseLetter{})
 	return res.RowsAffected > 0, res.Error
 }

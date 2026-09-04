@@ -368,7 +368,11 @@ func (m *fullMockStore) ListDepartmentURLs(_ context.Context, departmentID uint)
 				if c := m.latestCaseForURL(u.ID); c != nil {
 					entry.DueDate = c.DueDate
 					entry.AgencyID = c.AgencyID
-					entry.Status = c.Status
+					for _, cu := range m.caseURLs {
+						if cu.CaseID == c.ID && cu.URLID == u.ID {
+							entry.Status = cu.Status
+						}
+					}
 					entry.RequestedAt = c.RequestedAt
 					if c.AgencyID != nil {
 						for _, a := range m.agencies {
@@ -1354,20 +1358,11 @@ func (m *fullMockStore) HasRecentResurfacedNotification(_ context.Context, depar
 	return false, nil
 }
 
-func (m *fullMockStore) CreateCase(_ context.Context, departmentID, urlID uint, phase string, opts db.CaseCreateOptions) (db.Case, error) {
-	c := db.Case{ID: uint(len(m.cases) + 1), DepartmentID: departmentID, Status: phase, AgencyID: opts.AgencyID, DueDate: opts.DueDate}
+func (m *fullMockStore) CreateCase(_ context.Context, departmentID, urlID uint, status string, opts db.CaseCreateOptions) (db.Case, error) {
+	c := db.Case{ID: uint(len(m.cases) + 1), DepartmentID: departmentID, AgencyID: opts.AgencyID, DueDate: opts.DueDate}
 	m.cases = append(m.cases, c)
-	m.caseURLs = append(m.caseURLs, db.CaseURL{CaseID: c.ID, URLID: urlID, Phase: phase})
+	m.caseURLs = append(m.caseURLs, db.CaseURL{CaseID: c.ID, URLID: urlID, Status: status})
 	return c, nil
-}
-func (m *fullMockStore) UpdateCaseURLPhase(_ context.Context, caseID, urlID uint, phase string) (bool, error) {
-	for i, cu := range m.caseURLs {
-		if cu.CaseID == caseID && cu.URLID == urlID {
-			m.caseURLs[i].Phase = phase
-			return true, nil
-		}
-	}
-	return false, nil
 }
 func (m *fullMockStore) UpdateCaseFields(_ context.Context, _ uint, caseID uint, fields db.CaseFields) (bool, error) {
 	for i, c := range m.cases {
@@ -1376,9 +1371,6 @@ func (m *fullMockStore) UpdateCaseFields(_ context.Context, _ uint, caseID uint,
 		}
 		if fields.AgencyID != nil {
 			m.cases[i].AgencyID = *fields.AgencyID
-		}
-		if fields.Status != nil {
-			m.cases[i].Status = *fields.Status
 		}
 		if fields.DueDate != nil {
 			m.cases[i].DueDate = *fields.DueDate
@@ -1421,7 +1413,7 @@ func (m *fullMockStore) ListCasesForURL(_ context.Context, urlValue string) ([]d
 					letters = append(letters, l)
 				}
 			}
-			out = append(out, db.CaseWithLetters{Case: c, Phase: cu.Phase, Letters: letters})
+			out = append(out, db.CaseWithLetters{Case: c, Status: cu.Status, Letters: letters})
 		}
 	}
 	return out, nil
@@ -1434,10 +1426,19 @@ func (m *fullMockStore) GetCase(_ context.Context, id uint) (db.Case, error) {
 	}
 	return db.Case{}, gorm.ErrRecordNotFound
 }
-func (m *fullMockStore) AddURLToCase(_ context.Context, caseID, urlID uint, phase string) (db.CaseURL, error) {
-	cu := db.CaseURL{CaseID: caseID, URLID: urlID, Phase: phase}
+func (m *fullMockStore) AddURLToCase(_ context.Context, caseID, urlID uint, status string) (db.CaseURL, error) {
+	cu := db.CaseURL{CaseID: caseID, URLID: urlID, Status: status}
 	m.caseURLs = append(m.caseURLs, cu)
 	return cu, nil
+}
+func (m *fullMockStore) UpdateCaseURLStatus(_ context.Context, caseID, urlID uint, status string) (bool, error) {
+	for i, cu := range m.caseURLs {
+		if cu.CaseID == caseID && cu.URLID == urlID {
+			m.caseURLs[i].Status = status
+			return true, nil
+		}
+	}
+	return false, nil
 }
 func (m *fullMockStore) ListCaseURLIDs(_ context.Context, caseID uint) ([]uint, error) {
 	var ids []uint
@@ -1499,7 +1500,7 @@ func (m *fullMockStore) listCaseSummaries(departmentID *uint) []db.CaseSummary {
 		if departmentID != nil && c.DepartmentID != *departmentID {
 			continue
 		}
-		cs := db.CaseSummary{ID: c.ID, AgencyID: c.AgencyID, Status: c.Status, DueDate: c.DueDate, RequestedAt: c.RequestedAt, CreatedAt: c.CreatedAt}
+		cs := db.CaseSummary{ID: c.ID, AgencyID: c.AgencyID, DueDate: c.DueDate, RequestedAt: c.RequestedAt, CreatedAt: c.CreatedAt}
 		for _, l := range m.caseLetters {
 			if l.CaseID != c.ID {
 				continue
@@ -1524,7 +1525,7 @@ func (m *fullMockStore) listCaseSummaries(departmentID *uint) []db.CaseSummary {
 			}
 			for _, u := range m.urls {
 				if u.ID == cu.URLID {
-					cs.Domains = append(cs.Domains, db.CaseSummaryDomain{URLID: u.ID, URL: u.URL, Phase: cu.Phase})
+					cs.Domains = append(cs.Domains, db.CaseSummaryDomain{URLID: u.ID, URL: u.URL, Status: cu.Status})
 				}
 			}
 		}
@@ -1576,6 +1577,17 @@ func (m *fullMockStore) UpdateCaseLetterFields(_ context.Context, caseID, letter
 		if fields.SubmittedAt != nil {
 			m.caseLetters[i].SubmittedAt = *fields.SubmittedAt
 		}
+		return true, nil
+	}
+	return false, nil
+}
+
+func (m *fullMockStore) DeleteCaseLetter(_ context.Context, caseID, letterID uint) (bool, error) {
+	for i, l := range m.caseLetters {
+		if l.ID != letterID || l.CaseID != caseID {
+			continue
+		}
+		m.caseLetters = append(m.caseLetters[:i], m.caseLetters[i+1:]...)
 		return true, nil
 	}
 	return false, nil

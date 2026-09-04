@@ -41,7 +41,7 @@ func parseCMODDate(raw string) *time.Time {
 	return nil
 }
 
-// mapCMODPhase derives case_urls.phase from a case's letters -- "uplift" if
+// mapCMODPhase derives case_urls.status from a case's letters -- "uplift" if
 // any letter Type contains "Uplift" (Memo (Uplift) or Notice (Uplift)),
 // else "requested". CMOD's own Status column (Draft/Pending Legal/Pending
 // TSC/Submitted) is NOT this function's input -- it's letter-approval-
@@ -86,7 +86,7 @@ func getOrCreateURL(tx *gorm.DB, raw string) (db.URL, error) {
 
 // WriteCMODCases creates one Case (DepartmentID = the CMOD department's ID)
 // per CollapsedCMODCase, one CaseLetter per Letters entry, and one CaseURL
-// per URL in URLs (Phase via mapCMODPhase). dryRun wraps every write in a
+// per URL in URLs (Status via mapCMODPhase). dryRun wraps every write in a
 // transaction that's always rolled back, so the returned ImportSummary
 // reflects exactly what a real run would do without persisting anything.
 func WriteCMODCases(ctx context.Context, gormDB *gorm.DB, cmodDeptID uint, cases []CollapsedCMODCase, dryRun bool) (ImportSummary, error) {
@@ -152,7 +152,7 @@ func WriteCMODCases(ctx context.Context, gormDB *gorm.DB, cmodDeptID uint, cases
 					summary.URLsSkippedBadURL++
 					continue
 				}
-				cu := db.CaseURL{CaseID: newCase.ID, URLID: u.ID, Phase: phase}
+				cu := db.CaseURL{CaseID: newCase.ID, URLID: u.ID, Status: phase}
 				if err := tx.Create(&cu).Error; err != nil {
 					return err
 				}

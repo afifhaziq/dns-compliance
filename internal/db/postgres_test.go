@@ -842,9 +842,9 @@ func TestCreateCase_DueDateVisibleOnWatchlist(t *testing.T) {
 	}
 }
 
-// TestCreateCase_AgencyAndStatusVisibleOnWatchlist covers Case.AgencyID/
-// Status showing up in ListDepartmentURLs' derived fields, and that
-// UpdateCaseFields updating only Status doesn't clobber AgencyID.
+// TestCreateCase_AgencyAndStatusVisibleOnWatchlist covers Case.AgencyID and
+// this url's CaseURL.Status showing up in ListDepartmentURLs' derived
+// fields, and that UpdateCaseURLStatus doesn't clobber AgencyID.
 func TestCreateCase_AgencyAndStatusVisibleOnWatchlist(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -867,15 +867,15 @@ func TestCreateCase_AgencyAndStatusVisibleOnWatchlist(t *testing.T) {
 		t.Fatalf("expected case metadata to be set, got %+v", e)
 	}
 
-	// Updating only Status must not clobber the other fields already set.
-	newStatus := "uplift"
-	found, err := s.UpdateCaseFields(ctx, dept.ID, c.ID, db.CaseFields{Status: &newStatus})
+	// Updating only this url's Status must not clobber the other fields
+	// already set.
+	found, err := s.UpdateCaseURLStatus(ctx, c.ID, u.ID, "uplift")
 	if err != nil || !found {
-		t.Fatalf("UpdateCaseFields(status only): found=%v err=%v", found, err)
+		t.Fatalf("UpdateCaseURLStatus: found=%v err=%v", found, err)
 	}
 	entries, _ = s.ListDepartmentURLs(ctx, dept.ID)
 	e = entries[0]
-	if e.Status != newStatus {
+	if e.Status != "uplift" {
 		t.Fatalf("expected status to be updated, got %q", e.Status)
 	}
 	if e.AgencyName != agency.Name {

@@ -1,7 +1,7 @@
-// Shared between case-history-dialog.tsx and urls.tsx's AddUrlDialog — both
-// let a user open a case with a phase/letter-type/reference-number.
+// Shared between urls.tsx's AddUrlDialog and docs.tsx's AddDocumentDialog —
+// both let a user open a case with a status/letter-type/reference-number.
 
-export const PHASE_OPTIONS = [
+export const CASE_STATUS_OPTIONS = [
   { value: 'requested', label: 'Requested' },
   { value: 'uplift', label: 'Uplift' },
   { value: 'suspended', label: 'Suspended' },

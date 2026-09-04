@@ -115,9 +115,9 @@ const DELETE_DESCRIPTIONS: Record<LegalKind, string> = {
 // Stored/API values stay these English constants (matches every other enum
 // in this codebase — DNSServer.Protocol, ScanRun.Status, etc.) — only the
 // label shown to the user is Malay, via INSTRUMENT_TYPE_LABELS below.
-const INSTRUMENT_TYPES = ['ACT', 'ORDINANCE', 'ENACTMENT', 'SUBSIDIARY', 'CONSTITUTION'] as const
+const INSTRUMENT_TYPES = ['ACT', 'ORDINANCE', 'ENACTMENT', 'SUBSIDIARY', 'REGULATION', 'CONSTITUTION'] as const
 const INSTRUMENT_TYPE_LABELS: Record<string, string> = {
-  ACT: 'Akta', ORDINANCE: 'Ordinan', ENACTMENT: 'Enakmen', SUBSIDIARY: 'Subsidiari', CONSTITUTION: 'Perlembagaan',
+  ACT: 'Akta', ORDINANCE: 'Ordinan', ENACTMENT: 'Enakmen', SUBSIDIARY: 'Subsidiari', REGULATION: 'Peraturan', CONSTITUTION: 'Perlembagaan',
 }
 // The 13 states are already their Malay/official names (proper nouns, no
 // translation needed) — only "FEDERAL" needs a display label.

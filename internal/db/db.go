@@ -161,11 +161,11 @@ func backfillURLReferenceNumbersIntoCases(database *gorm.DB) error {
 				if err := tx.Create(&CaseLetter{CaseID: c.ID, Type: "Notice", ReferenceNumberExternal: row.ReferenceNumber}).Error; err != nil {
 					return fmt.Errorf("creating case_letter for url id=%d: %w", row.ID, err)
 				}
-				phase := row.Status
-				if phase == "" {
-					phase = "requested"
+				status := row.Status
+				if status == "" {
+					status = "requested"
 				}
-				if err := tx.Create(&CaseURL{CaseID: c.ID, URLID: row.ID, Phase: phase}).Error; err != nil {
+				if err := tx.Create(&CaseURL{CaseID: c.ID, URLID: row.ID, Status: status}).Error; err != nil {
 					return fmt.Errorf("creating case_url for url id=%d: %w", row.ID, err)
 				}
 			}

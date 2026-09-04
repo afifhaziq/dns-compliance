@@ -147,6 +147,21 @@ type URLEntry struct {
 	CreatedAt              time.Time  `json:"created_at"`
 	CurrentReferenceNumber string     `json:"current_reference_number,omitempty"`
 	RequestingDepartments  []string   `gorm:"-" json:"requesting_departments,omitempty"`
+	// Offences is multi-valued like RequestingDepartments, so it's batched
+	// the same way (offencesByURLIDs in postgres.go) rather than a scalar
+	// subquery.
+	Offences []OffenceEntry `gorm:"-" json:"offences,omitempty"`
+}
+
+// OffenceEntry is one attached offence's citation/category/element/
+// sub-element, kept as separate fields (rather than one formatted label)
+// so the frontend can render them in their own columns, mirroring the
+// Excel source's own Butiran Kesalahan/Kategori/Elemen/Sub-Elemen split.
+type OffenceEntry struct {
+	Citation   string `json:"citation"`
+	Category   string `json:"category"`
+	Element    string `json:"element,omitempty"`
+	SubElement string `json:"sub_element,omitempty"`
 }
 
 // ScanSettings is a single-row (ID 1) table holding the admin-configurable
@@ -484,7 +499,7 @@ type DomainServerSummary struct {
 // within that state); nothing in this package enforces that beyond storage.
 type Instrument struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
-	Type         string    `gorm:"not null;index" json:"type"`         // ACT, ORDINANCE, ENACTMENT, SUBSIDIARY, CONSTITUTION
+	Type         string    `gorm:"not null;index" json:"type"`         // ACT, ORDINANCE, ENACTMENT, SUBSIDIARY, REGULATION, CONSTITUTION
 	Jurisdiction string    `gorm:"not null;index" json:"jurisdiction"` // FEDERAL, or a state name
 	Number       string    `gorm:"not null;default:''" json:"number"`  // "588", "A1220", "No. 9 of 1995" — always a string, amendment/state formats break plain int. May be "" — plenty of instruments (older pre-1968-revision Acts, most state Enactments) have no commonly cited official number
 	Year         *int      `json:"year,omitempty"`
@@ -589,11 +604,11 @@ type URLOffence struct {
 // Case is one row per real-world case/request — the same role ScanRun
 // already plays for ScanResult. Letter-grain facts (reference numbers,
 // subject, OIC, workflow status...) still live on CaseLetter, since the
-// source data's real grain is one row per letter/document. Agency/Status/
-// DueDate/RequestedAt live here instead, as the case-level defaults shared
-// by every URL the case covers (formerly scalar columns on URL, before a
-// domain could carry more than one case) — CaseURL.Phase is the per-domain
-// override within this case (see CaseURL's doc comment).
+// source data's real grain is one row per letter/document. Agency/DueDate/
+// RequestedAt live here instead, as the case-level defaults shared by every
+// URL the case covers (formerly scalar columns on URL, before a domain
+// could carry more than one case). Status is NOT here — it's per-domain,
+// see CaseURL.Status.
 type Case struct {
 	ID           uint       `gorm:"primaryKey" json:"id"`
 	DepartmentID uint       `gorm:"not null;index" json:"department_id"`
@@ -605,14 +620,8 @@ type Case struct {
 	DueDate *time.Time `json:"due_date,omitempty"`
 	// AgencyID is nullable and OnDelete:SET NULL — deleting an Agency must
 	// not cascade-delete the Case.
-	AgencyID *uint   `gorm:"index" json:"agency_id,omitempty"`
-	Agency   *Agency `gorm:"foreignKey:AgencyID;constraint:OnDelete:SET NULL" json:"agency,omitempty"`
-	// Status is requested | uplift | suspended, validated server-side
-	// (internal/server/handlers.go's urlStatusAllowed) — independent of the
-	// derived Compliant field; blocked/not-blocked already comes from scan
-	// results. This is the case-level default; CaseURL.Phase carries the
-	// same vocabulary as a per-domain override.
-	Status      string     `json:"status,omitempty"`
+	AgencyID    *uint      `gorm:"index" json:"agency_id,omitempty"`
+	Agency      *Agency    `gorm:"foreignKey:AgencyID;constraint:OnDelete:SET NULL" json:"agency,omitempty"`
 	RequestedAt *time.Time `json:"requested_at,omitempty"`
 }
 
@@ -621,17 +630,16 @@ type Case struct {
 // outer nil = don't touch, outer non-nil pointing at a nil inner = clear,
 // outer non-nil pointing at &v = set. AgencyID/DueDate/RequestedAt need this
 // three-state contract since none of them has a natural empty-value
-// sentinel to mean "clear". Status is a plain pointer since "" already
-// means clear (see urlStatusAllowed).
+// sentinel to mean "clear". No Status field here — see CaseURL.Status and
+// UpdateCaseURLStatus.
 type CaseFields struct {
 	AgencyID    **uint
-	Status      *string
 	DueDate     **time.Time
 	RequestedAt **time.Time
 }
 
 // CaseCreateOptions carries the optional case-level fields CreateCase can
-// set at creation time, alongside the always-required phase.
+// set at creation time, alongside the always-required per-url status.
 type CaseCreateOptions struct {
 	AgencyID *uint
 	DueDate  *time.Time
@@ -671,23 +679,23 @@ type CaseLetter struct {
 // CaseURL is the many-to-many join between cases and urls — a case
 // genuinely covers many urls (e.g. one Notice listing 10 URLs) and a url
 // genuinely belongs to many cases over its history (reblocked later under
-// a new reference). Carries its own Phase rather than being a plain
-// junction table: some urls within the same case reach a different
-// outcome than their siblings, so phase varies per url, not per letter.
-// Case.Status is this case's default status/phase (shared by every url it
-// covers); Phase here is that specific url's override within this case —
-// they start equal at creation (see CreateCase) and only diverge if
-// someone later calls UpdateCaseURLPhase for this one url. Sole source of
-// truth for the url<->reference-number relationship now that
-// URL.ReferenceNumber is gone — "current" reference/status for display is
-// derived by querying the most recent CaseLetter row for the case (via
-// LetterDate) joined through CaseURL, not stored as a scalar on URL.
+// a new reference). Carries its own Status rather than being a plain
+// junction table: some urls within the same case reach a different outcome
+// than their siblings, so status varies per url, not per case. Sole source
+// of truth for the url<->reference-number relationship now that
+// URL.ReferenceNumber is gone — "current" reference for display is derived
+// by querying the most recent CaseLetter row for the case (via LetterDate)
+// joined through CaseURL, not stored as a scalar on URL.
 type CaseURL struct {
 	CaseID uint   `gorm:"primaryKey;autoIncrement:false" json:"case_id"`
 	URLID  uint   `gorm:"primaryKey;autoIncrement:false" json:"url_id"`
 	Case   Case   `gorm:"foreignKey:CaseID;constraint:OnDelete:CASCADE" json:"-"`
 	URL    URL    `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
-	Phase  string `gorm:"not null" json:"phase"` // requested | uplift | suspended
+	// default:'requested' so AutoMigrate's ADD COLUMN backfills any
+	// already-existing row (e.g. a dev DB migrated through the brief
+	// 2026-08-26 cases-level-status detour, see docs/db-schema.dbml) instead
+	// of erroring on NOT NULL with no default.
+	Status string `gorm:"not null;default:'requested'" json:"status"` // requested | uplift | suspended
 }
 
 // CaseLetterEntry is one row for the Docs page: a CaseLetter plus its
@@ -709,7 +717,6 @@ type CaseSummary struct {
 	ID                             uint                `json:"id"`
 	AgencyID                       *uint               `json:"agency_id,omitempty"`
 	AgencyName                     string              `json:"agency_name,omitempty"`
-	Status                         string              `json:"status,omitempty"`
 	DueDate                        *time.Time          `json:"due_date,omitempty"`
 	RequestedAt                    *time.Time          `json:"requested_at,omitempty"`
 	CreatedAt                      time.Time           `json:"created_at"`
@@ -730,11 +737,13 @@ type CaseSummary struct {
 	Domains                        []CaseSummaryDomain `gorm:"-" json:"domains"`
 }
 
-// CaseSummaryDomain is one domain a CaseSummary covers, via CaseURL.
+// CaseSummaryDomain is one domain a CaseSummary covers, via CaseURL —
+// Status is that domain's own CaseURL.Status.
 type CaseSummaryDomain struct {
-	URLID uint   `json:"url_id"`
-	URL   string `json:"url"`
-	Phase string `json:"phase"`
+	URLID    uint           `json:"url_id"`
+	URL      string         `json:"url"`
+	Status   string         `json:"status"`
+	Offences []OffenceEntry `json:"offences,omitempty"`
 }
 
 // CaseLetterFields is a partial update to a CaseLetter's fields (PATCH

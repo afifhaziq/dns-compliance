@@ -12,10 +12,10 @@ export async function listCases(url: string): Promise<Case[]> {
 // omitted keys are left unset server-side (see db.CaseCreateOptions).
 export function createCase(
   url: string,
-  phase: string,
+  status: string,
   opts?: { agencyId?: number; dueDate?: string },
 ): Promise<Case> {
-  const body: Record<string, string | number> = { phase }
+  const body: Record<string, string | number> = { status }
   if (opts?.agencyId !== undefined) body.agency_id = opts.agencyId
   if (opts?.dueDate !== undefined) body.due_date = opts.dueDate
   return api.post<Case>(`/cases/${encodeURIComponent(url)}`, body)
@@ -23,7 +23,6 @@ export function createCase(
 
 export type CaseFields = {
   agencyId?: number | null
-  status?: string
   dueDate?: string | null
   requestedAt?: string | null
 }
@@ -32,23 +31,23 @@ export type CaseFields = {
 // keys present in `fields` are sent. Pass null to clear a field: due_date/
 // requested_at clear via "", agency_id clears via 0 (never a real row id) —
 // same clear-sentinel convention the old PATCH /api/urls/{id} used (see
-// setUrlFields's prior implementation in urls.ts).
+// setUrlFields's prior implementation in urls.ts). No status here — it's
+// per-url, see updateCaseURLStatus.
 export async function updateCase(caseId: number, fields: CaseFields): Promise<void> {
   const body: Record<string, string | number> = {}
   if (fields.agencyId !== undefined) body.agency_id = fields.agencyId ?? 0
-  if (fields.status !== undefined) body.status = fields.status
   if (fields.dueDate !== undefined) body.due_date = fields.dueDate ?? ''
   if (fields.requestedAt !== undefined) body.requested_at = fields.requestedAt ?? ''
   await api.patch<void>(`/cases/${caseId}`, body)
 }
 
-// Sets one url's own CaseURL.Phase within a case — the per-domain override
-// of Case.status. Takes a numeric urlId (not a raw url string like
-// addUrlToCase above) since the route addresses it by path segment
-// (`/cases/{id}/urls/{url_id}`), not a body the server resolves — callers
-// need the url's id already (e.g. URLEntry.id).
-export async function updateCaseURLPhase(caseId: number, urlId: number, phase: string): Promise<void> {
-  await api.patch<void>(`/cases/${caseId}/urls/${urlId}`, { phase })
+// Sets one url's own CaseURL.Status within a case — the per-domain field.
+// Takes a numeric urlId (not a raw url string like addUrlToCase below)
+// since the route addresses it by path segment (`/cases/{id}/urls/{url_id}`),
+// not a body the server resolves — callers need the url's id already (e.g.
+// URLEntry.id).
+export async function updateCaseURLStatus(caseId: number, urlId: number, status: string): Promise<void> {
+  await api.patch<void>(`/cases/${caseId}/urls/${urlId}`, { status })
 }
 
 export function addCaseLetter(
@@ -60,13 +59,14 @@ export function addCaseLetter(
 
 // AddURLToCase — links an additional URL to an already-created case, the
 // "N URLs in one Notice" shape createCase alone can't build (it only ever
-// links the one URL a case is opened for).
+// links the one URL a case is opened for). status is that url's own
+// CaseURL.Status.
 export function addUrlToCase(
   caseId: number,
   url: string,
-  phase: string,
-): Promise<{ case_id: number; url_id: number; phase: string }> {
-  return api.post<{ case_id: number; url_id: number; phase: string }>(`/cases/${caseId}/urls`, { url, phase })
+  status: string,
+): Promise<{ case_id: number; url_id: number; status: string }> {
+  return api.post<{ case_id: number; url_id: number; status: string }>(`/cases/${caseId}/urls`, { url, status })
 }
 
 export async function fetchCaseLetters(page: number, pageSize: number): Promise<CaseLettersResponse> {
@@ -129,4 +129,8 @@ export async function updateCaseLetter(caseId: number, letterId: number, fields:
   if (fields.receivedAt !== undefined) body.received_at = fields.receivedAt ?? ''
   if (fields.submittedAt !== undefined) body.submitted_at = fields.submittedAt ?? ''
   await api.patch<void>(`/cases/${caseId}/letters/${letterId}`, body)
+}
+
+export async function deleteCaseLetter(caseId: number, letterId: number): Promise<void> {
+  await api.delete<void>(`/cases/${caseId}/letters/${letterId}`)
 }

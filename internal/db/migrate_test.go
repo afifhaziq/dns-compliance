@@ -321,7 +321,7 @@ func TestConnect_DropIsIdempotent(t *testing.T) {
 		t.Fatalf("seed department: %v", err)
 	}
 	due := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
-	c := db.Case{DepartmentID: dept.ID, DueDate: &due, Status: "requested"}
+	c := db.Case{DepartmentID: dept.ID, DueDate: &due}
 	if err := firstDB.Create(&c).Error; err != nil {
 		t.Fatalf("seed case: %v", err)
 	}
@@ -341,7 +341,7 @@ func TestConnect_DropIsIdempotent(t *testing.T) {
 	if err := secondDB.First(&got, c.ID).Error; err != nil {
 		t.Fatalf("reload case: %v", err)
 	}
-	if got.DueDate == nil || !got.DueDate.Equal(due) || got.Status != "requested" {
+	if got.DueDate == nil || !got.DueDate.Equal(due) {
 		t.Fatalf("expected case fields to survive a second Connect call, got %+v", got)
 	}
 }
@@ -451,8 +451,8 @@ func TestConnect_BackfillsReferenceNumberIntoCases(t *testing.T) {
 	if err := newDB.Find(&caseURLs).Error; err != nil {
 		t.Fatalf("load case_urls: %v", err)
 	}
-	if len(caseURLs) != 1 || caseURLs[0].CaseID != cases[0].ID || caseURLs[0].URLID != urlRow.ID || caseURLs[0].Phase != "uplift" {
-		t.Fatalf("expected exactly one case_url with phase=uplift, got %+v", caseURLs)
+	if len(caseURLs) != 1 || caseURLs[0].CaseID != cases[0].ID || caseURLs[0].URLID != urlRow.ID || caseURLs[0].Status != "uplift" {
+		t.Fatalf("expected exactly one case_url with status=uplift, got %+v", caseURLs)
 	}
 }
 

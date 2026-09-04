@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestCreateCase_LinksURLWithPhase(t *testing.T) {
+func TestCreateCase_LinksURL(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 	dept, err := store.CreateDepartment(ctx, "CRD")
@@ -35,8 +35,8 @@ func TestCreateCase_LinksURLWithPhase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListCasesForURL: %v", err)
 	}
-	if len(cases) != 1 || cases[0].Phase != "requested" {
-		t.Fatalf("got %+v, want one case with phase=requested", cases)
+	if len(cases) != 1 || cases[0].Status != "requested" {
+		t.Fatalf("got %+v, want one case with status=requested", cases)
 	}
 }
 
@@ -190,14 +190,18 @@ func TestCreateCase_SetsAgencyStatusDueDate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateCase: %v", err)
 	}
-	if c.Status != "uplift" {
-		t.Fatalf("Case.Status = %q, want uplift", c.Status)
-	}
 	if c.AgencyID == nil || *c.AgencyID != agency.ID {
 		t.Fatalf("Case.AgencyID = %v, want %d", c.AgencyID, agency.ID)
 	}
 	if c.DueDate == nil || !c.DueDate.Equal(due) {
 		t.Fatalf("Case.DueDate = %v, want %v", c.DueDate, due)
+	}
+	cases, err := store.ListCasesForURL(ctx, "case-fields.com")
+	if err != nil {
+		t.Fatalf("ListCasesForURL: %v", err)
+	}
+	if len(cases) != 1 || cases[0].Status != "uplift" {
+		t.Fatalf("got %+v, want one case with status=uplift", cases)
 	}
 
 	entries, err := store.ListDepartmentURLs(ctx, dept.ID)
@@ -231,9 +235,8 @@ func TestUpdateCaseFields_SetAndClear(t *testing.T) {
 	due := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 	duePtr := &due
 	agencyIDPtr := &agency.ID
-	newStatus := "uplift"
 	found, err := store.UpdateCaseFields(ctx, dept.ID, c.ID, db.CaseFields{
-		AgencyID: &agencyIDPtr, Status: &newStatus, DueDate: &duePtr,
+		AgencyID: &agencyIDPtr, DueDate: &duePtr,
 	})
 	if err != nil || !found {
 		t.Fatalf("UpdateCaseFields(set): found=%v err=%v", found, err)
@@ -243,7 +246,7 @@ func TestUpdateCaseFields_SetAndClear(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetCase: %v", err)
 	}
-	if got.Status != "uplift" || got.AgencyID == nil || *got.AgencyID != agency.ID || got.DueDate == nil || !got.DueDate.Equal(due) {
+	if got.AgencyID == nil || *got.AgencyID != agency.ID || got.DueDate == nil || !got.DueDate.Equal(due) {
 		t.Fatalf("expected fields to be set, got %+v", got)
 	}
 
@@ -258,8 +261,8 @@ func TestUpdateCaseFields_SetAndClear(t *testing.T) {
 	if got.RequestedAt == nil || !got.RequestedAt.Equal(requestedAt) {
 		t.Fatalf("expected requested_at to be set, got %+v", got)
 	}
-	if got.Status != "uplift" || got.AgencyID == nil {
-		t.Fatalf("expected status/agency_id to remain untouched, got %+v", got)
+	if got.AgencyID == nil {
+		t.Fatalf("expected agency_id to remain untouched, got %+v", got)
 	}
 
 	// Clear AgencyID and DueDate (outer non-nil, inner nil).
@@ -280,8 +283,9 @@ func TestUpdateCaseFields_SetAndClear(t *testing.T) {
 func TestUpdateCaseFields_UnknownCase(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
-	status := "uplift"
-	found, err := store.UpdateCaseFields(ctx, 1, 999, db.CaseFields{Status: &status})
+	due := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	duePtr := &due
+	found, err := store.UpdateCaseFields(ctx, 1, 999, db.CaseFields{DueDate: &duePtr})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -290,17 +294,16 @@ func TestUpdateCaseFields_UnknownCase(t *testing.T) {
 	}
 }
 
-// TestUpdateCaseURLPhase covers the per-domain override: Case.Status is the
-// default every url in the case starts with, but UpdateCaseURLPhase can
-// diverge one specific url's CaseURL.Phase without touching the case's own
-// Status or any other url's Phase.
-func TestUpdateCaseURLPhase(t *testing.T) {
+// TestUpdateCaseURLStatus covers the per-domain field: two urls sharing one
+// case can carry different Status values, and updating one doesn't touch
+// the other.
+func TestUpdateCaseURLStatus(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
-	dept, _ := store.CreateDepartment(ctx, "PhaseOverrideDept")
-	u1, _ := store.CreateURL(ctx, "phase-a.com")
-	u2, _ := store.CreateURL(ctx, "phase-b.com")
+	dept, _ := store.CreateDepartment(ctx, "StatusOverrideDept")
+	u1, _ := store.CreateURL(ctx, "status-a.com")
+	u2, _ := store.CreateURL(ctx, "status-b.com")
 
 	c, err := store.CreateCase(ctx, dept.ID, u1.ID, "requested", db.CaseCreateOptions{})
 	if err != nil {
@@ -310,25 +313,22 @@ func TestUpdateCaseURLPhase(t *testing.T) {
 		t.Fatalf("AddURLToCase: %v", err)
 	}
 
-	found, err := store.UpdateCaseURLPhase(ctx, c.ID, u2.ID, "uplift")
+	found, err := store.UpdateCaseURLStatus(ctx, c.ID, u2.ID, "uplift")
 	if err != nil || !found {
-		t.Fatalf("UpdateCaseURLPhase: found=%v err=%v", found, err)
+		t.Fatalf("UpdateCaseURLStatus: found=%v err=%v", found, err)
 	}
 
-	casesU1, _ := store.ListCasesForURL(ctx, "phase-a.com")
-	casesU2, _ := store.ListCasesForURL(ctx, "phase-b.com")
-	if len(casesU1) != 1 || casesU1[0].Phase != "requested" {
-		t.Fatalf("expected phase-a.com's phase to stay requested, got %+v", casesU1)
+	casesU1, _ := store.ListCasesForURL(ctx, "status-a.com")
+	casesU2, _ := store.ListCasesForURL(ctx, "status-b.com")
+	if len(casesU1) != 1 || casesU1[0].Status != "requested" {
+		t.Fatalf("expected status-a.com's status to stay requested, got %+v", casesU1)
 	}
-	if len(casesU2) != 1 || casesU2[0].Phase != "uplift" {
-		t.Fatalf("expected phase-b.com's phase to be overridden to uplift, got %+v", casesU2)
-	}
-	if casesU2[0].Status != "requested" {
-		t.Fatalf("expected Case.Status to remain the original default (requested), got %q", casesU2[0].Status)
+	if len(casesU2) != 1 || casesU2[0].Status != "uplift" {
+		t.Fatalf("expected status-b.com's status to be updated to uplift, got %+v", casesU2)
 	}
 
 	// No such (case, url) pair.
-	found, err = store.UpdateCaseURLPhase(ctx, c.ID, 999999, "uplift")
+	found, err = store.UpdateCaseURLStatus(ctx, c.ID, 999999, "uplift")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -361,8 +361,8 @@ func (legacyCaseMetadataURL) TableName() string { return "urls" }
 // and a second urls row with the same case metadata but zero watching
 // departments. db.Connect must create one Case per distinct watching
 // department for the first (each carrying the metadata forward, linked via
-// a CaseURL with Phase = Status), and skip the second entirely (logged, not
-// fatal) since there's no department to attribute a Case to.
+// a CaseURL), and skip the second entirely (logged, not fatal) since
+// there's no department to attribute a Case to.
 func TestConnect_BackfillsURLCaseMetadataIntoCases(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "backfill_case_metadata.db")
 
@@ -435,8 +435,8 @@ func TestConnect_BackfillsURLCaseMetadataIntoCases(t *testing.T) {
 	seenDepts := map[uint]bool{}
 	for _, c := range watchedCases {
 		seenDepts[c.DepartmentID] = true
-		if c.Status != "uplift" || c.DueDate == nil || !c.DueDate.Equal(due) {
-			t.Fatalf("expected backfilled case to carry the legacy status/due_date forward, got %+v", c)
+		if c.DueDate == nil || !c.DueDate.Equal(due) {
+			t.Fatalf("expected backfilled case to carry the legacy due_date forward, got %+v", c)
 		}
 	}
 	if !seenDepts[deptA.ID] || !seenDepts[deptB.ID] {
@@ -449,8 +449,8 @@ func TestConnect_BackfillsURLCaseMetadataIntoCases(t *testing.T) {
 		t.Fatalf("expected 2 case_url rows for the watched url, got %d", len(watchedCaseURLs))
 	}
 	for _, cu := range watchedCaseURLs {
-		if cu.Phase != "uplift" {
-			t.Fatalf("expected case_url.phase to match the legacy status, got %q", cu.Phase)
+		if cu.Status != "uplift" {
+			t.Fatalf("expected case_url.status to match the legacy status, got %q", cu.Status)
 		}
 	}
 
@@ -566,7 +566,7 @@ func TestListCases_GlobalAcrossDepartments(t *testing.T) {
 // TestUpdateCaseLetterFields_PartialUpdateAndScoping covers the partial-
 // update contract (touching one field leaves the others alone) and that
 // the update is scoped by (caseID, letterID) — a letter can't be edited
-// through the wrong case id, same defense-in-depth UpdateCaseURLPhase uses.
+// through the wrong case id.
 func TestUpdateCaseLetterFields_PartialUpdateAndScoping(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()

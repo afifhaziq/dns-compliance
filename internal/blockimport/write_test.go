@@ -61,8 +61,8 @@ func TestWriteCRDCases_CreatesOneCasePerReference(t *testing.T) {
 	if err := gdb.First(&caseURL).Error; err != nil {
 		t.Fatalf("expected a CaseURL row: %v", err)
 	}
-	if caseURL.Phase != "requested" {
-		t.Fatalf("caseURL.Phase = %q, want requested", caseURL.Phase)
+	if caseURL.Status != "requested" {
+		t.Fatalf("caseURL.Status = %q, want requested", caseURL.Status)
 	}
 
 	var u db.URL

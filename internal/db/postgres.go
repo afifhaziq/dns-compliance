@@ -558,7 +558,9 @@ func (s *postgresStore) ListDepartmentURLs(ctx context.Context, departmentID uin
 		Select(`urls.id, urls.url, urls.created_at, du.enabled,
 			latest_case.id as case_id,
 			latest_case.due_date, latest_case.agency_id, agencies.name as agency_name,
-			latest_case.status, latest_case.requested_at,
+			(SELECT cu2.status FROM case_urls cu2
+			 WHERE cu2.case_id = latest_case.id AND cu2.url_id = urls.id) as status,
+			latest_case.requested_at,
 			(SELECT cl.reference_number_external FROM case_letters cl
 			 JOIN cases c ON c.id = cl.case_id
 			 JOIN case_urls cu ON cu.case_id = c.id
@@ -611,8 +613,53 @@ func (s *postgresStore) ListDepartmentURLs(ctx context.Context, departmentID uin
 			i := idxByURLID[r.URLID]
 			entries[i].RequestingDepartments = append(entries[i].RequestingDepartments, r.Name)
 		}
+
+		offMap, err := s.offencesByURLIDs(ctx, urlIDs)
+		if err != nil {
+			return nil, err
+		}
+		for i := range entries {
+			entries[i].Offences = offMap[entries[i].ID]
+		}
 	}
 	return entries, nil
+}
+
+// offencesByURLIDs batches URLOffence -> Category -> Citation lookups for
+// many urls at once (same "not a scalar subquery, multi-valued" reasoning
+// ListDepartmentURLs already applies to RequestingDepartments).
+func (s *postgresStore) offencesByURLIDs(ctx context.Context, urlIDs []uint) (map[uint][]OffenceEntry, error) {
+	if len(urlIDs) == 0 {
+		return nil, nil
+	}
+	type offenceRow struct {
+		URLID      uint
+		RawText    string
+		Category   string
+		Element    string
+		SubElement string
+	}
+	var rows []offenceRow
+	if err := s.db.WithContext(ctx).
+		Table("url_offences").
+		Select(`url_offences.url_id as url_id, citations.raw_text as raw_text, categories.name as category,
+			COALESCE(elements.name, '') as element, COALESCE(sub_elements.name, '') as sub_element`).
+		Joins("JOIN categories ON categories.id = url_offences.category_id").
+		Joins("JOIN citations ON citations.id = categories.citation_id").
+		Joins("LEFT JOIN elements ON elements.id = url_offences.element_id").
+		Joins("LEFT JOIN sub_elements ON sub_elements.id = url_offences.sub_element_id").
+		Where("url_offences.url_id IN ?", urlIDs).
+		Order("url_offences.recorded_at asc").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[uint][]OffenceEntry, len(rows))
+	for _, r := range rows {
+		out[r.URLID] = append(out[r.URLID], OffenceEntry{
+			Citation: r.RawText, Category: r.Category, Element: r.Element, SubElement: r.SubElement,
+		})
+	}
+	return out, nil
 }
 
 // AddURLToWatchlist gets-or-creates the URL by normalized value, then links

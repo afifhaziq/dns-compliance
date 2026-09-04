@@ -39,8 +39,8 @@ func TestWriteCMODCases_CreatesFourLettersForFullLifecycle(t *testing.T) {
 	if err := gdb.First(&cu).Error; err != nil {
 		t.Fatalf("CaseURL: %v", err)
 	}
-	if cu.Phase != "uplift" {
-		t.Errorf("Phase = %q, want uplift (case has an Uplift letter)", cu.Phase)
+	if cu.Status != "uplift" {
+		t.Errorf("Status = %q, want uplift (case has an Uplift letter)", cu.Status)
 	}
 }
 
