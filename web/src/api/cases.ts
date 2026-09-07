@@ -110,14 +110,17 @@ export type CaseLetterFieldsUpdate = Partial<{
   letterDate: string | null
   receivedAt: string | null
   submittedAt: string | null
+  oicUserId: number | null
 }>
 
 // Partial update of one CaseLetter's fields (PATCH
 // /api/cases/{caseId}/letters/{letterId}) — only keys present in `fields`
 // are sent. Date fields clear via null -> "" (same sentinel convention as
-// updateCase's dueDate/requestedAt above); string fields clear via "".
+// updateCase's dueDate/requestedAt above); string fields clear via "";
+// oicUserId clears via null -> 0 (a number, never a real user id — same
+// sentinel convention as updateCase's agencyId above).
 export async function updateCaseLetter(caseId: number, letterId: number, fields: CaseLetterFieldsUpdate): Promise<void> {
-  const body: Record<string, string> = {}
+  const body: Record<string, string | number> = {}
   if (fields.subject !== undefined) body.subject = fields.subject
   if (fields.workflowStatus !== undefined) body.workflow_status = fields.workflowStatus
   if (fields.referenceNumberExternal !== undefined) body.reference_number_external = fields.referenceNumberExternal
@@ -128,6 +131,7 @@ export async function updateCaseLetter(caseId: number, letterId: number, fields:
   if (fields.letterDate !== undefined) body.letter_date = fields.letterDate ?? ''
   if (fields.receivedAt !== undefined) body.received_at = fields.receivedAt ?? ''
   if (fields.submittedAt !== undefined) body.submitted_at = fields.submittedAt ?? ''
+  if (fields.oicUserId !== undefined) body.oic_user_id = fields.oicUserId ?? 0
   await api.patch<void>(`/cases/${caseId}/letters/${letterId}`, body)
 }
 
