@@ -1,9 +1,11 @@
 package blockexport
 
 import (
+	"io"
 	"time"
 
 	"github.com/afif/dns-tracking/internal/db"
+	"github.com/xuri/excelize/v2"
 )
 
 const exportDateLayout = "2006-01-02"
@@ -97,4 +99,46 @@ func FlattenCMODRows(
 		}
 	}
 	return out
+}
+
+var cmodHeaders = []string{
+	"No", "Letter Date", "Recipient", "Type", "Subject", "Reference No", "OIC",
+	"Requestor", "Offence", "Link", "Remarks", "Agency", "Status", "Received",
+	"Submission", "Case ID", "Internal Ref (No. Rujukan NMSMD)",
+}
+
+// WriteCMODWorkbook writes rows as a single-sheet .xlsx to w — a header row
+// (the 17 column titles, in FlattenCMODRows' declared order) followed by
+// one data row per CMODRow.
+func WriteCMODWorkbook(rows []CMODRow, w io.Writer) error {
+	f := excelize.NewFile()
+	defer f.Close()
+	const sheet = "Sheet1"
+
+	for i, h := range cmodHeaders {
+		cell, err := excelize.CoordinatesToCellName(i+1, 1)
+		if err != nil {
+			return err
+		}
+		if err := f.SetCellValue(sheet, cell, h); err != nil {
+			return err
+		}
+	}
+	for r, row := range rows {
+		vals := []interface{}{
+			row.No, row.LetterDate, row.Recipient, row.Type, row.Subject, row.ReferenceNo,
+			row.OIC, row.Requestor, row.Offence, row.Link, row.Remarks, row.Agency,
+			row.Status, row.Received, row.Submission, row.CaseID, row.InternalRef,
+		}
+		for c, v := range vals {
+			cell, err := excelize.CoordinatesToCellName(c+1, r+2)
+			if err != nil {
+				return err
+			}
+			if err := f.SetCellValue(sheet, cell, v); err != nil {
+				return err
+			}
+		}
+	}
+	return f.Write(w)
 }

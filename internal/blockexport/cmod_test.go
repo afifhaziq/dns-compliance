@@ -1,10 +1,12 @@
 package blockexport
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
 	"github.com/afif/dns-tracking/internal/db"
+	"github.com/xuri/excelize/v2"
 )
 
 func cmodPtrTime(y int, m time.Month, d int) *time.Time {
@@ -119,5 +121,45 @@ func TestFlattenCMODRows_AgencyAndDatesResolved(t *testing.T) {
 	}
 	if rows[0].LetterDate != "2024-05-01" || rows[0].Received != "2024-05-02" || rows[0].Submission != "2024-05-03" {
 		t.Fatalf("date columns mismatch: %+v", rows[0])
+	}
+}
+
+func TestWriteCMODWorkbook_RoundTrips(t *testing.T) {
+	rows := []CMODRow{
+		{No: 1, LetterDate: "2024-05-01", Recipient: "ISP A", Type: "Notice", Subject: "Blocking",
+			ReferenceNo: "REF-1", OIC: "alice", Requestor: "bob", Offence: "Judi", Link: "a.com",
+			Remarks: "note", Agency: "PDRM", Status: "Submitted", Received: "2024-05-02",
+			Submission: "2024-05-03", CaseID: 9, InternalRef: "INT-1"},
+	}
+	var buf bytes.Buffer
+	if err := WriteCMODWorkbook(rows, &buf); err != nil {
+		t.Fatalf("WriteCMODWorkbook: %v", err)
+	}
+
+	f, err := excelize.OpenReader(&buf)
+	if err != nil {
+		t.Fatalf("OpenReader: %v", err)
+	}
+	defer f.Close()
+
+	got, err := f.GetRows("Sheet1")
+	if err != nil {
+		t.Fatalf("GetRows: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d rows, want 2: %+v", len(got), got)
+	}
+	wantHeader := []string{
+		"No", "Letter Date", "Recipient", "Type", "Subject", "Reference No", "OIC",
+		"Requestor", "Offence", "Link", "Remarks", "Agency", "Status", "Received",
+		"Submission", "Case ID", "Internal Ref (No. Rujukan NMSMD)",
+	}
+	for i, h := range wantHeader {
+		if got[0][i] != h {
+			t.Fatalf("header col %d = %q, want %q", i, got[0][i], h)
+		}
+	}
+	if got[1][9] != "a.com" || got[1][6] != "alice" || got[1][15] != "9" {
+		t.Fatalf("data row mismatch: %+v", got[1])
 	}
 }
