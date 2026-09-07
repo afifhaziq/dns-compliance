@@ -147,14 +147,20 @@ const ErrorClassBatchSize = 1000
 const errorClassMaxIterations = 100000
 
 // BackfillErrorClass assigns error_class to any pre-existing scan_results
-// row that has a raw error string but no classification yet — rows
-// inserted before internal/dns started preserving RCode via RCodeError.
-// This can only approximate the categories internal/dns.Classify computes
-// going forward, matching on the raw error text the same way
-// web/src/lib/dns-error.ts's classifyDNSError used to (client-side, made
-// redundant by this backfill) — the original RCode isn't recoverable after
-// the fact. Idempotent: only rows with error_class = '' and a non-empty
-// error are touched, so a row already classified never changes again.
+// row that represents a DNS failure (no resolved IP) with a raw error
+// string but no classification yet — rows inserted before internal/dns
+// started preserving RCode via RCodeError. This can only approximate the
+// categories internal/dns.Classify computes going forward, matching on the
+// raw error text the same way web/src/lib/dns-error.ts's classifyDNSError
+// used to (client-side, made redundant by this backfill) — the original
+// RCode isn't recoverable after the fact. Rows with a non-empty resolved_ip
+// are screenshot failures, not DNS failures (internal/pipeline.checkDNS's
+// failure branches never set ResolvedIP; only a successful DNS step
+// followed by a failed takeScreenshot does) — those are deliberately left
+// unclassified here, consistent with takeScreenshot leaving ErrorClass
+// empty itself. Idempotent: only rows with error_class = '', a non-empty
+// error, and no resolved_ip are touched, so a row already classified never
+// changes again.
 func BackfillErrorClass(ctx context.Context, database *gorm.DB) error {
 	const stmt = `
 		UPDATE scan_results SET error_class = CASE
@@ -164,7 +170,7 @@ func BackfillErrorClass(ctx context.Context, database *gorm.DB) error {
 			WHEN LOWER(error) LIKE '%server misbehaving%' OR LOWER(error) LIKE '%connection refused%' OR LOWER(error) LIKE '%servfail%' THEN 'servfail'
 			ELSE 'other'
 		END
-		WHERE id IN (SELECT id FROM scan_results WHERE error <> '' AND error_class = '' LIMIT ?)`
+		WHERE id IN (SELECT id FROM scan_results WHERE error <> '' AND error_class = '' AND resolved_ip = '' LIMIT ?)`
 
 	for i := 0; i < errorClassMaxIterations; i++ {
 		res := database.WithContext(ctx).Exec(stmt, ErrorClassBatchSize)

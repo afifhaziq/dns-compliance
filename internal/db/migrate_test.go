@@ -522,6 +522,12 @@ func TestBackfillErrorClass_ClassifiesExistingRows(t *testing.T) {
 		{ScanRunID: run.ID, URLID: u.ID, DNSServerID: srv.ID, Compliant: true, ScannedAt: time.Now(), Error: "context deadline exceeded"},
 		{ScanRunID: run.ID, URLID: u.ID, DNSServerID: srv.ID, Compliant: true, ScannedAt: time.Now(), Error: "no A records for example.com"},
 		{ScanRunID: run.ID, URLID: u.ID, DNSServerID: srv.ID, Compliant: false, ScannedAt: time.Now()}, // violation row, no error — must stay untouched
+		{ScanRunID: run.ID, URLID: u.ID, DNSServerID: srv.ID, Compliant: true, ScannedAt: time.Now(), Error: "invalid URL: not-a-url"},
+		{ScanRunID: run.ID, URLID: u.ID, DNSServerID: srv.ID, Compliant: true, ScannedAt: time.Now(), Error: "server misbehaving"},
+		// screenshot-failure-shaped row: DNS resolved (ResolvedIP set), only the
+		// capture step errored — must stay unclassified even though the error
+		// text would otherwise match the "timeout" LIKE pattern.
+		{ScanRunID: run.ID, URLID: u.ID, DNSServerID: srv.ID, Compliant: false, ScannedAt: time.Now(), ResolvedIP: "1.2.3.4", Error: "context deadline exceeded"},
 	}
 	for i := range seed {
 		if err := gormDB.Create(&seed[i]).Error; err != nil {
@@ -537,7 +543,7 @@ func TestBackfillErrorClass_ClassifiesExistingRows(t *testing.T) {
 	if err := gormDB.Order("id asc").Find(&got).Error; err != nil {
 		t.Fatalf("reload: %v", err)
 	}
-	want := []string{"nxdomain", "timeout", "other", ""}
+	want := []string{"nxdomain", "timeout", "other", "", "invalid_url", "servfail", ""}
 	for i, w := range want {
 		if got[i].ErrorClass != w {
 			t.Errorf("row %d: ErrorClass = %q, want %q", i, got[i].ErrorClass, w)
@@ -558,6 +564,13 @@ func TestBackfillErrorClass_IsIdempotent(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed: %v", err)
 	}
+	// screenshot-failure-shaped row: must stay unclassified across repeated runs too.
+	if err := gormDB.Create(&db.ScanResult{
+		ScanRunID: run.ID, URLID: u.ID, DNSServerID: srv.ID, Compliant: false,
+		ScannedAt: time.Now(), ResolvedIP: "1.2.3.4", Error: "context deadline exceeded",
+	}).Error; err != nil {
+		t.Fatalf("seed screenshot-failure row: %v", err)
+	}
 
 	for i := 0; i < 2; i++ {
 		if err := db.BackfillErrorClass(ctx, gormDB); err != nil {
@@ -565,9 +578,14 @@ func TestBackfillErrorClass_IsIdempotent(t *testing.T) {
 		}
 	}
 
-	var got db.ScanResult
-	gormDB.First(&got)
-	if got.ErrorClass != "nxdomain" {
-		t.Fatalf("expected ErrorClass unchanged at nxdomain, got %q", got.ErrorClass)
+	var got []db.ScanResult
+	if err := gormDB.Order("id asc").Find(&got).Error; err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if got[0].ErrorClass != "nxdomain" {
+		t.Fatalf("expected ErrorClass unchanged at nxdomain, got %q", got[0].ErrorClass)
+	}
+	if got[1].ErrorClass != "" {
+		t.Fatalf("expected screenshot-failure row to stay unclassified, got %q", got[1].ErrorClass)
 	}
 }
