@@ -726,7 +726,7 @@ function EditDocumentDialog({
 }
 
 type LetterSubRow = { kind: 'letter'; letter: CaseLetterEntry }
-type CaseGroupRow = { kind: 'case'; caseId: number; departmentName: string; urls: string[]; subRows: LetterSubRow[] }
+type CaseGroupRow = { kind: 'case'; caseId: number; departmentId: number; departmentName: string; urls: string[]; subRows: LetterSubRow[] }
 type DocTreeRow = CaseGroupRow | LetterSubRow
 
 function DocsPage() {
@@ -864,7 +864,7 @@ function DocsPage() {
     for (const l of filtered) {
       let group = byId.get(l.case_id)
       if (!group) {
-        group = { kind: 'case', caseId: l.case_id, departmentName: l.department_name, urls: l.urls ?? [], subRows: [] }
+        group = { kind: 'case', caseId: l.case_id, departmentId: l.department_id, departmentName: l.department_name, urls: l.urls ?? [], subRows: [] }
         byId.set(l.case_id, group)
         order.push(l.case_id)
       }
