@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/afif/dns-tracking/internal/dns"
 )
 
 // SiteResult holds the outcome of checking one website.
@@ -19,6 +21,7 @@ type SiteResult struct {
 	Compliant    bool   // true = unreachable (good), false = accessible (violation)
 	Screenshot   []byte // nil if DNS failed or screenshot errored
 	Error        string // populated on DNS failure, timeout, or screenshot error
+	ErrorClass   string // "" on success; see internal/dns.Classify for categories (nxdomain/timeout/servfail/refused/empty/other/invalid_url)
 	LatencyMs    int64  // DNS round-trip latency in milliseconds; 0 on failure
 }
 
@@ -122,20 +125,22 @@ func checkDNS(ctx context.Context, rawURL string, resolve func(context.Context, 
 	u, err := url.Parse(normalized)
 	if err != nil || u.Hostname() == "" {
 		return SiteResult{
-			URL:       rawURL,
-			Timestamp: time.Now(),
-			Compliant: true,
-			Error:     "invalid URL: " + rawURL,
+			URL:        rawURL,
+			Timestamp:  time.Now(),
+			Compliant:  true,
+			Error:      "invalid URL: " + rawURL,
+			ErrorClass: "invalid_url",
 		}
 	}
 
 	ip, latencyMs, err := resolve(ctx, u.Hostname())
 	if err != nil {
 		return SiteResult{
-			URL:       rawURL,
-			Timestamp: time.Now(),
-			Compliant: true,
-			Error:     err.Error(),
+			URL:        rawURL,
+			Timestamp:  time.Now(),
+			Compliant:  true,
+			Error:      err.Error(),
+			ErrorClass: dns.Classify(err),
 		}
 	}
 

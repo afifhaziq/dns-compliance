@@ -3,6 +3,7 @@ package pipeline_test
 import (
 	"context"
 	"errors"
+	"net"
 	"testing"
 	"time"
 
@@ -167,5 +168,43 @@ func TestMultipleSitesAllProcessed(t *testing.T) {
 	}
 	if len(results) != 5 {
 		t.Fatalf("want 5 results, got %d", len(results))
+	}
+}
+
+func TestCheckDNSSetsErrorClassOnNXDOMAIN(t *testing.T) {
+	cfg := pipeline.Config{
+		DNSWorkers:        1,
+		ScreenshotWorkers: 1,
+		DNSTimeout:        5 * time.Second,
+		ScreenshotTimeout: 5 * time.Second,
+		Resolve:           mockResolve("", &net.DNSError{Err: "no such host", IsNotFound: true}),
+		Capture:           mockCapture(nil, nil),
+	}
+
+	results, err := pipeline.Run(context.Background(), []string{"https://down-site.com"}, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if results[0].ErrorClass != "nxdomain" {
+		t.Errorf("ErrorClass = %q, want %q", results[0].ErrorClass, "nxdomain")
+	}
+}
+
+func TestCheckDNSSetsErrorClassOnUnrecognizedError(t *testing.T) {
+	cfg := pipeline.Config{
+		DNSWorkers:        1,
+		ScreenshotWorkers: 1,
+		DNSTimeout:        5 * time.Second,
+		ScreenshotTimeout: 5 * time.Second,
+		Resolve:           mockResolve("", errors.New("connection reset")),
+		Capture:           mockCapture(nil, nil),
+	}
+
+	results, err := pipeline.Run(context.Background(), []string{"https://down-site.com"}, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if results[0].ErrorClass != "other" {
+		t.Errorf("ErrorClass = %q, want %q", results[0].ErrorClass, "other")
 	}
 }
