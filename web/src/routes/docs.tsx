@@ -19,7 +19,9 @@ import { fetchRecipients } from '@/api/recipients'
 import { fetchRequestors } from '@/api/requestors'
 import { fetchAgencies } from '@/api/agencies'
 import { fetchDueDatePresets } from '@/api/due-date-presets'
-import type { CaseLetterEntry, Department, Recipient, Requestor, Agency, DueDatePreset } from '@/api/types'
+import { fetchUsersOpen } from '@/api/users'
+import { useAuth } from './__root'
+import type { CaseLetterEntry, Department, Recipient, Requestor, Agency, DueDatePreset, User } from '@/api/types'
 import { CASE_STATUS_OPTIONS, LETTER_TYPE_OPTIONS as CASE_LETTER_TYPE_OPTIONS } from '@/lib/case-options'
 import {
   Dialog,
@@ -108,6 +110,7 @@ function AddDocumentDialog({
   agencies,
   duePresets,
   caseOptions,
+  users,
 }: {
   open: boolean
   onClose: () => void
@@ -118,6 +121,7 @@ function AddDocumentDialog({
   agencies: Agency[]
   duePresets: DueDatePreset[]
   caseOptions: CaseOption[]
+  users: User[]
 }) {
   const [domains, setDomains] = useState<string[]>([])
   const [domainQuery, setDomainQuery] = useState('')
@@ -130,6 +134,8 @@ function AddDocumentDialog({
   // Rujukan NMSMD"), same as Subject below.
   const [referenceNumberExternal, setReferenceNumberExternal] = useState('')
   const [recipient, setRecipient] = useState('')
+  const { me } = useAuth()
+  const [oicUserId, setOicUserId] = useState<number | ''>('')
   // Two type-segmented subject/internal-ref fields, one per letter this
   // dialog always records (Notice + Memo, matching CaseLetter's real grain
   // — see db.CaseLetter's comment on a block getting up to 4 rows, 2 per
@@ -161,6 +167,10 @@ function AddDocumentDialog({
   const copySubjectFromMemo = () => setNoticeSubject(memoSubject)
   const copySubjectFromNotice = () => setMemoSubject(noticeSubject)
 
+  useEffect(() => {
+    if (open) setOicUserId(me?.id ?? '')
+  }, [open, me])
+
   // The typed-but-not-yet-selected query is offered back as a pickable item
   // itself (labeled "Add …") so this stays create-or-pick like the old
   // textarea — a domain doesn't have to already be on a watchlist.
@@ -169,6 +179,11 @@ function AddDocumentDialog({
     if (!trimmedQuery || domainOptions.includes(trimmedQuery) || domains.includes(trimmedQuery)) return domainOptions
     return [...domainOptions, trimmedQuery]
   }, [domainOptions, trimmedQuery, domains])
+
+  const oicOptions = useMemo(
+    () => users.filter(u => u.department_id === me?.department_id),
+    [users, me],
+  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -194,6 +209,7 @@ function AddDocumentDialog({
         received_at: isoFromDateInput(receivedAt),
         submitted_at: isoFromDateInput(submittedAt),
         remarks: remarks.trim() || undefined,
+        oic_user_id: oicUserId === '' ? undefined : oicUserId,
       }
       // One row each, per CaseLetter's real grain. Subject/internal ref are
       // each section's own — use the "Copy" button beforehand to autofill
@@ -440,6 +456,23 @@ function AddDocumentDialog({
             </Select>
           </div>
 
+          <div className="form-field">
+            <label className="form-label" id="add-doc-oic-label">OIC</label>
+            <Select
+              value={oicUserId === '' ? '' : String(oicUserId)}
+              onValueChange={v => setOicUserId(v === '' ? '' : Number(v))}
+              disabled={loading}
+            >
+              <SelectTrigger aria-labelledby="add-doc-oic-label" placeholder="—" className="w-full" />
+              <SelectContent>
+                <SelectItem index={0} value="">—</SelectItem>
+                {oicOptions.map((u, i) => (
+                  <SelectItem key={u.id} index={i + 1} value={String(u.id)}>{u.username}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="form-row">
             <div className="form-field">
               <label className="form-label" id="add-doc-requestor-label">Requestor</label>
@@ -520,13 +553,14 @@ function AddDocumentDialog({
 // agency/status still live on the parent Case, edited from urls.tsx's Cases
 // view instead.
 function EditDocumentDialog({
-  open, onClose, onSaved, editing, recipients, requestors,
-}: { open: boolean; onClose: () => void; onSaved: () => void; editing: CaseGroupRow | null; recipients: Recipient[]; requestors: Requestor[] }) {
+  open, onClose, onSaved, editing, recipients, requestors, users,
+}: { open: boolean; onClose: () => void; onSaved: () => void; editing: CaseGroupRow | null; recipients: Recipient[]; requestors: Requestor[]; users: User[] }) {
   const notice = editing?.subRows.find(s => s.letter.type === 'Notice')?.letter
   const memo = editing?.subRows.find(s => s.letter.type === 'Memo')?.letter
 
   const [referenceNumberExternal, setReferenceNumberExternal] = useState('')
   const [recipient, setRecipient] = useState('')
+  const [oicUserId, setOicUserId] = useState<number | ''>('')
   const [requestor, setRequestor] = useState('')
   const [workflowStatus, setWorkflowStatus] = useState('')
   const [letterDate, setLetterDate] = useState('')
@@ -548,6 +582,7 @@ function EditDocumentDialog({
     const source = notice ?? memo
     setReferenceNumberExternal(source?.reference_number_external ?? '')
     setRecipient(source?.recipient ?? '')
+    setOicUserId(source?.oic_user_id ?? '')
     setRequestor(source?.requestor ?? '')
     setWorkflowStatus(source?.workflow_status ?? '')
     setLetterDate(source?.letter_date ? source.letter_date.slice(0, 10) : '')
@@ -560,6 +595,11 @@ function EditDocumentDialog({
     setMemoReferenceNumberInternal(memo?.reference_number_internal ?? '')
     setError(null)
   }, [open, editing, notice, memo])
+
+  const oicOptions = useMemo(
+    () => users.filter(u => u.department_id === editing?.departmentId),
+    [users, editing],
+  )
 
   const handleClose = () => { setError(null); onClose() }
 
@@ -582,6 +622,7 @@ function EditDocumentDialog({
         receivedAt: isoFromDateInput(receivedAt) ?? null,
         submittedAt: isoFromDateInput(submittedAt) ?? null,
         remarks: remarks.trim(),
+        oicUserId: oicUserId === '' ? null : oicUserId,
       }
       const updates: Promise<void>[] = []
       if (notice) {
@@ -630,6 +671,23 @@ function EditDocumentDialog({
                 <SelectItem index={0} value="">—</SelectItem>
                 {recipients.map((r, i) => (
                   <SelectItem key={r.id} index={i + 1} value={r.name}>{r.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="form-field">
+            <label className="form-label" id="edit-doc-oic-label">OIC</label>
+            <Select
+              value={oicUserId === '' ? '' : String(oicUserId)}
+              onValueChange={v => setOicUserId(v === '' ? '' : Number(v))}
+              disabled={loading}
+            >
+              <SelectTrigger aria-labelledby="edit-doc-oic-label" placeholder="—" className="w-full" />
+              <SelectContent>
+                <SelectItem index={0} value="">—</SelectItem>
+                {oicOptions.map((u, i) => (
+                  <SelectItem key={u.id} index={i + 1} value={String(u.id)}>{u.username}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -737,6 +795,7 @@ function DocsPage() {
   const [requestors, setRequestors] = useState<Requestor[]>([])
   const [agencies, setAgencies] = useState<Agency[]>([])
   const [duePresets, setDuePresets] = useState<DueDatePreset[]>([])
+  const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -766,9 +825,9 @@ function DocsPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [l, d, u, rc, rq, ag, dp] = await Promise.all([
+      const [l, d, u, rc, rq, ag, dp, us] = await Promise.all([
         fetchAllCaseLetters(), fetchDepartmentsOpen(), fetchUrls(), fetchRecipients(), fetchRequestors(),
-        fetchAgencies(), fetchDueDatePresets(),
+        fetchAgencies(), fetchDueDatePresets(), fetchUsersOpen(),
       ])
       setLetters(l)
       setDepartments(d)
@@ -777,6 +836,7 @@ function DocsPage() {
       setRequestors(rq)
       setAgencies(ag)
       setDuePresets(dp)
+      setUsers(us)
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load documents')
@@ -1127,6 +1187,7 @@ function DocsPage() {
         agencies={agencies}
         duePresets={duePresets}
         caseOptions={caseOptions}
+        users={users}
       />
 
       <EditDocumentDialog
@@ -1136,6 +1197,7 @@ function DocsPage() {
         editing={editTarget}
         recipients={recipients}
         requestors={requestors}
+        users={users}
       />
 
       <DeleteConfirmDialog
