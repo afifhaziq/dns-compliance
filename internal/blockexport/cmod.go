@@ -2,21 +2,12 @@ package blockexport
 
 import (
 	"io"
-	"time"
 
 	"github.com/afif/dns-tracking/internal/db"
 	"github.com/xuri/excelize/v2"
 )
 
-const exportDateLayout = "2006-01-02"
-
-// formatDate returns a plain text date string "YYYY-MM-DD" or "" if t is nil.
-func formatDate(t *time.Time) string {
-	if t == nil {
-		return ""
-	}
-	return t.Format(exportDateLayout)
-}
+// formatDate and exportDateLayout are defined in crd.go — this file reuses them.
 
 // CMODRow is one flattened output row, one field per export column, in
 // declaration order matching the column table below.
