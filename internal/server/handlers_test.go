@@ -1577,6 +1577,9 @@ func (m *fullMockStore) UpdateCaseLetterFields(_ context.Context, caseID, letter
 		if fields.SubmittedAt != nil {
 			m.caseLetters[i].SubmittedAt = *fields.SubmittedAt
 		}
+		if fields.OICUserID != nil {
+			m.caseLetters[i].OICUserID = *fields.OICUserID
+		}
 		return true, nil
 	}
 	return false, nil
@@ -3413,6 +3416,65 @@ func TestListDepartmentsOpen_AllowedForNonAdmin(t *testing.T) {
 	}
 	if len(departments) != 1 || departments[0].Name != "CMOD" {
 		t.Fatalf("unexpected departments: %+v", departments)
+	}
+}
+
+func TestListUsersOpen_NonAdminSeesOwnDepartmentOnly(t *testing.T) {
+	dept1 := uint(1)
+	dept2 := uint(2)
+	store := &fullMockStore{users: []db.User{
+		{ID: 1, Username: "alice", DepartmentID: &dept1},
+		{ID: 2, Username: "bob", DepartmentID: &dept2},
+	}}
+	cookie := deptCookie(store, 1) // becomes user ID 3 in store.users, department 1
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/users/open", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var users []db.User
+	if err := json.Unmarshal(w.Body.Bytes(), &users); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	// alice (dept 1) and the caller (dept 1) are visible; bob (dept 2) is not.
+	names := map[string]bool{}
+	for _, u := range users {
+		names[u.Username] = true
+	}
+	if !names["alice"] || names["bob"] {
+		t.Fatalf("expected alice visible and bob hidden, got %+v", users)
+	}
+}
+
+func TestListUsersOpen_AdminSeesEveryone(t *testing.T) {
+	dept1 := uint(1)
+	dept2 := uint(2)
+	store := &fullMockStore{users: []db.User{
+		{ID: 1, Username: "alice", DepartmentID: &dept1},
+		{ID: 2, Username: "bob", DepartmentID: &dept2},
+	}}
+	cookie := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/users/open", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var users []db.User
+	if err := json.Unmarshal(w.Body.Bytes(), &users); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(users) != 3 { // alice, bob, and the admin caller loginAs adds
+		t.Fatalf("expected admin to see all 3 users, got %d: %+v", len(users), users)
 	}
 }
 

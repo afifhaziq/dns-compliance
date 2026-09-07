@@ -612,3 +612,57 @@ func TestUpdateCaseLetterFields_PartialUpdateAndScoping(t *testing.T) {
 		t.Fatal("expected found=false when case id doesn't match the letter's own case")
 	}
 }
+
+func TestUpdateCaseLetterFields_SetsAndClearsOICUserID(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	dept, _ := store.CreateDepartment(ctx, "OICFieldsDept")
+	u, _ := store.CreateURL(ctx, "oic-fields.com")
+	c, err := store.CreateCase(ctx, dept.ID, u.ID, "requested", db.CaseCreateOptions{})
+	if err != nil {
+		t.Fatalf("CreateCase: %v", err)
+	}
+	letter, err := store.AddCaseLetter(ctx, db.CaseLetter{CaseID: c.ID, Type: "Notice"})
+	if err != nil {
+		t.Fatalf("AddCaseLetter: %v", err)
+	}
+
+	oicID := uint(42)
+	oicIDPtr := &oicID
+	found, err := store.UpdateCaseLetterFields(ctx, c.ID, letter.ID, db.CaseLetterFields{OICUserID: &oicIDPtr})
+	if err != nil || !found {
+		t.Fatalf("UpdateCaseLetterFields(set): found=%v err=%v", found, err)
+	}
+
+	// Read back via ListCaseLetters, same as TestUpdateCaseLetterFields_PartialUpdateAndScoping does.
+	entries, _, err := store.ListCaseLetters(ctx, 1, 100)
+	if err != nil {
+		t.Fatalf("ListCaseLetters: %v", err)
+	}
+	var updated *db.CaseLetterEntry
+	for i := range entries {
+		if entries[i].ID == letter.ID {
+			updated = &entries[i]
+		}
+	}
+	if updated == nil || updated.OICUserID == nil || *updated.OICUserID != oicID {
+		t.Fatalf("expected OICUserID %d, got %+v", oicID, updated)
+	}
+
+	// Clear it.
+	var nilOIC *uint
+	found, err = store.UpdateCaseLetterFields(ctx, c.ID, letter.ID, db.CaseLetterFields{OICUserID: &nilOIC})
+	if err != nil || !found {
+		t.Fatalf("UpdateCaseLetterFields(clear): found=%v err=%v", found, err)
+	}
+	entries, _, err = store.ListCaseLetters(ctx, 1, 100)
+	if err != nil {
+		t.Fatalf("ListCaseLetters: %v", err)
+	}
+	for i := range entries {
+		if entries[i].ID == letter.ID && entries[i].OICUserID != nil {
+			t.Fatalf("expected OICUserID cleared, got %+v", entries[i])
+		}
+	}
+}

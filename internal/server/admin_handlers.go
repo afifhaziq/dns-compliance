@@ -101,6 +101,16 @@ func (h *Handlers) ListUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, users)
 }
 
+// ListUsersOpen is the same underlying data as ListUsers (gated by
+// requireAnyAdmin at GET /api/admin/users) but exposed to any authenticated
+// role at GET /api/users/open — mirrors ListDepartmentsOpen's "any
+// authenticated user" pattern (admin_handlers.go, line 32). Needed for the
+// OIC picker any regular user sees when creating/editing a case's letters
+// (docs.tsx), not just admins.
+func (h *Handlers) ListUsersOpen(w http.ResponseWriter, r *http.Request) {
+	h.ListUsers(w, r)
+}
+
 func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request) {
 	caller, ok := userFromContext(r.Context())
 	if !ok {

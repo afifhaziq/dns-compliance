@@ -227,6 +227,56 @@ func TestAddCaseLetter_UnknownCase404(t *testing.T) {
 	}
 }
 
+func TestAddCaseLetter_DefaultsOICUserIDToCaller(t *testing.T) {
+	store := &fullMockStore{}
+	u := db.URL{ID: 1, URL: "example.com"}
+	store.urls = append(store.urls, u)
+	store.departmentURLs = append(store.departmentURLs, db.DepartmentURL{DepartmentID: 1, URLID: u.ID, Enabled: true})
+	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
+	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID})
+	cookie := deptCookie(store, 1) // first user created in an empty store -> ID 1, see loginAs (handlers_test.go:1616-1629)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]string{"type": "Notice"})
+	req := httptest.NewRequest(http.MethodPost, "/api/cases/1/letters", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.caseLetters) != 1 || store.caseLetters[0].OICUserID == nil || *store.caseLetters[0].OICUserID != 1 {
+		t.Fatalf("expected OICUserID defaulted to caller's own id (1), got %+v", store.caseLetters)
+	}
+}
+
+func TestAddCaseLetter_ExplicitOICUserIDWins(t *testing.T) {
+	store := &fullMockStore{}
+	u := db.URL{ID: 1, URL: "example.com"}
+	store.urls = append(store.urls, u)
+	store.departmentURLs = append(store.departmentURLs, db.DepartmentURL{DepartmentID: 1, URLID: u.ID, Enabled: true})
+	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
+	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID})
+	cookie := deptCookie(store, 1) // caller's own id is 1
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]any{"type": "Notice", "oic_user_id": 99})
+	req := httptest.NewRequest(http.MethodPost, "/api/cases/1/letters", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.caseLetters) != 1 || store.caseLetters[0].OICUserID == nil || *store.caseLetters[0].OICUserID != 99 {
+		t.Fatalf("expected explicit OICUserID 99 to win, got %+v", store.caseLetters)
+	}
+}
+
 // PATCH /api/cases/{id} — ownership + clear-sentinel behavior, mirroring
 // the old PATCH /api/urls/{id} case-field tests (handlers_test.go) now that
 // those fields live on Case.
@@ -617,5 +667,46 @@ func TestUpdateCaseLetter_NonOwningDepartment404(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateCaseLetter_SetsAndClearsOICUserID(t *testing.T) {
+	store := &fullMockStore{}
+	u := db.URL{ID: 1, URL: "example.com"}
+	store.urls = append(store.urls, u)
+	store.departmentURLs = append(store.departmentURLs, db.DepartmentURL{DepartmentID: 1, URLID: u.ID, Enabled: true})
+	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
+	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID})
+	store.caseLetters = append(store.caseLetters, db.CaseLetter{ID: 1, CaseID: 1, Type: "Notice"})
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]any{"oic_user_id": 7})
+	req := httptest.NewRequest(http.MethodPatch, "/api/cases/1/letters/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if store.caseLetters[0].OICUserID == nil || *store.caseLetters[0].OICUserID != 7 {
+		t.Fatalf("expected OICUserID 7, got %+v", store.caseLetters[0])
+	}
+
+	// Clear it via the 0 sentinel.
+	body, _ = json.Marshal(map[string]any{"oic_user_id": 0})
+	req = httptest.NewRequest(http.MethodPatch, "/api/cases/1/letters/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if store.caseLetters[0].OICUserID != nil {
+		t.Fatalf("expected OICUserID cleared, got %+v", store.caseLetters[0])
 	}
 }

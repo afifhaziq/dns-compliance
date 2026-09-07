@@ -72,6 +72,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Get("/recipients", h.ListRecipients)
 			r.Get("/requestors", h.ListRequestors)
 			r.Get("/departments", h.ListDepartmentsOpen)
+			r.Get("/users/open", h.ListUsersOpen)
 			r.Get("/due-date-presets", h.ListDueDatePresets)
 
 			r.With(scanLimit).Post("/scan", h.TriggerScan)
