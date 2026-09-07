@@ -259,6 +259,7 @@ type ScanResult struct {
 	ResolvedAbuseEmail string    `json:"resolved_abuse_email"`
 	ScreenshotURL      string    `json:"screenshot_url"`
 	Error              string    `json:"error"`
+	ErrorClass         string    `json:"error_class"`
 	LatencyMs          int64     `gorm:"default:0" json:"latency_ms"`
 	ScannedAt          time.Time `gorm:"index;index:idx_scan_results_url_server_time,priority:3" json:"scanned_at"`
 }

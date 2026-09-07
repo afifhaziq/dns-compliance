@@ -135,6 +135,49 @@ func BackfillURLValues(ctx context.Context, database *gorm.DB) error {
 	return fmt.Errorf("backfilling scan_results.url_value: did not converge after %d iterations", backfillURLValuesMaxIterations)
 }
 
+// ErrorClassBatchSize caps each UPDATE to a bounded chunk of rows, same
+// rationale as BackfillURLValuesBatchSize: a first-deploy run rewrites
+// every pre-existing scan_results row that has an error, and an unbatched
+// statement risks tripping a managed-Postgres statement_timeout.
+const ErrorClassBatchSize = 1000
+
+// errorClassMaxIterations guards against spinning forever; the CASE below
+// always assigns "other" as a last resort, so a row can never fail to
+// converge, but the guard matches BackfillURLValues's defensive shape.
+const errorClassMaxIterations = 100000
+
+// BackfillErrorClass assigns error_class to any pre-existing scan_results
+// row that has a raw error string but no classification yet — rows
+// inserted before internal/dns started preserving RCode via RCodeError.
+// This can only approximate the categories internal/dns.Classify computes
+// going forward, matching on the raw error text the same way
+// web/src/lib/dns-error.ts's classifyDNSError used to (client-side, made
+// redundant by this backfill) — the original RCode isn't recoverable after
+// the fact. Idempotent: only rows with error_class = '' and a non-empty
+// error are touched, so a row already classified never changes again.
+func BackfillErrorClass(ctx context.Context, database *gorm.DB) error {
+	const stmt = `
+		UPDATE scan_results SET error_class = CASE
+			WHEN LOWER(error) LIKE 'invalid url:%' THEN 'invalid_url'
+			WHEN LOWER(error) LIKE '%no such host%' OR LOWER(error) LIKE '%nxdomain%' THEN 'nxdomain'
+			WHEN LOWER(error) LIKE '%timeout%' OR LOWER(error) LIKE '%deadline exceeded%' THEN 'timeout'
+			WHEN LOWER(error) LIKE '%server misbehaving%' OR LOWER(error) LIKE '%connection refused%' OR LOWER(error) LIKE '%servfail%' THEN 'servfail'
+			ELSE 'other'
+		END
+		WHERE id IN (SELECT id FROM scan_results WHERE error <> '' AND error_class = '' LIMIT ?)`
+
+	for i := 0; i < errorClassMaxIterations; i++ {
+		res := database.WithContext(ctx).Exec(stmt, ErrorClassBatchSize)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return nil
+		}
+	}
+	return fmt.Errorf("backfilling scan_results.error_class: did not converge after %d iterations", errorClassMaxIterations)
+}
+
 // BackfillURLCaseMetadataBatchSize caps each read batch. Unlike
 // BackfillURLValues (one bulk UPDATE per batch), this backfill does
 // per-row Go logic — one Case+CaseURL per distinct department watching a

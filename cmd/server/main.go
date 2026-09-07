@@ -78,6 +78,15 @@ func main() {
 		log.Printf("backfilling scan_results.url_value: %v", err)
 	}
 
+	// Best-effort: pre-existing rows only ever had the raw error string,
+	// never the structured RCode internal/dns now preserves, so this only
+	// approximates the same category via substring matching. Non-fatal for
+	// the same reason BackfillURLValues is — don't crash-loop startup over
+	// a slow backfill.
+	if err := db.BackfillErrorClass(context.Background(), gormDB); err != nil {
+		log.Printf("backfilling scan_results.error_class: %v", err)
+	}
+
 	if err := db.SeedDepartments(gormDB); err != nil {
 		log.Printf("seed departments: %v", err)
 	}

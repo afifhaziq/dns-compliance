@@ -508,3 +508,66 @@ func TestConnect_SkipsReferenceNumberWithNoDepartment(t *testing.T) {
 		t.Fatal("expected urls.requesting_dept_id to be dropped even when skipped")
 	}
 }
+
+func TestBackfillErrorClass_ClassifiesExistingRows(t *testing.T) {
+	gormDB, s := rawConnect(t)
+	ctx := context.Background()
+
+	u, _ := s.CreateURL(ctx, "example.com")
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{Name: "G", Address: "8.8.8.8:53", Protocol: "udp"})
+	run, _ := s.CreateScanRun(ctx, "manual")
+
+	seed := []db.ScanResult{
+		{ScanRunID: run.ID, URLID: u.ID, DNSServerID: srv.ID, Compliant: true, ScannedAt: time.Now(), Error: "no such host"},
+		{ScanRunID: run.ID, URLID: u.ID, DNSServerID: srv.ID, Compliant: true, ScannedAt: time.Now(), Error: "context deadline exceeded"},
+		{ScanRunID: run.ID, URLID: u.ID, DNSServerID: srv.ID, Compliant: true, ScannedAt: time.Now(), Error: "no A records for example.com"},
+		{ScanRunID: run.ID, URLID: u.ID, DNSServerID: srv.ID, Compliant: false, ScannedAt: time.Now()}, // violation row, no error — must stay untouched
+	}
+	for i := range seed {
+		if err := gormDB.Create(&seed[i]).Error; err != nil {
+			t.Fatalf("seed %d: %v", i, err)
+		}
+	}
+
+	if err := db.BackfillErrorClass(ctx, gormDB); err != nil {
+		t.Fatalf("BackfillErrorClass: %v", err)
+	}
+
+	var got []db.ScanResult
+	if err := gormDB.Order("id asc").Find(&got).Error; err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	want := []string{"nxdomain", "timeout", "other", ""}
+	for i, w := range want {
+		if got[i].ErrorClass != w {
+			t.Errorf("row %d: ErrorClass = %q, want %q", i, got[i].ErrorClass, w)
+		}
+	}
+}
+
+func TestBackfillErrorClass_IsIdempotent(t *testing.T) {
+	gormDB, s := rawConnect(t)
+	ctx := context.Background()
+
+	u, _ := s.CreateURL(ctx, "example.com")
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{Name: "G", Address: "8.8.8.8:53", Protocol: "udp"})
+	run, _ := s.CreateScanRun(ctx, "manual")
+	if err := gormDB.Create(&db.ScanResult{
+		ScanRunID: run.ID, URLID: u.ID, DNSServerID: srv.ID, Compliant: true,
+		ScannedAt: time.Now(), Error: "no such host",
+	}).Error; err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		if err := db.BackfillErrorClass(ctx, gormDB); err != nil {
+			t.Fatalf("BackfillErrorClass run %d: %v", i, err)
+		}
+	}
+
+	var got db.ScanResult
+	gormDB.First(&got)
+	if got.ErrorClass != "nxdomain" {
+		t.Fatalf("expected ErrorClass unchanged at nxdomain, got %q", got.ErrorClass)
+	}
+}
