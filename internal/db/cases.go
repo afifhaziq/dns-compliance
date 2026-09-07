@@ -328,6 +328,9 @@ func (s *postgresStore) UpdateCaseLetterFields(ctx context.Context, caseID, lett
 	if fields.SubmittedAt != nil {
 		updates["submitted_at"] = *fields.SubmittedAt
 	}
+	if fields.OICUserID != nil {
+		updates["oic_user_id"] = *fields.OICUserID
+	}
 	if len(updates) == 0 {
 		var count int64
 		if err := s.db.WithContext(ctx).Model(&CaseLetter{}).Where("id = ? AND case_id = ?", letterID, caseID).Count(&count).Error; err != nil {

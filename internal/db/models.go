@@ -765,6 +765,7 @@ type CaseLetterFields struct {
 	LetterDate              **time.Time
 	ReceivedAt              **time.Time
 	SubmittedAt             **time.Time
+	OICUserID               **uint
 }
 
 // BuildProvisionSortKey returns a zero-padded, suffix-aware sortable
