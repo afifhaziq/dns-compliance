@@ -510,7 +510,7 @@ func (h *Handlers) UpdateCaseLetter(w http.ResponseWriter, r *http.Request) {
 		LetterDate              *string `json:"letter_date"`
 		ReceivedAt              *string `json:"received_at"`
 		SubmittedAt             *string `json:"submitted_at"`
-		OICUserID               *uint  `json:"oic_user_id"`
+		OICUserID               *uint   `json:"oic_user_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
