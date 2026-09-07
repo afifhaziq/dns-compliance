@@ -619,3 +619,44 @@ func TestUpdateCaseLetter_NonOwningDepartment404(t *testing.T) {
 		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestUpdateCaseLetter_SetsAndClearsOICUserID(t *testing.T) {
+	store := &fullMockStore{}
+	u := db.URL{ID: 1, URL: "example.com"}
+	store.urls = append(store.urls, u)
+	store.departmentURLs = append(store.departmentURLs, db.DepartmentURL{DepartmentID: 1, URLID: u.ID, Enabled: true})
+	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
+	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID})
+	store.caseLetters = append(store.caseLetters, db.CaseLetter{ID: 1, CaseID: 1, Type: "Notice"})
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]any{"oic_user_id": 7})
+	req := httptest.NewRequest(http.MethodPatch, "/api/cases/1/letters/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if store.caseLetters[0].OICUserID == nil || *store.caseLetters[0].OICUserID != 7 {
+		t.Fatalf("expected OICUserID 7, got %+v", store.caseLetters[0])
+	}
+
+	// Clear it via the 0 sentinel.
+	body, _ = json.Marshal(map[string]any{"oic_user_id": 0})
+	req = httptest.NewRequest(http.MethodPatch, "/api/cases/1/letters/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if store.caseLetters[0].OICUserID != nil {
+		t.Fatalf("expected OICUserID cleared, got %+v", store.caseLetters[0])
+	}
+}

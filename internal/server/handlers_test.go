@@ -1577,6 +1577,9 @@ func (m *fullMockStore) UpdateCaseLetterFields(_ context.Context, caseID, letter
 		if fields.SubmittedAt != nil {
 			m.caseLetters[i].SubmittedAt = *fields.SubmittedAt
 		}
+		if fields.OICUserID != nil {
+			m.caseLetters[i].OICUserID = *fields.OICUserID
+		}
 		return true, nil
 	}
 	return false, nil

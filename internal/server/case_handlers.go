@@ -506,6 +506,7 @@ func (h *Handlers) UpdateCaseLetter(w http.ResponseWriter, r *http.Request) {
 		LetterDate              *string `json:"letter_date"`
 		ReceivedAt              *string `json:"received_at"`
 		SubmittedAt             *string `json:"submitted_at"`
+		OICUserID               *uint  `json:"oic_user_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
@@ -540,6 +541,13 @@ func (h *Handlers) UpdateCaseLetter(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		fields.SubmittedAt = &t
+	}
+	if body.OICUserID != nil {
+		var oicUserID *uint
+		if *body.OICUserID != 0 {
+			oicUserID = body.OICUserID
+		}
+		fields.OICUserID = &oicUserID
 	}
 
 	found, err := h.store.UpdateCaseLetterFields(r.Context(), uint(id), uint(letterID), fields)
