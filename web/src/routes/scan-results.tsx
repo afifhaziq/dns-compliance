@@ -262,7 +262,7 @@ function ScanResultsPage() {
                 </TableHeader>
                 <TableBody>
                   {results.map(r => {
-                    const errType = classifyDNSError(r.error)
+                    const errType = classifyDNSError(r.error_class)
                     const errLabel = dnsErrorLabel(errType)
                     return (
                       <TableRow key={r.id} className={!r.compliant ? 'violation-row' : ''}>

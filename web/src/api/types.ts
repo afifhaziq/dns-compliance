@@ -23,6 +23,7 @@ export type ScanResult = {
   resolved_abuse_email: string
   screenshot_url: string
   error: string
+  error_class: string
   latency_ms: number
   scanned_at: string
 }
