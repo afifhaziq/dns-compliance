@@ -10,9 +10,9 @@ import (
 )
 
 // RCodeError reports a final, non-NXDOMAIN DNS response — SERVFAIL,
-// REFUSED, or a NOERROR with no A records. Preserving the RCode (instead of
-// collapsing it into a generic "no A records" string, as firstA and
-// NewDoHResolver used to) lets a caller tell a resolver actively refusing
+// REFUSED, or a NOERROR with no A records. Both firstA and NewDoHResolver
+// preserve the RCode in a RCodeError rather than collapsing it into a generic
+// "no A records" string. This lets a caller tell a resolver actively refusing
 // or failing a query apart from a genuine non-answer. That distinction
 // matters: an ISP's rate-limiting or source-IP allowlisting typically shows
 // up as REFUSED or SERVFAIL, which looks identical to a real block if this

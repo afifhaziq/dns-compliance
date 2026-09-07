@@ -353,7 +353,7 @@ func firstA(body []byte, host string) (string, error) {
 			return fmt.Sprintf("%d.%d.%d.%d", a.A[0], a.A[1], a.A[2], a.A[3]), nil
 		}
 	}
-	return "", fmt.Errorf("no A records for %s", host)
+	return "", &RCodeError{RCode: reply.Header.RCode, Host: host}
 }
 
 // writeTCPMessage writes msg to conn with the 2-byte length prefix DNS-over-TCP
