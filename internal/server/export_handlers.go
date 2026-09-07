@@ -2,9 +2,13 @@ package server
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/afif/dns-tracking/internal/blockexport"
 	"github.com/afif/dns-tracking/internal/db"
 )
 
@@ -59,4 +63,56 @@ func parseIDSet(raw string) (map[uint]bool, bool) {
 		}
 	}
 	return ids, true
+}
+
+func (h *Handlers) ExportCaseSummaries(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	var cases []db.CaseSummary
+	var letters []db.CaseLetterEntry
+	var err error
+	var deptID *uint
+	if !user.IsAdmin {
+		if user.DepartmentID == nil {
+			writeError(w, http.StatusForbidden, "user has no department")
+			return
+		}
+		deptID = user.DepartmentID
+	}
+	if deptID != nil {
+		cases, err = h.store.ListCasesForDepartment(r.Context(), *deptID)
+	} else {
+		cases, err = h.store.ListCases(r.Context())
+	}
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	letters, err = fetchAllCaseLetterEntries(r.Context(), h.store, deptID)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+
+	if ids, filter := parseIDSet(r.URL.Query().Get("case_ids")); filter {
+		filtered := make([]db.CaseSummary, 0, len(cases))
+		for _, c := range cases {
+			if ids[c.ID] {
+				filtered = append(filtered, c)
+			}
+		}
+		cases = filtered
+	}
+
+	rows := blockexport.FlattenCRDRows(cases, letters)
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="blocking-list-export-%s.xlsx"`, time.Now().UTC().Format("2006-01-02")))
+	if err := blockexport.WriteCRDWorkbook(rows, w); err != nil {
+		writeInternalError(w, err)
+		return
+	}
 }
