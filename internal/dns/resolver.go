@@ -254,7 +254,7 @@ func NewDoHResolver(endpoint string) func(context.Context, string) (string, int6
 				return fmt.Sprintf("%d.%d.%d.%d", a.A[0], a.A[1], a.A[2], a.A[3]), time.Since(start).Milliseconds(), nil
 			}
 		}
-		return "", 0, fmt.Errorf("no A records for %s", host)
+		return "", 0, &RCodeError{RCode: reply.Header.RCode, Host: host}
 	}
 }
 
