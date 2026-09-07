@@ -254,6 +254,10 @@ func (h *Handlers) AddCaseLetter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if body.OICUserID == nil {
+		body.OICUserID = &user.ID
+	}
+
 	letter, err := h.store.AddCaseLetter(r.Context(), db.CaseLetter{
 		CaseID:                  uint(id),
 		Type:                    body.Type,
