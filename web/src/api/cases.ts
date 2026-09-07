@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api, type BlobDownload } from './client'
 import type { Case, CaseLetter, CaseLettersResponse, CaseSummary } from './types'
 
 export async function listCases(url: string): Promise<Case[]> {
@@ -133,4 +133,20 @@ export async function updateCaseLetter(caseId: number, letterId: number, fields:
 
 export async function deleteCaseLetter(caseId: number, letterId: number): Promise<void> {
   await api.delete<void>(`/cases/${caseId}/letters/${letterId}`)
+}
+
+// Triggers the CRD-format .xlsx export (GET /api/case-summaries/export).
+// caseIds scopes to "current view" (the Cases-view's caseTreeData ids);
+// omitted/empty means "All cases" — every case in the caller's RBAC scope.
+export function exportCaseSummaries(caseIds?: number[]): Promise<BlobDownload> {
+  const path = caseIds?.length ? `/case-summaries/export?case_ids=${caseIds.join(',')}` : '/case-summaries/export'
+  return api.getBlob(path)
+}
+
+// Triggers the CMOD-format .xlsx export (GET /api/case-letters/export).
+// letterIds scopes to "current view" (the Docs page's post-filter letter
+// ids); omitted/empty means "All cases".
+export function exportCaseLetters(letterIds?: number[]): Promise<BlobDownload> {
+  const path = letterIds?.length ? `/case-letters/export?letter_ids=${letterIds.join(',')}` : '/case-letters/export'
+  return api.getBlob(path)
 }
