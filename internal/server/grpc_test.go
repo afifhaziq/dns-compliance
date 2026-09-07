@@ -153,6 +153,36 @@ func TestSubmitStoresResults(t *testing.T) {
 	}
 }
 
+func TestSubmitStoresErrorClass(t *testing.T) {
+	store := &mockStore{
+		activeScanRun: &db.ScanRun{ID: 1, Status: "running"},
+		dnsServers:    []db.DNSServer{{ID: 3, Name: "Google"}},
+	}
+	client := newTestGRPCClient(t, store, &mockStorage{})
+
+	_, err := client.Submit(context.Background(), &pb.ComplianceReport{
+		Results: []*pb.SiteResult{
+			{
+				Url:        "https://blocked.example",
+				Compliant:  true,
+				Error:      "no such host",
+				ErrorClass: "nxdomain",
+				DnsServer:  "Google",
+				Timestamp:  time.Now().Unix(),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	if len(store.insertedResults) != 1 {
+		t.Fatalf("expected 1 inserted result, got %d", len(store.insertedResults))
+	}
+	if store.insertedResults[0].ErrorClass != "nxdomain" {
+		t.Errorf("ErrorClass = %q, want %q", store.insertedResults[0].ErrorClass, "nxdomain")
+	}
+}
+
 func TestSubmitUploadsScreenshot(t *testing.T) {
 	store := &mockStore{
 		activeScanRun: &db.ScanRun{ID: 1, Status: "running"},

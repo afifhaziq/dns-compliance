@@ -620,6 +620,7 @@ func buildReport(results []pipeline.SiteResult) *pb.ComplianceReport {
 			ResolvedIpv6: r.ResolvedIPv6,
 			Screenshot:   r.Screenshot,
 			Error:        r.Error,
+			ErrorClass:   r.ErrorClass,
 			DnsServer:    r.DNSServer,
 			LatencyMs:    r.LatencyMs,
 		}

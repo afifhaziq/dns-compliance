@@ -115,6 +115,7 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 			ResolvedNetName:    netname,
 			ResolvedAbuseEmail: abuseEmail,
 			Error:              r.Error,
+			ErrorClass:         r.ErrorClass,
 			LatencyMs:          r.GetLatencyMs(),
 			ScannedAt:          time.Unix(r.Timestamp, 0),
 		}

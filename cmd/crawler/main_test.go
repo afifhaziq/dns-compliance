@@ -89,3 +89,13 @@ func TestAssignScreenshotsCopiesErrorsToEverySharedResult(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildReportIncludesErrorClass(t *testing.T) {
+	results := []pipeline.SiteResult{
+		{URL: "https://blocked.example", Compliant: true, Error: "no such host", ErrorClass: "nxdomain"},
+	}
+	report := buildReport(results)
+	if got := report.Results[0].ErrorClass; got != "nxdomain" {
+		t.Errorf("ErrorClass = %q, want %q", got, "nxdomain")
+	}
+}

@@ -14,6 +14,7 @@ message SiteResult {
   string dns_server    = 7;
   int64  latency_ms    = 8;
   string resolved_ipv6 = 9;
+  string error_class   = 10;
 }
 
 message ComplianceReport {
