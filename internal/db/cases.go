@@ -122,7 +122,7 @@ func (s *postgresStore) listCaseLetters(ctx context.Context, page, pageSize int,
 	err := s.caseLetterQuery(ctx, departmentID).
 		Joins("JOIN departments ON departments.id = cases.department_id").
 		Select("case_letters.*, cases.department_id AS department_id, departments.name AS department_name").
-		Order("case_letters.letter_date desc").
+		Order("case_letters.letter_date desc, case_letters.id desc").
 		Limit(pageSize).Offset((page - 1) * pageSize).
 		Scan(&entries).Error
 	if err != nil {
