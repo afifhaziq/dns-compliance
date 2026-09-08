@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"net/url"
 	"testing"
 
 	"github.com/afif/dns-tracking/internal/db"
@@ -68,18 +69,30 @@ func TestFetchAllCaseLetterEntries_DepartmentScoped(t *testing.T) {
 	}
 }
 
-func TestParseIDSet_EmptyMeansNoFilter(t *testing.T) {
-	ids, ok := parseIDSet("")
+func TestParseIDSet_AbsentMeansNoFilter(t *testing.T) {
+	ids, ok := parseIDSet(url.Values{}, "case_ids")
 	if ok {
-		t.Fatalf("ok = true for empty input, want false (no filter)")
+		t.Fatalf("ok = true for absent param, want false (no filter)")
 	}
 	if ids != nil {
 		t.Fatalf("ids = %v, want nil", ids)
 	}
 }
 
+func TestParseIDSet_PresentButEmptyMeansZeroMatches(t *testing.T) {
+	// "?case_ids=" — an empty "current view" selection (Finding 2) — must
+	// filter to zero ids, not fall through to "no filter".
+	ids, ok := parseIDSet(url.Values{"case_ids": {""}}, "case_ids")
+	if !ok {
+		t.Fatalf("ok = false for present-but-empty param, want true (filter to zero matches)")
+	}
+	if len(ids) != 0 {
+		t.Fatalf("ids = %v, want empty", ids)
+	}
+}
+
 func TestParseIDSet_ParsesAndSkipsInvalid(t *testing.T) {
-	ids, ok := parseIDSet("1,2,notanumber,3")
+	ids, ok := parseIDSet(url.Values{"case_ids": {"1,2,notanumber,3"}}, "case_ids")
 	if !ok {
 		t.Fatalf("ok = false, want true")
 	}

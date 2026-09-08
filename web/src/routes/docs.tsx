@@ -804,6 +804,7 @@ function DocsPage() {
   const [deleteTarget, setDeleteTarget] = useState<CaseLetterEntry | null>(null)
   const [exportScope, setExportScope] = useState<'current' | 'all'>('current')
   const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<Filter<string>[]>([])
@@ -918,17 +919,21 @@ function DocsPage() {
 
   const handleExportLetters = useCallback(async () => {
     setExporting(true)
-    setError(null)
+    setExportError(null)
     try {
-      const ids = exportScope === 'current' ? filtered.map(l => l.id) : undefined
+      // "Current view" with no filter narrowing anything still means "every
+      // letter in scope" — pass undefined instead of the full id list so an
+      // unfiltered export doesn't send an unbounded query string (a real
+      // reverse proxy's header-size limit can 414 on exactly this case).
+      const ids = exportScope === 'current' && filtered.length < letters.length ? filtered.map(l => l.id) : undefined
       const { blob, filename } = await exportCaseLetters(ids)
       downloadBlob(blob, filename ?? `cmod-blocking-export-${new Date().toISOString().slice(0, 10)}.xlsx`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to export documents')
+      setExportError(err instanceof Error ? err.message : 'Failed to export documents')
     } finally {
       setExporting(false)
     }
-  }, [exportScope, filtered])
+  }, [exportScope, filtered, letters])
 
   // Groups the flat, already-filtered letter list into one row per case
   // (department/domains, shared across a case's letters) with its Notice/
@@ -1176,6 +1181,7 @@ function DocsPage() {
             <Button variant="outline" onClick={handleExportLetters} disabled={exporting}>
               {exporting ? 'Exporting…' : 'Export'}
             </Button>
+            {exportError && <p className="error-message">{exportError}</p>}
             <div style={{ marginLeft: 'auto' }}>
               <DataGridColumnVisibility table={table} trigger={<Button variant="outline">Columns</Button>} />
             </div>

@@ -210,6 +210,50 @@ func TestExportCaseLetters_LoopsBeyondOneHundredLetters(t *testing.T) {
 	}
 }
 
+// Finding 3(b): ExportCaseLetters must resolve oic_user_id only against
+// users in the export's own department scope, not every user globally —
+// defense in depth in case a cross-department id ever ends up stored on a
+// letter (e.g. legacy data from before AddCaseLetter/UpdateCaseLetter
+// validated it). A department-1 export must never surface a department-2
+// user's username, even when that id is sitting right there on the row.
+func TestExportCaseLetters_OICUsernameScopedToOwnDepartment(t *testing.T) {
+	store := &fullMockStore{}
+	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
+	store.urls = append(store.urls, db.URL{ID: 1, URL: "a.com"})
+	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: 1, Status: "requested"})
+	otherDeptUserID := uint(50)
+	otherDeptID := uint(2)
+	store.users = append(store.users, db.User{ID: otherDeptUserID, Username: "dept2-secret-username", DepartmentID: &otherDeptID})
+	store.caseLetters = append(store.caseLetters,
+		db.CaseLetter{ID: 1, CaseID: 1, Type: "Notice", OICUserID: &otherDeptUserID})
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/case-letters/export", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	f, err := excelize.OpenReader(bytes.NewReader(w.Body.Bytes()))
+	if err != nil {
+		t.Fatalf("OpenReader: %v", err)
+	}
+	defer f.Close()
+	rows, err := f.GetRows("Sheet1")
+	if err != nil {
+		t.Fatalf("GetRows: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want header + 1 data row", len(rows))
+	}
+	if oic := rows[1][6]; oic != "" { // "OIC" is cmodHeaders[6]
+		t.Fatalf("OIC = %q, must not leak department 2's username to a department-1 export", oic)
+	}
+}
+
 func TestExportCaseLetters_OmittedIDsExportsEverythingInScope(t *testing.T) {
 	store := &fullMockStore{}
 	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})

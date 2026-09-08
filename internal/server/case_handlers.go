@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -18,6 +19,22 @@ import (
 // the legal-offence routes in legal_handlers.go: a case is per-monitored-
 // domain enforcement data, not shared infrastructure like the legal
 // citation catalog.
+
+// oicUserInDepartment reports whether oicUserID refers to a real user
+// belonging to departmentID. AddCaseLetter/UpdateCaseLetter use this to
+// keep a case letter's OIC pinned to the case's own department — without
+// it, any department could set oic_user_id to another department's (or an
+// admin's) user id, and ExportCaseLetters would then surface that user's
+// username in the exported spreadsheet. A generic false (not
+// distinguishing "no such user" from "wrong department") avoids this
+// check itself becoming a cross-department user-enumeration oracle.
+func (h *Handlers) oicUserInDepartment(ctx context.Context, oicUserID uint, departmentID uint) (bool, error) {
+	u, err := h.store.GetUserByID(ctx, oicUserID)
+	if err != nil {
+		return false, err
+	}
+	return u != nil && u.DepartmentID != nil && *u.DepartmentID == departmentID, nil
+}
 
 func (h *Handlers) CasesByURL(w http.ResponseWriter, r *http.Request) {
 	urlValue, err := urlParamFromRequest(r)
@@ -254,6 +271,17 @@ func (h *Handlers) AddCaseLetter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if body.OICUserID != nil && *body.OICUserID != 0 {
+		ok, err := h.oicUserInDepartment(r.Context(), *body.OICUserID, c.DepartmentID)
+		if err != nil {
+			writeInternalError(w, err)
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusBadRequest, "invalid oic_user_id")
+			return
+		}
+	}
 	if body.OICUserID == nil {
 		body.OICUserID = &user.ID
 	}
@@ -549,6 +577,15 @@ func (h *Handlers) UpdateCaseLetter(w http.ResponseWriter, r *http.Request) {
 	if body.OICUserID != nil {
 		var oicUserID *uint
 		if *body.OICUserID != 0 {
+			ok, err := h.oicUserInDepartment(r.Context(), *body.OICUserID, c.DepartmentID)
+			if err != nil {
+				writeInternalError(w, err)
+				return
+			}
+			if !ok {
+				writeError(w, http.StatusBadRequest, "invalid oic_user_id")
+				return
+			}
 			oicUserID = body.OICUserID
 		}
 		fields.OICUserID = &oicUserID

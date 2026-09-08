@@ -259,6 +259,8 @@ func TestAddCaseLetter_ExplicitOICUserIDWins(t *testing.T) {
 	store.departmentURLs = append(store.departmentURLs, db.DepartmentURL{DepartmentID: 1, URLID: u.ID, Enabled: true})
 	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
 	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID})
+	deptID := uint(1)
+	store.users = append(store.users, db.User{ID: 99, Username: "same-dept-oic", DepartmentID: &deptID})
 	cookie := deptCookie(store, 1) // caller's own id is 1
 	r := setupRouter(store, nil)
 
@@ -274,6 +276,58 @@ func TestAddCaseLetter_ExplicitOICUserIDWins(t *testing.T) {
 	}
 	if len(store.caseLetters) != 1 || store.caseLetters[0].OICUserID == nil || *store.caseLetters[0].OICUserID != 99 {
 		t.Fatalf("expected explicit OICUserID 99 to win, got %+v", store.caseLetters)
+	}
+}
+
+// Finding 3: a member of department 1 must not be able to set oic_user_id
+// to a user from a different department (or a nonexistent id) — otherwise
+// ExportCaseLetters would later surface that other department's username.
+func TestAddCaseLetter_CrossDepartmentOICUserIDRejected(t *testing.T) {
+	store := &fullMockStore{}
+	u := db.URL{ID: 1, URL: "example.com"}
+	store.urls = append(store.urls, u)
+	store.departmentURLs = append(store.departmentURLs, db.DepartmentURL{DepartmentID: 1, URLID: u.ID, Enabled: true})
+	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
+	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID})
+	otherDeptID := uint(2)
+	store.users = append(store.users, db.User{ID: 99, Username: "other-dept-user", DepartmentID: &otherDeptID})
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]any{"type": "Notice", "oic_user_id": 99})
+	req := httptest.NewRequest(http.MethodPost, "/api/cases/1/letters", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.caseLetters) != 0 {
+		t.Fatalf("expected no letter to be added, got %d", len(store.caseLetters))
+	}
+}
+
+func TestAddCaseLetter_UnknownOICUserIDRejected(t *testing.T) {
+	store := &fullMockStore{}
+	u := db.URL{ID: 1, URL: "example.com"}
+	store.urls = append(store.urls, u)
+	store.departmentURLs = append(store.departmentURLs, db.DepartmentURL{DepartmentID: 1, URLID: u.ID, Enabled: true})
+	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
+	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID})
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]any{"type": "Notice", "oic_user_id": 999})
+	req := httptest.NewRequest(http.MethodPost, "/api/cases/1/letters", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -678,6 +732,8 @@ func TestUpdateCaseLetter_SetsAndClearsOICUserID(t *testing.T) {
 	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
 	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID})
 	store.caseLetters = append(store.caseLetters, db.CaseLetter{ID: 1, CaseID: 1, Type: "Notice"})
+	deptID := uint(1)
+	store.users = append(store.users, db.User{ID: 7, Username: "same-dept-oic", DepartmentID: &deptID})
 	cookie := deptCookie(store, 1)
 	r := setupRouter(store, nil)
 
@@ -708,5 +764,35 @@ func TestUpdateCaseLetter_SetsAndClearsOICUserID(t *testing.T) {
 	}
 	if store.caseLetters[0].OICUserID != nil {
 		t.Fatalf("expected OICUserID cleared, got %+v", store.caseLetters[0])
+	}
+}
+
+// Finding 3: PATCH must reject an oic_user_id from a different department
+// too, not just POST — same cross-department username-oracle concern.
+func TestUpdateCaseLetter_CrossDepartmentOICUserIDRejected(t *testing.T) {
+	store := &fullMockStore{}
+	u := db.URL{ID: 1, URL: "example.com"}
+	store.urls = append(store.urls, u)
+	store.departmentURLs = append(store.departmentURLs, db.DepartmentURL{DepartmentID: 1, URLID: u.ID, Enabled: true})
+	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
+	store.caseURLs = append(store.caseURLs, db.CaseURL{CaseID: 1, URLID: u.ID})
+	store.caseLetters = append(store.caseLetters, db.CaseLetter{ID: 1, CaseID: 1, Type: "Notice"})
+	otherDeptID := uint(2)
+	store.users = append(store.users, db.User{ID: 42, Username: "other-dept-user", DepartmentID: &otherDeptID})
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]any{"oic_user_id": 42})
+	req := httptest.NewRequest(http.MethodPatch, "/api/cases/1/letters/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if store.caseLetters[0].OICUserID != nil {
+		t.Fatalf("expected OICUserID left unset, got %+v", store.caseLetters[0])
 	}
 }

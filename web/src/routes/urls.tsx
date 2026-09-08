@@ -1448,7 +1448,12 @@ function URLsPage() {
     setExporting(true)
     setExportError(null)
     try {
-      const ids = exportScope === 'current' ? caseTreeData.map(r => r.summary.id) : undefined
+      // "Current view" with no filter narrowing anything still means "every
+      // case in scope" — pass undefined instead of the full id list so an
+      // unfiltered export doesn't send an unbounded query string (a real
+      // reverse proxy's header-size limit can 414 on exactly this case).
+      const currentIds = caseTreeData.map(r => r.summary.id)
+      const ids = exportScope === 'current' && currentIds.length < caseSummaries.length ? currentIds : undefined
       const { blob, filename } = await exportCaseSummaries(ids)
       downloadBlob(blob, filename ?? `blocking-list-export-${new Date().toISOString().slice(0, 10)}.xlsx`)
     } catch (err) {
@@ -1456,7 +1461,7 @@ function URLsPage() {
     } finally {
       setExporting(false)
     }
-  }, [exportScope, caseTreeData])
+  }, [exportScope, caseTreeData, caseSummaries])
 
   const caseColumns = useMemo<ColumnDef<CaseTreeRow>[]>(() => [
     {
