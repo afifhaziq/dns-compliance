@@ -160,6 +160,19 @@ func (h *Handlers) ExportCaseLetters(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w, err)
 		return
 	}
+	if deptID != nil {
+		// Defense in depth on top of AddCaseLetter/UpdateCaseLetter's
+		// oic_user_id validation: even if a cross-department id somehow
+		// ended up on a letter, a department-scoped export never resolves
+		// it to a username outside its own department.
+		scoped := make([]db.User, 0, len(users))
+		for _, u := range users {
+			if u.DepartmentID != nil && *u.DepartmentID == *deptID {
+				scoped = append(scoped, u)
+			}
+		}
+		users = scoped
+	}
 
 	if ids, filter := parseIDSet(r.URL.Query(), "letter_ids"); filter {
 		filtered := make([]db.CaseLetterEntry, 0, len(letters))
