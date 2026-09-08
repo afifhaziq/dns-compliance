@@ -12,7 +12,8 @@ import {
   getExpandedRowModel,
   useReactTable,
 } from '@tanstack/react-table'
-import { fetchAllCaseLetters, createCase, addCaseLetter, addUrlToCase, updateCaseLetter, deleteCaseLetter } from '@/api/cases'
+import { fetchAllCaseLetters, createCase, addCaseLetter, addUrlToCase, updateCaseLetter, deleteCaseLetter, exportCaseLetters } from '@/api/cases'
+import { downloadBlob } from '@/lib/download'
 import { createUrl, fetchUrls } from '@/api/urls'
 import { fetchDepartmentsOpen } from '@/api/departments'
 import { fetchRecipients } from '@/api/recipients'
@@ -742,6 +743,8 @@ function DocsPage() {
   const [addOpen, setAddOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<CaseGroupRow | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<CaseLetterEntry | null>(null)
+  const [exportScope, setExportScope] = useState<'current' | 'all'>('current')
+  const [exporting, setExporting] = useState(false)
 
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<Filter<string>[]>([])
@@ -852,6 +855,20 @@ function DocsPage() {
   }, [letters, search, typeFilter, deptFilter, workflowFilter])
 
   useEffect(() => { setPagination(p => ({ ...p, pageIndex: 0 })) }, [search, typeFilter, deptFilter, workflowFilter])
+
+  const handleExportLetters = useCallback(async () => {
+    setExporting(true)
+    setError(null)
+    try {
+      const ids = exportScope === 'current' ? filtered.map(l => l.id) : undefined
+      const { blob, filename } = await exportCaseLetters(ids)
+      downloadBlob(blob, filename ?? `cmod-blocking-export-${new Date().toISOString().slice(0, 10)}.xlsx`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to export documents')
+    } finally {
+      setExporting(false)
+    }
+  }, [exportScope, filtered])
 
   // Groups the flat, already-filtered letter list into one row per case
   // (department/domains, shared across a case's letters) with its Notice/
@@ -1089,6 +1106,16 @@ function DocsPage() {
               aria-label="Search documents"
             />
             <Filters filters={filters} fields={filterFields} onChange={setFilters} />
+            <Select value={exportScope} onValueChange={v => setExportScope(v as 'current' | 'all')}>
+              <SelectTrigger aria-label="Export scope" className="w-40" />
+              <SelectContent>
+                <SelectItem index={0} value="current">Current view</SelectItem>
+                <SelectItem index={1} value="all">All cases</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" onClick={handleExportLetters} disabled={exporting}>
+              {exporting ? 'Exporting…' : 'Export'}
+            </Button>
             <div style={{ marginLeft: 'auto' }}>
               <DataGridColumnVisibility table={table} trigger={<Button variant="outline">Columns</Button>} />
             </div>
