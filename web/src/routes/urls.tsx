@@ -21,7 +21,8 @@ import { DataGridTableRowExpand } from '@/components/reui/data-grid/data-grid-ta
 import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled } from '../api/urls'
 import { normalizeForClient } from './__root'
-import { createCase, addCaseLetter, addUrlToCase, updateCase, updateCaseURLStatus, updateCaseLetter, fetchCaseSummaries } from '../api/cases'
+import { createCase, addCaseLetter, addUrlToCase, updateCase, updateCaseURLStatus, updateCaseLetter, fetchCaseSummaries, exportCaseSummaries } from '../api/cases'
+import { downloadBlob } from '@/lib/download'
 import { fetchAgencies } from '../api/agencies'
 import { fetchDepartmentsOpen } from '../api/departments'
 import { fetchDueDatePresets } from '../api/due-date-presets'
@@ -1062,6 +1063,8 @@ function URLsPage() {
   const [caseSummaries, setCaseSummaries] = useState<CaseSummary[]>([])
   const [addOpen, setAddOpen] = useState(false)
   const [editingCase, setEditingCase] = useState<CaseSummary | null>(null)
+  const [exportScope, setExportScope] = useState<'current' | 'all'>('current')
+  const [exporting, setExporting] = useState(false)
 
   const [casesSorting, setCasesSorting] = useState<SortingState>([])
   const [casesPagination, setCasesPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
@@ -1440,6 +1443,20 @@ function URLsPage() {
     subRows: summary.domains.map(domain => ({ kind: 'domain', caseId: summary.id, status: domain.status, domain })),
   })), [filteredCases])
 
+  const handleExportCases = useCallback(async () => {
+    setExporting(true)
+    setError(null)
+    try {
+      const ids = exportScope === 'current' ? caseTreeData.map(r => r.summary.id) : undefined
+      const { blob, filename } = await exportCaseSummaries(ids)
+      downloadBlob(blob, filename ?? `blocking-list-export-${new Date().toISOString().slice(0, 10)}.xlsx`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to export cases')
+    } finally {
+      setExporting(false)
+    }
+  }, [exportScope, caseTreeData])
+
   const caseColumns = useMemo<ColumnDef<CaseTreeRow>[]>(() => [
     {
       id: 'case',
@@ -1718,6 +1735,16 @@ function URLsPage() {
                 aria-label="Search cases"
               />
               <Filters filters={filters} fields={filterFields} onChange={setFilters} />
+              <Select value={exportScope} onValueChange={v => setExportScope(v as 'current' | 'all')}>
+                <SelectTrigger aria-label="Export scope" className="w-40" />
+                <SelectContent>
+                  <SelectItem index={0} value="current">Current view</SelectItem>
+                  <SelectItem index={1} value="all">All cases</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button variant="outline" onClick={handleExportCases} disabled={exporting}>
+                {exporting ? 'Exporting…' : 'Export'}
+              </Button>
               <div style={{ marginLeft: 'auto' }}>
                 <DataGridColumnVisibility table={casesTable} trigger={<Button variant="outline">Columns</Button>} />
               </div>
