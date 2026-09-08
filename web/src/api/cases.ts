@@ -143,7 +143,7 @@ export async function deleteCaseLetter(caseId: number, letterId: number): Promis
 // caseIds scopes to "current view" (the Cases-view's caseTreeData ids);
 // omitted/empty means "All cases" — every case in the caller's RBAC scope.
 export function exportCaseSummaries(caseIds?: number[]): Promise<BlobDownload> {
-  const path = caseIds?.length ? `/case-summaries/export?case_ids=${caseIds.join(',')}` : '/case-summaries/export'
+  const path = caseIds === undefined ? '/case-summaries/export' : `/case-summaries/export?case_ids=${caseIds.join(',')}`
   return api.getBlob(path)
 }
 
@@ -151,6 +151,6 @@ export function exportCaseSummaries(caseIds?: number[]): Promise<BlobDownload> {
 // letterIds scopes to "current view" (the Docs page's post-filter letter
 // ids); omitted/empty means "All cases".
 export function exportCaseLetters(letterIds?: number[]): Promise<BlobDownload> {
-  const path = letterIds?.length ? `/case-letters/export?letter_ids=${letterIds.join(',')}` : '/case-letters/export'
+  const path = letterIds === undefined ? '/case-letters/export' : `/case-letters/export?letter_ids=${letterIds.join(',')}`
   return api.getBlob(path)
 }

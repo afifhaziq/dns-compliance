@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -45,21 +46,27 @@ func fetchAllCaseLetterEntries(ctx context.Context, store db.Store, departmentID
 	return all, nil
 }
 
-// parseIDSet parses a comma-separated list of uints from a query param
-// value. ok is false when raw is empty, meaning "no filter". Non-numeric
-// or empty segments are silently skipped.
-func parseIDSet(raw string) (map[uint]bool, bool) {
-	if raw == "" {
+// parseIDSet parses a comma-separated list of uints from a query param.
+// ok is false only when the param key is entirely absent, meaning "no
+// filter" — a present-but-empty value (e.g. "?case_ids=", what an empty
+// "current view" selection sends) is a valid filter matching zero ids,
+// distinct from the param being omitted, which means "export everything
+// in scope". Non-numeric or empty segments are silently skipped.
+func parseIDSet(values url.Values, key string) (map[uint]bool, bool) {
+	raw, present := values[key]
+	if !present {
 		return nil, false
 	}
 	ids := make(map[uint]bool)
-	for _, part := range strings.Split(raw, ",") {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		if v, err := strconv.ParseUint(part, 10, 64); err == nil {
-			ids[uint(v)] = true
+	for _, v := range raw {
+		for _, part := range strings.Split(v, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if n, err := strconv.ParseUint(part, 10, 64); err == nil {
+				ids[uint(n)] = true
+			}
 		}
 	}
 	return ids, true
@@ -98,7 +105,7 @@ func (h *Handlers) ExportCaseSummaries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ids, filter := parseIDSet(r.URL.Query().Get("case_ids")); filter {
+	if ids, filter := parseIDSet(r.URL.Query(), "case_ids"); filter {
 		filtered := make([]db.CaseSummary, 0, len(cases))
 		for _, c := range cases {
 			if ids[c.ID] {
@@ -154,7 +161,7 @@ func (h *Handlers) ExportCaseLetters(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ids, filter := parseIDSet(r.URL.Query().Get("letter_ids")); filter {
+	if ids, filter := parseIDSet(r.URL.Query(), "letter_ids"); filter {
 		filtered := make([]db.CaseLetterEntry, 0, len(letters))
 		for _, l := range letters {
 			if ids[l.ID] {
