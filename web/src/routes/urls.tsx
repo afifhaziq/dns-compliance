@@ -1065,6 +1065,7 @@ function URLsPage() {
   const [editingCase, setEditingCase] = useState<CaseSummary | null>(null)
   const [exportScope, setExportScope] = useState<'current' | 'all'>('current')
   const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   const [casesSorting, setCasesSorting] = useState<SortingState>([])
   const [casesPagination, setCasesPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
@@ -1445,13 +1446,13 @@ function URLsPage() {
 
   const handleExportCases = useCallback(async () => {
     setExporting(true)
-    setError(null)
+    setExportError(null)
     try {
       const ids = exportScope === 'current' ? caseTreeData.map(r => r.summary.id) : undefined
       const { blob, filename } = await exportCaseSummaries(ids)
       downloadBlob(blob, filename ?? `blocking-list-export-${new Date().toISOString().slice(0, 10)}.xlsx`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to export cases')
+      setExportError(err instanceof Error ? err.message : 'Failed to export cases')
     } finally {
       setExporting(false)
     }
@@ -1745,6 +1746,7 @@ function URLsPage() {
               <Button variant="outline" onClick={handleExportCases} disabled={exporting}>
                 {exporting ? 'Exporting…' : 'Export'}
               </Button>
+              {exportError && <p className="error-message">{exportError}</p>}
               <div style={{ marginLeft: 'auto' }}>
                 <DataGridColumnVisibility table={casesTable} trigger={<Button variant="outline">Columns</Button>} />
               </div>
