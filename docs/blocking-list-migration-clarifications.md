@@ -62,9 +62,9 @@ Category is nearly always stable (98.8% of repeat groups keep the same category)
 
 **Correction:** this is not just a design proposal — the `cases`/`case_letters`/`case_urls` schema already shipped (`docs/db-schema.dbml`, `docs/db-schema-proposed.dbml` is now historical, marked "SHIPPED" at its own file header) and is live in the app today (`urls.tsx`'s Cases view, `docs.tsx`'s Documents view). `urls` stays one row per domain; `case_urls` is the many-to-many join carrying its own `status` per (case, url) pair; `case_letters` carries per-letter `reference_number_external`/`reference_number_internal`, dates, subject, remarks. A repeated domain just gets one additional `case_urls` row per event, all pointing at the same `urls` row — there's no "duplicate domain" collision to resolve, since uniqueness lives on `urls.url`, not on how many cases reference it. Per-event category/element/sub-element differences go on `url_offences` (recorded_at-stamped, already supports multiple rows per url over time).
 
-The one open wrinkle this reintroduces: `cases` is meant to be "one row per real-world request," but per section 8's resolution, CRD's `No. Rujukan NMD` can't be trusted to group rows into a case (the PDRM blanket-reference problem). Default plan: import each CRD spreadsheet row as its **own** `case` (1 case_urls + 1 case_letters + 1 url_offences row per row), rather than trying to group rows by matching NMD into a shared case — safe under the blanket-reference risk, and doesn't lose anything since case-level grouping wasn't reliable to begin with. Worth a stakeholder confirm, but this is the safe default absent a better grouping signal.
+The one open wrinkle this reintroduces: `cases` is meant to be "one row per real-world request," but `No. Rujukan NMD` can't be trusted to group rows into a case — one blanket reference value (`"JK KPN(PR) 168/6"`) alone is reused across 9,206 unrelated PDRM rows spanning 2021–2026. Default plan: import each CRD spreadsheet row as its **own** `case` (1 case_urls + 1 case_letters + 1 url_offences row per row), rather than trying to group rows by matching NMD into a shared case — safe under the blanket-reference risk, and doesn't lose anything since case-level grouping wasn't reliable to begin with. Worth a stakeholder confirm, but this is the safe default absent a better grouping signal.
 
-This still doesn't decide section 7's exact-duplicate rows (474 groups, byte-identical including year) — under this model they'd just become two cases for what looks like one event. That's still worth asking about separately: collapse those before import, or let them become two cases as data-entry noise it's not worth cleaning?
+This still doesn't decide §5's exact-duplicate rows (474 groups, byte-identical including year) — under this model they'd just become two cases for what looks like one event. That's still worth asking about separately: collapse those before import, or let them become two cases as data-entry noise it's not worth cleaning?
 
 ---
 
@@ -176,66 +176,40 @@ Most of this list is mechanical (stray spacing around a sub-clause, `&` vs `dan`
 
 ## 4. URL normalization problems (revised — see below, was reported as "26 fail outright")
 
-**Correction:** the original pass only checked for hard parse errors from `internal/urlnorm.Normalize`, which found 26. A second pass also checked for rows that *parse without error but produce garbage* (a bare scheme fragment, a lone TLD, an empty label before the TLD) — `Normalize` doesn't error on these, it just silently returns the wrong host. That found 4 more rows of the same mechanical-typo class below, plus 6 rows that are a genuinely new, unfixable-by-regex pattern. Total needing attention: **36 rows**, of which **28 are auto-fixable** and **8 need a human decision**.
+**Correction:** the original pass only checked for hard parse errors from `internal/urlnorm.Normalize`, which found 26. A second pass also checked for rows that *parse without error but produce garbage* (a bare scheme fragment, a lone TLD, an empty label before the TLD) — `Normalize` doesn't error on these, it just silently returns the wrong host. That found 4 more rows of the same mechanical-typo class below, plus 6 rows that are a genuinely new, unfixable-by-regex pattern. Total needing attention: **36 rows**, of which **31 are auto-fixable/resolved** and **5 need a human decision**.
 
-**Auto-fixable (28 rows)** — a cleanup pass (strip stray whitespace, strip numbered-list paste prefixes like `"19. "`, and correct scheme-separator typos: missing `//`, single `/`, `;` instead of `:`) resolves all of these to their obvious intended domain:
+**Auto-fixable / resolved (31 rows)**:
 - 22 rows: stray space somewhere in the hostname (after the scheme, after `www.`, after a `m.` mobile prefix, or mid-hostname) — e.g. `http:// www.foo.com`, `https://www. escort33.com`, `m. starbook88.com`.
 - 5 rows: scheme-separator typo — missing `//` (`http:linktr.ee/lalagroup`), missing `:` (`https//malaysiandrama.com/`), single `/` (`https:/jizzberry.com/`), or `;` instead of `:` (`https;//fcc-asia.com`).
 - 1 row: leading numbered-list artifact (`"19. http://www.japanfuck.net"`).
+- 1 row: `kkggr.com:7852ZPtx.html` → `kkggr.com` — confirmed against a clean `kkggr.com` row elsewhere in the same sheet; `:7852ZPtx.html` is garbage appended after the real hostname (not a valid port), not a typo in the domain. Strip everything from `:` onward when what follows isn't a valid all-digit port.
+- 2 rows, confirmed against the original source: `http://my/idkuatong2` → `hi.jomwasap.my` (full link `https://hi.jomwasap.my/idkuatong2`, matching a sibling row in the same reference batch: `"http://rebrand.ly/12BNKFBW redirect to https://hi.jomwasap.my/12BNKFBW"`) and `https://.me/OHO24HRCHANNELCUCI` → `t.me` (full link `https://t.me/OHO24HRCHANNELCUCI`, matching several other `t.me/<code>` rows in that same batch).
 
-**Needs a human decision (8 rows)** — no safe mechanical fix, the intended domain isn't recoverable from the string alone:
-- 2 rows: corrupted/garbled text with stray characters where a port would go (`kkggr.com:7852ZPtx.html`, `https://solar123movies.cB33:B69om/`) — looks like Excel formula/cell-reference artifacts leaking into the value.
-- 2 rows: the real hostname landed in the *path* instead of the host (`http://my/idkuatong2`, `http://my/MarioLink168` — host parses as literally `my`).
-- 2 rows: domain label missing before the TLD (`https://.me/OHO24HRCHANNELCUCI`, `https://.my/OneAsia88kasihONG222`).
-- 1 row: no TLD at all, looks truncated (`https://freestreams-live`).
-- 1 row: no dot anywhere, likely meant something like `mvbet88.my` but not safe to guess (`mvbet88my1`).
+**Note on what actually gets stored:** `db.URL` (`internal/db/models.go`) has a single `URL string` column, and `CreateURL`/`AddToWatchlist` (`internal/db/postgres.go`) always run the input through `urlnorm.Normalize` first, which strips scheme/path/query/port down to a bare lowercase hostname before storing — so only `hi.jomwasap.my` / `t.me` land in the database either way; the `/idkuatong2` and `/OHO24HRCHANNELCUCI` path segments are discarded regardless of whether the full link is known.
 
-**Question:** for these 8 — are the correct URLs recoverable from records elsewhere, or should they just be dropped from the import?
+**New issue surfaced by this, bigger than these 2 rows — shortener/platform domains aren't blockable at the granularity the spreadsheet implies.** This app's whole compliance model is DNS-resolution-based (`Compliant` is strictly A-record-based — see "Domain semantics" in the root `CLAUDE.md`), and DNS resolution has zero visibility into the HTTP path: a resolver answering a query for `t.me` only ever sees the hostname, never `/OHO24HRCHANNELCUCI`. So an ISP **cannot** DNS-block one Telegram channel or one WhatsApp/shortlink target — the only DNS-level lever available is blocking the *entire* shared domain (all of Telegram, all of `bit.ly`, all of `wa.me`, etc.), which is a far more disruptive action than a single "Blocked" row in the spreadsheet plausibly represents, and something a telco is unlikely to have actually done for a one-off case.
+
+Checked how big this is: **117 rows** (0.3% of the sheet) normalize to a known link-shortener or messaging-platform domain — `t.me` alone accounts for 92 of those (matches the 92-row `t.me` count already noted in §2), plus `bit.ly` (5), `hi.my`/`hi.jom.my`/`hi.jomwasap.my` (6 combined), `prelink.co`/`prilink.co` (5), `linktr.ee` (4), `cutt.ly` (2), `rebrand.ly` (2), `wa.me`/`wa.link` (2). This is a lower bound — only a hand-picked list of known shorteners was checked; there are likely more not on that list.
+
+**Question:** does "Blocked" on one of these rows mean the telco actually DNS-blocked the whole shared domain (some jurisdictions have done exactly that to `t.me`), or was the takedown actioned a different way — e.g. a platform-level report to Telegram/Meta to remove the specific channel, not an ISP DNS block? This matters for import because:
+- If these were never actually DNS-blocked, importing them as monitored `urls` means this app shows a **permanent, unresolvable violation** on every scan (`t.me` will never stop resolving) — misleading noise, not a real actionable DNS gap.
+- If they belong in the record for audit-trail purposes but shouldn't be live-monitored, they may need to stay in `cases`/`case_letters` (the paper trail) without a corresponding DNS-scanned `urls`/`case_urls` row, or some other explicit "not DNS-blockable" marker — worth a product decision before deciding how (or whether) to import all 117+ of these rows, not just the 2 resolved above.
+
+**Still needs a human decision (5 rows)** — checked each against the rest of the sheet for corroborating evidence:
+
+- **2 rows, same batch, no link recovered yet:** `http://my/MarioLink168` and `https://.my/OneAsia88kasihONG222` — same reference (`SKMM(T)09-NMD/800/2022 (113)`) and almost certainly the same shortener-domain/campaign-code shape as `idkuatong2`/`OHO24HRCHANNELCUCI` above, but no sibling row in the batch points at a specific domain for either code the way `hi.jomwasap.my`/`t.me` did. Worth the same source-record check that resolved those two.
+- **1 row, corroborated but still unresolved:** `https://freestreams-live` (truncated, no TLD) — the same agency/citation (`KPDNKK`, `Seksyen 41 Akta Hakcipta 1987`) has several sibling rows for what's clearly the same pirate streaming site rotating TLDs to dodge blocks: `freestreams-live1.com`, `freestreams-live.mp`, `freestreams-live.fi`, `freestreams-live1.md`, `freestreams-live1a.pk`. That confirms the *site* but not *which* TLD this particular truncated row intended — the rotation means guessing wrong is likely. No safe auto-fix.
+- **1 row, no corroboration found:** `https://solar123movies.cB33:B69om/` — checked every other `123movies`-family domain in the sheet (80+ variants); none is `solar123movies.<anything>`, so there's nothing to confirm a guess against. `solar123movies.com` (i.e. `com` → `cB33:B69om`) is the obvious visual read, but unconfirmed.
+- **1 row, no corroboration found:** `mvbet88my1` — no dot at all, no `mvbet88.*` variant found elsewhere in the sheet. `mvbet88.my` is a plausible guess (gambling-site naming pattern, `Judi` category) but unconfirmed.
+
+**Question:** for these 5 — are the correct URLs recoverable from records elsewhere (the `SKMM(T)09-NMD/800/2022 (113)` source record is worth the same lookup that resolved the other two in that batch), or should they just be dropped from the import?
 
 **Lesson for the real importer:** validate with "does `Normalize` return a plausible host (contains a dot, reasonable length)?", not just "did it return an error?" — a try/catch alone misses the silent-garbage cases above.
 
 ---
 
-## 5. Date parseability (not previously documented)
-
-- `Tarikh Maklum IASP (Blocked)`: 164 / 38,155 rows unparseable as a date — all fall into just two placeholder values: `"NA"` (149 rows) and `"Oct/Nov"` (15 rows). Both look like "date unknown," not corrupted data.
-- `Tarikh Maklum ISP (Uplift)`: 0 rows unparseable — clean.
-
-**Question:** should rows with a placeholder blocked-date import with a null/unknown date, or be excluded from the import entirely?
-
----
-
-## 6. Agency field — checked, no issue found
-
-24 distinct `Agensi` values, no casing/whitespace duplicates, no blank rows. Confirmed clean; no decision needed here.
-
----
-
-## 7. Exact full-row duplicates (not previously documented)
+## 5. Exact full-row duplicates (not previously documented)
 
 474 groups (980 rows total) are byte-for-byte identical across every column **including year** — e.g. rows 17922/17923 are both `https://www.weclub88.co/`, 2021, same citation, same status. This is distinct from the legitimate "same domain blocked again in a later year" case in section 2 — these are same-year copies, i.e. straightforward copy-paste data-entry duplicates.
 
 **Question:** collapse each duplicate group to a single row before import (keeping one), or is there a reason a spreadsheet row might legitimately need to repeat identically (e.g. two separate manual actions logged the same day)?
-
----
-
-## 8. Reference number columns (`No. Rujukan NMD` / `No. Rujukan NMSMD`)
-
-**Correction:** these columns already have a home in the shipped schema, not just a proposed one — `case_letters.reference_number_external`/`reference_number_internal`, surfaced in `urls.tsx`/`docs.tsx` today as literally "External Ref. (No. Rujukan NMD)" / "Internal Ref. (No. Rujukan NMSMD)". So the mapping itself (NMD→external, NMSMD→internal) is already decided by the existing product — this section is only about whether the *data* is clean enough to backfill those fields.
-
-- **`No. Rujukan NMD`** (blocking reference): 182 / 38,156 rows blank (0.5%) — of those, 171 have `Status = Blocked` with no reference recorded at all.
-- **`No. Rujukan NMSMD`** (uplift reference): almost entirely blank — 38,013 / 38,156 (99.6%). Even narrowed to just the 771 rows whose `Status` is `Uplift`, only 141 (18%) have an NMSMD value; the other 630 uplifted rows have no uplift reference on file.
-- **NMD is not a reliable one-case-per-reference key as-is.** The schema note says "one reference number can cover many urls," and 1,270 distinct NMD values do span more than one distinct URL (949 of those span more than 3). But one value, `"JK KPN(PR) 168/6"`, is used on **9,206 rows** — agency PDRM only, spread across 2021–2026 — clearly a blanket/generic reference PDRM reuses across unrelated submissions rather than a genuine per-case number. Grouping naively by NMD would lump those 9,206 unrelated blocks into one "case."
-
-**Resolved:** NMD/NMSMD are reference numbers for the *source of the report* (the reporting agency's own external or internal tracking number for the complaint they filed), not a unique per-case identifier — which is exactly why PDRM reuses one blanket value across thousands of unrelated rows over several years. **NMD must not be used as the `cases` grouping key.** Store it as an attribute of the case (which agency reported it, under what reference) rather than as the thing that defines case identity; case identity comes from elsewhere (URL + citation + date, or a generated case number). NMSMD populated for only 18% of actual uplift rows is expected/fine under this reading — it's just "no source reference recorded for the uplift report," left null where absent, not an import blocker.
-
----
-
-## 9. `Remarks` / `.my` columns — free text, low value
-
-- **`Remarks`**: 37,368 / 38,156 (98%) blank. Where filled, only 60 distinct values — a mix of department tags (`CMOD` 419, `CTAD` 246), short status notes (`"Uplift"`, `"IP Address"`), and a handful of informal personal notes (e.g. `"En Harme taknak sign"` — Malay for "Mr Harme doesn't want to sign") that read like an internal scratchpad rather than structured case data.
-- **`.my`**: 37,192 / 38,156 (97%) blank; only two non-blank values ever appear — `".my"` (960 rows) and `"Domain .my"` (4 rows) — functioning as a manually-applied yes/no tag for "is this a `.my` domain," which is redundant since the TLD is already derivable from the URL itself.
-
-No parsing issue in either column — this is a scope decision, not a data-quality bug.
-
-**Resolved:** import `Remarks` as a free-text notes field (mostly blank, no fixed shape, kept as-is). Drop `.my` entirely — redundant with the TLD already derivable from the URL.
