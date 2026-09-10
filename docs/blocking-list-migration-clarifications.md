@@ -72,15 +72,16 @@ This still doesn't decide §5's exact-duplicate rows (474 groups, byte-identical
 
 The workbook's own "Directory" sheet lists 4 canonical categories (Lucah, Kepentingan Negara, Jelik, Palsu). Actual data has 54 distinct values. Most of the extra 50 are legitimate categories the legend simply never documented (Judi 13,178 rows, Penyalahgunaan Hakcipta 5,278 rows, Penjualan Tanpa Kebenaran 3,262 rows, etc.) — not a data problem, just confirms the Directory sheet can't be used as the seed list for the `Category` table.
 
+**Resolved:** ignore the Directory sheet — it's stale. The `Category` seed list is extracted straight from the main sheet's actual data instead, and (per the wrinkle below) each value is mapped under its own `Instrument`/`Citation`, not treated as a flat global list. Casing duplicates within the 50 (e.g. `"Tidak berdaftar"` vs `"Tidak Berdaftar"`) still need a human pass during that classification — not auto-collapsed.
+
 Two things in this column are real problems:
 
-- **8 values are comma-joined compounds** — e.g. `"Jelik, Palsu, Lucah"` (40 rows), `"Jelik, Palsu"` (17 rows) — a single cell describing multiple categories at once.
+- **8 distinct values (71 rows) are comma-joined compounds** — e.g. `"Jelik, Palsu, Lucah"`, `"Jelik, Palsu"` — a single cell describing multiple categories at once.
 - **12 rows have a column-shift data-entry bug**: `Kepentingan Negara` (a valid category name) appears in the `Elemen` column instead of `Kategori`, with `Kategori` left blank on those rows. As-is this would violate the catalog's parent-must-exist ordering (`Element` needs a `Category` to attach to).
 
-**Questions:**
-- For the 8 compound-category rows: should each map to multiple `Category`/`URLOffence` links on the same URL, or should one category be picked as primary?
-- Confirm the 12 column-shift rows should be corrected (`Elemen` value moved to `Kategori`) rather than imported as-is or dropped.
-- Should the 50 undocumented-but-real categories simply become the actual `Category` seed list (superseding the Directory sheet), or does someone need to review/rename them first (there are also casing duplicates within this set, e.g. `"Tidak berdaftar"` vs `"Tidak Berdaftar"`)?
+**Resolved:**
+- Compound rows: `URLOffence` already supports multiple rows per `URL` (surrogate-PK join, no uniqueness constraint blocking it — same mechanism the `MultiOffencePicker` UI already exercises), so each compound cell splits into one `URLOffence` per listed category rather than picking a primary. 34 of the 71 rows also carry an `Elemen`/`Sub-Elemen` value (e.g. `"Jelik, Palsu"` + Elemen `"Kepentingan Negara"`) — since `Element` is scoped to one specific `Category` and names aren't shared across categories (`"Politik"` under `Jelik` and `"Politik"` under `Palsu` are two distinct rows, not one Element with two parents), the row asserts N *independent* facts, not one ambiguous one: the same Elemen/Sub-Elemen value attaches under **every** split category as its own `URLOffence`. Row 7027 (`Jelik, Palsu` + Elemen `Kepentingan Negara` + Sub-Elemen `Politik`) becomes two rows — `(Jelik, Kepentingan Negara, Politik)` and `(Palsu, Kepentingan Negara, Politik)` — both real, no case-by-case lookup needed. Mechanical, fully applied in the extract below. One side-effect worth a heads-up, not a blocker: this introduces 5 (Category, Element, Sub-Element) combinations that never occur on their own anywhere else in the sheet (e.g. `(Lucah, Politik)`, `(Palsu, Kepentingan Negara, Politik)`) — new catalog rows, not typos.
+- Column-shift rows: confirmed, correct by moving the `Elemen` value into `Kategori` (already applied in the extract below).
 
 **New wrinkle, not previously documented:** `Category` isn't a flat/global table in the shipped catalog — it's scoped to a `Citation`, which is scoped to an `Instrument` (five-level catalog: Instrument → Citation → Category → Element → SubElement; see the `legal-citation-catalog` skill). The same category name under two different citations is deliberately two separate rows. That means before any `Kategori` value can be imported at all, every row's `Butiran Kesalahan` (citation) text first needs to resolve to one canonical `Instrument`+`Citation` pair.
 
@@ -89,88 +90,37 @@ Checked how bad this is against the real data — better than feared:
 - Running the existing `internal/legalcite.Parse` (already built for exactly this Malay-citation-shorthand problem) against all 184: **110 parse cleanly, 74 need manual review** (joined/ambiguous text, same as its documented behavior for strings like "Seksyen 211 dan 233 Akta...").
 - `legalcite.Parse` only extracts the *provision* (section number), not which *Act* it belongs to — and provision numbers collide across unrelated Acts in this data (e.g. "Seksyen 5" appears under 11 different raw strings spanning at least 3 unrelated Acts: Akta Industri Pelancongan 1992, Akta Pemberi Pinjam Wang 1951, Akta Peranti Perubatan 2012). So Instrument identification can't be automated from provision number alone — matching each citation to the right `Instrument` needs either a manual pass over the 184 strings or a separate Act-name extraction step.
 
-**Question:** treat this as a one-time manual pre-import task — hand-classify the 184 distinct citation strings into canonical `Instrument`/`Citation` rows first (collapsing obvious variants like `"AKM1998"`/`"AKM 1998"`/`"Akta Komunikasi dan Multimedia 1998"` into one Citation), then attach each spreadsheet row's `Category`/`Element`/`Sub-Element` under that citation — rather than auto-creating a new `Citation` per unique raw string, which would fragment the same real category across near-duplicate citations.
+**Resolved:** treat this as a one-time manual pre-import task — hand-classify the 184 distinct citation strings into canonical `Instrument`/`Citation` rows first (collapsing obvious variants like `"AKM1998"`/`"AKM 1998"`/`"Akta Komunikasi dan Multimedia 1998"` into one Citation), then attach each spreadsheet row's `Category`/`Element`/`Sub-Element` under that citation — rather than auto-creating a new `Citation` per unique raw string, which would fragment the same real category across near-duplicate citations.
 
-### Appendix: all 74 citation strings `legalcite.Parse` flags NEEDS_REVIEW (2,585 / 38,156 rows, 6.8%), sorted by row count
+The extraction itself (citation × its observed `Category`/`Element`/`Sub-Element` combinations + row counts, plus `legalcite.Parse`'s confidence/provision-number for each citation) is done: `docs/blocking-list-citation-category-extract.csv`, 184 citation groups / 316 combo rows. Column-shift and compound-category corrections above are already applied and expanded — every compound cell is already split into its per-category rows, no remaining review flag. This is the input for the manual classification pass, not the classification itself — `Instrument`/`Citation` assignment per row still needs a human.
 
-Most of this list is mechanical (stray spacing around a sub-clause, `&` vs `dan`, a stray typo) rather than a genuinely ambiguous citation — worth a normalization pass before assuming all 74 need individual human judgment. Two are worth a second look on their own: `Akta Rumah Judi Terbuka 1953` vs `Akta Rumah Perjudian Terbuka 1953` is the same law under two different Act names, not just a formatting difference; and the handful of lettered multi-clause citations (`a) ... b) ... c) ...`) each cite several unrelated Acts in one cell. "First row #" is the row number as it appears opening the file directly in Excel (first occurrence only, for rows with more than one).
+**In progress:** the manual classification pass is being worked through batch-by-batch (grep the raw text for a shared marker — e.g. a year — then confirm which grouped hits are really the same `Instrument`), tracked in `docs/blocking-list-citation-classification.csv`. First batch done: the 8 distinct citation strings containing "1998" (13,469 rows, ~35% of the sheet) — 5 confirmed as `Akta Komunikasi dan Multimedia 1998` (AKM 1998 / Communication and Multimedia Act 1998 / CMA 1998, all one Instrument) differing only by provision (`Seksyen 233`, `Seksyen 211 dan 233`, `Seksyen 263`) or Act-name spelling; 3 confirmed as unrelated Acts that just happen to say "1998" (Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan), Akta Kemudahan dan Perkhidmatan Jagaan Kesihatan Swasta 1998 / Akta 586). Two things surfaced that still need an answer before those rows can be finalized: whether `Seksyen 263` is real or a typo for `Seksyen 233`, and how a citation that names two provisions at once (`"Seksyen 211 dan 233"`, `"Seksyen 7 dan Seksyen 8"`) should attach — one compound `Citation` row, or split like the compound-`Kategori` case above.
 
-| Rows | First row # | Citation |
-|---|---|---|
-| 1067 | 15 | `Seksyen 211 dan 233 Akta Komunikasi dan Multimedia 1998` |
-| 792 | 4452 | `Seksyen 13 (a) Akta Racun 1952` |
-| 83 | 1221 | `Seksyen 292 & Seksyen 372 Kanun Keseksaan` |
-| 74 | 32485 | `Akta Rumah Judi Terbuka 1953` |
-| 65 | 649 | `Seksyen 4B (a) Akta Rumah Perjudian Terbuka 1953` |
-| 62 | 1360 | `Seksyen 5(2)(a) & (b) Akta Industri Pelancongan 1992` |
-| 47 | 3320 | `Seksyen 41 1(C) Akta Hakcipta 1987` |
-| 47 | 32866 | `Seksyen 4B(a) Akta Rumah Judi Terbuka 1953` |
-| 43 | 7592 | `Seksyen 3 (1) (a) Akta Ubat (Iklan dan Penjualan) 1956` |
-| 38 | 4401 | `Seksyen 12(c) Enakmen Jenayah Syariah (Negeri Selangor) 1995` |
-| 27 | 170 | `Seksyen 3 Akta Ubat (Iklan dan Penjualan) 1956` |
-| 20 | 4803 | `Seksyen 4B Akta Ubat (Iklan dan Penjualan) 1956` |
-| 17 | 338 | `a) Bahagian III Seksyen 7, 8 dan 13, Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997; b) Seksyen 5, 8, 8(a), 8(b), 9, 14 dan 15, Enakmen Kesalahan Jenayah Syariah (Takzir)(Terengganu) 2001` |
-| 17 | 3974 | `Peraturan 62 & 63 Enakmen Kesalahan Syariah Negeri Melaka 1991` |
-| 14 | 33107 | `Seksyen 4B (a) Akta Rumah Judi Terbuka 1953` |
-| 10 | 21909 | `Peraturan 10A Peraturan-peraturan Kawalan Hasil Tembakau (PPKHT) 2004` |
-| 9 | 442 | `Akta Perihal Dagangan 2011` |
-| 8 | 33470 | `Seksyen 4(B)(a) Akta Rumah Judi Terbuka 1953` |
-| 8 | 4019 | `Seksyen 4A Akta Ubat (Iklan dan Penjualan) 1956` |
-| 8 | 7931 | `Seksyen 7 & 8 Enakmen Kesalahan Jenayah Syariah Negeri Johor 1997` |
-| 7 | 33080 | `Seksyen 4b (a) Akta Rumah Judi Terbuka 1953` |
-| 7 | 11072 | `Seskyen 420 Kanun Keseksaan` |
-| 7 | 234 | `a)Seksyen 7 and Seksyen 13, Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997; b)Seksyen 9, Bahagian III, Enakmen Jenayah Syariah (Negeri Perak) 1992; and c)Seksyen 8 and Seksyen 114, Enakmen Kesalahan Jenayah Syariah (Takzir)(Terengganu) 2001.` |
-| 7 | 21955 | `Seksyen 13(a) Akta Racun 1952` |
-| 5 | 261 | `a) Bahagian III Seksyen 7(a), (9), (12) Enakmen Jenayah Syariah 1997; b) Bahagian IV Seksyen 35 Enakmen Jenayah Syariah 1997; c) Bahagian III Seksyen 7(a) dan (c) Ordinan Kesalahan Jenayah Syariah Sarawak 2001` |
-| 5 | 22335 | `Seksyen 5 dan Seksyen 11 Akta Pemberi Pinjam Wang 1951` |
-| 5 | 3112 | `Seksyen 4B(a) Akta Rumah Perjudian Terbuka 1953` |
-| 5 | 33343 | `Seksyen 4 (a) Akta Rumah Judi Terbuka 1953` |
-| 5 | 13987 | `Akta Hasutan 1984` |
-| 4 | 416 | `a) Seksyen 4B Akta Ubat (Iklan dan Penjualan) 1956; and b) Peraturan 7(1)(a) Peraturan Kawalan Dadah dan Kosmetik 1984` |
-| 4 | 193 | `a) Seksyen 16 (1) (a), Seksyen 9, dan Seksyen 10 (a) Enakmen Jenayah Syariah (Negeri Selangor) 1995 b) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 136 c) Seksyen 6, Sekyen 7, Seksyen 8 dan Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997 [Akta 559] d) Bahagian II Seksyen 6 (a) dan (b), Bahagian III Seksyen 7 (a) dan Bahagian III Seksyen 8 Enakmen Kesalahan Jenayah Syariah 1997 e) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994, Seksyen 120 f) Seksyen 8 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 g) Seksyen 9 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 h) Seksyen 14 (1) (a) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 i) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 119 j) Seksyen 6 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001` |
-| 4 | 22041 | `Seksyen 3(1)(a) Akta Ubat (Iklan & Jualan) 1956` |
-| 3 | 74 | `Seksyen 3, 4, 5 dan 6 Enakmen Kesalahan Jenayah Syariah Negeri Johor 2003 and Seksyen 50 Enakmen Jenayah syariah Negeri Sembilan 1992` |
-| 3 | 109 | `Seksyen 212 dan 58 Akta Pasaran Modal dan Perkhidmatan 2007` |
-| 3 | 31260 | `Seksyen 4B Akta Ubat (Iklan & Jualan) 1956` |
-| 3 | 34141 | `Seksyen 4 B(a) Akta Rumah Judi Terbuka 1953` |
-| 3 | 25778 | `Seksyen 3 (1) (a) Akta Ubat (Iklan & Jualan) 1956` |
-| 3 | 168 | `Seksyen 7 dan 8 Enakmen Jenayah Syariah (Selangor) 1995` |
-| 3 | 21869 | `Seksyen 4B Akta Ubat (Iklan & Jualan) 1956` |
-| 3 | 35112 | `Seksyen 41(c) Akta Rumah Judi Terbuka 1953` |
-| 2 | 33270 | `Seksyen 4 Akta Ubat (Iklan & Jualan) 1956` |
-| 2 | 33564 | `Seksyen 3(1)(a) Akta Ubat (Iklan & Jualan) 1956` |
-| 2 | 35531 | `Seksyen 4 (b) Akta Rumah Judi Terbuka 1953` |
-| 2 | 249 | `Seksyen 8, Enakmen Jenayah Syariah (Negeri Selangor) 1995` |
-| 2 | 84 | `Seksyen 7(1) Enakmen Jenayah Syariah (Negeri Selangor) Enakmen No. 9 Tahun 1995` |
-| 2 | 33244 | `Seksyen 4(b)(a) Akta Rumah Judi Terbuka 1953` |
-| 1 | 16716 | `Seksyen 31(1) dan 32(1) Akta Eksais 1976` |
-| 1 | 22864 | `Seksyen 4B(1) Akta Ubat (Iklan & Jualan) 1956` |
-| 1 | 23753 | `Seksyen 4b(1) Akta Ubat (Iklan & Jualan) 1956` |
-| 1 | 111 | `Seksyen 8(a) dan (b), 14 dan 15 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001` |
-| 1 | 17083 | `Seksyen 31(1) dan 32(1) Akta Eksais 1977` |
-| 1 | 190 | `Seksyen 4, 7 dan 13 of Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997` |
-| 1 | 15179 | `Seksyen 48(h) Akta Suruhanjaya Pencegahan Rasuah Malaysia 2009` |
-| 1 | 21826 | `Seksyen 4B (1) Akta Ubat (Iklan & Jualan) 1956` |
-| 1 | 21795 | `Seksyen 3(1) Akta Ubat (Iklan & Penjualan) 1956` |
-| 1 | 32420 | `Akta Kesalahan Jenayah Syariah (Wilayah -Wilayah Persekutuan) 1997` |
-| 1 | 94 | `1) Seksyen 14dan 15 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001;` |
-| 1 | 93 | `Seksyen 7 dan Seksyen 8 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah) Persekutuan 1998` |
-| 1 | 96 | `3) Seksyen 4(1), 7(a), 9 dan 12 Enakmen Kesalahan Jenayah Syariah (Johor) 1997; and` |
-| 1 | 3082 | `Seksyen 17 (d) Akta Makanan 1983` |
-| 1 | 25882 | `Seksyen 18(2)(eb), Akta Suruhanjaya Syarikat Malaysia 2001` |
-| 1 | 10366 | `Seskeyn 130 Akta Perlindungan Data Peribadi 2010` |
-| 1 | 305 | `Seksyen 4, 7 dan 13 of Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1998` |
-| 1 | 98 | `Seksyen 7, 9, 10(b), 11, 13, 16 Enakmen Jenayah syariah (Negeri Selangor) 1995 and Seksyen 13 Enakmen Jenayah Syariah Negeri Johor 1997` |
-| 1 | 69 | `Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1996` |
-| 1 | 327 | `Seksyen 4, 7 dan 13 of Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1999` |
-| 1 | 33935 | `Seksyen 4A(a) Akta Rumah Judi Terbuka 1953` |
-| 1 | 88 | `Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1997` |
-| 1 | 97 | `4) Seksyen 50(iv) dan Seksyen 54 Enakmen Jenayah Syariah (Negeri Sembilan) 1992.` |
-| 1 | 64 | `Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1995` |
-| 1 | 3256 | `Seksyen 12 (c ) Enakmen Jenayah Syariah (Negeri Selangor) 1995` |
-| 1 | 16218 | `Kaedah 13(2)(b), Kaedah Kaedah Pendaftaran Perniagaan 1957` |
-| 1 | 958 | `Seksyen 39(1)& Seksyen 108 Akta Kemudahan dan Perkhidmatan Jagaan Kesihatan Swasta 1998 (Akta 586)` |
-| 1 | 30853 | `Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997` |
+Second batch done: the 3 distinct citations containing "Hakcipta" (5,282 rows) — `Seksyen 41 Akta Hakcipta 1987` (5,230 rows) and `Seksyen 41 1(C) Akta Hakcipta 1987` (47 rows) confirmed as the same Instrument (`Akta Hakcipta 1987`, Copyright Act 1987), kept as **two separate `Citation` rows** rather than merged — the bare `Seksyen 41` is a legitimately less-specific cite of the same section, not an error, while `Seksyen 41 1(C)` narrows to the `(1)(c)` subsection/paragraph. `Seksyen 100 Akta Cap Dagangan Hakcipta 2019` (5 rows) confirmed as a genuinely different Act, name as written accepted as correct (not a mis-transcription).
+
+Third batch done: the 11 distinct citations containing "Dadah"/"Kosmetik" (2,348 rows) split into two unrelated Instruments. 6 confirmed as `Peraturan Kawalan Dadah dan Kosmetik 1984` (Control of Drugs and Cosmetics Regulations 1984, 2,336 rows) — canonical name uses the `"dan"` spelling (not `"&"`/`"Peraturan-peraturan"` prefix), two real Citations (`Peraturan 7(1)(a)`, `Peraturan 18A(14)`). 4 confirmed as `Akta Dadah Berbahaya 1952` (Dangerous Drugs Act 1952, 8 rows) — including `Peraturan 5(1)(a) Peraturan Dadah Merbahaya 1952` (4 rows), confirmed as a double typo (wrong label `Peraturan`→`Akta`, wrong spelling `Merbahaya`→`Berbahaya`) that corrects to the same Citation as `Seksyen 5(1)(a) Akta Dadah Berbahaya 1952` below it.
+
+Fourth batch done: `Akta Racun 1952` (Poisons Act 1952, 2 spacing variants, 799 rows, trivial merge); `Kanun Keseksaan` (Penal Code — no year, per convention — 10 variants, 1,155 rows) confirmed as one Instrument across its real distinct provisions (§292, §298A, §372, §372A, §372B, §372(1)(e), §420, §500), including a typo (`Seskyen`→`Seksyen`) and a casing variant folded in; `Akta Pasaran Modal dan Perkhidmatan 2007` (Capital Markets and Services Act 2007, 12 variants, 740 rows) confirmed as one Instrument — canonical name **drops** the `"Undang Undang"` prefix some rows carry, `Perkhidmation` confirmed as a typo for `Perkhidmatan`, and the one row citing **2012** instead of 2007 confirmed as the same Instrument, not a separate Act/amendment. Two more two-provisions-in-one-cell rows surfaced (`"Seksyen 292 & Seksyen 372 Kanun Keseksaan"`, `"Seksyen 212 dan 58 Akta Pasaran Modal dan Perkhidmatan 2007"`) — flagged `needs_decision`, same open question as the earlier compound-citation rows, not re-asked.
+
+Fifth batch done: `Akta Makanan 1983` (Food Act 1983, 6 variants, 433 rows) confirmed as one Instrument across §17(2)/§17(1)(b)/§17(1)(d) (one singleton, `"Seksyen 17 (d)"`, kept as its own Citation rather than assumed identical to §17(1)(d) — missing the `(1)`, not enough evidence to merge); `Akta Ubat (Iklan dan Penjualan) 1956` (Medicines Advertisements and Sale Act 1956, 12 variants, 116 rows) confirmed as one Instrument, canonical name uses **`"dan Penjualan"`** (the `"Iklan & Jualan"` rows normalize to it, not merely a punctuation swap); `Akta Industri Pelancongan 1992` (Tourism Industry Act 1992, 4 variants, 94 rows) confirmed as one Instrument — `"Seksyen 5(2)(a) & (b)"` noted as covering two paragraphs of the same subsection (kept as one Citation, unlike the cross-section compound rows elsewhere). One more Act-spanning compound-citation row surfaced inside the Ubat batch (`Seksyen 4B Akta Ubat...1956` + `Peraturan 7(1)(a)` Dadah/Kosmetik Regs in one cell) — flagged `needs_decision`, same shape as the others.
+
+(Note: two rows in the tracker CSV were briefly malformed — an unquoted comma inside the raw citation text split into extra columns — caught and fixed by re-quoting; flagging in case anyone diffs the CSV history.)
+
+67 of 184 citations classified so far; 38 more (the gambling-house batch above) flagged pending the stakeholder answer; 79 untouched.
+
+**Question, awaiting a stakeholder answer:** the next (and largest) batch is the gambling-house citations — 38 distinct raw strings, **13,180 rows (~35% of the sheet)** — almost certainly all `Akta Rumah Judi Terbuka 1953` (Common Gaming Houses Act 1953), varying by provision (`Seksyen 4`, `4(1)`, `4(1)(c)`, `4(1)(g)`, `4B(a)`, `8(1)`, `41(c)`, `4A(a)`…), Act-name spelling (`Judi` vs `Perjudian`), and — the part that needs an answer — **Act year**. Two year variants are too large to be a casual typo: `Akta Rumah Judi Terbuka 1958` (943 rows) and `...1972` (419 rows), plus thirteen singleton years scattered from 1959–1971.
+
+Checked two theories for the year variants, neither holds up:
+- Not "the row's own blocking year (`Tahun` column) got typed into the citation" — the `1958`/`1972`-citation rows' actual `Tahun` values are mostly 2021/2022, unrelated.
+- Not an Excel autofill-drag artifact — the `1958`/`1972` rows are scattered non-consecutively across thousands of spreadsheet rows, not clustered together the way a drag error would be.
+
+So `1958`/`1972` could be genuine citations to a real amendment Act (Malaysian law does have "Common Gaming Houses (Amendment) Act" citations by amendment year), not typos for 1953 — this needs someone with domain/legal knowledge, not something resolvable from the spreadsheet. **Question for the stakeholder:** are `Akta Rumah Judi Terbuka 1958`/`1972`/(the 13 other singleton years 1959–1971) the same Instrument as `Akta Rumah Judi Terbuka 1953`, or genuine separate Acts/amendments?
+
+### Note on the 74 NEEDS_REVIEW citations (2,585 / 38,156 rows, 6.8%)
+
+Superseded by `docs/blocking-list-citation-category-extract.csv` (`parse_confidence` column) — that has all 184 citations, not just these 74, plus their category/element/subelement combos. Full per-citation row-count table dropped from here; two things from it are worth keeping as prose:
+- Most of the 74 are mechanical (stray spacing, `&` vs `dan`, a typo) rather than genuinely ambiguous — a normalization pass would likely clear most before anyone needs to read all 74 by hand.
+- Two deserve individual attention: `Akta Rumah Judi Terbuka 1953` vs `Akta Rumah Perjudian Terbuka 1953` is the same law under two different Act names, not a formatting variant; and the handful of lettered multi-clause citations (`a) ... b) ... c) ...`) each cite several unrelated Acts in one cell.
 
 ---
 

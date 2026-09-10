@@ -1,0 +1,69 @@
+raw_citation,row_count,instrument,citation_provision,status,notes
+Seksyen 233 Akta Komunikasi dan Multimedia 1998,7532,Akta Komunikasi dan Multimedia 1998,Seksyen 233,confirmed,AKM 1998 / Communication and Multimedia Act 1998 / CMA 1998 all the same Instrument
+Seksyen 233 AKM 1998,3333,Akta Komunikasi dan Multimedia 1998,Seksyen 233,confirmed,"spelling variant of the row above, same Instrument+Citation"
+Seksyen 233 AKM1998,1509,Akta Komunikasi dan Multimedia 1998,Seksyen 233,confirmed,"spelling variant (no space before 1998), same Instrument+Citation"
+Seksyen 211 dan 233 Akta Komunikasi dan Multimedia 1998,1067,Akta Komunikasi dan Multimedia 1998,Seksyen 211 dan 233,needs_decision,"same Instrument confirmed, but cites TWO provisions (211 and 233) in one cell - needs a decision on whether this becomes one compound Citation row or splits into two Citation attachments (Category is scoped to Citation, so this affects which provision the row's Category/Element data attaches under). Same shape as the compound-Kategori problem resolved above."
+Seksyen 263 Akta Komunikasi dan Multimedia 1998,25,Akta Komunikasi dan Multimedia 1998,Seksyen 263,needs_decision,"same Instrument confirmed; unconfirmed whether Seksyen 263 is real or a typo for Seksyen 233 - asked, not yet answered"
+Seksyen 7 dan Seksyen 8 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah) Persekutuan 1998,1,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan),Seksyen 7 dan Seksyen 8,needs_decision,"different Instrument than AKM, confirmed. Compound citation (7 and 8) same shape as the 211-dan-233 row above. Also: near-identical citations under this Act exist at 1997 and 1999 in the sheet (17 rows at 1997 alone) - the 1998 year here may itself be a typo, worth checking together with those rather than treating as a separate confirmed year."
+"Seksyen 4, 7 dan 13 of Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1998",1,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan),"Seksyen 4, 7 dan 13",needs_decision,"same Instrument as row above, different provision set. Same 1997/1998/1999 year-typo question applies."
+Seksyen 39(1)& Seksyen 108 Akta Kemudahan dan Perkhidmatan Jagaan Kesihatan Swasta 1998 (Akta 586),1,Akta Kemudahan dan Perkhidmatan Jagaan Kesihatan Swasta 1998 (Akta 586),Seksyen 39(1) dan Seksyen 108,needs_decision,"different Instrument than AKM, confirmed (Private Healthcare Facilities and Services Act 1998, Act 586). Compound citation (39(1) and 108), same shape as the 211-dan-233 row."
+Seksyen 41 Akta Hakcipta 1987,5230,Akta Hakcipta 1987,Seksyen 41,confirmed,"general/less-specific citation than the 41(1)(c) row below - kept as its own separate Citation under the same Instrument rather than merged, since it's a legitimately less-precise cite of the same section, not an error (schema: Citation = the specific provision as actually cited)"
+Seksyen 41 1(C) Akta Hakcipta 1987,47,Akta Hakcipta 1987,Seksyen 41(1)(c),confirmed,"more specific than the row above (adds subsection/paragraph), same Instrument, different Citation"
+Seksyen 100 Akta Cap Dagangan Hakcipta 2019,5,Akta Cap Dagangan Hakcipta 2019,Seksyen 100,confirmed,"confirmed genuinely different Act from Akta Hakcipta 1987; the name as written is correct, not a mis-transcription"
+Peraturan 7(1)(a) Peraturan Kawalan Dadah dan Kosmetik 1984,2111,Peraturan Kawalan Dadah dan Kosmetik 1984,Peraturan 7(1)(a),confirmed,"canonical Instrument name uses the 'dan' spelling convention per user instruction, not '& '/'Peraturan-peraturan' prefix"
+Peraturan 7(1)(a) Peraturan-peraturan Kawalan Dadah & Kosmetik 1984,147,Peraturan Kawalan Dadah dan Kosmetik 1984,Peraturan 7(1)(a),confirmed,"spelling variant of the row above, same Instrument+Citation, normalized to the 'dan' convention"
+Peraturan 7 (1) (a) Peraturan-peraturan Kawalan Dadah & Kosmetik 1984,51,Peraturan Kawalan Dadah dan Kosmetik 1984,Peraturan 7(1)(a),confirmed,"spacing/spelling variant, same Instrument+Citation"
+Peraturan 18A (14) Peraturan-peraturan Kawalan Dadah & Kosmetik 1984,14,Peraturan Kawalan Dadah dan Kosmetik 1984,Peraturan 18A(14),confirmed,"same Instrument, different Citation (provision 18A(14) not 7(1)(a))"
+Peraturan 18A(14) Peraturan-peraturan Kawalan Dadah & Kosmetik 1984,12,Peraturan Kawalan Dadah dan Kosmetik 1984,Peraturan 18A(14),confirmed,"spacing variant of the row above, same Instrument+Citation"
+Peraturan 7 (1)(a)Peraturan-peraturan Kawalan Dadah & Kosmetik 1984,1,Peraturan Kawalan Dadah dan Kosmetik 1984,Peraturan 7(1)(a),confirmed,"spacing/punctuation variant, same Instrument+Citation"
+Peraturan 5(1)(a) Peraturan Dadah Merbahaya 1952,4,Akta Dadah Berbahaya 1952,Seksyen 5(1)(a),confirmed,"confirmed typo per user instruction: 'follows Akta not Peraturan' - both the 'Peraturan' label and 'Merbahaya' spelling are wrong; corrects to Seksyen 5(1)(a) Akta Dadah Berbahaya 1952, same Citation as the row below"
+Seksyen 16 (1)(b) Akta Dadah Berbahaya 1952,2,Akta Dadah Berbahaya 1952,Seksyen 16(1)(b),confirmed,"Dangerous Drugs Act 1952, unrelated to the Dadah/Kosmetik Regulations cluster above"
+Seksyen 5(1)(a) Akta Dadah Berbahaya 1952,1,Akta Dadah Berbahaya 1952,Seksyen 5(1)(a),confirmed,same Instrument; same Citation as the corrected typo row above
+Seksyen 39B Akta Dadah Berbahaya 1952,1,Akta Dadah Berbahaya 1952,Seksyen 39B,confirmed,"same Instrument, different Citation"
+Seksyen 13 (a) Akta Racun 1952,792,Akta Racun 1952,Seksyen 13(a),confirmed,"spacing variant, same Instrument+Citation"
+Seksyen 13(a) Akta Racun 1952,7,Akta Racun 1952,Seksyen 13(a),confirmed,"spacing variant of the row above, same Instrument+Citation"
+Seksyen 372B Kanun Keseksaan,708,Kanun Keseksaan,Seksyen 372B,confirmed,"Penal Code, cited without a year per convention"
+Seksyen 372 Kanun Keseksaan,185,Kanun Keseksaan,Seksyen 372,confirmed,"same Instrument, different Citation"
+Seksyen 372A Kanun Keseksaan,85,Kanun Keseksaan,Seksyen 372A,confirmed,"same Instrument, different Citation"
+Seksyen 292 & Seksyen 372 Kanun Keseksaan,83,Kanun Keseksaan,Seksyen 292 dan Seksyen 372,needs_decision,"compound citation (two provisions in one cell), same shape as the other needs_decision rows - split vs single combined Citation"
+Seksyen 420 Kanun Keseksaan,48,Kanun Keseksaan,Seksyen 420,confirmed,"same Instrument, different Citation"
+Seksyen 372(1)(e) Kanun Keseksaan,19,Kanun Keseksaan,Seksyen 372(1)(e),confirmed,"same Instrument, more specific Citation than the bare Seksyen 372 row above"
+Seksyen 500 Kanun Keseksaan,13,Kanun Keseksaan,Seksyen 500,confirmed,"same Instrument, different Citation"
+Seskyen 420 Kanun Keseksaan,7,Kanun Keseksaan,Seksyen 420,confirmed,"typo 'Seskyen'->'Seksyen', same Citation as the Seksyen 420 row above"
+seksyen 372B Kanun Keseksaan,6,Kanun Keseksaan,Seksyen 372B,confirmed,"lowercase variant, same Citation as the Seksyen 372B row above"
+Seksyen 298A Kanun Keseksaan,1,Kanun Keseksaan,Seksyen 298A,confirmed,"same Instrument, different Citation"
+Seksyen 58 Akta Undang Undang Pasaran Modal dan Perkhidmation 2007,275,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 58,confirmed,"canonical name confirmed as 'Akta Pasaran Modal dan Perkhidmatan 2007' - 'Undang Undang' prefix dropped, 'Perkhidmation' is a typo for 'Perkhidmatan'"
+Seksyen 58 Akta Undang Undang Pasaran Modal dan Perkhidmatan 2007,194,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 58,confirmed,"prefix variant of the row above, same Instrument+Citation"
+Seksyen 58 Akta Undang Undang Pasaran Modal Dan Perkhidmatan 2007,169,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 58,confirmed,"prefix/casing variant, same Instrument+Citation"
+Seksyen 58 Akta  Undang Undang Pasaran Modal dan Perkhidmation 2007,72,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 58,confirmed,"double-space + prefix + typo variant, same Instrument+Citation"
+"Seksyen 58, Akta Pasaran Modal Dan Perkhidmatan 2007",8,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 58,confirmed,"matches canonical name already (no 'Undang Undang' prefix), just casing/comma variant"
+Seksyen 7 Akta  Undang Undang Pasaran Modal dan Perkhidmation 2007,7,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 7,confirmed,"different provision (7 not 58), same Instrument"
+Seksyen 59 Akta Undang Undang Pasaran Modal dan Perkhidmatan 2012,6,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 59,confirmed,"confirmed same cluster despite the '2012' year in the raw text - treated as the same Instrument as the 2007 rows, not a separate Act/amendment"
+Seksyen 212 dan 58 Akta Pasaran Modal dan Perkhidmatan 2007,3,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 212 dan 58,needs_decision,"compound citation (two provisions in one cell), same shape as the other needs_decision rows"
+Seksyen 58 Akta Pasaran Modal dan Perkhidmatan 2007,3,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 58,confirmed,matches canonical name exactly
+Seksyen 362 Akta Pasaran Modal dan Perkhidmatan 2007,1,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 362,confirmed,"same Instrument, different Citation"
+Seksyen 7 Akta Undang Undang Pasaran Modal Dan Perkhidmatan 2007,1,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 7,confirmed,"prefix/casing variant, same Citation as the Seksyen 7 row above"
+Seksyen 212 Akta Undang Undang Pasaran Modal Dan Perkhidmatan 2007,1,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 212,confirmed,"same Instrument, different Citation (212 alone, not the compound 212-dan-58 row)"
+Seksyen 17 (2) Akta Makanan 1983,287,Akta Makanan 1983,Seksyen 17(2),confirmed,
+Seksyen 17(1)(b) Akta Makanan 1983,107,Akta Makanan 1983,Seksyen 17(1)(b),confirmed,
+"Seksyen 17(1)(b), Akta Makanan 1983",24,Akta Makanan 1983,Seksyen 17(1)(b),confirmed,"comma variant, same Citation as the row above"
+Seksyen 17 (1)(b) Akta Makanan 1983,9,Akta Makanan 1983,Seksyen 17(1)(b),confirmed,"spacing variant, same Citation as the row above"
+Seksyen 17 (1)(d) Akta Makanan 1983,5,Akta Makanan 1983,Seksyen 17(1)(d),confirmed,different provision
+Seksyen 17 (d) Akta Makanan 1983,1,Akta Makanan 1983,Seksyen 17(d),confirmed,"kept as written, not assumed identical to Seksyen 17(1)(d) without more info - missing '(1)' could be shorthand or a genuinely different sub-provision"
+Seksyen 3 (1) (a) Akta Ubat (Iklan dan Penjualan) 1956,43,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 3(1)(a),confirmed,canonical Instrument name confirmed as 'dan Penjualan'
+Seksyen 3 Akta Ubat (Iklan dan Penjualan) 1956,27,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 3,confirmed,"less-specific than the 3(1)(a) row, kept as its own Citation"
+Seksyen 4B Akta Ubat (Iklan dan Penjualan) 1956,20,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 4B,confirmed,
+Seksyen 4A Akta Ubat (Iklan dan Penjualan) 1956,8,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 4A,confirmed,
+"a) Seksyen 4B Akta Ubat (Iklan dan Penjualan) 1956; and
+b) Peraturan 7(1)(a) Peraturan Kawalan Dadah dan Kosmetik 1984",4,MIXED,MIXED,needs_decision,"compound citation spanning TWO different Acts (Ubat 1956 + Dadah Kosmetik 1984 Regulations) in one cell, same shape as the other needs_decision rows"
+Seksyen 3(1)(a) Akta Ubat (Iklan & Jualan) 1956,4,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 3(1)(a),confirmed,"'Jualan' normalized to canonical 'dan Penjualan' per user instruction, same Citation as the 3(1)(a) row above"
+Seksyen 4B Akta Ubat (Iklan & Jualan) 1956,3,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 4B,confirmed,"normalized, same Citation as the 4B row above"
+Seksyen 3 (1) (a) Akta Ubat (Iklan & Jualan) 1956,3,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 3(1)(a),confirmed,"normalized, same Citation as the 3(1)(a) row above"
+Seksyen 3(1) Akta Ubat (Iklan & Penjualan) 1956,1,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 3(1),confirmed,normalized ('&'->'dan'); less specific than 3(1)(a)
+Seksyen 4B (1) Akta Ubat (Iklan & Jualan) 1956,1,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 4B(1),confirmed,normalized
+Seksyen 4B(1) Akta Ubat (Iklan & Jualan) 1956,1,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 4B(1),confirmed,"normalized, spacing variant of the row above"
+Seksyen 4b(1) Akta Ubat (Iklan & Jualan) 1956,1,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 4B(1),confirmed,normalized + casing variant
+Seksyen 5(2)(a) & (b) Akta Industri Pelancongan 1992,62,Akta Industri Pelancongan 1992,Seksyen 5(2)(a) dan (b),confirmed,"covers two paragraphs (a) and (b) of the same subsection 5(2) - noted per user instruction, not split the way the cross-section compound rows are"
+Seksyen 5 (2) Akta Industri Pelancongan 1992,30,Akta Industri Pelancongan 1992,Seksyen 5(2),confirmed,"less specific than the (a)-dan-(b) row, kept as its own Citation"
+Seksyen 5 Akta Industri Pelancongan 1992,1,Akta Industri Pelancongan 1992,Seksyen 5,confirmed,least specific of the cluster
+Seksyen 5(2) Akta Industri Pelancongan 1992,1,Akta Industri Pelancongan 1992,Seksyen 5(2),confirmed,spacing variant of the Seksyen 5 (2) row above
