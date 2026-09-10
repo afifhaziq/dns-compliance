@@ -101,10 +101,22 @@ var cmodHeaders = []string{
 // WriteCMODWorkbook writes rows as a single-sheet .xlsx to w — a header row
 // (the 17 column titles, in FlattenCMODRows' declared order) followed by
 // one data row per CMODRow.
+// cmodDateCols holds the 0-indexed column positions (matching cmodHeaders)
+// that hold dates and must be written as real Excel date values.
+var cmodDateCols = map[int]bool{1: true, 13: true, 14: true} // LetterDate, Received, Submission
+
 func WriteCMODWorkbook(rows []CMODRow, w io.Writer) error {
 	f := excelize.NewFile()
 	defer f.Close()
 	const sheet = "Sheet1"
+
+	if err := applyHeaderStyle(f, sheet, len(cmodHeaders)); err != nil {
+		return err
+	}
+	dateStyle, err := dateCellStyle(f)
+	if err != nil {
+		return err
+	}
 
 	for i, h := range cmodHeaders {
 		cell, err := excelize.CoordinatesToCellName(i+1, 1)
@@ -125,6 +137,12 @@ func WriteCMODWorkbook(rows []CMODRow, w io.Writer) error {
 			cell, err := excelize.CoordinatesToCellName(c+1, r+2)
 			if err != nil {
 				return err
+			}
+			if cmodDateCols[c] {
+				if err := setDateCell(f, sheet, cell, v.(string), dateStyle); err != nil {
+					return err
+				}
+				continue
 			}
 			if err := f.SetCellValue(sheet, cell, v); err != nil {
 				return err

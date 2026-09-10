@@ -56,6 +56,7 @@ import { useGridPreference } from '@/hooks/use-grid-preference'
 import { ChevronRight } from '@/components/ui/chevron-right'
 import { SquarePenIcon } from '@/components/ui/square-pen'
 import { SquareXIcon } from '@/components/animate-ui/icons/square-x'
+import { DownloadIcon } from '@/components/animate-ui/icons/download'
 import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
 
 export const Route = createFileRoute('/docs')({
@@ -1178,11 +1179,11 @@ function DocsPage() {
                 <SelectItem index={1} value="all">All cases</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" onClick={handleExportLetters} disabled={exporting}>
-              {exporting ? 'Exporting…' : 'Export'}
-            </Button>
             {exportError && <p className="error-message">{exportError}</p>}
-            <div style={{ marginLeft: 'auto' }}>
+            <div style={{ marginLeft: 'auto' }} className="flex items-center gap-2">
+              <Button variant="outline" size="icon" onClick={handleExportLetters} disabled={exporting} aria-label={exporting ? 'Exporting…' : 'Export'} title={exporting ? 'Exporting…' : 'Export'}>
+                <DownloadIcon size={16} />
+              </Button>
               <DataGridColumnVisibility table={table} trigger={<Button variant="outline">Columns</Button>} />
             </div>
           </div>

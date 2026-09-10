@@ -17,6 +17,7 @@ import { FileText } from 'lucide-react'
 import { CASE_STATUS_OPTIONS } from '@/lib/case-options'
 import { ChevronRight } from '@/components/ui/chevron-right'
 import { SquarePenIcon } from '@/components/ui/square-pen'
+import { DownloadIcon } from '@/components/animate-ui/icons/download'
 import { DataGridTableRowExpand } from '@/components/reui/data-grid/data-grid-table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled } from '../api/urls'
@@ -1748,11 +1749,11 @@ function URLsPage() {
                   <SelectItem index={1} value="all">All cases</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" onClick={handleExportCases} disabled={exporting}>
-                {exporting ? 'Exporting…' : 'Export'}
-              </Button>
               {exportError && <p className="error-message">{exportError}</p>}
-              <div style={{ marginLeft: 'auto' }}>
+              <div style={{ marginLeft: 'auto' }} className="flex items-center gap-2">
+                <Button variant="outline" size="icon" onClick={handleExportCases} disabled={exporting} aria-label={exporting ? 'Exporting…' : 'Export'} title={exporting ? 'Exporting…' : 'Export'}>
+                  <DownloadIcon size={16} />
+                </Button>
                 <DataGridColumnVisibility table={casesTable} trigger={<Button variant="outline">Columns</Button>} />
               </div>
             </div>

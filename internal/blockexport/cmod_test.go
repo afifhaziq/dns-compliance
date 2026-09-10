@@ -2,6 +2,7 @@ package blockexport
 
 import (
 	"bytes"
+	"strconv"
 	"testing"
 	"time"
 
@@ -161,5 +162,58 @@ func TestWriteCMODWorkbook_RoundTrips(t *testing.T) {
 	}
 	if got[1][9] != "a.com" || got[1][6] != "alice" || got[1][15] != "9" {
 		t.Fatalf("data row mismatch: %+v", got[1])
+	}
+}
+
+func TestWriteCMODWorkbook_HeaderBoldAndDateColumnsAreRealDates(t *testing.T) {
+	rows := []CMODRow{
+		{No: 1, LetterDate: "2024-05-01", Received: "2024-05-02", Submission: "2024-05-03"},
+	}
+	var buf bytes.Buffer
+	if err := WriteCMODWorkbook(rows, &buf); err != nil {
+		t.Fatalf("WriteCMODWorkbook: %v", err)
+	}
+	f, err := excelize.OpenReader(&buf)
+	if err != nil {
+		t.Fatalf("OpenReader: %v", err)
+	}
+	defer f.Close()
+
+	styleID, err := f.GetCellStyle("Sheet1", "A1")
+	if err != nil {
+		t.Fatalf("GetCellStyle: %v", err)
+	}
+	style, err := f.GetStyle(styleID)
+	if err != nil {
+		t.Fatalf("GetStyle: %v", err)
+	}
+	if style.Font == nil || !style.Font.Bold {
+		t.Fatalf("header cell A1 not bold: %+v", style.Font)
+	}
+
+	// LetterDate is column B (index 1); its data row is row 2. A real Excel
+	// date is stored as a numeric serial value, not the "2024-05-01" text —
+	// but still displays as "2024-05-01" once the date style is applied.
+	raw, err := f.GetCellValue("Sheet1", "B2", excelize.Options{RawCellValue: true})
+	if err != nil {
+		t.Fatalf("GetCellValue (raw): %v", err)
+	}
+	if _, err := strconv.ParseFloat(raw, 64); err != nil {
+		t.Fatalf("LetterDate raw value = %q, want a numeric date serial, got parse error: %v", raw, err)
+	}
+	if got, _ := f.GetCellValue("Sheet1", "B2"); got != "2024-05-01" {
+		t.Fatalf("LetterDate displayed value = %q, want 2024-05-01", got)
+	}
+
+	dateStyleID, err := f.GetCellStyle("Sheet1", "B2")
+	if err != nil {
+		t.Fatalf("GetCellStyle: %v", err)
+	}
+	dateStyle, err := f.GetStyle(dateStyleID)
+	if err != nil {
+		t.Fatalf("GetStyle: %v", err)
+	}
+	if dateStyle.CustomNumFmt == nil || *dateStyle.CustomNumFmt != dateNumFmt {
+		t.Fatalf("LetterDate cell CustomNumFmt = %v, want %q", dateStyle.CustomNumFmt, dateNumFmt)
 	}
 }

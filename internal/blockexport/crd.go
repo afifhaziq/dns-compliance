@@ -159,10 +159,22 @@ var crdHeaders = []string{
 	"Remarks", ".my", "Case ID", "Department", "Due Date",
 }
 
+// crdDateCols holds the 0-indexed column positions (matching crdHeaders)
+// that hold dates and must be written as real Excel date values.
+var crdDateCols = map[int]bool{4: true, 10: true, 16: true} // TarikhBlocked, TarikhUplift, DueDate
+
 func WriteCRDWorkbook(rows []CRDRow, w io.Writer) error {
 	f := excelize.NewFile()
 	defer f.Close()
 	const sheet = "Sheet1"
+
+	if err := applyHeaderStyle(f, sheet, len(crdHeaders)); err != nil {
+		return err
+	}
+	dateStyle, err := dateCellStyle(f)
+	if err != nil {
+		return err
+	}
 
 	for i, h := range crdHeaders {
 		cell, err := excelize.CoordinatesToCellName(i+1, 1)
@@ -184,6 +196,12 @@ func WriteCRDWorkbook(rows []CRDRow, w io.Writer) error {
 			cell, err := excelize.CoordinatesToCellName(c+1, r+2)
 			if err != nil {
 				return err
+			}
+			if crdDateCols[c] {
+				if err := setDateCell(f, sheet, cell, v.(string), dateStyle); err != nil {
+					return err
+				}
+				continue
 			}
 			if err := f.SetCellValue(sheet, cell, v); err != nil {
 				return err

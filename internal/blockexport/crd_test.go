@@ -2,6 +2,7 @@ package blockexport
 
 import (
 	"bytes"
+	"strconv"
 	"testing"
 	"time"
 
@@ -167,5 +168,58 @@ func TestWriteCRDWorkbook_RoundTrips(t *testing.T) {
 	}
 	if got[1][1] != "example.com" || got[1][5] != "REF-1" || got[1][14] != "1" {
 		t.Fatalf("data row mismatch: %+v", got[1])
+	}
+}
+
+func TestWriteCRDWorkbook_HeaderBoldAndDateColumnsAreRealDates(t *testing.T) {
+	rows := []CRDRow{
+		{Tahun: 2024, AlamatLamanWeb: "example.com", TarikhBlocked: "2024-01-10", DueDate: "2024-02-01"},
+	}
+	var buf bytes.Buffer
+	if err := WriteCRDWorkbook(rows, &buf); err != nil {
+		t.Fatalf("WriteCRDWorkbook: %v", err)
+	}
+	f, err := excelize.OpenReader(&buf)
+	if err != nil {
+		t.Fatalf("OpenReader: %v", err)
+	}
+	defer f.Close()
+
+	styleID, err := f.GetCellStyle("Sheet1", "A1")
+	if err != nil {
+		t.Fatalf("GetCellStyle: %v", err)
+	}
+	style, err := f.GetStyle(styleID)
+	if err != nil {
+		t.Fatalf("GetStyle: %v", err)
+	}
+	if style.Font == nil || !style.Font.Bold {
+		t.Fatalf("header cell A1 not bold: %+v", style.Font)
+	}
+
+	// TarikhBlocked is column E (index 4); its data row is row 2. A real
+	// Excel date is stored as a numeric serial value, not the "2024-01-10"
+	// text — but still displays as "2024-01-10" once the date style is applied.
+	raw, err := f.GetCellValue("Sheet1", "E2", excelize.Options{RawCellValue: true})
+	if err != nil {
+		t.Fatalf("GetCellValue (raw): %v", err)
+	}
+	if _, err := strconv.ParseFloat(raw, 64); err != nil {
+		t.Fatalf("TarikhBlocked raw value = %q, want a numeric date serial, got parse error: %v", raw, err)
+	}
+	if got, _ := f.GetCellValue("Sheet1", "E2"); got != "2024-01-10" {
+		t.Fatalf("TarikhBlocked displayed value = %q, want 2024-01-10", got)
+	}
+
+	dateStyleID, err := f.GetCellStyle("Sheet1", "E2")
+	if err != nil {
+		t.Fatalf("GetCellStyle: %v", err)
+	}
+	dateStyle, err := f.GetStyle(dateStyleID)
+	if err != nil {
+		t.Fatalf("GetStyle: %v", err)
+	}
+	if dateStyle.CustomNumFmt == nil || *dateStyle.CustomNumFmt != dateNumFmt {
+		t.Fatalf("TarikhBlocked cell CustomNumFmt = %v, want %q", dateStyle.CustomNumFmt, dateNumFmt)
 	}
 }
