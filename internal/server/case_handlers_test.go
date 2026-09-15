@@ -396,14 +396,13 @@ func TestAddCaseLetter_UnknownOICUserIDRejected(t *testing.T) {
 
 func TestUpdateCase_OwningDepartmentSetsFields(t *testing.T) {
 	store := &fullMockStore{
-		cases:    []db.Case{{ID: 1, DepartmentID: 1}},
-		agencies: []db.Agency{{ID: 7, Name: "MCMC"}},
+		cases: []db.Case{{ID: 1, DepartmentID: 1}},
 	}
 	cookie := deptCookie(store, 1)
 	r := setupRouter(store, nil)
 
 	body, _ := json.Marshal(map[string]interface{}{
-		"agency_id": 7, "due_date": "2026-01-15T00:00:00Z", "requested_at": "2026-01-01T00:00:00Z",
+		"due_date": "2026-01-15T00:00:00Z", "requested_at": "2026-01-01T00:00:00Z",
 	})
 	req := httptest.NewRequest(http.MethodPatch, "/api/cases/1", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -415,9 +414,6 @@ func TestUpdateCase_OwningDepartmentSetsFields(t *testing.T) {
 		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
 	}
 	c := store.cases[0]
-	if c.AgencyID == nil || *c.AgencyID != 7 {
-		t.Fatalf("expected agency_id to be set, got %+v", c)
-	}
 	if c.DueDate == nil || c.RequestedAt == nil {
 		t.Fatalf("expected due_date/requested_at to be set, got %+v", c)
 	}
@@ -507,19 +503,18 @@ func TestUpdateCase_StatusOnlyUpdateDoesNotRescheduleDueDate(t *testing.T) {
 	}
 }
 
-func TestUpdateCase_ClearsAgencyAndDueDateWithSentinels(t *testing.T) {
+func TestUpdateCase_ClearsDueDateAndRequestedAtWithSentinels(t *testing.T) {
 	due := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
-	agencyID := uint(7)
 	store := &fullMockStore{
-		cases: []db.Case{{ID: 1, DepartmentID: 1, AgencyID: &agencyID, DueDate: &due, RequestedAt: &due}},
+		cases: []db.Case{{ID: 1, DepartmentID: 1, DueDate: &due, RequestedAt: &due}},
 	}
 	cookie := deptCookie(store, 1)
 	r := setupRouter(store, nil)
 
-	// 0 clears agency_id, "" clears due_date/requested_at — same sentinel
-	// convention the old PATCH /api/urls/{id} used.
+	// "" clears due_date/requested_at — same sentinel convention the old
+	// PATCH /api/urls/{id} used.
 	body, _ := json.Marshal(map[string]interface{}{
-		"agency_id": 0, "due_date": "", "requested_at": "",
+		"due_date": "", "requested_at": "",
 	})
 	req := httptest.NewRequest(http.MethodPatch, "/api/cases/1", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -531,8 +526,8 @@ func TestUpdateCase_ClearsAgencyAndDueDateWithSentinels(t *testing.T) {
 		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
 	}
 	c := store.cases[0]
-	if c.AgencyID != nil || c.DueDate != nil || c.RequestedAt != nil {
-		t.Fatalf("expected agency_id/due_date/requested_at to be cleared, got %+v", c)
+	if c.DueDate != nil || c.RequestedAt != nil {
+		t.Fatalf("expected due_date/requested_at to be cleared, got %+v", c)
 	}
 }
 
@@ -551,7 +546,7 @@ func TestUpdateCase_NonOwningDepartment404(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
-	if store.cases[0].AgencyID != nil {
+	if store.cases[0].DueDate != nil || store.cases[0].RequestedAt != nil {
 		t.Fatalf("expected case to remain untouched, got %+v", store.cases[0])
 	}
 }

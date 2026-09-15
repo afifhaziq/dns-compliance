@@ -367,17 +367,17 @@ func (m *fullMockStore) ListDepartmentURLs(_ context.Context, departmentID uint)
 				entry := db.URLEntry{ID: u.ID, URL: u.URL, Enabled: du.Enabled, CreatedAt: u.CreatedAt}
 				if c := m.latestCaseForURL(u.ID); c != nil {
 					entry.DueDate = c.DueDate
-					entry.AgencyID = c.AgencyID
+					entry.RequestedAt = c.RequestedAt
 					for _, cu := range m.caseURLs {
 						if cu.CaseID == c.ID && cu.URLID == u.ID {
 							entry.Status = cu.Status
-						}
-					}
-					entry.RequestedAt = c.RequestedAt
-					if c.AgencyID != nil {
-						for _, a := range m.agencies {
-							if a.ID == *c.AgencyID {
-								entry.AgencyName = a.Name
+							if cu.AgencyID != nil {
+								entry.AgencyID = cu.AgencyID
+								for _, a := range m.agencies {
+									if a.ID == *cu.AgencyID {
+										entry.AgencyName = a.Name
+									}
+								}
 							}
 						}
 					}
@@ -1359,18 +1359,15 @@ func (m *fullMockStore) HasRecentResurfacedNotification(_ context.Context, depar
 }
 
 func (m *fullMockStore) CreateCase(_ context.Context, departmentID, urlID uint, status string, opts db.CaseCreateOptions) (db.Case, error) {
-	c := db.Case{ID: uint(len(m.cases) + 1), DepartmentID: departmentID, AgencyID: opts.AgencyID, DueDate: opts.DueDate}
+	c := db.Case{ID: uint(len(m.cases) + 1), DepartmentID: departmentID, DueDate: opts.DueDate}
 	m.cases = append(m.cases, c)
-	m.caseURLs = append(m.caseURLs, db.CaseURL{CaseID: c.ID, URLID: urlID, Status: status, OriginalURL: opts.OriginalURL})
+	m.caseURLs = append(m.caseURLs, db.CaseURL{CaseID: c.ID, URLID: urlID, Status: status, OriginalURL: opts.OriginalURL, AgencyID: opts.AgencyID})
 	return c, nil
 }
 func (m *fullMockStore) UpdateCaseFields(_ context.Context, _ uint, caseID uint, fields db.CaseFields) (bool, error) {
 	for i, c := range m.cases {
 		if c.ID != caseID {
 			continue
-		}
-		if fields.AgencyID != nil {
-			m.cases[i].AgencyID = *fields.AgencyID
 		}
 		if fields.DueDate != nil {
 			m.cases[i].DueDate = *fields.DueDate
@@ -1500,7 +1497,7 @@ func (m *fullMockStore) listCaseSummaries(departmentID *uint) []db.CaseSummary {
 		if departmentID != nil && c.DepartmentID != *departmentID {
 			continue
 		}
-		cs := db.CaseSummary{ID: c.ID, AgencyID: c.AgencyID, DueDate: c.DueDate, RequestedAt: c.RequestedAt, CreatedAt: c.CreatedAt}
+		cs := db.CaseSummary{ID: c.ID, DueDate: c.DueDate, RequestedAt: c.RequestedAt, CreatedAt: c.CreatedAt}
 		for _, l := range m.caseLetters {
 			if l.CaseID != c.ID {
 				continue

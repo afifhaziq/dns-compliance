@@ -237,9 +237,9 @@ func TestWriteCRDCases_TracksCategoriesObserved(t *testing.T) {
 	}
 }
 
-// TestWriteCRDCases_SetsAgency verifies Case.AgencyID is get-or-created from
-// CollapsedCase.Agency ("Agensi") -- two cases sharing the same agency name
-// share one Agency row, and a case with no agency gets a nil AgencyID.
+// TestWriteCRDCases_SetsAgency verifies CaseURL.AgencyID is get-or-created
+// from CollapsedCase.Agency ("Agensi") -- two cases sharing the same agency
+// name share one Agency row, and a case with no agency gets a nil AgencyID.
 func TestWriteCRDCases_SetsAgency(t *testing.T) {
 	gdb := newTestGormDB(t)
 	crd := mustSeedDepartment(t, gdb, "CRD")
@@ -266,16 +266,24 @@ func TestWriteCRDCases_SetsAgency(t *testing.T) {
 		Where("case_letters.reference_number_external = ?", "REF-1").First(&withAgency).Error; err != nil {
 		t.Fatalf("loading REF-1's case: %v", err)
 	}
-	if withAgency.AgencyID == nil || *withAgency.AgencyID != agencies[0].ID {
-		t.Fatalf("REF-1 AgencyID = %v, want %d", withAgency.AgencyID, agencies[0].ID)
+	var withAgencyURL db.CaseURL
+	if err := gdb.Where("case_id = ?", withAgency.ID).First(&withAgencyURL).Error; err != nil {
+		t.Fatalf("loading REF-1's case_url: %v", err)
+	}
+	if withAgencyURL.AgencyID == nil || *withAgencyURL.AgencyID != agencies[0].ID {
+		t.Fatalf("REF-1 AgencyID = %v, want %d", withAgencyURL.AgencyID, agencies[0].ID)
 	}
 
 	if err := gdb.Joins("JOIN case_letters ON case_letters.case_id = cases.id").
 		Where("case_letters.reference_number_external = ?", "REF-3").First(&withoutAgency).Error; err != nil {
 		t.Fatalf("loading REF-3's case: %v", err)
 	}
-	if withoutAgency.AgencyID != nil {
-		t.Fatalf("REF-3 AgencyID = %v, want nil (no Agensi value)", *withoutAgency.AgencyID)
+	var withoutAgencyURL db.CaseURL
+	if err := gdb.Where("case_id = ?", withoutAgency.ID).First(&withoutAgencyURL).Error; err != nil {
+		t.Fatalf("loading REF-3's case_url: %v", err)
+	}
+	if withoutAgencyURL.AgencyID != nil {
+		t.Fatalf("REF-3 AgencyID = %v, want nil (no Agensi value)", *withoutAgencyURL.AgencyID)
 	}
 }
 

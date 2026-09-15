@@ -124,13 +124,13 @@ func (h *Handlers) CreateCaseForURL(w http.ResponseWriter, r *http.Request) {
 }
 
 // UpdateCase applies a partial update to a case's shared fields
-// (agency_id/due_date/requested_at) — Case's own case-level defaults,
-// shared by every url the case covers. Status is NOT here — it's per-url,
+// (due_date/requested_at) — Case's own case-level defaults, shared by
+// every url the case covers. Status is NOT here — it's per-url,
 // see UpdateCaseURLStatus. Ownership: the case's own DepartmentID must
 // match the caller's (404, not 403, same non-confirming pattern as
 // AddCaseLetter/AddCaseURL), admin bypasses. Clear sentinels match PATCH
-// /api/urls/{id}'s old convention: 0 clears agency_id, "" clears
-// due_date/requested_at. Only keys present in the body are touched.
+// /api/urls/{id}'s old convention: "" clears due_date/requested_at.
+// Only keys present in the body are touched.
 func (h *Handlers) UpdateCase(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
 	if !ok {
@@ -158,7 +158,6 @@ func (h *Handlers) UpdateCase(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		AgencyID    *uint   `json:"agency_id"`
 		DueDate     *string `json:"due_date"`
 		RequestedAt *string `json:"requested_at"`
 	}
