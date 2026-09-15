@@ -1410,7 +1410,7 @@ func (m *fullMockStore) ListCasesForURL(_ context.Context, urlValue string) ([]d
 					letters = append(letters, l)
 				}
 			}
-			out = append(out, db.CaseWithLetters{Case: c, Status: cu.Status, Letters: letters})
+			out = append(out, db.CaseWithLetters{Case: c, Status: cu.Status, AgencyID: cu.AgencyID, Letters: letters})
 		}
 	}
 	return out, nil

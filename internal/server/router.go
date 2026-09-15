@@ -133,6 +133,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Post("/cases/{id}/letters", h.AddCaseLetter)
 			r.Post("/cases/{id}/urls", h.AddCaseURL)
 			r.Patch("/cases/{id}/urls/{url_id}", h.UpdateCaseURLStatus)
+			r.Patch("/cases/{id}/urls/{url_id}/agency", h.UpdateCaseURLAgency)
 			r.Patch("/cases/{id}/letters/{letter_id}", h.UpdateCaseLetter)
 			r.Delete("/cases/{id}/letters/{letter_id}", h.DeleteCaseLetter)
 

@@ -338,6 +338,7 @@ func (h *Handlers) AddCaseURL(w http.ResponseWriter, r *http.Request) {
 		URL         string `json:"url"`
 		Status      string `json:"status"`
 		OriginalURL string `json:"original_url"`
+		AgencyID    *uint  `json:"agency_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" || !urlStatusAllowed[body.Status] || body.Status == "" {
 		writeError(w, http.StatusBadRequest, "url and status are required, status must be one of: requested, blocked, uplift, suspended, not_blocked, internal")
@@ -357,8 +358,12 @@ func (h *Handlers) AddCaseURL(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
+	var agencyID *uint
+	if body.AgencyID != nil && *body.AgencyID != 0 {
+		agencyID = body.AgencyID
+	}
 
-	cu, err := h.store.AddURLToCase(r.Context(), uint(id), u.ID, body.Status, strings.TrimSpace(body.OriginalURL), nil)
+	cu, err := h.store.AddURLToCase(r.Context(), uint(id), u.ID, body.Status, strings.TrimSpace(body.OriginalURL), agencyID)
 	if err != nil {
 		writeInternalError(w, err)
 		return
@@ -409,6 +414,67 @@ func (h *Handlers) UpdateCaseURLStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	found, err := h.store.UpdateCaseURLStatus(r.Context(), uint(id), uint(urlID), body.Status)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// UpdateCaseURLAgency sets one url's own CaseURL.AgencyID within a case —
+// the per-domain field a case's urls can diverge on (moved off Case
+// 2026-09-15, see CaseURL's doc comment in internal/db/models.go). 0 clears
+// it, matching the same clear-sentinel convention UpdateCase used to use
+// for agency_id before the move. Ownership check identical to
+// AddCaseURL/UpdateCaseURLStatus's.
+func (h *Handlers) UpdateCaseURLAgency(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	urlID, err := strconv.ParseUint(chi.URLParam(r, "url_id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid url_id")
+		return
+	}
+
+	c, err := h.store.GetCase(r.Context(), uint(id))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		writeInternalError(w, err)
+		return
+	}
+	if !user.IsAdmin && (user.DepartmentID == nil || *user.DepartmentID != c.DepartmentID) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	var body struct {
+		AgencyID *uint `json:"agency_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var agencyID *uint
+	if body.AgencyID != nil && *body.AgencyID != 0 {
+		agencyID = body.AgencyID
+	}
+
+	found, err := h.store.UpdateCaseURLAgency(r.Context(), uint(id), uint(urlID), agencyID)
 	if err != nil {
 		writeInternalError(w, err)
 		return

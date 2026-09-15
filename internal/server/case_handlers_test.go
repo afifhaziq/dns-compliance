@@ -662,6 +662,82 @@ func TestUpdateCaseURLStatus_UnknownPairReturns404(t *testing.T) {
 	}
 }
 
+func TestUpdateCaseURLAgency_SetsAgency(t *testing.T) {
+	u := db.URL{ID: 1, URL: "example.com"}
+	store := &fullMockStore{
+		urls:     []db.URL{u},
+		cases:    []db.Case{{ID: 1, DepartmentID: 1}},
+		caseURLs: []db.CaseURL{{CaseID: 1, URLID: u.ID, Status: "blocked"}},
+	}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]uint{"agency_id": 7})
+	req := httptest.NewRequest(http.MethodPatch, "/api/cases/1/urls/1/agency", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if store.caseURLs[0].AgencyID == nil || *store.caseURLs[0].AgencyID != 7 {
+		t.Fatalf("expected agency to be updated, got %v", store.caseURLs[0].AgencyID)
+	}
+}
+
+func TestUpdateCaseURLAgency_NonOwningDepartment404(t *testing.T) {
+	u := db.URL{ID: 1, URL: "example.com"}
+	store := &fullMockStore{
+		urls:     []db.URL{u},
+		cases:    []db.Case{{ID: 1, DepartmentID: 1}},
+		caseURLs: []db.CaseURL{{CaseID: 1, URLID: u.ID, Status: "blocked"}},
+	}
+	cookie := deptCookie(store, 2)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]uint{"agency_id": 7})
+	req := httptest.NewRequest(http.MethodPatch, "/api/cases/1/urls/1/agency", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+	if store.caseURLs[0].AgencyID != nil {
+		t.Fatalf("expected agency to remain untouched, got %v", store.caseURLs[0].AgencyID)
+	}
+}
+
+func TestUpdateCaseURLAgency_ZeroClears(t *testing.T) {
+	u := db.URL{ID: 1, URL: "example.com"}
+	agencyID := uint(3)
+	store := &fullMockStore{
+		urls:     []db.URL{u},
+		cases:    []db.Case{{ID: 1, DepartmentID: 1}},
+		caseURLs: []db.CaseURL{{CaseID: 1, URLID: u.ID, Status: "blocked", AgencyID: &agencyID}},
+	}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]uint{"agency_id": 0})
+	req := httptest.NewRequest(http.MethodPatch, "/api/cases/1/urls/1/agency", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if store.caseURLs[0].AgencyID != nil {
+		t.Fatalf("expected agency to be cleared, got %v", store.caseURLs[0].AgencyID)
+	}
+}
+
 func TestListCaseSummaries_NonAdminScopedToOwnDepartment(t *testing.T) {
 	store := &fullMockStore{}
 	uA := db.URL{ID: 1, URL: "summaries-a.com"}
