@@ -1570,8 +1570,9 @@ function URLsPage() {
           >
             <SelectTrigger aria-label={`Agency for ${original.domain.url}`} placeholder="—" className="w-full" />
             <SelectContent>
+              <SelectItem index={0} value="">—</SelectItem>
               {agencies.map((a, i) => (
-                <SelectItem key={a.id} index={i} value={String(a.id)}>{a.name}</SelectItem>
+                <SelectItem key={a.id} index={i + 1} value={String(a.id)}>{a.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>

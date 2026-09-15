@@ -132,7 +132,8 @@ export type CaseLetterFieldsUpdate = Partial<{
 // are sent. Date fields clear via null -> "" (same sentinel convention as
 // updateCase's dueDate/requestedAt above); string fields clear via "";
 // oicUserId clears via null -> 0 (a number, never a real user id — same
-// sentinel convention as updateCase's agencyId above).
+// null -> sentinel-value convention as updateCase's dueDate/requestedAt
+// above, just with 0 instead of "" since this field is numeric).
 export async function updateCaseLetter(caseId: number, letterId: number, fields: CaseLetterFieldsUpdate): Promise<void> {
   const body: Record<string, string | number> = {}
   if (fields.subject !== undefined) body.subject = fields.subject
