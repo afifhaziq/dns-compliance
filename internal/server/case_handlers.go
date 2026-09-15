@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/afif/dns-tracking/internal/db"
@@ -81,9 +82,10 @@ func (h *Handlers) CreateCaseForURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Status   string  `json:"status"`
-		AgencyID *uint   `json:"agency_id"`
-		DueDate  *string `json:"due_date"`
+		Status      string  `json:"status"`
+		AgencyID    *uint   `json:"agency_id"`
+		DueDate     *string `json:"due_date"`
+		OriginalURL string  `json:"original_url"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !urlStatusAllowed[body.Status] || body.Status == "" {
 		writeError(w, http.StatusBadRequest, "status is required and must be one of: requested, blocked, uplift, suspended, not_blocked, internal")
@@ -101,6 +103,7 @@ func (h *Handlers) CreateCaseForURL(w http.ResponseWriter, r *http.Request) {
 		}
 		opts.DueDate = dueDate
 	}
+	opts.OriginalURL = strings.TrimSpace(body.OriginalURL)
 
 	u, err := h.store.GetURLByValue(r.Context(), urlValue)
 	if err != nil {
@@ -340,8 +343,9 @@ func (h *Handlers) AddCaseURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		URL    string `json:"url"`
-		Status string `json:"status"`
+		URL         string `json:"url"`
+		Status      string `json:"status"`
+		OriginalURL string `json:"original_url"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" || !urlStatusAllowed[body.Status] || body.Status == "" {
 		writeError(w, http.StatusBadRequest, "url and status are required, status must be one of: requested, blocked, uplift, suspended, not_blocked, internal")
@@ -362,7 +366,7 @@ func (h *Handlers) AddCaseURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cu, err := h.store.AddURLToCase(r.Context(), uint(id), u.ID, body.Status)
+	cu, err := h.store.AddURLToCase(r.Context(), uint(id), u.ID, body.Status, strings.TrimSpace(body.OriginalURL))
 	if err != nil {
 		writeInternalError(w, err)
 		return

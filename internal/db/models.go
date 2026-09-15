@@ -644,6 +644,10 @@ type CaseFields struct {
 type CaseCreateOptions struct {
 	AgencyID *uint
 	DueDate  *time.Time
+	// OriginalURL seeds the initial CaseURL.OriginalURL (a CaseURL-level
+	// field, not a Case-level one -- bundled here anyway since it's only
+	// ever set at this same creation call). Empty means none was supplied.
+	OriginalURL string
 }
 
 // CaseLetter is one row per actual letter/document (Memo, Notice, Memo

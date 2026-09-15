@@ -1361,7 +1361,7 @@ func (m *fullMockStore) HasRecentResurfacedNotification(_ context.Context, depar
 func (m *fullMockStore) CreateCase(_ context.Context, departmentID, urlID uint, status string, opts db.CaseCreateOptions) (db.Case, error) {
 	c := db.Case{ID: uint(len(m.cases) + 1), DepartmentID: departmentID, AgencyID: opts.AgencyID, DueDate: opts.DueDate}
 	m.cases = append(m.cases, c)
-	m.caseURLs = append(m.caseURLs, db.CaseURL{CaseID: c.ID, URLID: urlID, Status: status})
+	m.caseURLs = append(m.caseURLs, db.CaseURL{CaseID: c.ID, URLID: urlID, Status: status, OriginalURL: opts.OriginalURL})
 	return c, nil
 }
 func (m *fullMockStore) UpdateCaseFields(_ context.Context, _ uint, caseID uint, fields db.CaseFields) (bool, error) {
@@ -1426,8 +1426,8 @@ func (m *fullMockStore) GetCase(_ context.Context, id uint) (db.Case, error) {
 	}
 	return db.Case{}, gorm.ErrRecordNotFound
 }
-func (m *fullMockStore) AddURLToCase(_ context.Context, caseID, urlID uint, status string) (db.CaseURL, error) {
-	cu := db.CaseURL{CaseID: caseID, URLID: urlID, Status: status}
+func (m *fullMockStore) AddURLToCase(_ context.Context, caseID, urlID uint, status, originalURL string) (db.CaseURL, error) {
+	cu := db.CaseURL{CaseID: caseID, URLID: urlID, Status: status, OriginalURL: originalURL}
 	m.caseURLs = append(m.caseURLs, cu)
 	return cu, nil
 }

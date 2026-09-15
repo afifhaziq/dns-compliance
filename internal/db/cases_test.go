@@ -96,7 +96,7 @@ func TestAddURLToCase_CoversMultipleURLs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateCase: %v", err)
 	}
-	if _, err := store.AddURLToCase(ctx, c.ID, u2.ID, "requested"); err != nil {
+	if _, err := store.AddURLToCase(ctx, c.ID, u2.ID, "requested", ""); err != nil {
 		t.Fatalf("AddURLToCase: %v", err)
 	}
 
@@ -309,7 +309,7 @@ func TestUpdateCaseURLStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateCase: %v", err)
 	}
-	if _, err := store.AddURLToCase(ctx, c.ID, u2.ID, "requested"); err != nil {
+	if _, err := store.AddURLToCase(ctx, c.ID, u2.ID, "requested", ""); err != nil {
 		t.Fatalf("AddURLToCase: %v", err)
 	}
 
@@ -495,7 +495,7 @@ func TestListCasesForDepartment_PicksNoticeOverMemoAndListsDomains(t *testing.T)
 	if err != nil {
 		t.Fatalf("CreateCase: %v", err)
 	}
-	if _, err := store.AddURLToCase(ctx, c.ID, u2.ID, "requested"); err != nil {
+	if _, err := store.AddURLToCase(ctx, c.ID, u2.ID, "requested", ""); err != nil {
 		t.Fatalf("AddURLToCase: %v", err)
 	}
 

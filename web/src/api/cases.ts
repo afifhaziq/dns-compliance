@@ -10,14 +10,18 @@ export async function listCases(url: string): Promise<Case[]> {
 
 // agencyId/dueDate optionally seed Case.AgencyID/DueDate at creation time —
 // omitted keys are left unset server-side (see db.CaseCreateOptions).
+// originalUrl seeds this url's own CaseURL.OriginalURL (the exact cited
+// text, e.g. a full URL with a path, when it differs from the bare-hostname
+// `url` the case is opened for).
 export function createCase(
   url: string,
   status: string,
-  opts?: { agencyId?: number; dueDate?: string },
+  opts?: { agencyId?: number; dueDate?: string; originalUrl?: string },
 ): Promise<Case> {
   const body: Record<string, string | number> = { status }
   if (opts?.agencyId !== undefined) body.agency_id = opts.agencyId
   if (opts?.dueDate !== undefined) body.due_date = opts.dueDate
+  if (opts?.originalUrl) body.original_url = opts.originalUrl
   return api.post<Case>(`/cases/${encodeURIComponent(url)}`, body)
 }
 
@@ -60,13 +64,17 @@ export function addCaseLetter(
 // AddURLToCase — links an additional URL to an already-created case, the
 // "N URLs in one Notice" shape createCase alone can't build (it only ever
 // links the one URL a case is opened for). status is that url's own
-// CaseURL.Status.
+// CaseURL.Status; originalUrl seeds its CaseURL.OriginalURL, same as
+// createCase's opts.originalUrl above.
 export function addUrlToCase(
   caseId: number,
   url: string,
   status: string,
-): Promise<{ case_id: number; url_id: number; status: string }> {
-  return api.post<{ case_id: number; url_id: number; status: string }>(`/cases/${caseId}/urls`, { url, status })
+  originalUrl?: string,
+): Promise<{ case_id: number; url_id: number; status: string; original_url?: string }> {
+  const body: Record<string, string> = { url, status }
+  if (originalUrl) body.original_url = originalUrl
+  return api.post<{ case_id: number; url_id: number; status: string; original_url?: string }>(`/cases/${caseId}/urls`, body)
 }
 
 export async function fetchCaseLetters(page: number, pageSize: number): Promise<CaseLettersResponse> {

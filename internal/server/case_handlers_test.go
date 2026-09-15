@@ -87,6 +87,65 @@ func TestCreateCaseForURL_UsesCallersOwnDepartment(t *testing.T) {
 	}
 }
 
+// original_url is an optional body field that seeds CaseURL.OriginalURL —
+// the exact cited text (e.g. a full URL with a path) distinct from the
+// bare-hostname url the case is opened for.
+func TestCreateCaseForURL_PassesThroughOriginalURL(t *testing.T) {
+	store := &fullMockStore{}
+	u := db.URL{ID: 1, URL: "example.com"}
+	store.urls = append(store.urls, u)
+	store.departmentURLs = append(store.departmentURLs, db.DepartmentURL{DepartmentID: 1, URLID: u.ID, Enabled: true})
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]string{"status": "requested", "original_url": "https://example.com/some/path?x=1"})
+	req := httptest.NewRequest(http.MethodPost, "/api/cases/example.com", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.caseURLs) != 1 || store.caseURLs[0].OriginalURL != "https://example.com/some/path?x=1" {
+		t.Fatalf("expected caseURLs[0].OriginalURL to be set, got %+v", store.caseURLs)
+	}
+}
+
+// AddCaseURL's original_url is optional too, same seeding as
+// CreateCaseForURL above — it's what lets a batch of domains added under
+// one existing case each keep their own cited-text record.
+func TestAddCaseURL_PassesThroughOriginalURL(t *testing.T) {
+	store := &fullMockStore{}
+	u := db.URL{ID: 2, URL: "second.example.com"}
+	store.urls = append(store.urls, u)
+	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]string{
+		"url": "second.example.com", "status": "requested",
+		"original_url": "https://second.example.com/channel/xyz",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/cases/1/urls", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var cu db.CaseURL
+	if err := json.Unmarshal(w.Body.Bytes(), &cu); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if cu.OriginalURL != "https://second.example.com/channel/xyz" {
+		t.Fatalf("expected OriginalURL to round-trip, got %+v", cu)
+	}
+}
+
 func TestCreateCaseForURL_NonOwningDepartment404(t *testing.T) {
 	store := &fullMockStore{}
 	u := db.URL{ID: 1, URL: "example.com"}

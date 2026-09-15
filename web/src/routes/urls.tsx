@@ -110,6 +110,14 @@ function isoFromDateInput(value: string): string | undefined {
   return value ? new Date(value).toISOString() : undefined
 }
 
+// A raw domain-field line is worth keeping as CaseURL.OriginalURL only when
+// it's more than just what the server already normalized it down to (e.g.
+// "https://example.com/path?x=1" vs the stored bare hostname
+// "example.com") — a plain bare-hostname line would just duplicate `url`.
+function originalUrlFor(raw: string | undefined, normalizedUrl: string): string | undefined {
+  return raw && raw !== normalizedUrl ? raw : undefined
+}
+
 /* ─── Add Domain Dialog ──────────────────────────────────────────────────── */
 
 export type StagedOffence = {
@@ -431,7 +439,7 @@ function AddUrlDialog({
     const pending = pickerRef.current?.flush()
     const allOffences = pending ? [...offences, pending] : offences
 
-    const caseOpts: { agencyId?: number; dueDate?: string } = {}
+    const caseOpts: { agencyId?: number; dueDate?: string; originalUrl?: string } = {}
     if (agencyId !== '') caseOpts.agencyId = agencyId
     if (dueDurationMinutes) caseOpts.dueDate = dueDateFromDurationMinutes(Number(dueDurationMinutes))
 
@@ -448,7 +456,10 @@ function AddUrlDialog({
         // the raw textarea input isn't, so normalize before diffing or an
         // already-attached domain typed in a different raw form (e.g.
         // "https://example.com/" vs the stored "example.com") looks new.
+        // rawByNormalized keeps the as-typed line for each normalized value
+        // so a full URL survives as CaseURL.OriginalURL below.
         const normalizedTyped = domains.map(normalizeForClient)
+        const rawByNormalized = new Map(domains.map((raw, i) => [normalizedTyped[i], raw]))
         const existingURLs = new Set(editing.domains.map(d => d.url))
         const newDomains = normalizedTyped.filter(d => !existingURLs.has(d))
         // Removing a line from the textarea is a deliberate no-op — there's
@@ -457,7 +468,9 @@ function AddUrlDialog({
         // get-or-created first (mirrors create mode below) — addUrlToCase
         // 404s on a url that doesn't already exist as a db.URL row.
         const createdDomains = await Promise.all(newDomains.map(d => createUrl(d)))
-        await Promise.all(createdDomains.map(u => addUrlToCase(editing.id, u.url, status)))
+        await Promise.all(createdDomains.map(u =>
+          addUrlToCase(editing.id, u.url, status, originalUrlFor(rawByNormalized.get(u.url), u.url))
+        ))
 
         // Unconditional (not `|| undefined`) so a field the user blanked out
         // actually reaches updateCaseLetter's PATCH body instead of being
@@ -519,10 +532,14 @@ function AddUrlDialog({
         return
       }
 
+      // domains and created stay index-aligned (Promise.all preserves order),
+      // so each raw as-typed line pairs with the URL it normalized to.
       const created = await Promise.all(domains.map(d => createUrl(d)))
       const caseWork = (async () => {
-        const c = await createCase(created[0].url, status, caseOpts)
-        await Promise.all(created.slice(1).map(u => addUrlToCase(c.id, u.url, status)))
+        const c = await createCase(created[0].url, status, { ...caseOpts, originalUrl: originalUrlFor(domains[0], created[0].url) })
+        await Promise.all(created.slice(1).map((u, i) =>
+          addUrlToCase(c.id, u.url, status, originalUrlFor(domains[i + 1], u.url))
+        ))
         // External/Internal ref are recorded regardless of the "Create
         // Letter" switch — CRD needs current_reference_number tracked even
         // when nobody fills in the fuller letter detail below.
@@ -1482,11 +1499,24 @@ function URLsPage() {
           </DataGridTableRowExpand>
         )
         if (original.kind === 'domain') {
-          const { url, original_url } = original.domain
-          const title = original_url && original_url !== url ? `Cited as: ${original_url}` : undefined
-          return <span className="flex items-center gap-[2px]">{expandControl}<span className="dns-name" title={title}>{url}</span></span>
+          return <span className="flex items-center gap-[2px]">{expandControl}<span className="dns-name">{original.domain.url}</span></span>
         }
         return <span className="flex items-center gap-[2px]">{expandControl}<span className="hostname">#{original.summary.id}</span></span>
+      },
+    },
+    {
+      id: 'cited_url',
+      header: 'Original URL',
+      // Per-domain, same reasoning as status/offences below — CaseURL.OriginalURL
+      // is only set when the as-cited text (e.g. a full URL with a path) differs
+      // from the normalized `url` DNS scanning uses, so most rows show '—'.
+      accessorFn: r => r.kind === 'domain' ? (r.domain.original_url ?? '') : '',
+      meta: { headerTitle: 'Original URL', headerClassName: 'col-status', cellClassName: 'col-status' },
+      cell: ({ row }) => {
+        const original = row.original
+        if (original.kind === 'case') return <span className="dns-name">—</span>
+        const { original_url, url } = original.domain
+        return <span className="dns-name">{original_url && original_url !== url ? original_url : '—'}</span>
       },
     },
     {

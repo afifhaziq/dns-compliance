@@ -12,7 +12,7 @@ func (s *postgresStore) CreateCase(ctx context.Context, departmentID, urlID uint
 		if err := tx.Create(&c).Error; err != nil {
 			return err
 		}
-		return tx.Create(&CaseURL{CaseID: c.ID, URLID: urlID, Status: status}).Error
+		return tx.Create(&CaseURL{CaseID: c.ID, URLID: urlID, Status: status, OriginalURL: opts.OriginalURL}).Error
 	})
 	return c, err
 }
@@ -80,8 +80,8 @@ func (s *postgresStore) GetCase(ctx context.Context, id uint) (Case, error) {
 	return c, err
 }
 
-func (s *postgresStore) AddURLToCase(ctx context.Context, caseID, urlID uint, status string) (CaseURL, error) {
-	cu := CaseURL{CaseID: caseID, URLID: urlID, Status: status}
+func (s *postgresStore) AddURLToCase(ctx context.Context, caseID, urlID uint, status, originalURL string) (CaseURL, error) {
+	cu := CaseURL{CaseID: caseID, URLID: urlID, Status: status, OriginalURL: originalURL}
 	err := s.db.WithContext(ctx).Create(&cu).Error
 	return cu, err
 }

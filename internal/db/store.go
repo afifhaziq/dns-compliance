@@ -368,8 +368,9 @@ type CaseStore interface {
 	// alone can't build, since it only ever links the one URL a case is
 	// opened for. Callers building a batch (e.g. adding several domains
 	// under one case) call CreateCase once for the first URL, then this for
-	// each of the rest.
-	AddURLToCase(ctx context.Context, caseID, urlID uint, status string) (CaseURL, error)
+	// each of the rest. originalURL seeds CaseURL.OriginalURL; empty means
+	// none was supplied.
+	AddURLToCase(ctx context.Context, caseID, urlID uint, status, originalURL string) (CaseURL, error)
 	// ListCaseURLIDs returns every URL id a case covers, via case_urls —
 	// used to fan a case-level DueDate change out to a per-url due-date-
 	// reached notification task for each url the case links.
