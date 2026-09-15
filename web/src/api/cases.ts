@@ -26,20 +26,17 @@ export function createCase(
 }
 
 export type CaseFields = {
-  agencyId?: number | null
   dueDate?: string | null
   requestedAt?: string | null
 }
 
 // Partial update of a case's shared fields (PATCH /api/cases/{id}) — only
 // keys present in `fields` are sent. Pass null to clear a field: due_date/
-// requested_at clear via "", agency_id clears via 0 (never a real row id) —
-// same clear-sentinel convention the old PATCH /api/urls/{id} used (see
-// setUrlFields's prior implementation in urls.ts). No status here — it's
-// per-url, see updateCaseURLStatus.
+// requested_at clear via "" — same clear-sentinel convention the old PATCH
+// /api/urls/{id} used (see setUrlFields's prior implementation in urls.ts).
+// No status here — it's per-url, see updateCaseURLStatus.
 export async function updateCase(caseId: number, fields: CaseFields): Promise<void> {
   const body: Record<string, string | number> = {}
-  if (fields.agencyId !== undefined) body.agency_id = fields.agencyId ?? 0
   if (fields.dueDate !== undefined) body.due_date = fields.dueDate ?? ''
   if (fields.requestedAt !== undefined) body.requested_at = fields.requestedAt ?? ''
   await api.patch<void>(`/cases/${caseId}`, body)
@@ -52,6 +49,13 @@ export async function updateCase(caseId: number, fields: CaseFields): Promise<vo
 // URLEntry.id).
 export async function updateCaseURLStatus(caseId: number, urlId: number, status: string): Promise<void> {
   await api.patch<void>(`/cases/${caseId}/urls/${urlId}`, { status })
+}
+
+// Sets one url's own CaseURL.AgencyID within a case — the per-domain field
+// (moved off Case 2026-09-15, see updateCase's doc comment). Pass undefined
+// to clear.
+export async function updateCaseURLAgency(caseId: number, urlId: number, agencyId: number | undefined): Promise<void> {
+  await api.patch<void>(`/cases/${caseId}/urls/${urlId}/agency`, { agency_id: agencyId ?? 0 })
 }
 
 export function addCaseLetter(
@@ -71,10 +75,12 @@ export function addUrlToCase(
   url: string,
   status: string,
   originalUrl?: string,
-): Promise<{ case_id: number; url_id: number; status: string; original_url?: string }> {
-  const body: Record<string, string> = { url, status }
+  agencyId?: number,
+): Promise<{ case_id: number; url_id: number; status: string; original_url?: string; agency_id?: number }> {
+  const body: Record<string, string | number> = { url, status }
   if (originalUrl) body.original_url = originalUrl
-  return api.post<{ case_id: number; url_id: number; status: string; original_url?: string }>(`/cases/${caseId}/urls`, body)
+  if (agencyId !== undefined) body.agency_id = agencyId
+  return api.post<{ case_id: number; url_id: number; status: string; original_url?: string; agency_id?: number }>(`/cases/${caseId}/urls`, body)
 }
 
 export async function fetchCaseLetters(page: number, pageSize: number): Promise<CaseLettersResponse> {

@@ -22,7 +22,7 @@ import { DataGridTableRowExpand } from '@/components/reui/data-grid/data-grid-ta
 import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled } from '../api/urls'
 import { normalizeForClient } from './__root'
-import { createCase, addCaseLetter, addUrlToCase, updateCase, updateCaseURLStatus, updateCaseLetter, fetchCaseSummaries, exportCaseSummaries } from '../api/cases'
+import { createCase, addCaseLetter, addUrlToCase, updateCase, updateCaseURLStatus, updateCaseURLAgency, updateCaseLetter, fetchCaseSummaries, exportCaseSummaries } from '../api/cases'
 import { downloadBlob } from '@/lib/download'
 import { fetchAgencies } from '../api/agencies'
 import { fetchDepartmentsOpen } from '../api/departments'
@@ -340,8 +340,9 @@ const MultiOffencePicker = forwardRef<MultiOffencePickerHandle, {
 // (CaseURL.Status) — this dialog's Status field sets the initial status for
 // every url created in this submission (create mode: all of them; edit
 // mode: only newly-added domains, since an existing domain's own status is
-// edited inline in the grid, not here). Agency/Due Date remain case-level
-// defaults.
+// edited inline in the grid, not here). Due Date remains a case-level
+// default; Agency (like Status) is per-domain — this dialog's Agency field
+// seeds every url created in this submission the same way Status does.
 function AddUrlDialog({
   open,
   onClose,
@@ -405,7 +406,7 @@ function AddUrlDialog({
     if (editing) {
       setValue(editing.domains.map(d => d.url).join('\n'))
       setOffences([])
-      setAgencyId(editing.agency_id ?? '')
+      setAgencyId('') // agency is per-domain now; this only seeds newly-added domains, not the case's existing ones
       setDueDurationMinutes('') // existing due date shown read-only; picking a duration replaces it (see the read-only line in the form below)
       setStatus('requested') // status is per-domain now; this only seeds newly-added domains, not the case's existing ones
       setCreateLetter(true)
@@ -448,7 +449,6 @@ function AddUrlDialog({
     try {
       if (editing) {
         await updateCase(editing.id, {
-          agencyId: agencyId === '' ? null : agencyId,
           ...(caseOpts.dueDate ? { dueDate: caseOpts.dueDate } : {}),
         })
 
@@ -469,7 +469,7 @@ function AddUrlDialog({
         // 404s on a url that doesn't already exist as a db.URL row.
         const createdDomains = await Promise.all(newDomains.map(d => createUrl(d)))
         await Promise.all(createdDomains.map(u =>
-          addUrlToCase(editing.id, u.url, status, originalUrlFor(rawByNormalized.get(u.url), u.url))
+          addUrlToCase(editing.id, u.url, status, originalUrlFor(rawByNormalized.get(u.url), u.url), agencyId === '' ? undefined : agencyId)
         ))
 
         // Unconditional (not `|| undefined`) so a field the user blanked out
@@ -1201,6 +1201,25 @@ function URLsPage() {
     }
   }, [caseSummaries])
 
+  // Agency is per-domain (CaseURL.AgencyID) — updating one domain's agency
+  // within a case must not touch its sibling domains' own agency values.
+  const handleDomainAgencyChange = useCallback(async (caseId: number, urlId: number, agencyId: number | undefined) => {
+    const prevDomain = caseSummaries.find(c => c.id === caseId)?.domains.find(d => d.url_id === urlId)
+    const prevAgencyId = prevDomain?.agency_id
+    const prevAgencyName = prevDomain?.agency_name
+    const agencyName = agencyId !== undefined ? agencies.find(a => a.id === agencyId)?.name : undefined
+    setCaseSummaries(prevList => prevList.map(c => c.id === caseId
+      ? { ...c, domains: c.domains.map(d => d.url_id === urlId ? { ...d, agency_id: agencyId, agency_name: agencyName } : d) }
+      : c))
+    try {
+      await updateCaseURLAgency(caseId, urlId, agencyId)
+    } catch {
+      setCaseSummaries(prevList => prevList.map(c => c.id === caseId
+        ? { ...c, domains: c.domains.map(d => d.url_id === urlId ? { ...d, agency_id: prevAgencyId, agency_name: prevAgencyName } : d) }
+        : c))
+    }
+  }, [caseSummaries, agencies])
+
   const filterFields = useMemo<FilterFieldConfig<string>[]>(() => [
     { key: 'status', label: 'Status', type: 'select', operators: IS_ONLY, options: STATUS_OPTIONS.filter(o => o.value).map(o => ({ value: o.value, label: o.label })) },
     { key: 'requesting_dept', label: 'Requesting Dept.', type: 'select', operators: IS_ONLY, options: departments.map(d => ({ value: String(d.id), label: d.name })) },
@@ -1243,7 +1262,7 @@ function URLsPage() {
         || c.domains.some(d => d.url.toLowerCase().includes(query))
       const matchesStatus = !statusFilter || c.domains.some(d => d.status === statusFilter)
       const matchesDept = !deptFilterName || c.domains.some(d => (urlDeptMap.get(d.url) ?? []).includes(deptFilterName))
-      const matchesAgency = !agencyFilter || String(c.agency_id ?? '') === agencyFilter
+      const matchesAgency = !agencyFilter || c.domains.some(d => String(d.agency_id ?? '') === agencyFilter)
       return matchesSearch && matchesStatus && matchesDept && matchesAgency
         && matchesDateFilter(c.created_at, createdAtFilter)
         && matchesDateFilter(c.due_date, dueDateFilter)
@@ -1533,9 +1552,31 @@ function URLsPage() {
     {
       id: 'agency',
       header: 'Agency',
-      accessorFn: r => r.kind === 'case' ? (r.summary.agency_name ?? '') : '',
+      // Agency is per-domain (CaseURL.AgencyID, moved off Case 2026-09-15) —
+      // a case row has no single agency of its own (its domains can each be
+      // requested by a different one), so it's left blank here and only
+      // shown/edited on domain subrows, same convention as Status above.
+      accessorFn: r => r.kind === 'domain' ? (r.domain.agency_name ?? '') : '',
       meta: { headerTitle: 'Agency', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
-      cell: ({ row }) => row.original.kind === 'case' ? <span className="dns-name">{row.original.summary.agency_name ?? '—'}</span> : null,
+      cell: ({ row }) => {
+        const original = row.original
+        if (original.kind === 'case') {
+          return <span className="dns-name">—</span>
+        }
+        return (
+          <Select
+            value={original.domain.agency_id != null ? String(original.domain.agency_id) : ''}
+            onValueChange={v => handleDomainAgencyChange(original.caseId, original.domain.url_id, v === '' ? undefined : Number(v))}
+          >
+            <SelectTrigger aria-label={`Agency for ${original.domain.url}`} placeholder="—" className="w-full" />
+            <SelectContent>
+              {agencies.map((a, i) => (
+                <SelectItem key={a.id} index={i} value={String(a.id)}>{a.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )
+      },
     },
     {
       id: 'status',
@@ -1672,7 +1713,7 @@ function URLsPage() {
         )
       },
     },
-  ], [handleDomainStatusChange])
+  ], [handleDomainStatusChange, handleDomainAgencyChange, agencies])
 
   const casesTable = useReactTable({
     data: caseTreeData,

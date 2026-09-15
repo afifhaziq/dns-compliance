@@ -77,18 +77,20 @@ export type URLEntry = {
 }
 
 // One row of GET /api/cases/*url — mirrors db.CaseWithLetters (Case
-// embedded + Letters + Status from the url's CaseURL join). agency_id/
-// agency/due_date/requested_at are the case-level defaults shared by every
-// URL the case covers (db.Case); `status` is this url's own CaseURL.Status,
-// independent per url within the same case.
+// embedded + Letters + this url's own Status/Agency from its CaseURL join).
+// due_date/requested_at are the case-level defaults shared by every URL the
+// case covers (db.Case); agency_id/agency and status are this url's own
+// CaseURL fields, independent per url within the same case (2026-09-15 —
+// agency moved off Case for the same reason status always was: a case can
+// cover domains requested by different agencies).
 export type Case = {
   id: number
   department_id: number
   created_at: string
-  agency_id?: number
-  agency?: { id: number; name: string }
   due_date?: string
   requested_at?: string
+  agency_id?: number
+  agency?: { id: number; name: string }
   status: string
   letters: CaseLetter[]
 }
@@ -128,12 +130,10 @@ export type CaseLettersResponse = { letters: CaseLetterEntry[]; total: number }
 // Memo when both exist, same convention as current_reference_number) and
 // every domain it covers. There's no case-level status — see
 // CaseSummaryDomain.status.
-export type CaseSummaryDomain = { url_id: number; url: string; status: string; original_url?: string; offences?: OffenceEntry[] }
+export type CaseSummaryDomain = { url_id: number; url: string; status: string; original_url?: string; agency_id?: number; agency_name?: string; offences?: OffenceEntry[] }
 
 export type CaseSummary = {
   id: number
-  agency_id?: number
-  agency_name?: string
   due_date?: string
   requested_at?: string
   created_at: string

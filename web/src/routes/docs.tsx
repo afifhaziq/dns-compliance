@@ -551,9 +551,9 @@ function AddDocumentDialog({
 // AddDocumentDialog's shared/per-type split: reference external, recipient,
 // requestor, workflow status, dates and remarks are common fields applied
 // to both letters on save; subject and internal ref stay in their own
-// Notice/Memo section since those are each letter's own field. Domains/
-// agency/status still live on the parent Case, edited from urls.tsx's Cases
-// view instead.
+// Notice/Memo section since those are each letter's own field. Domains are
+// on the parent Case; status/agency are per-domain (CaseURL), edited from
+// urls.tsx's Cases view instead.
 function EditDocumentDialog({
   open, onClose, onSaved, editing, recipients, requestors, users,
 }: { open: boolean; onClose: () => void; onSaved: () => void; editing: CaseGroupRow | null; recipients: Recipient[]; requestors: Requestor[]; users: User[] }) {
