@@ -1239,6 +1239,7 @@ function URLsPage() {
     return caseSummaries.filter(c => {
       const matchesSearch = !query
         || (c.notice_reference_number_external ?? '').toLowerCase().includes(query)
+        || (c.notice_reference_number_internal ?? '').toLowerCase().includes(query)
         || c.domains.some(d => d.url.toLowerCase().includes(query))
       const matchesStatus = !statusFilter || c.domains.some(d => d.status === statusFilter)
       const matchesDept = !deptFilterName || c.domains.some(d => (urlDeptMap.get(d.url) ?? []).includes(deptFilterName))
@@ -1489,7 +1490,7 @@ function URLsPage() {
       accessorFn: r => r.kind === 'case' ? r.summary.id : r.domain.url,
       header: ({ column }) => <SortableHeader column={column} title="Case #" />,
       enableHiding: false,
-      size: 220,
+      size: 340,
       meta: { headerTitle: 'Case #', headerClassName: 'col-domain th-left', cellClassName: 'col-domain' },
       cell: ({ row }) => {
         const original = row.original
@@ -1501,7 +1502,17 @@ function URLsPage() {
         if (original.kind === 'domain') {
           return <span className="flex items-center gap-[2px]">{expandControl}<span className="dns-name">{original.domain.url}</span></span>
         }
-        return <span className="flex items-center gap-[2px]">{expandControl}<span className="hostname">#{original.summary.id}</span></span>
+        return (
+          <span className="flex items-center gap-[2px]">
+            {expandControl}
+            <span className="flex flex-col">
+              <span className="hostname">#{original.summary.id}</span>
+              {original.summary.notice_reference_number_internal && (
+                <span className="text-muted-foreground text-[0.8rem]">{original.summary.notice_reference_number_internal}</span>
+              )}
+            </span>
+          </span>
+        )
       },
     },
     {
@@ -1603,10 +1614,17 @@ function URLsPage() {
         : null,
     },
     {
-      id: 'reference_number',
-      header: 'Ref No.',
+      id: 'reference_number_internal',
+      header: 'Internal Ref',
+      accessorFn: r => r.kind === 'case' ? (r.summary.notice_reference_number_internal ?? '') : '',
+      meta: { headerTitle: 'Internal Ref', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => row.original.kind === 'case' ? <span className="dns-name">{row.original.summary.notice_reference_number_internal || '—'}</span> : null,
+    },
+    {
+      id: 'reference_number_external',
+      header: 'External Ref',
       accessorFn: r => r.kind === 'case' ? (r.summary.notice_reference_number_external ?? '') : '',
-      meta: { headerTitle: 'Ref No.', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      meta: { headerTitle: 'External Ref', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
       cell: ({ row }) => row.original.kind === 'case' ? <span className="dns-name">{row.original.summary.notice_reference_number_external || '—'}</span> : null,
     },
     {

@@ -124,19 +124,145 @@ func findCase(t *testing.T, cases []CollapsedCase, ref string) CollapsedCase {
 	return CollapsedCase{}
 }
 
-func TestCollapseCRDRows_GroupsByReferenceNumber(t *testing.T) {
+func TestCollapseCRDRows_GroupsByInternalReferenceNumber(t *testing.T) {
 	rows := []CRDRow{
-		{ReferenceNumber: "REF-1", Domain: "a.com", Status: "Blocked", Category: "Judi"},
-		{ReferenceNumber: "REF-1", Domain: "b.com", Status: "Uplift", Category: "Judi"},
-		{ReferenceNumber: "REF-2", Domain: "c.com", Status: "Blocked", Category: "Palsu"},
+		{ReferenceNumber: "SKMM(T)REF-1", Domain: "a.com", Status: "Blocked", Category: "Judi"},
+		{ReferenceNumber: "SKMM(T)REF-1", Domain: "b.com", Status: "Uplift", Category: "Judi"},
+		{ReferenceNumber: "SKMM(T)REF-2", Domain: "c.com", Status: "Blocked", Category: "Palsu"},
 	}
 	cases := CollapseCRDRows(rows)
 	if len(cases) != 2 {
 		t.Fatalf("got %d cases, want 2", len(cases))
 	}
-	ref1 := findCase(t, cases, "REF-1")
+	ref1 := findCase(t, cases, "SKMM(T)REF-1")
 	if len(ref1.Domains) != 2 {
-		t.Fatalf("REF-1 domains = %+v, want 2", ref1.Domains)
+		t.Fatalf("SKMM(T)REF-1 domains = %+v, want 2", ref1.Domains)
+	}
+}
+
+// TestCollapseCRDRows_DoesNotGroupByExternalReference guards the fix for the
+// blanket-reference problem: a non-internal reference like PDRM's real
+// "JK KPN(PR) 168/6" is reused across 9,206 unrelated rows / 7,652 distinct
+// domains in the real file, so trusting it as a shared grouping key would
+// merge all of them into one case and collapse their Category/CitationText
+// down to a single most-common winner, mislabeling every minority row. Two
+// different domains citing the same external reference must NOT collapse
+// into one case.
+func TestCollapseCRDRows_DoesNotGroupByExternalReference(t *testing.T) {
+	rows := []CRDRow{
+		{ReferenceNumber: "JK KPN(PR) 168/6", Domain: "a.com", Status: "Blocked", Category: "Judi"},
+		{ReferenceNumber: "JK KPN(PR) 168/6", Domain: "b.com", Status: "Blocked", Category: "Pelacuran"},
+	}
+	cases := CollapseCRDRows(rows)
+	if len(cases) != 2 {
+		t.Fatalf("got %d cases, want 2 (one per domain, not merged by shared external reference)", len(cases))
+	}
+	for _, c := range cases {
+		if len(c.Domains) != 1 {
+			t.Fatalf("case %+v has %d domains, want 1", c, len(c.Domains))
+		}
+		if c.ReferenceNumber != "JK KPN(PR) 168/6" {
+			t.Fatalf("case %+v: ReferenceNumber = %q, want the original external text preserved", c, c.ReferenceNumber)
+		}
+	}
+}
+
+// TestCollapseCRDRows_GroupsRepeatedExternalReferenceDomainPair guards the
+// other half: the *same* domain repeating under the *same* external
+// reference (an exact-duplicate row, or a genuine re-block in a later year)
+// must still collapse together, exactly like the internal-reference case
+// already does -- only *different* domains sharing an external reference
+// should stay split.
+func TestCollapseCRDRows_GroupsRepeatedExternalReferenceDomainPair(t *testing.T) {
+	rows := []CRDRow{
+		{ReferenceNumber: "JK KPN(PR) 168/6", Domain: "a.com", Status: "Blocked", Category: "Judi"},
+		{ReferenceNumber: "JK KPN(PR) 168/6", Domain: "a.com", Status: "Uplift", Category: "Judi"},
+	}
+	cases := CollapseCRDRows(rows)
+	if len(cases) != 1 {
+		t.Fatalf("got %d cases, want 1 (same reference + same domain still collapse)", len(cases))
+	}
+	if len(cases[0].Domains) != 1 || cases[0].Domains[0].Status != "Uplift" {
+		t.Fatalf("got %+v, want one domain with last-write-wins status Uplift", cases[0])
+	}
+}
+
+// TestCollapseCRDRows_GroupsBlankReferenceByDomain guards the other loose
+// end from the same root cause: rows with no reference number at all (empty
+// NMD, no NMSMD fallback either) previously all shared the same "" grouping
+// key and piled into one giant case (up to 179 rows in the real file) --
+// they now split per domain exactly like any other non-internal reference.
+func TestCollapseCRDRows_GroupsBlankReferenceByDomain(t *testing.T) {
+	rows := []CRDRow{
+		{ReferenceNumber: "", Domain: "a.com", Status: "Blocked", Category: "Judi"},
+		{ReferenceNumber: "", Domain: "b.com", Status: "Blocked", Category: "Palsu"},
+	}
+	cases := CollapseCRDRows(rows)
+	if len(cases) != 2 {
+		t.Fatalf("got %d cases, want 2", len(cases))
+	}
+}
+
+// TestCollapseCRDRows_GroupsExternalReferenceByNormalizedDomain guards a
+// grouping-key/idempotency-check mismatch: the key must normalize the
+// domain, not compare it raw, or two spellings of the same site sharing a
+// blanket external reference become two separate CollapsedCases here while
+// WriteCRDCases's rerun check (which can only compare against the
+// normalized urls.url column) would silently treat the second as "already
+// imported" and never write it.
+func TestCollapseCRDRows_GroupsExternalReferenceByNormalizedDomain(t *testing.T) {
+	rows := []CRDRow{
+		{ReferenceNumber: "JK KPN(PR) 168/6", Domain: "http://foo.com", Status: "Blocked", Category: "Judi"},
+		{ReferenceNumber: "JK KPN(PR) 168/6", Domain: "https://foo.com/", Status: "Uplift", Category: "Judi"},
+	}
+	cases := CollapseCRDRows(rows)
+	if len(cases) != 1 {
+		t.Fatalf("got %d cases, want 1 (both spellings normalize to the same domain)", len(cases))
+	}
+	if len(cases[0].Domains) != 2 {
+		t.Fatalf("got %d raw domain spellings, want 2 (both kept, WriteCRDCases dedupes by normalized URL ID)", len(cases[0].Domains))
+	}
+}
+
+func TestIsInternalReference(t *testing.T) {
+	cases := map[string]bool{
+		"SKMM(T)09-NMD/800/2013/Jld.1(011)": true,
+		"skmm(t)09-nmd/800/2013":            true, // case-insensitive
+		"MCMC(S)CMOD/BLK/2025(62-2)":        true,
+		"  MCMC(S)CMOD/BLK/2025(62-2)":      true, // leading whitespace
+		"JK KPN(PR) 168/6":                  false,
+		"SB-2021-0070-HQR":                  false,
+		"EP(SIFU)-2020-0004-HQR":            false,
+		"":                                  false,
+	}
+	for ref, want := range cases {
+		if got := isInternalReference(ref); got != want {
+			t.Errorf("isInternalReference(%q) = %v, want %v", ref, got, want)
+		}
+	}
+}
+
+// TestParseCRDRows_FallsBackToNMSMDWhenNMDBlank guards the 3 real rows where
+// NMD itself is blank but NMSMD is populated -- rather than lose the only
+// reference the row has, NMSMD stands in for it and isn't also carried
+// separately (see CRDRow.NMSMD's doc comment).
+func TestParseCRDRows_FallsBackToNMSMDWhenNMDBlank(t *testing.T) {
+	path := writeTestXLSX(t, "2011-2026", [][]string{
+		{"No. Rujukan NMD", "No. Rujukan NMSMD", "Alamat Laman Web", "Status", "Kategori", "Elemen", "Butiran Kesalahan", "Agensi", "Tahun"},
+		{"", "SKMM(T)09-NMMD/800/2017 (015)", "http://www.dropship.com", "Blocked", "Judi", "", "Seksyen 4", "PDRM", "2017"},
+	})
+	parsed, err := ParseCRDRows(path)
+	if err != nil {
+		t.Fatalf("ParseCRDRows: %v", err)
+	}
+	if len(parsed) != 1 {
+		t.Fatalf("got %d rows, want 1", len(parsed))
+	}
+	if parsed[0].ReferenceNumber != "SKMM(T)09-NMMD/800/2017 (015)" {
+		t.Fatalf("ReferenceNumber = %q, want the NMSMD fallback", parsed[0].ReferenceNumber)
+	}
+	if parsed[0].NMSMD != "" {
+		t.Fatalf("NMSMD = %q, want empty once consumed as the ReferenceNumber fallback", parsed[0].NMSMD)
 	}
 }
 

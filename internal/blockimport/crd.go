@@ -18,14 +18,62 @@ const crdSheetName = "2011-2026"
 // CRDRow is one raw spreadsheet row after column-name resolution, before
 // any collapsing/validation.
 type CRDRow struct {
-	ReferenceNumber string // "No. Rujukan NMD" — the base ref before any suffix handling
+	ReferenceNumber string // "No. Rujukan NMD" — the base ref before any suffix handling. Falls back to NMSMD when NMD itself is blank (see ParseCRDRows).
+	NMSMD           string // "No. Rujukan NMSMD" — a secondary MCMC reference (e.g. a re-block's follow-up case number); "" once consumed as the ReferenceNumber fallback above, so it's never carried twice.
 	Domain          string // raw, not yet normalized
 	Status          string
 	Category        string // "Kategori"
 	Element         string // "Elemen"
+	SubElement      string // "Sub-Elemen"
 	CitationText    string // "Butiran Kesalahan"
 	Agency          string // "Agensi"
 	Year            int
+}
+
+// isInternalReference reports whether a "No. Rujukan NMD"/"NMSMD" value is
+// in MCMC/SKMM's own case-numbering scheme (SKMM being the Malay-language
+// name of the same regulator, e.g. "SKMM(T)09-NMD/800/2013/Jld.1(011)")
+// rather than a reference the requesting agency assigned on its own (e.g.
+// PDRM's "JK KPN(PR) 168/6", "SB-2021-0070-HQR", "EP(SIFU)-2020-0004-HQR")
+// -- checked against the real file: 1,578 of 1,841 reference numbers
+// (85.7%) are MCMC/SKMM-prefixed, and all 140 rows carrying a populated
+// NMSMD have an MCMC/SKMM-prefixed NMD (0 have an external-prefixed one).
+// An internal reference is this department's own numbering and is trusted
+// as a grouping key (see groupingKey); anything else came from outside the
+// department, is not trusted as one, and goes on
+// CaseLetter.ReferenceNumberExternal instead of ReferenceNumberInternal.
+func isInternalReference(ref string) bool {
+	upper := strings.ToUpper(strings.TrimSpace(ref))
+	return strings.HasPrefix(upper, "MCMC") || strings.HasPrefix(upper, "SKMM")
+}
+
+// groupingKey is what CollapseCRDRows actually collapses rows under. A
+// shared internal (MCMC/SKMM) reference number groups multiple rows/domains
+// into one real case, matching how MCMC actually issues one Notice covering
+// many domains. A non-internal reference is NOT trusted as a grouping key --
+// some are reused as a blanket case number across thousands of unrelated
+// rows from other agencies (e.g. PDRM's "JK KPN(PR) 168/6", 9,206 rows /
+// 7,652 distinct domains, several of them not even gambling-related) -- so
+// those rows key on (reference, normalized domain) instead, keeping each
+// domain in its own case rather than merging unrelated domains' category/
+// citation data under one winner. A blank reference (no NMD or NMSMD at
+// all) behaves the same way: each domain still gets its own case rather
+// than all blank-ref rows piling into one.
+//
+// The domain is normalized here (not the raw string) specifically so this
+// stays consistent with WriteCRDCases's rerun-idempotency check, which can
+// only compare against the normalized urls.url column: two raw spellings of
+// the same site (e.g. "http://foo.com" and "https://foo.com/") under the
+// same blanket reference must collapse into one CollapsedCase here too, or
+// the second one would silently vanish later -- CollapseCRDRows would treat
+// them as two distinct groups, but the idempotency check would find the
+// first one's URL row already existing and skip the second as "already
+// imported" without ever writing its data.
+func groupingKey(row CRDRow) string {
+	if isInternalReference(row.ReferenceNumber) {
+		return row.ReferenceNumber
+	}
+	return row.ReferenceNumber + "\x00" + normalizeOrFallback(row.Domain)
 }
 
 // CollapsedDomain is one (url, status) pair under a CollapsedCase.
@@ -39,9 +87,11 @@ type CollapsedDomain struct {
 // this reference, since a reference legitimately covers many urls.
 type CollapsedCase struct {
 	ReferenceNumber string
+	NMSMD           string // secondary MCMC reference (see CRDRow.NMSMD) -- goes on CaseLetter.ReferenceNumberExternal alongside ReferenceNumber's own internal/external routing
 	Domains         []CollapsedDomain
 	Categories      []string // split on "," for compound Kategori values, most-common-group's categories
 	Element         string
+	SubElement      string
 	CitationText    string
 	Agency          string
 }
@@ -126,10 +176,12 @@ func ParseCRDRows(path string) ([]CRDRow, error) {
 	}
 
 	refCol := col("No. Rujukan NMD")
+	nmsmdCol := col("No. Rujukan NMSMD")
 	urlCol := col("Alamat Laman Web")
 	statusCol := col("Status")
 	categoryCol := col("Kategori")
 	elementCol := col("Elemen")
+	subElementCol := col("Sub-Elemen")
 	citationCol := col("Butiran Kesalahan")
 	agencyCol := col("Agensi")
 	yearCol := col("Tahun")
@@ -145,12 +197,25 @@ func ParseCRDRows(path string) ([]CRDRow, error) {
 
 		year, _ := strconv.Atoi(cellAt(r, yearCol))
 
+		// 3 rows have a blank NMD but a populated NMSMD -- rather than lose
+		// the only reference number the row actually has, NMSMD stands in
+		// for it (and is not also carried separately, since it's now fully
+		// consumed as the primary reference). All 3 real occurrences have an
+		// MCMC/SKMM-prefixed NMSMD, so this doesn't change routing outcomes.
+		ref := cellAt(r, refCol)
+		nmsmd := cellAt(r, nmsmdCol)
+		if ref == "" && nmsmd != "" {
+			ref, nmsmd = nmsmd, ""
+		}
+
 		out = append(out, CRDRow{
-			ReferenceNumber: cellAt(r, refCol),
+			ReferenceNumber: ref,
+			NMSMD:           nmsmd,
 			Domain:          cleanDomain(cellAt(r, urlCol)),
 			Status:          cellAt(r, statusCol),
 			Category:        category,
 			Element:         element,
+			SubElement:      cellAt(r, subElementCol),
 			CitationText:    cellAt(r, citationCol),
 			Agency:          cellAt(r, agencyCol),
 			Year:            year,
@@ -159,34 +224,41 @@ func ParseCRDRows(path string) ([]CRDRow, error) {
 	return out, nil
 }
 
-// CollapseCRDRows groups rows by ReferenceNumber into one CollapsedCase per
-// distinct reference. Does NOT normalize URLs or hit the database — pure
-// in-memory transform, testable without I/O. When Category/Element/
-// CitationText/Agency differ across a reference's rows (rare — see the EDA
-// doc), the most-common raw value across the group wins.
+// CollapseCRDRows groups rows by groupingKey into one CollapsedCase per
+// distinct internal reference, or per distinct (reference, domain) pair when
+// the reference isn't internal (see groupingKey). Does NOT normalize URLs or
+// hit the database — pure in-memory transform, testable without I/O. When
+// Category/Element/CitationText/Agency/NMSMD differ across a group's rows
+// (rare for a real internal case; moot for the single-domain external/blank
+// groups), the most-common raw value across the group wins.
 func CollapseCRDRows(rows []CRDRow) []CollapsedCase {
 	order := make([]string, 0)
-	byRef := make(map[string]*CollapsedCase)
-	domainIdxByRef := make(map[string]map[string]int) // ref -> RawDomain -> index in Domains
-	categoryCounts := make(map[string]map[string]int) // ref -> raw Category value -> count
+	byKey := make(map[string]*CollapsedCase)
+	domainIdxByKey := make(map[string]map[string]int) // key -> RawDomain -> index in Domains
+	categoryCounts := make(map[string]map[string]int) // key -> raw Category value -> count
 	elementCounts := make(map[string]map[string]int)
+	subElementCounts := make(map[string]map[string]int)
 	citationCounts := make(map[string]map[string]int)
 	agencyCounts := make(map[string]map[string]int)
+	nmsmdCounts := make(map[string]map[string]int)
 
 	for _, row := range rows {
-		c, ok := byRef[row.ReferenceNumber]
+		key := groupingKey(row)
+		c, ok := byKey[key]
 		if !ok {
 			c = &CollapsedCase{ReferenceNumber: row.ReferenceNumber}
-			byRef[row.ReferenceNumber] = c
-			domainIdxByRef[row.ReferenceNumber] = make(map[string]int)
-			categoryCounts[row.ReferenceNumber] = make(map[string]int)
-			elementCounts[row.ReferenceNumber] = make(map[string]int)
-			citationCounts[row.ReferenceNumber] = make(map[string]int)
-			agencyCounts[row.ReferenceNumber] = make(map[string]int)
-			order = append(order, row.ReferenceNumber)
+			byKey[key] = c
+			domainIdxByKey[key] = make(map[string]int)
+			categoryCounts[key] = make(map[string]int)
+			elementCounts[key] = make(map[string]int)
+			subElementCounts[key] = make(map[string]int)
+			citationCounts[key] = make(map[string]int)
+			agencyCounts[key] = make(map[string]int)
+			nmsmdCounts[key] = make(map[string]int)
+			order = append(order, key)
 		}
 
-		domainIdx := domainIdxByRef[row.ReferenceNumber]
+		domainIdx := domainIdxByKey[key]
 		if i, exists := domainIdx[row.Domain]; exists {
 			// last-write-wins on repeated (reference, domain) pairs
 			c.Domains[i].Status = row.Status
@@ -195,19 +267,23 @@ func CollapseCRDRows(rows []CRDRow) []CollapsedCase {
 			c.Domains = append(c.Domains, CollapsedDomain{RawDomain: row.Domain, Status: row.Status})
 		}
 
-		bumpCount(categoryCounts[row.ReferenceNumber], row.Category)
-		bumpCount(elementCounts[row.ReferenceNumber], row.Element)
-		bumpCount(citationCounts[row.ReferenceNumber], row.CitationText)
-		bumpCount(agencyCounts[row.ReferenceNumber], row.Agency)
+		bumpCount(categoryCounts[key], row.Category)
+		bumpCount(elementCounts[key], row.Element)
+		bumpCount(subElementCounts[key], row.SubElement)
+		bumpCount(citationCounts[key], row.CitationText)
+		bumpCount(agencyCounts[key], row.Agency)
+		bumpCount(nmsmdCounts[key], row.NMSMD)
 	}
 
 	cases := make([]CollapsedCase, 0, len(order))
-	for _, ref := range order {
-		c := byRef[ref]
-		c.Categories = splitCategories(mostCommon(categoryCounts[ref]))
-		c.Element = mostCommon(elementCounts[ref])
-		c.CitationText = mostCommon(citationCounts[ref])
-		c.Agency = mostCommon(agencyCounts[ref])
+	for _, key := range order {
+		c := byKey[key]
+		c.Categories = splitCategories(mostCommon(categoryCounts[key]))
+		c.Element = mostCommon(elementCounts[key])
+		c.SubElement = mostCommon(subElementCounts[key])
+		c.CitationText = mostCommon(citationCounts[key])
+		c.Agency = mostCommon(agencyCounts[key])
+		c.NMSMD = mostCommon(nmsmdCounts[key])
 		cases = append(cases, *c)
 	}
 	return cases

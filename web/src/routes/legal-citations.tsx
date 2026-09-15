@@ -810,7 +810,7 @@ function LegalCitationsPage() {
   }
 
   return (
-    <div className="mx-20 mt-10">
+    <div className="mx-20 mt-10 mb-10">
       <div className="page-header">
         <h1 className="page-title">Legal Citations</h1>
         <p className="page-subtitle">{!loading && `${tree.length} instrument${tree.length === 1 ? '' : 's'}`}</p>

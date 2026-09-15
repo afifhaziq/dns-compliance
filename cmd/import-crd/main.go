@@ -20,6 +20,7 @@ import (
 func main() {
 	file := flag.String("file", "", "path to Blocking Full List_1.xlsx")
 	dbURL := flag.String("db-url", "", "PostgreSQL DSN (key=value pairs)")
+	citationCSV := flag.String("citation-csv", "docs/blocking-list-citation-classification.csv", "path to the hand-classified citation lookup (raw_citation -> instrument/provision); empty disables offence attachment")
 	dryRun := flag.Bool("dry-run", true, "print what would be imported without writing (default true — pass --dry-run=false for a real run)")
 	flag.Parse()
 	if *file == "" || *dbURL == "" {
@@ -33,6 +34,11 @@ func main() {
 	}
 	cases := blockimport.CollapseCRDRows(rows)
 
+	citationMap, err := blockimport.LoadCitationClassification(*citationCSV)
+	if *citationCSV != "" && err != nil {
+		log.Fatalf("loading %s: %v", *citationCSV, err)
+	}
+
 	gormDB, err := db.Connect(postgres.Open(*dbURL))
 	if err != nil {
 		log.Fatalf("connecting to db: %v", err)
@@ -42,7 +48,7 @@ func main() {
 		log.Fatalf("looking up CRD department (run db.SeedDepartments first): %v", err)
 	}
 
-	summary, err := blockimport.WriteCRDCases(context.Background(), gormDB, crdDept.ID, cases, *dryRun)
+	summary, err := blockimport.WriteCRDCases(context.Background(), gormDB, crdDept.ID, cases, citationMap, *dryRun)
 	if err != nil {
 		log.Fatalf("importing: %v", err)
 	}
@@ -51,8 +57,10 @@ func main() {
 		mode = "LIVE"
 	}
 	fmt.Printf("[%s] %d rows parsed, %d cases collapsed\n", mode, len(rows), len(cases))
-	fmt.Printf("  cases created:         %d\n", summary.CasesCreated)
-	fmt.Printf("  cases already existed: %d\n", summary.CasesSkippedExist)
-	fmt.Printf("  urls skipped (bad url): %d\n", summary.URLsSkippedBadURL)
-	fmt.Printf("  distinct categories observed (not imported, see plan's Global Constraints): %d\n", len(summary.CategoriesObserved))
+	fmt.Printf("  cases created:              %d\n", summary.CasesCreated)
+	fmt.Printf("  cases already existed:      %d\n", summary.CasesSkippedExist)
+	fmt.Printf("  urls skipped (bad url):     %d\n", summary.URLsSkippedBadURL)
+	fmt.Printf("  distinct categories seen:   %d\n", len(summary.CategoriesObserved))
+	fmt.Printf("  url offences created:       %d\n", summary.URLOffencesCreated)
+	fmt.Printf("  cases with no citation match: %d\n", summary.OffencesSkippedNoCitation)
 }

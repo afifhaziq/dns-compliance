@@ -36,7 +36,7 @@ func TestWriteCRDCases_CreatesOneCasePerReference(t *testing.T) {
 		Categories:      []string{"Judi"},
 	}}
 
-	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, false)
+	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, nil, false)
 	if err != nil {
 		t.Fatalf("WriteCRDCases: %v", err)
 	}
@@ -86,10 +86,10 @@ func TestWriteCRDCases_IsIdempotent(t *testing.T) {
 		Categories:      []string{"Judi"},
 	}}
 
-	if _, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, false); err != nil {
+	if _, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, nil, false); err != nil {
 		t.Fatalf("first WriteCRDCases: %v", err)
 	}
-	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, false)
+	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, nil, false)
 	if err != nil {
 		t.Fatalf("second WriteCRDCases: %v", err)
 	}
@@ -115,7 +115,7 @@ func TestWriteCRDCases_SkipsEmptyDomain(t *testing.T) {
 		Categories: []string{"Judi"},
 	}}
 
-	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, false)
+	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, nil, false)
 	if err != nil {
 		t.Fatalf("WriteCRDCases: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestWriteCRDCases_RetainsUnnormalizableURLViaFallback(t *testing.T) {
 		Categories:      []string{"Judi"},
 	}}
 
-	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, false)
+	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, nil, false)
 	if err != nil {
 		t.Fatalf("WriteCRDCases: %v", err)
 	}
@@ -179,7 +179,7 @@ func TestWriteCRDCases_DedupesDomainsThatNormalizeToTheSameURL(t *testing.T) {
 		Categories: []string{"Judi"},
 	}}
 
-	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, false)
+	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, nil, false)
 	if err != nil {
 		t.Fatalf("WriteCRDCases: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestWriteCRDCases_DryRunWritesNothing(t *testing.T) {
 		Categories:      []string{"Judi"},
 	}}
 
-	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, true)
+	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, nil, true)
 	if err != nil {
 		t.Fatalf("WriteCRDCases: %v", err)
 	}
@@ -228,7 +228,7 @@ func TestWriteCRDCases_TracksCategoriesObserved(t *testing.T) {
 		{ReferenceNumber: "REF-2", Domains: []CollapsedDomain{{RawDomain: "b.com", Status: "Blocked"}}, Categories: []string{"Judi", "Palsu"}},
 	}
 
-	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, true)
+	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, nil, true)
 	if err != nil {
 		t.Fatalf("WriteCRDCases: %v", err)
 	}
@@ -249,7 +249,7 @@ func TestWriteCRDCases_PreservesOriginalURLPath(t *testing.T) {
 		Categories:      []string{"Lucah"},
 	}}
 
-	if _, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, false); err != nil {
+	if _, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, nil, false); err != nil {
 		t.Fatalf("WriteCRDCases: %v", err)
 	}
 
@@ -267,6 +267,269 @@ func TestWriteCRDCases_PreservesOriginalURLPath(t *testing.T) {
 	}
 	if u.URL != "t.me" {
 		t.Fatalf("u.URL = %q, want t.me (bare hostname, unlike OriginalURL)", u.URL)
+	}
+}
+
+func TestWriteCRDCases_AttachesOffencesViaCitationMap(t *testing.T) {
+	gdb := newTestGormDB(t)
+	crd := mustSeedDepartment(t, gdb, "CRD")
+	citationMap := map[string][]citationTarget{
+		"Seksyen 233 Akta Komunikasi dan Multimedia 1998": {
+			{Instrument: "Akta Komunikasi dan Multimedia 1998", Provision: "Seksyen 233"},
+		},
+	}
+	cases := []CollapsedCase{{
+		ReferenceNumber: "REF-1",
+		Domains:         []CollapsedDomain{{RawDomain: "example.com", Status: "Blocked"}},
+		Categories:      []string{"Jelik", "Palsu"},
+		Element:         "Politik",
+		CitationText:    "Seksyen 233 Akta Komunikasi dan Multimedia 1998",
+	}}
+
+	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, citationMap, false)
+	if err != nil {
+		t.Fatalf("WriteCRDCases: %v", err)
+	}
+	// 2 categories x 1 url = 2 URLOffence rows, sharing one Instrument/Citation.
+	if summary.URLOffencesCreated != 2 {
+		t.Fatalf("URLOffencesCreated = %d, want 2", summary.URLOffencesCreated)
+	}
+	if summary.OffencesSkippedNoCitation != 0 {
+		t.Fatalf("OffencesSkippedNoCitation = %d, want 0", summary.OffencesSkippedNoCitation)
+	}
+
+	var instrumentCount, citationCount, categoryCount, elementCount, offenceCount int64
+	gdb.Model(&db.Instrument{}).Count(&instrumentCount)
+	gdb.Model(&db.Citation{}).Count(&citationCount)
+	gdb.Model(&db.Category{}).Count(&categoryCount)
+	gdb.Model(&db.Element{}).Count(&elementCount)
+	gdb.Model(&db.URLOffence{}).Count(&offenceCount)
+	if instrumentCount != 1 || citationCount != 1 || categoryCount != 2 || elementCount != 2 || offenceCount != 2 {
+		t.Fatalf("got instruments=%d citations=%d categories=%d elements=%d offences=%d, want 1,1,2,2,2",
+			instrumentCount, citationCount, categoryCount, elementCount, offenceCount)
+	}
+
+	var instrument db.Instrument
+	if err := gdb.First(&instrument).Error; err != nil {
+		t.Fatalf("expected an Instrument row: %v", err)
+	}
+	if instrument.Type != "ACT" || instrument.ShortTitle != "Akta Komunikasi dan Multimedia 1998" {
+		t.Fatalf("got instrument %+v", instrument)
+	}
+}
+
+func TestWriteCRDCases_SharesInstrumentAndCategoryAcrossCases(t *testing.T) {
+	gdb := newTestGormDB(t)
+	crd := mustSeedDepartment(t, gdb, "CRD")
+	citationMap := map[string][]citationTarget{
+		"Seksyen 233 AKM 1998": {{Instrument: "Akta Komunikasi dan Multimedia 1998", Provision: "Seksyen 233"}},
+	}
+	cases := []CollapsedCase{
+		{ReferenceNumber: "REF-1", Domains: []CollapsedDomain{{RawDomain: "a.com", Status: "Blocked"}}, Categories: []string{"Judi"}, CitationText: "Seksyen 233 AKM 1998"},
+		{ReferenceNumber: "REF-2", Domains: []CollapsedDomain{{RawDomain: "b.com", Status: "Blocked"}}, Categories: []string{"Judi"}, CitationText: "Seksyen 233 AKM 1998"},
+	}
+
+	if _, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, citationMap, false); err != nil {
+		t.Fatalf("WriteCRDCases: %v", err)
+	}
+
+	var instrumentCount, citationCount, categoryCount, offenceCount int64
+	gdb.Model(&db.Instrument{}).Count(&instrumentCount)
+	gdb.Model(&db.Citation{}).Count(&citationCount)
+	gdb.Model(&db.Category{}).Count(&categoryCount)
+	gdb.Model(&db.URLOffence{}).Count(&offenceCount)
+	if instrumentCount != 1 || citationCount != 1 || categoryCount != 1 || offenceCount != 2 {
+		t.Fatalf("got instruments=%d citations=%d categories=%d offences=%d, want 1,1,1,2 (shared catalog rows, one offence per url)",
+			instrumentCount, citationCount, categoryCount, offenceCount)
+	}
+}
+
+func TestWriteCRDCases_SkipsOffencesWhenCitationUnclassified(t *testing.T) {
+	gdb := newTestGormDB(t)
+	crd := mustSeedDepartment(t, gdb, "CRD")
+	cases := []CollapsedCase{{
+		ReferenceNumber: "REF-1",
+		Domains:         []CollapsedDomain{{RawDomain: "example.com", Status: "Blocked"}},
+		Categories:      []string{"Judi"},
+		CitationText:    "Some Citation Not In The Classification CSV",
+	}}
+
+	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, map[string][]citationTarget{}, false)
+	if err != nil {
+		t.Fatalf("WriteCRDCases: %v", err)
+	}
+	if summary.OffencesSkippedNoCitation != 1 {
+		t.Fatalf("OffencesSkippedNoCitation = %d, want 1", summary.OffencesSkippedNoCitation)
+	}
+	if summary.CasesCreated != 1 {
+		t.Fatalf("CasesCreated = %d, want 1 (case still created without offence data)", summary.CasesCreated)
+	}
+	var offenceCount int64
+	gdb.Model(&db.URLOffence{}).Count(&offenceCount)
+	if offenceCount != 0 {
+		t.Fatalf("url_offences has %d rows, want 0", offenceCount)
+	}
+}
+
+func TestWriteCRDCases_RoutesReferenceByPrefix(t *testing.T) {
+	gdb := newTestGormDB(t)
+	crd := mustSeedDepartment(t, gdb, "CRD")
+	cases := []CollapsedCase{
+		{ReferenceNumber: "SKMM(T)09-NMD/800/2013/Jld.1(011)", Domains: []CollapsedDomain{{RawDomain: "a.com", Status: "Blocked"}}},
+		{ReferenceNumber: "MCMC(S)CMOD/BLK/2025(62-2)", Domains: []CollapsedDomain{{RawDomain: "b.com", Status: "Blocked"}}},
+		{ReferenceNumber: "JK KPN(PR) 168/6", Domains: []CollapsedDomain{{RawDomain: "c.com", Status: "Blocked"}}},
+		{ReferenceNumber: "SB-2021-0070-HQR", Domains: []CollapsedDomain{{RawDomain: "d.com", Status: "Blocked"}}},
+	}
+
+	if _, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, nil, false); err != nil {
+		t.Fatalf("WriteCRDCases: %v", err)
+	}
+
+	var letters []db.CaseLetter
+	if err := gdb.Find(&letters).Error; err != nil {
+		t.Fatalf("listing letters: %v", err)
+	}
+	got := map[string]string{} // reference -> "internal" or "external"
+	for _, l := range letters {
+		if l.ReferenceNumberInternal != "" {
+			got[l.ReferenceNumberInternal] = "internal"
+		}
+		if l.ReferenceNumberExternal != "" {
+			got[l.ReferenceNumberExternal] = "external"
+		}
+	}
+	want := map[string]string{
+		"SKMM(T)09-NMD/800/2013/Jld.1(011)": "internal",
+		"MCMC(S)CMOD/BLK/2025(62-2)":        "internal",
+		"JK KPN(PR) 168/6":                  "external",
+		"SB-2021-0070-HQR":                  "external",
+	}
+	for ref, wantField := range want {
+		if got[ref] != wantField {
+			t.Errorf("reference %q routed to %q, want %q", ref, got[ref], wantField)
+		}
+	}
+}
+
+func TestWriteCRDCases_IdempotentAcrossInternalAndExternalReference(t *testing.T) {
+	gdb := newTestGormDB(t)
+	crd := mustSeedDepartment(t, gdb, "CRD")
+	cases := []CollapsedCase{
+		{ReferenceNumber: "SKMM(T)09-NMD/800/2013/Jld.1(011)", Domains: []CollapsedDomain{{RawDomain: "a.com", Status: "Blocked"}}},
+	}
+
+	if _, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, nil, false); err != nil {
+		t.Fatalf("first WriteCRDCases: %v", err)
+	}
+	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, nil, false)
+	if err != nil {
+		t.Fatalf("second WriteCRDCases: %v", err)
+	}
+	if summary.CasesSkippedExist != 1 || summary.CasesCreated != 0 {
+		t.Fatalf("got %+v, want CasesSkippedExist=1 CasesCreated=0 (rerun must find the internal-routed reference)", summary)
+	}
+}
+
+// TestWriteCRDCases_ExternalIdempotencyIsPerDomain guards the fix that made
+// the rerun check for a non-internal reference match on (reference, domain)
+// together instead of the reference text alone -- otherwise two different
+// domains sharing a blanket external reference (like PDRM's real
+// "JK KPN(PR) 168/6") would wrongly read the second one as "already
+// imported" once the first exists, silently dropping it.
+func TestWriteCRDCases_ExternalIdempotencyIsPerDomain(t *testing.T) {
+	gdb := newTestGormDB(t)
+	crd := mustSeedDepartment(t, gdb, "CRD")
+	first := []CollapsedCase{
+		{ReferenceNumber: "JK KPN(PR) 168/6", Domains: []CollapsedDomain{{RawDomain: "a.com", Status: "Blocked"}}},
+	}
+	if _, err := WriteCRDCases(context.Background(), gdb, crd.ID, first, nil, false); err != nil {
+		t.Fatalf("first WriteCRDCases: %v", err)
+	}
+
+	// A different domain under the same blanket external reference must
+	// still be created, not skipped as "already exists".
+	second := []CollapsedCase{
+		{ReferenceNumber: "JK KPN(PR) 168/6", Domains: []CollapsedDomain{{RawDomain: "b.com", Status: "Blocked"}}},
+	}
+	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, second, nil, false)
+	if err != nil {
+		t.Fatalf("second WriteCRDCases: %v", err)
+	}
+	if summary.CasesCreated != 1 || summary.CasesSkippedExist != 0 {
+		t.Fatalf("got %+v, want CasesCreated=1 CasesSkippedExist=0 (different domain, same blanket reference)", summary)
+	}
+
+	// Re-running the exact same (reference, domain) pair must be skipped.
+	summary, err = WriteCRDCases(context.Background(), gdb, crd.ID, second, nil, false)
+	if err != nil {
+		t.Fatalf("third WriteCRDCases: %v", err)
+	}
+	if summary.CasesCreated != 0 || summary.CasesSkippedExist != 1 {
+		t.Fatalf("got %+v, want CasesCreated=0 CasesSkippedExist=1 (same reference and domain rerun)", summary)
+	}
+
+	var caseCount int64
+	gdb.Model(&db.Case{}).Count(&caseCount)
+	if caseCount != 2 {
+		t.Fatalf("cases table has %d rows, want 2 (a.com and b.com stay separate cases)", caseCount)
+	}
+}
+
+// TestWriteCRDCases_NMSMDGoesOnExternalRef guards the general NMSMD ->
+// ReferenceNumberExternal transfer -- independent of whether the case's own
+// primary reference routed internal or external.
+func TestWriteCRDCases_NMSMDGoesOnExternalRef(t *testing.T) {
+	gdb := newTestGormDB(t)
+	crd := mustSeedDepartment(t, gdb, "CRD")
+	cases := []CollapsedCase{
+		{
+			ReferenceNumber: "SKMM(T)09-NMD/800/2014 (023)",
+			NMSMD:           "SKMM(T)09-NMD/800/2021 (095)",
+			Domains:         []CollapsedDomain{{RawDomain: "a.com", Status: "Blocked"}},
+		},
+	}
+	if _, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, nil, false); err != nil {
+		t.Fatalf("WriteCRDCases: %v", err)
+	}
+
+	var letter db.CaseLetter
+	if err := gdb.First(&letter).Error; err != nil {
+		t.Fatalf("expected a CaseLetter row: %v", err)
+	}
+	if letter.ReferenceNumberInternal != "SKMM(T)09-NMD/800/2014 (023)" {
+		t.Fatalf("ReferenceNumberInternal = %q, want the primary NMD", letter.ReferenceNumberInternal)
+	}
+	if letter.ReferenceNumberExternal != "SKMM(T)09-NMD/800/2021 (095)" {
+		t.Fatalf("ReferenceNumberExternal = %q, want the NMSMD value", letter.ReferenceNumberExternal)
+	}
+}
+
+// TestWriteCRDCases_BlankRefDoesNotMatchInternalCaseSharingADomain guards a
+// second idempotency false-positive: a domain that appears twice in the
+// sheet, once under a real internal case (whose own reference_number_external
+// is empty, since it never had an NMSMD) and once with no reference at all,
+// must not have its blank-reference occurrence silently skipped as "already
+// exists" just because it happens to match that internal case's empty
+// external slot plus shared domain.
+func TestWriteCRDCases_BlankRefDoesNotMatchInternalCaseSharingADomain(t *testing.T) {
+	gdb := newTestGormDB(t)
+	crd := mustSeedDepartment(t, gdb, "CRD")
+	cases := []CollapsedCase{
+		{ReferenceNumber: "SKMM(T)09-NMD/800/2020 (059)", Domains: []CollapsedDomain{{RawDomain: "shared.com", Status: "Blocked"}}},
+		{ReferenceNumber: "", Domains: []CollapsedDomain{{RawDomain: "shared.com", Status: "Blocked"}}},
+	}
+
+	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, nil, false)
+	if err != nil {
+		t.Fatalf("WriteCRDCases: %v", err)
+	}
+	if summary.CasesCreated != 2 || summary.CasesSkippedExist != 0 {
+		t.Fatalf("got %+v, want CasesCreated=2 CasesSkippedExist=0 (the blank-ref case must not be mistaken for the internal one)", summary)
+	}
+	var caseCount int64
+	gdb.Model(&db.Case{}).Count(&caseCount)
+	if caseCount != 2 {
+		t.Fatalf("cases table has %d rows, want 2", caseCount)
 	}
 }
 
