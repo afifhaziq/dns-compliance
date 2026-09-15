@@ -282,6 +282,48 @@ func TestCollapseCRDRows_LastWriteWinsOnRepeatedDomainStatus(t *testing.T) {
 	}
 }
 
+// TestCollapseCRDRows_AgencyIsPerDomainNotCollapsed guards the real-world
+// case this package exists to model correctly: a single internal reference
+// can legitimately cover domains requested by two different agencies (see
+// docs/blocking-list-migration-clarifications.md's Agency section) — each
+// domain must keep its own row's Agency, not a case-wide "most common"
+// winner that would silently overwrite the minority domains' true agency.
+func TestCollapseCRDRows_AgencyIsPerDomainNotCollapsed(t *testing.T) {
+	rows := []CRDRow{
+		{ReferenceNumber: "SKMM(T)REF-1", Domain: "bet.example.com", Status: "Blocked", Category: "Judi", Agency: "PDRM"},
+		{ReferenceNumber: "SKMM(T)REF-1", Domain: "adult.example.com", Status: "Blocked", Category: "Lucah", Agency: "MCMC"},
+	}
+	cases := CollapseCRDRows(rows)
+	if len(cases) != 1 {
+		t.Fatalf("got %d cases, want 1 (one internal reference)", len(cases))
+	}
+	agencyByDomain := map[string]string{}
+	for _, d := range cases[0].Domains {
+		agencyByDomain[d.RawDomain] = d.Agency
+	}
+	if agencyByDomain["bet.example.com"] != "PDRM" || agencyByDomain["adult.example.com"] != "MCMC" {
+		t.Fatalf("got %+v, want bet.example.com=PDRM, adult.example.com=MCMC (each domain keeps its own agency)", agencyByDomain)
+	}
+}
+
+// TestCollapseCRDRows_LastWriteWinsOnRepeatedDomainAgency mirrors the
+// existing Status last-write-wins test: a repeated (reference, domain) pair
+// with a different Agency on its second occurrence keeps the later value,
+// same as Status already does.
+func TestCollapseCRDRows_LastWriteWinsOnRepeatedDomainAgency(t *testing.T) {
+	rows := []CRDRow{
+		{ReferenceNumber: "SKMM(T)REF-1", Domain: "a.com", Status: "Blocked", Category: "Judi", Agency: "PDRM"},
+		{ReferenceNumber: "SKMM(T)REF-1", Domain: "a.com", Status: "Blocked", Category: "Judi", Agency: "MCMC"},
+	}
+	cases := CollapseCRDRows(rows)
+	if len(cases) != 1 || len(cases[0].Domains) != 1 {
+		t.Fatalf("got %+v, want one case with one domain", cases)
+	}
+	if cases[0].Domains[0].Agency != "MCMC" {
+		t.Fatalf("Domains[0].Agency = %q, want MCMC (last write wins)", cases[0].Domains[0].Agency)
+	}
+}
+
 func TestCollapseCRDRows_SplitsCompoundCategory(t *testing.T) {
 	rows := []CRDRow{{ReferenceNumber: "REF-1", Domain: "a.com", Category: "Jelik, Palsu, Lucah"}}
 	cases := CollapseCRDRows(rows)

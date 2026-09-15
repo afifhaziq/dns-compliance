@@ -76,15 +76,27 @@ func groupingKey(row CRDRow) string {
 	return row.ReferenceNumber + "\x00" + normalizeOrFallback(row.Domain)
 }
 
-// CollapsedDomain is one (url, status) pair under a CollapsedCase.
+// CollapsedDomain is one (url, status, agency) tuple under a CollapsedCase.
 type CollapsedDomain struct {
 	RawDomain string
 	Status    string // last-write-wins across the group if it repeats
+	// Agency ("Agensi") is this specific domain's own requesting agency —
+	// not collapsed to a case-wide "most common" value (unlike Category/
+	// CitationText/Element/SubElement, which still are, see CollapsedCase):
+	// verified against the real file, 8 internal references genuinely
+	// cover domains requested by different agencies, including 4 with an
+	// exact 100/100 split across 800 domains (PDRM's gambling-law citation
+	// vs MCMC's obscenity-law citation) — collapsing to one winner there
+	// would silently mislabel roughly half of every one of those cases'
+	// domains. Last-write-wins across the group if it repeats, same as
+	// Status.
+	Agency string
 }
 
 // CollapsedCase is one (base reference number) group after collapsing — the
-// unit that becomes one Case. Domains holds every (url, status) pair under
-// this reference, since a reference legitimately covers many urls.
+// unit that becomes one Case. Domains holds every (url, status, agency)
+// tuple under this reference, since a reference legitimately covers many
+// urls.
 type CollapsedCase struct {
 	ReferenceNumber string
 	NMSMD           string // secondary MCMC reference (see CRDRow.NMSMD) -- goes on CaseLetter.ReferenceNumberExternal alongside ReferenceNumber's own internal/external routing
@@ -93,7 +105,6 @@ type CollapsedCase struct {
 	Element         string
 	SubElement      string
 	CitationText    string
-	Agency          string
 }
 
 var (
@@ -228,9 +239,10 @@ func ParseCRDRows(path string) ([]CRDRow, error) {
 // distinct internal reference, or per distinct (reference, domain) pair when
 // the reference isn't internal (see groupingKey). Does NOT normalize URLs or
 // hit the database — pure in-memory transform, testable without I/O. When
-// Category/Element/CitationText/Agency/NMSMD differ across a group's rows
-// (rare for a real internal case; moot for the single-domain external/blank
-// groups), the most-common raw value across the group wins.
+// Category/Element/CitationText/NMSMD differ across a group's rows (rare for
+// a real internal case; moot for the single-domain external/blank groups),
+// the most-common raw value across the group wins. Agency does NOT collapse
+// this way — it travels per-domain on CollapsedDomain, see its doc comment.
 func CollapseCRDRows(rows []CRDRow) []CollapsedCase {
 	order := make([]string, 0)
 	byKey := make(map[string]*CollapsedCase)
@@ -239,7 +251,6 @@ func CollapseCRDRows(rows []CRDRow) []CollapsedCase {
 	elementCounts := make(map[string]map[string]int)
 	subElementCounts := make(map[string]map[string]int)
 	citationCounts := make(map[string]map[string]int)
-	agencyCounts := make(map[string]map[string]int)
 	nmsmdCounts := make(map[string]map[string]int)
 
 	for _, row := range rows {
@@ -253,7 +264,6 @@ func CollapseCRDRows(rows []CRDRow) []CollapsedCase {
 			elementCounts[key] = make(map[string]int)
 			subElementCounts[key] = make(map[string]int)
 			citationCounts[key] = make(map[string]int)
-			agencyCounts[key] = make(map[string]int)
 			nmsmdCounts[key] = make(map[string]int)
 			order = append(order, key)
 		}
@@ -262,16 +272,16 @@ func CollapseCRDRows(rows []CRDRow) []CollapsedCase {
 		if i, exists := domainIdx[row.Domain]; exists {
 			// last-write-wins on repeated (reference, domain) pairs
 			c.Domains[i].Status = row.Status
+			c.Domains[i].Agency = row.Agency
 		} else {
 			domainIdx[row.Domain] = len(c.Domains)
-			c.Domains = append(c.Domains, CollapsedDomain{RawDomain: row.Domain, Status: row.Status})
+			c.Domains = append(c.Domains, CollapsedDomain{RawDomain: row.Domain, Status: row.Status, Agency: row.Agency})
 		}
 
 		bumpCount(categoryCounts[key], row.Category)
 		bumpCount(elementCounts[key], row.Element)
 		bumpCount(subElementCounts[key], row.SubElement)
 		bumpCount(citationCounts[key], row.CitationText)
-		bumpCount(agencyCounts[key], row.Agency)
 		bumpCount(nmsmdCounts[key], row.NMSMD)
 	}
 
@@ -282,7 +292,6 @@ func CollapseCRDRows(rows []CRDRow) []CollapsedCase {
 		c.Element = mostCommon(elementCounts[key])
 		c.SubElement = mostCommon(subElementCounts[key])
 		c.CitationText = mostCommon(citationCounts[key])
-		c.Agency = mostCommon(agencyCounts[key])
 		c.NMSMD = mostCommon(nmsmdCounts[key])
 		cases = append(cases, *c)
 	}

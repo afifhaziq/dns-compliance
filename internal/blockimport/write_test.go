@@ -237,53 +237,68 @@ func TestWriteCRDCases_TracksCategoriesObserved(t *testing.T) {
 	}
 }
 
-// TestWriteCRDCases_SetsAgency verifies CaseURL.AgencyID is get-or-created
-// from CollapsedCase.Agency ("Agensi") -- two cases sharing the same agency
-// name share one Agency row, and a case with no agency gets a nil AgencyID.
-func TestWriteCRDCases_SetsAgency(t *testing.T) {
+// TestWriteCRDCases_SetsAgencyPerDomain verifies each CaseURL.AgencyID is
+// get-or-created from that domain's own CollapsedDomain.Agency ("Agensi")
+// -- not a case-wide value -- so two domains sharing one internal reference
+// but requested by different agencies (see CollapseCRDRows's doc comment)
+// each get their own correct agency.
+func TestWriteCRDCases_SetsAgencyPerDomain(t *testing.T) {
 	gdb := newTestGormDB(t)
 	crd := mustSeedDepartment(t, gdb, "CRD")
-	cases := []CollapsedCase{
-		{ReferenceNumber: "REF-1", Domains: []CollapsedDomain{{RawDomain: "a.com", Status: "Blocked"}}, Categories: []string{"Judi"}, Agency: "PDRM"},
-		{ReferenceNumber: "REF-2", Domains: []CollapsedDomain{{RawDomain: "b.com", Status: "Blocked"}}, Categories: []string{"Judi"}, Agency: "PDRM"},
-		{ReferenceNumber: "REF-3", Domains: []CollapsedDomain{{RawDomain: "c.com", Status: "Blocked"}}, Categories: []string{"Judi"}},
-	}
+	cases := []CollapsedCase{{
+		ReferenceNumber: "SKMM(T)REF-1",
+		Domains: []CollapsedDomain{
+			{RawDomain: "bet.example.com", Status: "Blocked", Agency: "PDRM"},
+			{RawDomain: "adult.example.com", Status: "Blocked", Agency: "MCMC"},
+			{RawDomain: "noagency.example.com", Status: "Blocked"},
+		},
+		Categories: []string{"Judi"},
+	}}
 
 	if _, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, nil, false); err != nil {
 		t.Fatalf("WriteCRDCases: %v", err)
 	}
 
 	var agencies []db.Agency
-	if err := gdb.Find(&agencies).Error; err != nil {
+	if err := gdb.Order("name").Find(&agencies).Error; err != nil {
 		t.Fatalf("listing agencies: %v", err)
 	}
-	if len(agencies) != 1 || agencies[0].Name != "PDRM" {
-		t.Fatalf("agencies = %+v, want exactly one PDRM row", agencies)
+	if len(agencies) != 2 {
+		t.Fatalf("agencies = %+v, want exactly PDRM and MCMC", agencies)
+	}
+	agencyIDByName := map[string]uint{}
+	for _, a := range agencies {
+		agencyIDByName[a.Name] = a.ID
 	}
 
-	var withAgency, withoutAgency db.Case
-	if err := gdb.Joins("JOIN case_letters ON case_letters.case_id = cases.id").
-		Where("case_letters.reference_number_external = ?", "REF-1").First(&withAgency).Error; err != nil {
-		t.Fatalf("loading REF-1's case: %v", err)
+	var caseURLs []db.CaseURL
+	if err := gdb.Find(&caseURLs).Error; err != nil {
+		t.Fatalf("listing case_urls: %v", err)
 	}
-	var withAgencyURL db.CaseURL
-	if err := gdb.Where("case_id = ?", withAgency.ID).First(&withAgencyURL).Error; err != nil {
-		t.Fatalf("loading REF-1's case_url: %v", err)
+	var urls []db.URL
+	if err := gdb.Find(&urls).Error; err != nil {
+		t.Fatalf("listing urls: %v", err)
 	}
-	if withAgencyURL.AgencyID == nil || *withAgencyURL.AgencyID != agencies[0].ID {
-		t.Fatalf("REF-1 AgencyID = %v, want %d", withAgencyURL.AgencyID, agencies[0].ID)
+	urlByID := map[uint]string{}
+	for _, u := range urls {
+		urlByID[u.ID] = u.URL
+	}
+	agencyIDByDomain := map[string]*uint{}
+	for _, cu := range caseURLs {
+		agencyIDByDomain[urlByID[cu.URLID]] = cu.AgencyID
 	}
 
-	if err := gdb.Joins("JOIN case_letters ON case_letters.case_id = cases.id").
-		Where("case_letters.reference_number_external = ?", "REF-3").First(&withoutAgency).Error; err != nil {
-		t.Fatalf("loading REF-3's case: %v", err)
+	betID := agencyIDByDomain["bet.example.com"]
+	adultID := agencyIDByDomain["adult.example.com"]
+	noAgencyID := agencyIDByDomain["noagency.example.com"]
+	if betID == nil || *betID != agencyIDByName["PDRM"] {
+		t.Fatalf("bet.example.com AgencyID = %v, want PDRM (%d)", betID, agencyIDByName["PDRM"])
 	}
-	var withoutAgencyURL db.CaseURL
-	if err := gdb.Where("case_id = ?", withoutAgency.ID).First(&withoutAgencyURL).Error; err != nil {
-		t.Fatalf("loading REF-3's case_url: %v", err)
+	if adultID == nil || *adultID != agencyIDByName["MCMC"] {
+		t.Fatalf("adult.example.com AgencyID = %v, want MCMC (%d)", adultID, agencyIDByName["MCMC"])
 	}
-	if withoutAgencyURL.AgencyID != nil {
-		t.Fatalf("REF-3 AgencyID = %v, want nil (no Agensi value)", *withoutAgencyURL.AgencyID)
+	if noAgencyID != nil {
+		t.Fatalf("noagency.example.com AgencyID = %v, want nil (no Agensi value)", *noAgencyID)
 	}
 }
 
