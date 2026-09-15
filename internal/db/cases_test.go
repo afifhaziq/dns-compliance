@@ -96,7 +96,7 @@ func TestAddURLToCase_CoversMultipleURLs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateCase: %v", err)
 	}
-	if _, err := store.AddURLToCase(ctx, c.ID, u2.ID, "requested", ""); err != nil {
+	if _, err := store.AddURLToCase(ctx, c.ID, u2.ID, "requested", "", nil); err != nil {
 		t.Fatalf("AddURLToCase: %v", err)
 	}
 
@@ -305,7 +305,7 @@ func TestUpdateCaseURLStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateCase: %v", err)
 	}
-	if _, err := store.AddURLToCase(ctx, c.ID, u2.ID, "requested", ""); err != nil {
+	if _, err := store.AddURLToCase(ctx, c.ID, u2.ID, "requested", "", nil); err != nil {
 		t.Fatalf("AddURLToCase: %v", err)
 	}
 
@@ -491,7 +491,7 @@ func TestListCasesForDepartment_PicksNoticeOverMemoAndListsDomains(t *testing.T)
 	if err != nil {
 		t.Fatalf("CreateCase: %v", err)
 	}
-	if _, err := store.AddURLToCase(ctx, c.ID, u2.ID, "requested", ""); err != nil {
+	if _, err := store.AddURLToCase(ctx, c.ID, u2.ID, "requested", "", nil); err != nil {
 		t.Fatalf("AddURLToCase: %v", err)
 	}
 
@@ -605,6 +605,78 @@ func TestUpdateCaseLetterFields_PartialUpdateAndScoping(t *testing.T) {
 	}
 	if found {
 		t.Fatal("expected found=false when case id doesn't match the letter's own case")
+	}
+}
+
+// TestUpdateCaseURLAgency_SetsAndClears covers UpdateCaseURLAgency setting
+// and clearing one (case, url) pair's own AgencyID, read back via
+// ListCasesForURL's new AgencyID/AgencyName fields.
+func TestUpdateCaseURLAgency_SetsAndClears(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	dept, err := store.CreateDepartment(ctx, "CRD")
+	if err != nil {
+		t.Fatalf("CreateDepartment: %v", err)
+	}
+	agency, err := store.CreateAgency(ctx, "PDRM")
+	if err != nil {
+		t.Fatalf("CreateAgency: %v", err)
+	}
+	u, err := store.CreateURL(ctx, "case-url-agency.com")
+	if err != nil {
+		t.Fatalf("CreateURL: %v", err)
+	}
+	c, err := store.CreateCase(ctx, dept.ID, u.ID, "requested", db.CaseCreateOptions{})
+	if err != nil {
+		t.Fatalf("CreateCase: %v", err)
+	}
+
+	ok, err := store.UpdateCaseURLAgency(ctx, c.ID, u.ID, &agency.ID)
+	if err != nil {
+		t.Fatalf("UpdateCaseURLAgency: %v", err)
+	}
+	if !ok {
+		t.Fatal("UpdateCaseURLAgency returned false, want true")
+	}
+
+	cases, err := store.ListCasesForURL(ctx, "case-url-agency.com")
+	if err != nil {
+		t.Fatalf("ListCasesForURL: %v", err)
+	}
+	if len(cases) != 1 || cases[0].AgencyID == nil || *cases[0].AgencyID != agency.ID || cases[0].AgencyName != "PDRM" {
+		t.Fatalf("got %+v, want one case with AgencyID=%d AgencyName=PDRM", cases, agency.ID)
+	}
+
+	ok, err = store.UpdateCaseURLAgency(ctx, c.ID, u.ID, nil)
+	if err != nil {
+		t.Fatalf("UpdateCaseURLAgency (clear): %v", err)
+	}
+	if !ok {
+		t.Fatal("UpdateCaseURLAgency (clear) returned false, want true")
+	}
+
+	cases, err = store.ListCasesForURL(ctx, "case-url-agency.com")
+	if err != nil {
+		t.Fatalf("ListCasesForURL: %v", err)
+	}
+	if len(cases) != 1 || cases[0].AgencyID != nil || cases[0].AgencyName != "" {
+		t.Fatalf("got %+v, want AgencyID/AgencyName cleared after UpdateCaseURLAgency(nil)", cases)
+	}
+}
+
+// TestUpdateCaseURLAgency_FalseWhenNoSuchCaseURL covers the false-not-error
+// result for a (case, url) pair that doesn't exist.
+func TestUpdateCaseURLAgency_FalseWhenNoSuchCaseURL(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	ok, err := store.UpdateCaseURLAgency(ctx, 9999, 9999, nil)
+	if err != nil {
+		t.Fatalf("UpdateCaseURLAgency: %v", err)
+	}
+	if ok {
+		t.Fatal("expected false for a nonexistent case_url pair")
 	}
 }
 

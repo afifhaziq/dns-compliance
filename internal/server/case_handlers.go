@@ -358,7 +358,7 @@ func (h *Handlers) AddCaseURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cu, err := h.store.AddURLToCase(r.Context(), uint(id), u.ID, body.Status, strings.TrimSpace(body.OriginalURL))
+	cu, err := h.store.AddURLToCase(r.Context(), uint(id), u.ID, body.Status, strings.TrimSpace(body.OriginalURL), nil)
 	if err != nil {
 		writeInternalError(w, err)
 		return

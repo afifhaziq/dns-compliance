@@ -364,13 +364,14 @@ type CaseStore interface {
 	// how many URLs it covers via case_urls), or gorm.ErrRecordNotFound.
 	GetCase(ctx context.Context, id uint) (Case, error)
 	// AddURLToCase links an additional URL to an existing case via CaseURL
-	// with its own status — the "N URLs in one Notice" shape CreateCase
-	// alone can't build, since it only ever links the one URL a case is
-	// opened for. Callers building a batch (e.g. adding several domains
-	// under one case) call CreateCase once for the first URL, then this for
-	// each of the rest. originalURL seeds CaseURL.OriginalURL; empty means
-	// none was supplied.
-	AddURLToCase(ctx context.Context, caseID, urlID uint, status, originalURL string) (CaseURL, error)
+	// with its own status and (optionally) its own requesting agency — the
+	// "N URLs in one Notice" shape CreateCase alone can't build, since it
+	// only ever links the one URL a case is opened for. Callers building a
+	// batch (e.g. adding several domains under one case) call CreateCase
+	// once for the first URL, then this for each of the rest. originalURL
+	// seeds CaseURL.OriginalURL; empty means none was supplied. agencyID
+	// seeds this new CaseURL's own AgencyID; nil means none was supplied.
+	AddURLToCase(ctx context.Context, caseID, urlID uint, status, originalURL string, agencyID *uint) (CaseURL, error)
 	// ListCaseURLIDs returns every URL id a case covers, via case_urls —
 	// used to fan a case-level DueDate change out to a per-url due-date-
 	// reached notification task for each url the case links.
@@ -380,10 +381,15 @@ type CaseStore interface {
 	// validated against urlStatusAllowed by the caller (handler layer).
 	// False if no such CaseURL row exists.
 	UpdateCaseURLStatus(ctx context.Context, caseID, urlID uint, status string) (bool, error)
+	// UpdateCaseURLAgency sets this one (case, url) pair's own AgencyID, for
+	// the domain(s) within a case that were requested by a different agency
+	// than the rest (see CaseURL.AgencyID's doc comment — moved off Case
+	// 2026-09-15). nil clears it. False if no such CaseURL row exists.
+	UpdateCaseURLAgency(ctx context.Context, caseID, urlID uint, agencyID *uint) (bool, error)
 	// UpdateCaseFields applies a partial update to a case's shared fields
-	// (AgencyID/DueDate/RequestedAt), mirroring the old UpdateURLCaseFields'
-	// double-pointer clear-vs-untouched semantics. Ownership (departmentID
-	// must own caseID) is checked by the caller (handler layer, matching
+	// (DueDate/RequestedAt), mirroring the old UpdateURLCaseFields' double-
+	// pointer clear-vs-untouched semantics. Ownership (departmentID must own
+	// caseID) is checked by the caller (handler layer, matching
 	// AddCaseLetter/AddCaseURL's existing direct check), not here. False if
 	// caseID doesn't exist.
 	UpdateCaseFields(ctx context.Context, departmentID, caseID uint, fields CaseFields) (bool, error)
@@ -415,10 +421,13 @@ type CaseStore interface {
 	DeleteCaseLetter(ctx context.Context, caseID, letterID uint) (bool, error)
 }
 
-// CaseWithLetters is Case plus its Letters and this url's Status — the read
-// shape ListCasesForURL returns. Not a persisted table.
+// CaseWithLetters is Case plus its Letters and this url's own Status/Agency
+// (both CaseURL-level, not Case-level — see CaseURL's doc comment) — the
+// read shape ListCasesForURL returns. Not a persisted table.
 type CaseWithLetters struct {
 	Case
-	Status  string       `json:"status"`
-	Letters []CaseLetter `json:"letters"`
+	Status     string       `json:"status"`
+	AgencyID   *uint        `json:"agency_id,omitempty"`
+	AgencyName string       `json:"agency_name,omitempty"`
+	Letters    []CaseLetter `json:"letters"`
 }

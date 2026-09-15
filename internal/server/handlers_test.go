@@ -1423,8 +1423,8 @@ func (m *fullMockStore) GetCase(_ context.Context, id uint) (db.Case, error) {
 	}
 	return db.Case{}, gorm.ErrRecordNotFound
 }
-func (m *fullMockStore) AddURLToCase(_ context.Context, caseID, urlID uint, status, originalURL string) (db.CaseURL, error) {
-	cu := db.CaseURL{CaseID: caseID, URLID: urlID, Status: status, OriginalURL: originalURL}
+func (m *fullMockStore) AddURLToCase(_ context.Context, caseID, urlID uint, status, originalURL string, agencyID *uint) (db.CaseURL, error) {
+	cu := db.CaseURL{CaseID: caseID, URLID: urlID, Status: status, OriginalURL: originalURL, AgencyID: agencyID}
 	m.caseURLs = append(m.caseURLs, cu)
 	return cu, nil
 }
@@ -1432,6 +1432,15 @@ func (m *fullMockStore) UpdateCaseURLStatus(_ context.Context, caseID, urlID uin
 	for i, cu := range m.caseURLs {
 		if cu.CaseID == caseID && cu.URLID == urlID {
 			m.caseURLs[i].Status = status
+			return true, nil
+		}
+	}
+	return false, nil
+}
+func (m *fullMockStore) UpdateCaseURLAgency(_ context.Context, caseID, urlID uint, agencyID *uint) (bool, error) {
+	for i, cu := range m.caseURLs {
+		if cu.CaseID == caseID && cu.URLID == urlID {
+			m.caseURLs[i].AgencyID = agencyID
 			return true, nil
 		}
 	}

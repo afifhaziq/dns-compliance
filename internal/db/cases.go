@@ -28,6 +28,16 @@ func (s *postgresStore) UpdateCaseURLStatus(ctx context.Context, caseID, urlID u
 	return res.RowsAffected > 0, res.Error
 }
 
+// UpdateCaseURLAgency sets one (case, url) pair's own AgencyID. False if no
+// such CaseURL row exists.
+func (s *postgresStore) UpdateCaseURLAgency(ctx context.Context, caseID, urlID uint, agencyID *uint) (bool, error) {
+	res := s.db.WithContext(ctx).
+		Model(&CaseURL{}).
+		Where("case_id = ? AND url_id = ?", caseID, urlID).
+		Update("agency_id", agencyID)
+	return res.RowsAffected > 0, res.Error
+}
+
 // UpdateCaseFields applies a partial update to a case's shared fields —
 // only non-nil fields in `fields` are touched. Ownership (departmentID owns
 // caseID) is already checked by the caller (handler layer); departmentID is
@@ -77,8 +87,8 @@ func (s *postgresStore) GetCase(ctx context.Context, id uint) (Case, error) {
 	return c, err
 }
 
-func (s *postgresStore) AddURLToCase(ctx context.Context, caseID, urlID uint, status, originalURL string) (CaseURL, error) {
-	cu := CaseURL{CaseID: caseID, URLID: urlID, Status: status, OriginalURL: originalURL}
+func (s *postgresStore) AddURLToCase(ctx context.Context, caseID, urlID uint, status, originalURL string, agencyID *uint) (CaseURL, error) {
+	cu := CaseURL{CaseID: caseID, URLID: urlID, Status: status, OriginalURL: originalURL, AgencyID: agencyID}
 	err := s.db.WithContext(ctx).Create(&cu).Error
 	return cu, err
 }
@@ -170,13 +180,30 @@ func (s *postgresStore) ListCasesForURL(ctx context.Context, urlValue string) ([
 		return nil, err
 	}
 	statusByCaseID := make(map[uint]string, len(caseURLs))
+	agencyIDByCaseID := make(map[uint]*uint, len(caseURLs))
 	caseIDs := make([]uint, 0, len(caseURLs))
+	agencyIDs := make([]uint, 0, len(caseURLs))
 	for _, cu := range caseURLs {
 		statusByCaseID[cu.CaseID] = cu.Status
+		agencyIDByCaseID[cu.CaseID] = cu.AgencyID
 		caseIDs = append(caseIDs, cu.CaseID)
+		if cu.AgencyID != nil {
+			agencyIDs = append(agencyIDs, *cu.AgencyID)
+		}
 	}
 	if len(caseIDs) == 0 {
 		return []CaseWithLetters{}, nil
+	}
+
+	agencyNameByID := make(map[uint]string, len(agencyIDs))
+	if len(agencyIDs) > 0 {
+		var agencies []Agency
+		if err := s.db.WithContext(ctx).Where("id IN ?", agencyIDs).Find(&agencies).Error; err != nil {
+			return nil, err
+		}
+		for _, a := range agencies {
+			agencyNameByID[a.ID] = a.Name
+		}
 	}
 
 	var cases []Case
@@ -195,10 +222,17 @@ func (s *postgresStore) ListCasesForURL(ctx context.Context, urlValue string) ([
 
 	result := make([]CaseWithLetters, 0, len(cases))
 	for _, c := range cases {
+		agencyID := agencyIDByCaseID[c.ID]
+		var agencyName string
+		if agencyID != nil {
+			agencyName = agencyNameByID[*agencyID]
+		}
 		result = append(result, CaseWithLetters{
-			Case:    c,
-			Status:  statusByCaseID[c.ID],
-			Letters: lettersByCaseID[c.ID],
+			Case:       c,
+			Status:     statusByCaseID[c.ID],
+			AgencyID:   agencyID,
+			AgencyName: agencyName,
+			Letters:    lettersByCaseID[c.ID],
 		})
 	}
 	return result, nil
