@@ -3150,6 +3150,28 @@ func TestGetGridPreference_UnknownKey_BadRequest(t *testing.T) {
 	}
 }
 
+// TestGetGridPreference_EveryFrontendKeyIsAllowed guards against a grid
+// added to the frontend (useGridPreference call sites: urls.tsx's Domain and
+// Cases views, results.index.tsx, docs.tsx) whose key was never added to
+// validGridKeys -- the fetch/save hook swallows the resulting 400 silently
+// (see use-grid-preference.ts), so a missing key here shows up as nothing
+// more than a saved layout that never persists, not a visible error.
+func TestGetGridPreference_EveryFrontendKeyIsAllowed(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	for _, key := range []string{"urls", "urls-cases", "results", "docs"} {
+		req := httptest.NewRequest(http.MethodGet, "/api/grid-preferences/"+key, nil)
+		req.AddCookie(cookie)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Errorf("key %q: expected 200, got %d: %s", key, w.Code, w.Body.String())
+		}
+	}
+}
+
 func TestSaveGridPreference_RoundTrip(t *testing.T) {
 	store := &fullMockStore{}
 	cookie := deptCookie(store, 1)

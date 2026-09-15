@@ -241,7 +241,7 @@ func (h *Handlers) RemoveFromWatchlist(w http.ResponseWriter, r *http.Request) {
 // string column (not a DB enum), matching this codebase's existing
 // string-enum convention (Instrument.Type, ScanRun.Status, etc). "" clears
 // the field.
-var urlStatusAllowed = map[string]bool{"": true, "requested": true, "uplift": true, "suspended": true, "internal": true}
+var urlStatusAllowed = map[string]bool{"": true, "requested": true, "blocked": true, "uplift": true, "suspended": true, "not_blocked": true, "internal": true}
 
 // parseOptionalRFC3339 parses an RFC3339 timestamp, or returns nil for an
 // empty string (clears the field).
@@ -561,7 +561,7 @@ func (h *Handlers) URLsRequestedThisMonth(w http.ResponseWriter, r *http.Request
 // restricted to a known allowlist rather than accepting any client-supplied
 // string, since it's just an internal identifier for which grid this is,
 // not user-facing data.
-var validGridKeys = map[string]bool{"urls": true, "results": true}
+var validGridKeys = map[string]bool{"urls": true, "urls-cases": true, "results": true, "docs": true}
 
 func (h *Handlers) GetGridPreference(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
