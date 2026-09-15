@@ -605,11 +605,18 @@ type URLOffence struct {
 // Case is one row per real-world case/request — the same role ScanRun
 // already plays for ScanResult. Letter-grain facts (reference numbers,
 // subject, OIC, workflow status...) still live on CaseLetter, since the
-// source data's real grain is one row per letter/document. Agency/DueDate/
-// RequestedAt live here instead, as the case-level defaults shared by every
-// URL the case covers (formerly scalar columns on URL, before a domain
-// could carry more than one case). Status is NOT here — it's per-domain,
-// see CaseURL.Status.
+// source data's real grain is one row per letter/document. DueDate/
+// RequestedAt live here as the case-level defaults shared by every URL the
+// case covers (formerly scalar columns on URL, before a domain could carry
+// more than one case). Status is NOT here — it's per-domain, see
+// CaseURL.Status. Agency is NOT here either (moved 2026-09-15, see
+// CaseURL.AgencyID) — a single reference number can legitimately cover
+// domains requested by different agencies: verified against the real CRD
+// import, 8 reference numbers (including 4 with an exact 100/100 split
+// across 800 domains, PDRM's gambling-law citation vs MCMC's obscenity-law
+// citation) each genuinely bundle two unrelated agencies' requests under
+// one shared MCMC tracking number, so a scalar column on Case can't
+// represent that losslessly.
 type Case struct {
 	ID           uint       `gorm:"primaryKey" json:"id"`
 	DepartmentID uint       `gorm:"not null;index" json:"department_id"`
@@ -618,29 +625,28 @@ type Case struct {
 
 	// DueDate is the takedown-order SLA deadline (carries time-of-day — some
 	// orders require blocking within 6h/24h).
-	DueDate *time.Time `json:"due_date,omitempty"`
-	// AgencyID is nullable and OnDelete:SET NULL — deleting an Agency must
-	// not cascade-delete the Case.
-	AgencyID    *uint      `gorm:"index" json:"agency_id,omitempty"`
-	Agency      *Agency    `gorm:"foreignKey:AgencyID;constraint:OnDelete:SET NULL" json:"agency,omitempty"`
+	DueDate     *time.Time `json:"due_date,omitempty"`
 	RequestedAt *time.Time `json:"requested_at,omitempty"`
 }
 
 // CaseFields is a partial update to a Case's shared fields, mirroring the
 // double-pointer clear-vs-untouched contract the old URLCaseFields used:
 // outer nil = don't touch, outer non-nil pointing at a nil inner = clear,
-// outer non-nil pointing at &v = set. AgencyID/DueDate/RequestedAt need this
-// three-state contract since none of them has a natural empty-value
-// sentinel to mean "clear". No Status field here — see CaseURL.Status and
-// UpdateCaseURLStatus.
+// outer non-nil pointing at &v = set. DueDate/RequestedAt need this
+// three-state contract since neither has a natural empty-value sentinel to
+// mean "clear". No Status field here — see CaseURL.Status and
+// UpdateCaseURLStatus. No AgencyID either — see CaseURL.AgencyID and
+// UpdateCaseURLAgency (moved off Case 2026-09-15).
 type CaseFields struct {
-	AgencyID    **uint
 	DueDate     **time.Time
 	RequestedAt **time.Time
 }
 
-// CaseCreateOptions carries the optional case-level fields CreateCase can
-// set at creation time, alongside the always-required per-url status.
+// CaseCreateOptions carries the optional fields CreateCase can set at
+// creation time, alongside the always-required per-url status. AgencyID
+// isn't actually Case-level (see CaseURL.AgencyID) — it's grouped here
+// because it's set through this same one call, seeding the newly-created
+// CaseURL row's own AgencyID.
 type CaseCreateOptions struct {
 	AgencyID *uint
 	DueDate  *time.Time
@@ -692,10 +698,10 @@ type CaseLetter struct {
 // by querying the most recent CaseLetter row for the case (via LetterDate)
 // joined through CaseURL, not stored as a scalar on URL.
 type CaseURL struct {
-	CaseID uint   `gorm:"primaryKey;autoIncrement:false" json:"case_id"`
-	URLID  uint   `gorm:"primaryKey;autoIncrement:false" json:"url_id"`
-	Case   Case   `gorm:"foreignKey:CaseID;constraint:OnDelete:CASCADE" json:"-"`
-	URL    URL    `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
+	CaseID uint `gorm:"primaryKey;autoIncrement:false" json:"case_id"`
+	URLID  uint `gorm:"primaryKey;autoIncrement:false" json:"url_id"`
+	Case   Case `gorm:"foreignKey:CaseID;constraint:OnDelete:CASCADE" json:"-"`
+	URL    URL  `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
 	// default:'requested' so AutoMigrate's ADD COLUMN backfills any
 	// already-existing row (e.g. a dev DB migrated through the brief
 	// 2026-08-26 cases-level-status detour, see docs/db-schema.dbml) instead
@@ -709,6 +715,14 @@ type CaseURL struct {
 	// one opened directly in the app), or when the cited text was already
 	// just the bare hostname.
 	OriginalURL string `json:"original_url,omitempty"`
+	// AgencyID is the requesting agency for this specific (case, url) pair —
+	// moved off Case 2026-09-15 (see Case's doc comment) because one case/
+	// reference number can legitimately cover domains requested by
+	// different agencies. Nullable, OnDelete:SET NULL like the old
+	// Case.AgencyID was — deleting an Agency must not cascade-delete the
+	// CaseURL link.
+	AgencyID *uint   `gorm:"index" json:"agency_id,omitempty"`
+	Agency   *Agency `gorm:"foreignKey:AgencyID;constraint:OnDelete:SET NULL" json:"agency,omitempty"`
 }
 
 // CaseLetterEntry is one row for the Docs page: a CaseLetter plus its

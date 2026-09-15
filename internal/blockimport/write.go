@@ -163,12 +163,13 @@ func WriteCRDCases(ctx context.Context, gdb *gorm.DB, crdDeptID uint, cases []Co
 			}
 
 			c := db.Case{DepartmentID: crdDeptID}
+			var agencyID *uint
 			if cc.Agency != "" {
 				agency, err := getOrCreateAgency(ctx, tx, cc.Agency)
 				if err != nil {
 					return err
 				}
-				c.AgencyID = &agency.ID
+				agencyID = &agency.ID
 			}
 			if err := tx.WithContext(ctx).Create(&c).Error; err != nil {
 				return err
@@ -213,6 +214,7 @@ func WriteCRDCases(ctx context.Context, gdb *gorm.DB, crdDeptID uint, cases []Co
 					URLID:       u.ID,
 					Status:      mapCRDStatus(d.Status),
 					OriginalURL: d.RawDomain,
+					AgencyID:    agencyID,
 				}
 			}
 			for _, caseURL := range caseURLByID {

@@ -119,6 +119,24 @@ func Connect(dialector gorm.Dialector) (*gorm.DB, error) {
 			}
 		}
 	}
+
+	// Case.AgencyID moved to CaseURL.AgencyID (2026-09-15) — a single case
+	// can legitimately cover domains requested by different agencies (see
+	// Case's doc comment in models.go). BackfillCaseAgencyIntoCaseURLs moves
+	// any already-set cases.agency_id value onto every CaseURL row under
+	// that case before the column is dropped; only runs at all if the
+	// legacy column still exists — AutoMigrate never creates it (Case no
+	// longer declares the field), so a fresh or already-migrated database
+	// has nothing to query.
+	if database.Migrator().HasColumn(&Case{}, "agency_id") {
+		if err := BackfillCaseAgencyIntoCaseURLs(context.Background(), database); err != nil {
+			return nil, fmt.Errorf("backfilling case agency into case_urls: %w", err)
+		}
+		if err := database.Migrator().DropColumn(&Case{}, "agency_id"); err != nil {
+			return nil, fmt.Errorf("dropping cases.agency_id: %w", err)
+		}
+	}
+
 	return database, nil
 }
 

@@ -7,12 +7,12 @@ import (
 )
 
 func (s *postgresStore) CreateCase(ctx context.Context, departmentID, urlID uint, status string, opts CaseCreateOptions) (Case, error) {
-	c := Case{DepartmentID: departmentID, AgencyID: opts.AgencyID, DueDate: opts.DueDate}
+	c := Case{DepartmentID: departmentID, DueDate: opts.DueDate}
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&c).Error; err != nil {
 			return err
 		}
-		return tx.Create(&CaseURL{CaseID: c.ID, URLID: urlID, Status: status, OriginalURL: opts.OriginalURL}).Error
+		return tx.Create(&CaseURL{CaseID: c.ID, URLID: urlID, Status: status, OriginalURL: opts.OriginalURL, AgencyID: opts.AgencyID}).Error
 	})
 	return c, err
 }
@@ -44,9 +44,6 @@ func (s *postgresStore) UpdateCaseFields(ctx context.Context, departmentID, case
 	}
 
 	updates := map[string]interface{}{}
-	if fields.AgencyID != nil {
-		updates["agency_id"] = *fields.AgencyID
-	}
 	if fields.DueDate != nil {
 		updates["due_date"] = *fields.DueDate
 	}
@@ -215,7 +212,7 @@ func (s *postgresStore) ListCasesForURL(ctx context.Context, urlValue string) ([
 func (s *postgresStore) caseSummaryQuery(ctx context.Context, departmentID *uint) *gorm.DB {
 	q := s.db.WithContext(ctx).
 		Table("cases").
-		Select(`cases.id, cases.agency_id, agencies.name as agency_name,
+		Select(`cases.id,
 			cases.due_date, cases.requested_at, cases.created_at,
 			notice.id as notice_letter_id, notice.subject as notice_subject,
 			notice.workflow_status as notice_workflow_status,
@@ -226,7 +223,6 @@ func (s *postgresStore) caseSummaryQuery(ctx context.Context, departmentID *uint
 			notice.submitted_at as notice_submitted_at, notice.remarks as notice_remarks,
 			memo.id as memo_letter_id, memo.subject as memo_subject,
 			memo.reference_number_internal as memo_reference_number_internal`).
-		Joins("LEFT JOIN agencies ON agencies.id = cases.agency_id").
 		Joins(`LEFT JOIN case_letters notice ON notice.id = (
 			SELECT cl.id FROM case_letters cl
 			WHERE cl.case_id = cases.id AND cl.type IN ('Notice', 'Notice (Uplift)')

@@ -379,6 +379,131 @@ type legacyURL struct {
 
 func (legacyURL) TableName() string { return "urls" }
 
+// legacyCase mirrors the pre-2026-09-15 Case shape (AgencyID still a
+// scalar on the case itself) for TestConnect_BackfillsCaseAgencyIntoCaseURLs
+// to seed directly, bypassing the current (already-moved) db.Case struct.
+type legacyCase struct {
+	ID           uint `gorm:"primaryKey"`
+	DepartmentID uint `gorm:"not null;index"`
+	CreatedAt    time.Time
+	DueDate      *time.Time
+	AgencyID     *uint
+	RequestedAt  *time.Time
+}
+
+func (legacyCase) TableName() string { return "cases" }
+
+// TestConnect_BackfillsCaseAgencyIntoCaseURLs guards the 2026-09-15 move of
+// Agency off Case onto CaseURL (see Case's doc comment in models.go) — a
+// pre-existing cases.agency_id value must survive onto every CaseURL row
+// under that case before the column is dropped.
+func TestConnect_BackfillsCaseAgencyIntoCaseURLs(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "backfill_case_agency.db")
+
+	oldDB, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open old schema db: %v", err)
+	}
+	if err := oldDB.AutoMigrate(&db.Department{}, &db.Agency{}, &legacyCase{}, &db.CaseURL{}, &db.URL{}); err != nil {
+		t.Fatalf("migrate legacy schema: %v", err)
+	}
+	dept := db.Department{Name: "CRD"}
+	if err := oldDB.Create(&dept).Error; err != nil {
+		t.Fatalf("seed department: %v", err)
+	}
+	agency := db.Agency{Name: "PDRM"}
+	if err := oldDB.Create(&agency).Error; err != nil {
+		t.Fatalf("seed agency: %v", err)
+	}
+	u := db.URL{URL: "example.com"}
+	if err := oldDB.Create(&u).Error; err != nil {
+		t.Fatalf("seed url: %v", err)
+	}
+	legacy := legacyCase{DepartmentID: dept.ID, AgencyID: &agency.ID}
+	if err := oldDB.Create(&legacy).Error; err != nil {
+		t.Fatalf("seed legacy case: %v", err)
+	}
+	if err := oldDB.Create(&db.CaseURL{CaseID: legacy.ID, URLID: u.ID, Status: "blocked"}).Error; err != nil {
+		t.Fatalf("seed case_url: %v", err)
+	}
+	oldSQLDB, err := oldDB.DB()
+	if err != nil {
+		t.Fatalf("underlying sql.DB: %v", err)
+	}
+	if err := oldSQLDB.Close(); err != nil {
+		t.Fatalf("close old connection: %v", err)
+	}
+
+	newDB, err := db.Connect(sqlite.Open(dbPath))
+	if err != nil {
+		t.Fatalf("db.Connect: %v", err)
+	}
+
+	if newDB.Migrator().HasColumn(&db.Case{}, "agency_id") {
+		t.Fatal("expected cases.agency_id to be dropped")
+	}
+
+	var cu db.CaseURL
+	if err := newDB.Where("case_id = ? AND url_id = ?", legacy.ID, u.ID).First(&cu).Error; err != nil {
+		t.Fatalf("load case_url: %v", err)
+	}
+	if cu.AgencyID == nil || *cu.AgencyID != agency.ID {
+		t.Fatalf("case_url.AgencyID = %v, want %d", cu.AgencyID, agency.ID)
+	}
+}
+
+// TestConnect_CaseAgencyBackfillSurvivesSecondConnect runs db.Connect twice
+// against the same already-migrated database (the normal case for every
+// restart after the first) and confirms a CaseURL's own AgencyID isn't
+// clobbered the second time — same "already-moved data survives a repeat
+// Connect" shape as TestConnect_DropIsIdempotent.
+func TestConnect_CaseAgencyBackfillSurvivesSecondConnect(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "backfill_case_agency_idempotent.db")
+
+	firstDB, err := db.Connect(sqlite.Open(dbPath))
+	if err != nil {
+		t.Fatalf("first db.Connect: %v", err)
+	}
+	dept := db.Department{Name: "IdempotentDept"}
+	if err := firstDB.Create(&dept).Error; err != nil {
+		t.Fatalf("seed department: %v", err)
+	}
+	agency := db.Agency{Name: "AgencyB"}
+	if err := firstDB.Create(&agency).Error; err != nil {
+		t.Fatalf("seed agency: %v", err)
+	}
+	u := db.URL{URL: "example.com"}
+	if err := firstDB.Create(&u).Error; err != nil {
+		t.Fatalf("seed url: %v", err)
+	}
+	c := db.Case{DepartmentID: dept.ID}
+	if err := firstDB.Create(&c).Error; err != nil {
+		t.Fatalf("seed case: %v", err)
+	}
+	if err := firstDB.Create(&db.CaseURL{CaseID: c.ID, URLID: u.ID, Status: "blocked", AgencyID: &agency.ID}).Error; err != nil {
+		t.Fatalf("seed case_url: %v", err)
+	}
+	firstSQLDB, err := firstDB.DB()
+	if err != nil {
+		t.Fatalf("underlying sql.DB: %v", err)
+	}
+	if err := firstSQLDB.Close(); err != nil {
+		t.Fatalf("close first connection: %v", err)
+	}
+
+	secondDB, err := db.Connect(sqlite.Open(dbPath))
+	if err != nil {
+		t.Fatalf("second db.Connect: %v", err)
+	}
+	var cu db.CaseURL
+	if err := secondDB.Where("case_id = ? AND url_id = ?", c.ID, u.ID).First(&cu).Error; err != nil {
+		t.Fatalf("reload case_url: %v", err)
+	}
+	if cu.AgencyID == nil || *cu.AgencyID != agency.ID {
+		t.Fatalf("expected case_url.AgencyID to survive a second Connect call, got %v", cu.AgencyID)
+	}
+}
+
 // TestConnect_BackfillsReferenceNumberIntoCases simulates a pre-migration
 // database with a urls row carrying both reference_number and
 // requesting_dept_id, and confirms db.Connect losslessly moves that data

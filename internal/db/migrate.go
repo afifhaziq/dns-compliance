@@ -254,7 +254,6 @@ func BackfillURLCaseMetadataIntoCases(ctx context.Context, database *gorm.DB) er
 			for _, deptID := range deptIDs {
 				c := Case{
 					DepartmentID: deptID,
-					AgencyID:     row.AgencyID,
 					DueDate:      row.DueDate,
 					RequestedAt:  row.RequestedAt,
 				}
@@ -262,10 +261,57 @@ func BackfillURLCaseMetadataIntoCases(ctx context.Context, database *gorm.DB) er
 					if err := tx.Create(&c).Error; err != nil {
 						return err
 					}
-					return tx.Create(&CaseURL{CaseID: c.ID, URLID: row.ID, Status: status}).Error
+					return tx.Create(&CaseURL{CaseID: c.ID, URLID: row.ID, Status: status, AgencyID: row.AgencyID}).Error
 				}); err != nil {
 					return fmt.Errorf("backfilling case for url id=%d department=%d: %w", row.ID, deptID, err)
 				}
+			}
+		}
+	}
+}
+
+// BackfillCaseAgencyBatchSize bounds how many Case rows are read and
+// applied per iteration, same statement_timeout-avoidance rationale as
+// BackfillURLCaseMetadataBatchSize.
+const BackfillCaseAgencyBatchSize = 500
+
+// BackfillCaseAgencyIntoCaseURLs moves the legacy cases.agency_id value
+// (superseded 2026-09-15 by CaseURL owning it per-domain — see Case's doc
+// comment in models.go) onto every CaseURL row under that case, before the
+// column is dropped (see db.Connect). Idempotent: only touches CaseURL rows
+// whose own AgencyID is still nil, so a URL already migrated — or one added
+// to a case after the move, or edited per-domain since — is left alone.
+// Must run after AutoMigrate (CaseURL needs its new AgencyID column already
+// added) and before cases.agency_id is dropped; the caller (db.Connect)
+// guards the call itself with HasColumn(&Case{}, "agency_id"), same
+// call-site-guard convention as BackfillURLCaseMetadataIntoCases.
+func BackfillCaseAgencyIntoCaseURLs(ctx context.Context, database *gorm.DB) error {
+	type legacyCaseAgencyRow struct {
+		ID       uint
+		AgencyID uint
+	}
+	lastID := uint(0)
+	for {
+		var rows []legacyCaseAgencyRow
+		err := database.WithContext(ctx).
+			Table("cases").
+			Select("cases.id, cases.agency_id").
+			Where("cases.id > ? AND cases.agency_id IS NOT NULL", lastID).
+			Order("cases.id asc").
+			Limit(BackfillCaseAgencyBatchSize).
+			Find(&rows).Error
+		if err != nil {
+			return fmt.Errorf("loading legacy case agency values: %w", err)
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		for _, row := range rows {
+			lastID = row.ID
+			if err := database.WithContext(ctx).Model(&CaseURL{}).
+				Where("case_id = ? AND agency_id IS NULL", row.ID).
+				Update("agency_id", row.AgencyID).Error; err != nil {
+				return fmt.Errorf("backfilling agency for case id=%d: %w", row.ID, err)
 			}
 		}
 	}

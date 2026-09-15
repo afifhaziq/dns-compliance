@@ -190,12 +190,11 @@ func TestCreateCase_SetsAgencyStatusDueDate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateCase: %v", err)
 	}
-	if c.AgencyID == nil || *c.AgencyID != agency.ID {
-		t.Fatalf("Case.AgencyID = %v, want %d", c.AgencyID, agency.ID)
-	}
 	if c.DueDate == nil || !c.DueDate.Equal(due) {
 		t.Fatalf("Case.DueDate = %v, want %v", c.DueDate, due)
 	}
+	// AgencyID is now on CaseURL (not Case), and is set during CreateCase
+	// TestConnect_BackfillsCaseAgencyIntoCaseURLs verifies the backfill path
 	cases, err := store.ListCasesForURL(ctx, "case-fields.com")
 	if err != nil {
 		t.Fatalf("ListCasesForURL: %v", err)
@@ -225,7 +224,6 @@ func TestUpdateCaseFields_SetAndClear(t *testing.T) {
 	ctx := context.Background()
 
 	dept, _ := store.CreateDepartment(ctx, "UpdateCaseDept")
-	agency, _ := store.CreateAgency(ctx, "MCMC")
 	u, _ := store.CreateURL(ctx, "update-case.com")
 	c, err := store.CreateCase(ctx, dept.ID, u.ID, "requested", db.CaseCreateOptions{})
 	if err != nil {
@@ -234,9 +232,8 @@ func TestUpdateCaseFields_SetAndClear(t *testing.T) {
 
 	due := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 	duePtr := &due
-	agencyIDPtr := &agency.ID
 	found, err := store.UpdateCaseFields(ctx, dept.ID, c.ID, db.CaseFields{
-		AgencyID: &agencyIDPtr, DueDate: &duePtr,
+		DueDate: &duePtr,
 	})
 	if err != nil || !found {
 		t.Fatalf("UpdateCaseFields(set): found=%v err=%v", found, err)
@@ -246,8 +243,8 @@ func TestUpdateCaseFields_SetAndClear(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetCase: %v", err)
 	}
-	if got.AgencyID == nil || *got.AgencyID != agency.ID || got.DueDate == nil || !got.DueDate.Equal(due) {
-		t.Fatalf("expected fields to be set, got %+v", got)
+	if got.DueDate == nil || !got.DueDate.Equal(due) {
+		t.Fatalf("expected DueDate to be set, got %+v", got)
 	}
 
 	// Updating only RequestedAt must not clobber the fields set above.
@@ -261,20 +258,19 @@ func TestUpdateCaseFields_SetAndClear(t *testing.T) {
 	if got.RequestedAt == nil || !got.RequestedAt.Equal(requestedAt) {
 		t.Fatalf("expected requested_at to be set, got %+v", got)
 	}
-	if got.AgencyID == nil {
-		t.Fatalf("expected agency_id to remain untouched, got %+v", got)
+	if got.DueDate == nil || !got.DueDate.Equal(due) {
+		t.Fatalf("expected due_date to remain untouched, got %+v", got)
 	}
 
-	// Clear AgencyID and DueDate (outer non-nil, inner nil).
-	var nilAgencyID *uint
+	// Clear DueDate (outer non-nil, inner nil).
 	var nilDueDate *time.Time
-	found, err = store.UpdateCaseFields(ctx, dept.ID, c.ID, db.CaseFields{AgencyID: &nilAgencyID, DueDate: &nilDueDate})
+	found, err = store.UpdateCaseFields(ctx, dept.ID, c.ID, db.CaseFields{DueDate: &nilDueDate})
 	if err != nil || !found {
 		t.Fatalf("UpdateCaseFields(clear): found=%v err=%v", found, err)
 	}
 	got, _ = store.GetCase(ctx, c.ID)
-	if got.AgencyID != nil || got.DueDate != nil {
-		t.Fatalf("expected agency_id/due_date to be cleared, got %+v", got)
+	if got.DueDate != nil {
+		t.Fatalf("expected due_date to be cleared, got %+v", got)
 	}
 }
 
@@ -522,9 +518,8 @@ func TestListCasesForDepartment_PicksNoticeOverMemoAndListsDomains(t *testing.T)
 	if s.MemoSubject != "memo-subject" {
 		t.Fatalf("MemoSubject = %q, want memo-subject", s.MemoSubject)
 	}
-	if s.AgencyName != "MCMC" {
-		t.Fatalf("AgencyName = %q, want MCMC", s.AgencyName)
-	}
+	// AgencyID/AgencyName are now on CaseURL (per-domain), not Case
+	// (case-level) — moved 2026-09-15, so they're no longer populated here
 	if len(s.Domains) != 2 {
 		t.Fatalf("want 2 domains, got %+v", s.Domains)
 	}

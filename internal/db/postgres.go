@@ -557,7 +557,7 @@ func (s *postgresStore) ListDepartmentURLs(ctx context.Context, departmentID uin
 		Table("urls").
 		Select(`urls.id, urls.url, urls.created_at, du.enabled,
 			latest_case.id as case_id,
-			latest_case.due_date, latest_case.agency_id, agencies.name as agency_name,
+			latest_case.due_date, latest_case_url.agency_id, agencies.name as agency_name,
 			(SELECT cu2.status FROM case_urls cu2
 			 WHERE cu2.case_id = latest_case.id AND cu2.url_id = urls.id) as status,
 			latest_case.requested_at,
@@ -577,7 +577,11 @@ func (s *postgresStore) ListDepartmentURLs(ctx context.Context, departmentID uin
 			JOIN case_urls cu ON cu.case_id = c.id
 			WHERE cu.url_id = urls.id
 			ORDER BY c.created_at DESC LIMIT 1)`).
-		Joins("LEFT JOIN agencies ON agencies.id = latest_case.agency_id").
+		// latest_case_url is the CaseURL row for this url and latest_case —
+		// agency_id moved from Case to CaseURL (2026-09-15), so we get it from
+		// there now.
+		Joins(`LEFT JOIN case_urls latest_case_url ON latest_case_url.case_id = latest_case.id AND latest_case_url.url_id = urls.id`).
+		Joins("LEFT JOIN agencies ON agencies.id = latest_case_url.agency_id").
 		Order("urls.created_at asc").
 		Scan(&entries).Error
 	if err != nil {

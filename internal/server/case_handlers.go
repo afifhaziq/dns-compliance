@@ -168,13 +168,6 @@ func (h *Handlers) UpdateCase(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var fields db.CaseFields
-	if body.AgencyID != nil {
-		var agencyID *uint
-		if *body.AgencyID != 0 {
-			agencyID = body.AgencyID
-		}
-		fields.AgencyID = &agencyID
-	}
 	if body.DueDate != nil {
 		dueDate, err := parseOptionalRFC3339(*body.DueDate)
 		if err != nil {
