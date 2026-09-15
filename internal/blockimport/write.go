@@ -24,33 +24,52 @@ type ImportSummary struct {
 }
 
 // mapCRDStatus maps the spreadsheet's Status values onto case_urls.status's
-// vocabulary (requested | uplift | suspended).
-//
-// ponytail: "Not Blocked"/"Not blocked"/empty map to "requested" as a
-// placeholder — case_urls.status is NOT NULL and there's no clean mapping for
-// these per docs/blocking-list-migration-clarifications.md Question 1
-// (open, pending product sign-off). Revisit once that lands.
+// vocabulary (requested | blocked | uplift | suspended | not_blocked |
+// internal) — resolved per stakeholder sign-off, 2026-09-13, see
+// docs/blocking-list-migration-clarifications.md Question 1. Only the empty
+// cell (21 rows) falls through to "requested", the model's default start
+// state.
 func mapCRDStatus(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "blocked":
+		return "blocked"
 	case "uplift":
 		return "uplift"
 	case "suspended":
 		return "suspended"
+	case "not blocked":
+		return "not_blocked"
 	default:
 		return "requested"
 	}
+}
+
+// normalizeOrFallback wraps urlnorm.Normalize with a last-resort fallback for
+// the handful of historical import rows too garbled for it to extract any
+// hostname at all (e.g. invalid port syntax) -- see item 13,
+// docs/blocking-list-open-questions.md. Rather than dropping the case/
+// citation record entirely, these fall back to a lowercased, trimmed copy of
+// the raw cited text as the URL row's storage key -- unscannable, but no
+// data is lost either way since CaseURL.OriginalURL always keeps the raw
+// text verbatim regardless of which path produced the key. Only a
+// genuinely-empty raw string (after trimming) returns "".
+func normalizeOrFallback(raw string) string {
+	if normalized, err := urlnorm.Normalize(raw); err == nil {
+		return normalized
+	}
+	return strings.ToLower(strings.TrimSpace(raw))
 }
 
 // createURL replicates internal/db.postgresStore.CreateURL's normalize +
 // get-or-create semantics against a raw *gorm.DB (that method is unexported
 // and scoped to db.Store, which this importer doesn't otherwise need).
 func createURL(ctx context.Context, gdb *gorm.DB, rawURL string) (db.URL, error) {
-	normalized, err := urlnorm.Normalize(rawURL)
-	if err != nil {
-		return db.URL{}, err
+	normalized := normalizeOrFallback(rawURL)
+	if normalized == "" {
+		return db.URL{}, errors.New("blockimport: empty domain, nothing to store")
 	}
 	var u db.URL
-	err = gdb.WithContext(ctx).
+	err := gdb.WithContext(ctx).
 		Where("url = ?", normalized).
 		Attrs(db.URL{URL: normalized}).
 		FirstOrCreate(&u).Error
@@ -113,12 +132,14 @@ func WriteCRDCases(ctx context.Context, gdb *gorm.DB, crdDeptID uint, cases []Co
 				}
 				if existing, dup := caseURLByID[u.ID]; dup {
 					existing.Status = mapCRDStatus(d.Status)
+					existing.OriginalURL = d.RawDomain
 					continue
 				}
 				caseURLByID[u.ID] = &db.CaseURL{
-					CaseID: c.ID,
-					URLID:  u.ID,
-					Status: mapCRDStatus(d.Status),
+					CaseID:      c.ID,
+					URLID:       u.ID,
+					Status:      mapCRDStatus(d.Status),
+					OriginalURL: d.RawDomain,
 				}
 			}
 			for _, caseURL := range caseURLByID {

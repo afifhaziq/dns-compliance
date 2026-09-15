@@ -696,7 +696,15 @@ type CaseURL struct {
 	// already-existing row (e.g. a dev DB migrated through the brief
 	// 2026-08-26 cases-level-status detour, see docs/db-schema.dbml) instead
 	// of erroring on NOT NULL with no default.
-	Status string `gorm:"not null;default:'requested'" json:"status"` // requested | uplift | suspended
+	Status string `gorm:"not null;default:'requested'" json:"status"` // requested | blocked | uplift | suspended | not_blocked
+	// OriginalURL is the exact URL text as cited for this (case, url) link —
+	// e.g. a specific t.me/<channel> path — kept for the paper-trail record
+	// even though URL.URL (this row's shared target) is always normalized
+	// down to the bare hostname for DNS-scan identity/dedup. Empty when a
+	// case/url link wasn't created from an import that captured this (e.g.
+	// one opened directly in the app), or when the cited text was already
+	// just the bare hostname.
+	OriginalURL string `json:"original_url,omitempty"`
 }
 
 // CaseLetterEntry is one row for the Docs page: a CaseLetter plus its
@@ -741,10 +749,11 @@ type CaseSummary struct {
 // CaseSummaryDomain is one domain a CaseSummary covers, via CaseURL —
 // Status is that domain's own CaseURL.Status.
 type CaseSummaryDomain struct {
-	URLID    uint           `json:"url_id"`
-	URL      string         `json:"url"`
-	Status   string         `json:"status"`
-	Offences []OffenceEntry `json:"offences,omitempty"`
+	URLID       uint           `json:"url_id"`
+	URL         string         `json:"url"`
+	Status      string         `json:"status"`
+	OriginalURL string         `json:"original_url,omitempty"` // CaseURL.OriginalURL — the exact cited URL, when it differs from URL (the normalized hostname)
+	Offences    []OffenceEntry `json:"offences,omitempty"`
 }
 
 // CaseLetterFields is a partial update to a CaseLetter's fields (PATCH

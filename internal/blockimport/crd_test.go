@@ -140,6 +140,10 @@ func TestCollapseCRDRows_GroupsByReferenceNumber(t *testing.T) {
 	}
 }
 
+// Also covers item 15 (docs/blocking-list-open-questions.md): the 474
+// exact-duplicate rows share both reference number and domain, so they
+// collapse to a single CollapsedDomain here without any dedicated dedup
+// step -- no separate handling needed for that item.
 func TestCollapseCRDRows_LastWriteWinsOnRepeatedDomainStatus(t *testing.T) {
 	rows := []CRDRow{
 		{ReferenceNumber: "REF-1", Domain: "a.com", Status: "Blocked", Category: "Judi"},

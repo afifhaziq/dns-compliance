@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/afif/dns-tracking/internal/db"
-	"github.com/afif/dns-tracking/internal/urlnorm"
 	"gorm.io/gorm"
 )
 
@@ -74,13 +73,15 @@ func foldOICIntoRemarks(oic, remarks string) string {
 // method is unexported and this package writes through a raw *gorm.DB, not
 // a db.Store) so re-running the import against already-imported domains is
 // idempotent instead of erroring on a unique-constraint violation.
+// normalizeOrFallback (write.go) covers rows too garbled for
+// urlnorm.Normalize to extract a hostname from.
 func getOrCreateURL(tx *gorm.DB, raw string) (db.URL, error) {
-	normalized, err := urlnorm.Normalize(raw)
-	if err != nil {
-		return db.URL{}, err
+	normalized := normalizeOrFallback(raw)
+	if normalized == "" {
+		return db.URL{}, fmt.Errorf("blockimport: empty domain, nothing to store")
 	}
 	var u db.URL
-	err = tx.Where("url = ?", normalized).Attrs(db.URL{URL: normalized}).FirstOrCreate(&u).Error
+	err := tx.Where("url = ?", normalized).Attrs(db.URL{URL: normalized}).FirstOrCreate(&u).Error
 	return u, err
 }
 
@@ -152,7 +153,7 @@ func WriteCMODCases(ctx context.Context, gormDB *gorm.DB, cmodDeptID uint, cases
 					summary.URLsSkippedBadURL++
 					continue
 				}
-				cu := db.CaseURL{CaseID: newCase.ID, URLID: u.ID, Status: phase}
+				cu := db.CaseURL{CaseID: newCase.ID, URLID: u.ID, Status: phase, OriginalURL: raw}
 				if err := tx.Create(&cu).Error; err != nil {
 					return err
 				}

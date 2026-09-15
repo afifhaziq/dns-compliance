@@ -61,8 +61,11 @@ func TestWriteCRDCases_CreatesOneCasePerReference(t *testing.T) {
 	if err := gdb.First(&caseURL).Error; err != nil {
 		t.Fatalf("expected a CaseURL row: %v", err)
 	}
-	if caseURL.Status != "requested" {
-		t.Fatalf("caseURL.Status = %q, want requested", caseURL.Status)
+	if caseURL.Status != "blocked" {
+		t.Fatalf("caseURL.Status = %q, want blocked", caseURL.Status)
+	}
+	if caseURL.OriginalURL != "example.com" {
+		t.Fatalf("caseURL.OriginalURL = %q, want example.com", caseURL.OriginalURL)
 	}
 
 	var u db.URL
@@ -100,14 +103,14 @@ func TestWriteCRDCases_IsIdempotent(t *testing.T) {
 	}
 }
 
-func TestWriteCRDCases_SkipsUnnormalizableURL(t *testing.T) {
+func TestWriteCRDCases_SkipsEmptyDomain(t *testing.T) {
 	gdb := newTestGormDB(t)
 	crd := mustSeedDepartment(t, gdb, "CRD")
 	cases := []CollapsedCase{{
 		ReferenceNumber: "REF-1",
 		Domains: []CollapsedDomain{
 			{RawDomain: "example.com", Status: "Blocked"},
-			{RawDomain: "https://solar123movies.cB33:B69om/", Status: "Blocked"},
+			{RawDomain: "   ", Status: "Blocked"},
 		},
 		Categories: []string{"Judi"},
 	}}
@@ -126,6 +129,41 @@ func TestWriteCRDCases_SkipsUnnormalizableURL(t *testing.T) {
 	gdb.Model(&db.CaseURL{}).Count(&caseURLCount)
 	if caseURLCount != 1 {
 		t.Fatalf("case_urls has %d rows, want 1", caseURLCount)
+	}
+}
+
+// TestWriteCRDCases_RetainsUnnormalizableURLViaFallback guards item 13
+// (docs/blocking-list-open-questions.md): a row too garbled for
+// urlnorm.Normalize to extract any hostname from (e.g. invalid port syntax)
+// must not be silently dropped -- it falls back to a raw storage key so the
+// case/citation record and the exact cited text (OriginalURL) both survive.
+func TestWriteCRDCases_RetainsUnnormalizableURLViaFallback(t *testing.T) {
+	gdb := newTestGormDB(t)
+	crd := mustSeedDepartment(t, gdb, "CRD")
+	const garbled = "https://solar123movies.cB33:B69om/"
+	cases := []CollapsedCase{{
+		ReferenceNumber: "REF-1",
+		Domains:         []CollapsedDomain{{RawDomain: garbled, Status: "Blocked"}},
+		Categories:      []string{"Judi"},
+	}}
+
+	summary, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, false)
+	if err != nil {
+		t.Fatalf("WriteCRDCases: %v", err)
+	}
+	if summary.URLsSkippedBadURL != 0 {
+		t.Fatalf("URLsSkippedBadURL = %d, want 0 (retained via fallback, not skipped)", summary.URLsSkippedBadURL)
+	}
+	if summary.CasesCreated != 1 {
+		t.Fatalf("CasesCreated = %d, want 1", summary.CasesCreated)
+	}
+
+	var caseURL db.CaseURL
+	if err := gdb.First(&caseURL).Error; err != nil {
+		t.Fatalf("expected a CaseURL row: %v", err)
+	}
+	if caseURL.OriginalURL != garbled {
+		t.Fatalf("caseURL.OriginalURL = %q, want %q", caseURL.OriginalURL, garbled)
 	}
 }
 
@@ -199,11 +237,44 @@ func TestWriteCRDCases_TracksCategoriesObserved(t *testing.T) {
 	}
 }
 
+// TestWriteCRDCases_PreservesOriginalURLPath guards against OriginalURL
+// silently degrading to the same bare-hostname value URL.URL stores — the
+// whole point of the field is to keep what urlnorm.Normalize strips.
+func TestWriteCRDCases_PreservesOriginalURLPath(t *testing.T) {
+	gdb := newTestGormDB(t)
+	crd := mustSeedDepartment(t, gdb, "CRD")
+	cases := []CollapsedCase{{
+		ReferenceNumber: "REF-1",
+		Domains:         []CollapsedDomain{{RawDomain: "https://t.me/SomeChannel123", Status: "Blocked"}},
+		Categories:      []string{"Lucah"},
+	}}
+
+	if _, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, false); err != nil {
+		t.Fatalf("WriteCRDCases: %v", err)
+	}
+
+	var caseURL db.CaseURL
+	if err := gdb.First(&caseURL).Error; err != nil {
+		t.Fatalf("expected a CaseURL row: %v", err)
+	}
+	if caseURL.OriginalURL != "https://t.me/SomeChannel123" {
+		t.Fatalf("caseURL.OriginalURL = %q, want https://t.me/SomeChannel123", caseURL.OriginalURL)
+	}
+
+	var u db.URL
+	if err := gdb.First(&u, caseURL.URLID).Error; err != nil {
+		t.Fatalf("expected a URL row: %v", err)
+	}
+	if u.URL != "t.me" {
+		t.Fatalf("u.URL = %q, want t.me (bare hostname, unlike OriginalURL)", u.URL)
+	}
+}
+
 func TestMapCRDStatus(t *testing.T) {
 	cases := map[string]string{
-		"Blocked": "requested", "blocked": "requested",
+		"Blocked": "blocked", "blocked": "blocked",
 		"Uplift": "uplift", "Suspended": "suspended",
-		"Not Blocked": "requested", "Not blocked": "requested", "": "requested",
+		"Not Blocked": "not_blocked", "Not blocked": "not_blocked", "": "requested",
 	}
 	for in, want := range cases {
 		if got := mapCRDStatus(in); got != want {

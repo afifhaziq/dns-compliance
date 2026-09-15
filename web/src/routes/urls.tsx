@@ -74,8 +74,10 @@ export const Route = createFileRoute('/urls')({
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: '—' },
   { value: 'requested', label: 'Requested' },
+  { value: 'blocked', label: 'Blocked' },
   { value: 'uplift', label: 'Uplift' },
   { value: 'suspended', label: 'Suspended' },
+  { value: 'not_blocked', label: 'Not Blocked' },
   { value: 'internal', label: 'Internal' },
 ]
 
@@ -1480,7 +1482,9 @@ function URLsPage() {
           </DataGridTableRowExpand>
         )
         if (original.kind === 'domain') {
-          return <span className="flex items-center gap-[2px]">{expandControl}<span className="dns-name">{original.domain.url}</span></span>
+          const { url, original_url } = original.domain
+          const title = original_url && original_url !== url ? `Cited as: ${original_url}` : undefined
+          return <span className="flex items-center gap-[2px]">{expandControl}<span className="dns-name" title={title}>{url}</span></span>
         }
         return <span className="flex items-center gap-[2px]">{expandControl}<span className="hostname">#{original.summary.id}</span></span>
       },

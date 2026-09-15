@@ -2,14 +2,12 @@ raw_citation,row_count,instrument,citation_provision,status,notes
 Seksyen 233 Akta Komunikasi dan Multimedia 1998,7532,Akta Komunikasi dan Multimedia 1998,Seksyen 233,confirmed,AKM 1998 / Communication and Multimedia Act 1998 / CMA 1998 all the same Instrument
 Seksyen 233 AKM 1998,3333,Akta Komunikasi dan Multimedia 1998,Seksyen 233,confirmed,"spelling variant of the row above, same Instrument+Citation"
 Seksyen 233 AKM1998,1509,Akta Komunikasi dan Multimedia 1998,Seksyen 233,confirmed,"spelling variant (no space before 1998), same Instrument+Citation"
-Seksyen 211 dan 233 Akta Komunikasi dan Multimedia 1998,1067,Akta Komunikasi dan Multimedia 1998,Seksyen 211 dan 233,needs_decision,"same Instrument confirmed, but cites TWO provisions (211 and 233) in one cell - needs a decision on whether this becomes one compound Citation row or splits into two Citation attachments (Category is scoped to Citation, so this affects which provision the row's Category/Element data attaches under). Same shape as the compound-Kategori problem resolved above."
-Seksyen 263 Akta Komunikasi dan Multimedia 1998,25,Akta Komunikasi dan Multimedia 1998,Seksyen 263,needs_decision,"same Instrument confirmed; unconfirmed whether Seksyen 263 is real or a typo for Seksyen 233 - asked, not yet answered"
-Seksyen 7 dan Seksyen 8 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah) Persekutuan 1998,1,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan),Seksyen 7 dan Seksyen 8,needs_decision,"different Instrument than AKM, confirmed. Compound citation (7 and 8) same shape as the 211-dan-233 row above. Also: near-identical citations under this Act exist at 1997 and 1999 in the sheet (17 rows at 1997 alone) - the 1998 year here may itself be a typo, worth checking together with those rather than treating as a separate confirmed year."
-"Seksyen 4, 7 dan 13 of Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1998",1,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan),"Seksyen 4, 7 dan 13",needs_decision,"same Instrument as row above, different provision set. Same 1997/1998/1999 year-typo question applies."
-Seksyen 39(1)& Seksyen 108 Akta Kemudahan dan Perkhidmatan Jagaan Kesihatan Swasta 1998 (Akta 586),1,Akta Kemudahan dan Perkhidmatan Jagaan Kesihatan Swasta 1998 (Akta 586),Seksyen 39(1) dan Seksyen 108,needs_decision,"different Instrument than AKM, confirmed (Private Healthcare Facilities and Services Act 1998, Act 586). Compound citation (39(1) and 108), same shape as the 211-dan-233 row."
+Seksyen 263 Akta Komunikasi dan Multimedia 1998,25,Akta Komunikasi dan Multimedia 1998,Seksyen 233,confirmed,"confirmed typo for Seksyen 233, merged into that Citation; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 7 dan Seksyen 8 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah) Persekutuan 1998,1,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 7,confirmed,"year 1998 standardised to 1997, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 4, 7 dan 13 of Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1998",1,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 4,confirmed,"year 1998 standardised to 1997, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
 Seksyen 41 Akta Hakcipta 1987,5230,Akta Hakcipta 1987,Seksyen 41,confirmed,"general/less-specific citation than the 41(1)(c) row below - kept as its own separate Citation under the same Instrument rather than merged, since it's a legitimately less-precise cite of the same section, not an error (schema: Citation = the specific provision as actually cited)"
 Seksyen 41 1(C) Akta Hakcipta 1987,47,Akta Hakcipta 1987,Seksyen 41(1)(c),confirmed,"more specific than the row above (adds subsection/paragraph), same Instrument, different Citation"
-Seksyen 100 Akta Cap Dagangan Hakcipta 2019,5,Akta Cap Dagangan Hakcipta 2019,Seksyen 100,confirmed,"confirmed genuinely different Act from Akta Hakcipta 1987; the name as written is correct, not a mis-transcription"
+Seksyen 100 Akta Cap Dagangan Hakcipta 2019,5,Akta Cap Dagangan 2019 (Akta 815),Seksyen 100,confirmed,"SUPERSEDES earlier confirmation ('genuinely different Act, not a mis-transcription'): stakeholder confirmed this is the same Act as the 37-row 'Akta Cap Dagangan 2019' citations, 'Hakcipta' was an error; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
 Peraturan 7(1)(a) Peraturan Kawalan Dadah dan Kosmetik 1984,2111,Peraturan Kawalan Dadah dan Kosmetik 1984,Peraturan 7(1)(a),confirmed,"canonical Instrument name uses the 'dan' spelling convention per user instruction, not '& '/'Peraturan-peraturan' prefix"
 Peraturan 7(1)(a) Peraturan-peraturan Kawalan Dadah & Kosmetik 1984,147,Peraturan Kawalan Dadah dan Kosmetik 1984,Peraturan 7(1)(a),confirmed,"spelling variant of the row above, same Instrument+Citation, normalized to the 'dan' convention"
 Peraturan 7 (1) (a) Peraturan-peraturan Kawalan Dadah & Kosmetik 1984,51,Peraturan Kawalan Dadah dan Kosmetik 1984,Peraturan 7(1)(a),confirmed,"spacing/spelling variant, same Instrument+Citation"
@@ -25,7 +23,6 @@ Seksyen 13(a) Akta Racun 1952,7,Akta Racun 1952,Seksyen 13(a),confirmed,"spacing
 Seksyen 372B Kanun Keseksaan,708,Kanun Keseksaan,Seksyen 372B,confirmed,"Penal Code, cited without a year per convention"
 Seksyen 372 Kanun Keseksaan,185,Kanun Keseksaan,Seksyen 372,confirmed,"same Instrument, different Citation"
 Seksyen 372A Kanun Keseksaan,85,Kanun Keseksaan,Seksyen 372A,confirmed,"same Instrument, different Citation"
-Seksyen 292 & Seksyen 372 Kanun Keseksaan,83,Kanun Keseksaan,Seksyen 292 dan Seksyen 372,needs_decision,"compound citation (two provisions in one cell), same shape as the other needs_decision rows - split vs single combined Citation"
 Seksyen 420 Kanun Keseksaan,48,Kanun Keseksaan,Seksyen 420,confirmed,"same Instrument, different Citation"
 Seksyen 372(1)(e) Kanun Keseksaan,19,Kanun Keseksaan,Seksyen 372(1)(e),confirmed,"same Instrument, more specific Citation than the bare Seksyen 372 row above"
 Seksyen 500 Kanun Keseksaan,13,Kanun Keseksaan,Seksyen 500,confirmed,"same Instrument, different Citation"
@@ -39,7 +36,6 @@ Seksyen 58 Akta  Undang Undang Pasaran Modal dan Perkhidmation 2007,72,Akta Pasa
 "Seksyen 58, Akta Pasaran Modal Dan Perkhidmatan 2007",8,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 58,confirmed,"matches canonical name already (no 'Undang Undang' prefix), just casing/comma variant"
 Seksyen 7 Akta  Undang Undang Pasaran Modal dan Perkhidmation 2007,7,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 7,confirmed,"different provision (7 not 58), same Instrument"
 Seksyen 59 Akta Undang Undang Pasaran Modal dan Perkhidmatan 2012,6,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 59,confirmed,"confirmed same cluster despite the '2012' year in the raw text - treated as the same Instrument as the 2007 rows, not a separate Act/amendment"
-Seksyen 212 dan 58 Akta Pasaran Modal dan Perkhidmatan 2007,3,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 212 dan 58,needs_decision,"compound citation (two provisions in one cell), same shape as the other needs_decision rows"
 Seksyen 58 Akta Pasaran Modal dan Perkhidmatan 2007,3,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 58,confirmed,matches canonical name exactly
 Seksyen 362 Akta Pasaran Modal dan Perkhidmatan 2007,1,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 362,confirmed,"same Instrument, different Citation"
 Seksyen 7 Akta Undang Undang Pasaran Modal Dan Perkhidmatan 2007,1,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 7,confirmed,"prefix/casing variant, same Citation as the Seksyen 7 row above"
@@ -54,8 +50,6 @@ Seksyen 3 (1) (a) Akta Ubat (Iklan dan Penjualan) 1956,43,Akta Ubat (Iklan dan P
 Seksyen 3 Akta Ubat (Iklan dan Penjualan) 1956,27,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 3,confirmed,"less-specific than the 3(1)(a) row, kept as its own Citation"
 Seksyen 4B Akta Ubat (Iklan dan Penjualan) 1956,20,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 4B,confirmed,
 Seksyen 4A Akta Ubat (Iklan dan Penjualan) 1956,8,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 4A,confirmed,
-"a) Seksyen 4B Akta Ubat (Iklan dan Penjualan) 1956; and
-b) Peraturan 7(1)(a) Peraturan Kawalan Dadah dan Kosmetik 1984",4,MIXED,MIXED,needs_decision,"compound citation spanning TWO different Acts (Ubat 1956 + Dadah Kosmetik 1984 Regulations) in one cell, same shape as the other needs_decision rows"
 Seksyen 3(1)(a) Akta Ubat (Iklan & Jualan) 1956,4,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 3(1)(a),confirmed,"'Jualan' normalized to canonical 'dan Penjualan' per user instruction, same Citation as the 3(1)(a) row above"
 Seksyen 4B Akta Ubat (Iklan & Jualan) 1956,3,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 4B,confirmed,"normalized, same Citation as the 4B row above"
 Seksyen 3 (1) (a) Akta Ubat (Iklan & Jualan) 1956,3,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 3(1)(a),confirmed,"normalized, same Citation as the 3(1)(a) row above"
@@ -67,3 +61,430 @@ Seksyen 5(2)(a) & (b) Akta Industri Pelancongan 1992,62,Akta Industri Pelanconga
 Seksyen 5 (2) Akta Industri Pelancongan 1992,30,Akta Industri Pelancongan 1992,Seksyen 5(2),confirmed,"less specific than the (a)-dan-(b) row, kept as its own Citation"
 Seksyen 5 Akta Industri Pelancongan 1992,1,Akta Industri Pelancongan 1992,Seksyen 5,confirmed,least specific of the cluster
 Seksyen 5(2) Akta Industri Pelancongan 1992,1,Akta Industri Pelancongan 1992,Seksyen 5(2),confirmed,spacing variant of the Seksyen 5 (2) row above
+Seksyen 5 Akta Pemberi Pinjam Wang 1951,48,Akta Pemberi Pinjam Wang 1951,Seksyen 5,confirmed,
+Seksyen 12(c) Enakmen Jenayah Syariah (Negeri Selangor) 1995,38,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 12(c),confirmed,
+Seksyen 12 (c ) Enakmen Jenayah Syariah (Negeri Selangor) 1995,1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 12(c),confirmed,spacing variant of the row above
+"Seksyen 8, Enakmen Jenayah Syariah (Negeri Selangor) 1995",2,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 8,confirmed,
+Seksyen 7(1) Enakmen Jenayah Syariah (Negeri Selangor) Enakmen No. 9 Tahun 1995,2,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 7(1),confirmed,'Enakmen No. 9 Tahun 1995' is the formal enactment-number form of the same 1995 Act
+Seksyen 130 Akta Perlindungan Data Peribadi 2010,32,Akta Perlindungan Data Peribadi 2010,Seksyen 130,confirmed,
+Seskeyn 130 Akta Perlindungan Data Peribadi 2010,1,Akta Perlindungan Data Peribadi 2010,Seksyen 130,confirmed,typo: Seskeyn -> Seksyen
+Seksyen 8 Akta Perihal Dagangan 2011,23,Akta Perihal Dagangan 2011,Seksyen 8,confirmed,
+Akta Perihal Dagangan 2011,9,Akta Perihal Dagangan 2011,"(whole Act, no specific Seksyen cited)",confirmed,"bare Act citation - kept as its own less-specific Citation, same precedent as Hakcipta bare Seksyen 41 vs 41(1)(c)"
+Seksyen 22 Akta Akauntan 1967,15,Akta Akauntan 1967,Seksyen 22,confirmed,
+Peraturan 10A Peraturan-peraturan Kawalan Hasil Tembakau (PPKHT) 2004,10,Peraturan-peraturan Kawalan Hasil Tembakau 2004,Peraturan 10A,confirmed,canonical Instrument name drops the (PPKHT) abbreviation parenthetical
+"Peraturan 5A (1), Peraturan-peraturan Kawalan Hasil Tembakau 2004",7,Peraturan-peraturan Kawalan Hasil Tembakau 2004,Peraturan 5A(1),confirmed,
+Seksyen 44 Akta Peranti Perubatan 2012,4,Akta Peranti Perubatan 2012,Seksyen 44,confirmed,
+Seksyen 44 (1) Akta Peranti Perubatan 2012,1,Akta Peranti Perubatan 2012,Seksyen 44(1),confirmed,"kept separate from bare Seksyen 44 - subsection differs, same convention as Hakcipta 41 vs 41(1)(c)"
+"Seksyen 5(1), Akta Peranti Perubatan 2012",4,Akta Peranti Perubatan 2012,Seksyen 5(1),confirmed,
+Seksyen 5(1) Akta Peranti Perubatan 2012,1,Akta Peranti Perubatan 2012,Seksyen 5(1),confirmed,punctuation-only variant of the row above
+Seksyen 55 Enakmen Kesalahan Jenayah Syariah Negeri Sabah 1995,7,Enakmen Kesalahan Jenayah Syariah Negeri Sabah 1995,Seksyen 55,confirmed,
+Seksyen 4 Akta Kesalahan-Kesalahan Seksual Terhadap Kanak-Kanak 2017,6,Akta Kesalahan-Kesalahan Seksual Terhadap Kanak-Kanak 2017,Seksyen 4,confirmed,
+Seksyen 10 Akta Kesalahan-Kesalahan Seksual Terhadap Kanak-Kanak 2017,1,Akta Kesalahan-Kesalahan Seksual Terhadap Kanak-Kanak 2017,Seksyen 10,confirmed,
+Seksyen 12(1)(a) Akta Pendaftaran Perniagaan 1956,4,Akta Pendaftaran Perniagaan 1956,Seksyen 12(1)(a),confirmed,
+"Seksyen 12(1)(a), Akta Pendaftaran Perniagaan 1956",1,Akta Pendaftaran Perniagaan 1956,Seksyen 12(1)(a),confirmed,punctuation variant of the row above
+"Seksyen 12(1)(a), Akta Pendaftaran Peniagaan 1956",1,Akta Pendaftaran Perniagaan 1956,Seksyen 12(1)(a),confirmed,'Peniagaan' spelling typo for 'Perniagaan'
+"Kaedah 13(2)(b), Kaedah Kaedah Pendaftaran Perniagaan 1957",1,Kaedah-Kaedah Pendaftaran Perniagaan 1957,Kaedah 13(2)(b),confirmed,"own Instrument (subsidiary rules, not the 1956 Act above); 'Kaedah Kaedah' doubled-word typo for 'Kaedah-Kaedah'"
+Seksyen 4 Akta Hasutan 1948,4,Akta Hasutan 1948,Seksyen 4,confirmed,
+Seksyen 4 (1) Akta Hasutan 1948,1,Akta Hasutan 1948,Seksyen 4(1),confirmed,kept separate from bare Seksyen 4 - subsection differs
+Seksyen 366 (1) Akta Syarikat 1965,1,Akta Syarikat 1965,Seksyen 366(1),confirmed,
+Seksyen 367 Akta Syarikat 1965,1,Akta Syarikat 1965,Seksyen 367,confirmed,
+Seksyen 597 Akta Syarikat 2016,3,Akta Syarikat 2016,Seksyen 597,confirmed,
+Seksyen 29 Akta Optik 1991,2,Akta Optik 1991,Seksyen 29,confirmed,
+Seksyen 135(1)(d) Akta Kastam 1967,2,Akta Kastam 1967,Seksyen 135(1)(d),confirmed,
+"Seksyen 18(2)(eb), Akta Suruhanjaya Syarikat Malaysia 2001",1,Akta Suruhanjaya Syarikat Malaysia 2001,Seksyen 18(2)(eb),confirmed,
+Seksyen 26 Akta Koperasi 1993,1,Akta Koperasi 1993,Seksyen 26,confirmed,
+Seksyen 4 (1) (b) Akta Universiti dan Kolej Universiti 1971,1,Akta Universiti dan Kolej Universiti 1971,Seksyen 4(1)(b),confirmed,
+Seksyen 4 (1) Akta Perniagaan Perkhidmatan Wang 2011,1,Akta Perniagaan Perkhidmatan Wang 2011,Seksyen 4(1),confirmed,
+Seksyen 48(h) Akta Suruhanjaya Pencegahan Rasuah Malaysia 2009,1,Akta Suruhanjaya Pencegahan Rasuah Malaysia 2009,Seksyen 48(h),confirmed,
+"Seksyen 5(1), Akta Jenayah Komputer 1997",1,Akta Jenayah Komputer 1997,Seksyen 5(1),confirmed,
+Seksyen 63 Akta Pemuliharaan Hidupan Liar 2010,1,Akta Pemuliharaan Hidupan Liar 2010,Seksyen 63,confirmed,
+Akta Kesalahan Jenayah Syariah (Wilayah -Wilayah Persekutuan) 1997,1,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,"(whole Act, no specific Seksyen cited)",confirmed,"stray space in 'Wilayah -Wilayah', normalized"
+Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,1,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 13,confirmed,
+2) Seksyen 12 Bahagian III Ordinan Kesalahan Jenayah Syariah Sarawak 2001;,1,Ordinan Kesalahan Jenayah Syariah Sarawak 2001,Seksyen 12 Bahagian III,confirmed,"leading '2)' list-marker and trailing ';' are copy-paste artifacts, stripped for the canonical citation"
+Seksyen 48 Enakmen Kesalahan Syariah Negeri Melaka 1991,1,Enakmen Kesalahan Syariah Negeri Melaka 1991,Seksyen 48,confirmed,
+Seksyen 4B Akta Ubat  (Iklan & Jualan) 1956,3,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 4B,confirmed,double-space + '&'/'Jualan' spelling variant of the already-confirmed Seksyen 4B row; folded into the existing Instrument
+Seksyen 3(1)(a) Akta Ubat  (Iklan & Jualan) 1956,2,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 3(1)(a),confirmed,double-space + '&'/'Jualan' spelling variant of the already-confirmed Seksyen 3(1)(a) row; folded into the existing Instrument
+"Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1996",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 7,confirmed,"year 1996 standardised to 1995, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1997",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 7,confirmed,"year 1997 standardised to 1995, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 8 Akta Rahsia Rasmi 1972,1,Akta Rahsia Rasmi 1972 (Akta 88),Seksyen 8,confirmed,"1972 confirmed as the real Official Secrets Act citation; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 31(1) dan 32(1) Akta Eksais 1976,1,Akta Eksais 1976 (Akta 176),Seksyen 31(1),confirmed,"split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 31(1) dan 32(1) Akta Eksais 1977,1,Akta Eksais 1976 (Akta 176),Seksyen 31(1),confirmed,"year 1977 standardised to 1976, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 10 (1), Akta Kawalan Produk Merokok Demi Kesihatan Awam",9,Akta Kawalan Produk Merokok Demi Kesihatan Awam 2024 (Akta 852),Seksyen 10(1),confirmed,"bare-year rows confirmed as the 2024 Act; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 7 Akta Kawalan Produk Merokok Demi Kesihatan Awam,1,Akta Kawalan Produk Merokok Demi Kesihatan Awam 2024 (Akta 852),Seksyen 7,confirmed,"bare-year rows confirmed as the 2024 Act; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 7, Akta Kawalan Produk Merokok Demi Kesihatan Awam 2024",8,Akta Kawalan Produk Merokok Demi Kesihatan Awam 2024 (Akta 852),Seksyen 7,confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 10(1), Akta Kawalan Produk Merokok Demi Kesihatan Awam 2024",1,Akta Kawalan Produk Merokok Demi Kesihatan Awam 2024 (Akta 852),Seksyen 10(1),confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 Akta Ubat  (Iklan & Jualan) 1956,2,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 4,confirmed,"kept as its own Citation, not assumed to be a truncation of 4A/4B; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 4, 7 dan 13 of Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1999",1,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 4,confirmed,"year 1999 standardised to 1997, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 8 (1) (d) Akta Rahsia Rasmi 1957,2,Akta Rahsia Rasmi 1972 (Akta 88),Seksyen 8(1)(d),confirmed,"year 1957 standardised to 1972 (real Official Secrets Act year); resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 211 dan 233 Akta Komunikasi dan Multimedia 1998,1067,Akta Komunikasi dan Multimedia 1998,Seksyen 211,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+Seksyen 211 dan 233 Akta Komunikasi dan Multimedia 1998,1067,Akta Komunikasi dan Multimedia 1998,Seksyen 233,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+Seksyen 39(1)& Seksyen 108 Akta Kemudahan dan Perkhidmatan Jagaan Kesihatan Swasta 1998 (Akta 586),1,Akta Kemudahan dan Perkhidmatan Jagaan Kesihatan Swasta 1998 (Akta 586),Seksyen 39(1),confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+Seksyen 39(1)& Seksyen 108 Akta Kemudahan dan Perkhidmatan Jagaan Kesihatan Swasta 1998 (Akta 586),1,Akta Kemudahan dan Perkhidmatan Jagaan Kesihatan Swasta 1998 (Akta 586),Seksyen 108,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+Seksyen 292 & Seksyen 372 Kanun Keseksaan,83,Kanun Keseksaan,Seksyen 292,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+Seksyen 292 & Seksyen 372 Kanun Keseksaan,83,Kanun Keseksaan,Seksyen 372,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+Seksyen 212 dan 58 Akta Pasaran Modal dan Perkhidmatan 2007,3,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 212,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+Seksyen 212 dan 58 Akta Pasaran Modal dan Perkhidmatan 2007,3,Akta Pasaran Modal dan Perkhidmatan 2007,Seksyen 58,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"a) Seksyen 4B Akta Ubat (Iklan dan Penjualan) 1956; and
+b) Peraturan 7(1)(a) Peraturan Kawalan Dadah dan Kosmetik 1984",4,Akta Ubat (Iklan dan Penjualan) 1956,Seksyen 4B,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"a) Seksyen 4B Akta Ubat (Iklan dan Penjualan) 1956; and
+b) Peraturan 7(1)(a) Peraturan Kawalan Dadah dan Kosmetik 1984",4,Peraturan Kawalan Dadah dan Kosmetik 1984,Peraturan 7(1)(a),confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+Seksyen 5 dan Seksyen 11 Akta Pemberi Pinjam Wang 1951,5,Akta Pemberi Pinjam Wang 1951,Seksyen 5,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+Seksyen 5 dan Seksyen 11 Akta Pemberi Pinjam Wang 1951,5,Akta Pemberi Pinjam Wang 1951,Seksyen 11,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1995",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 7,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1995",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 9,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1995",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 10,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1995",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 11,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1995",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 13,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1995",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 16,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+Peraturan 62 & 63 Enakmen Kesalahan Syariah Negeri Melaka 1991,17,Enakmen Kesalahan Syariah Negeri Melaka 1991,Peraturan 62,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+Peraturan 62 & 63 Enakmen Kesalahan Syariah Negeri Melaka 1991,17,Enakmen Kesalahan Syariah Negeri Melaka 1991,Peraturan 63,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"Seksyen 62 and Seksyen 63, Enakmen Kesalahan Syariah Negeri Melaka 1991",1,Enakmen Kesalahan Syariah Negeri Melaka 1991,Peraturan 62,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows) (raw text says 'Seksyen' vs the dominant form's 'Peraturan' for the same numbers 62/63 - canonicalized to 'Peraturan' to match the 17-row dominant form)
+"Seksyen 62 and Seksyen 63, Enakmen Kesalahan Syariah Negeri Melaka 1991",1,Enakmen Kesalahan Syariah Negeri Melaka 1991,Peraturan 63,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows) (raw text says 'Seksyen' vs the dominant form's 'Peraturan' for the same numbers 62/63 - canonicalized to 'Peraturan' to match the 17-row dominant form)
+Seksyen 7 & 8 Enakmen Kesalahan Jenayah Syariah Negeri Johor 1997,8,Enakmen Kesalahan Jenayah Syariah Negeri Johor 1997,Seksyen 7,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+Seksyen 7 & 8 Enakmen Kesalahan Jenayah Syariah Negeri Johor 1997,8,Enakmen Kesalahan Jenayah Syariah Negeri Johor 1997,Seksyen 8,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"Seksyen 3, 4, 5 dan 6 Enakmen Kesalahan Jenayah Syariah Negeri Johor 2003 and Seksyen 50 Enakmen Jenayah syariah Negeri Sembilan 1992",3,Enakmen Kesalahan Jenayah Syariah Negeri Johor 2003,Seksyen 3,confirmed,"split from a compound citation (per the compound-citation general rule: split into independent Citation rows) (two different state Acts in one cell, each with its own explicit year - no year ambiguity)"
+"Seksyen 3, 4, 5 dan 6 Enakmen Kesalahan Jenayah Syariah Negeri Johor 2003 and Seksyen 50 Enakmen Jenayah syariah Negeri Sembilan 1992",3,Enakmen Kesalahan Jenayah Syariah Negeri Johor 2003,Seksyen 4,confirmed,"split from a compound citation (per the compound-citation general rule: split into independent Citation rows) (two different state Acts in one cell, each with its own explicit year - no year ambiguity)"
+"Seksyen 3, 4, 5 dan 6 Enakmen Kesalahan Jenayah Syariah Negeri Johor 2003 and Seksyen 50 Enakmen Jenayah syariah Negeri Sembilan 1992",3,Enakmen Kesalahan Jenayah Syariah Negeri Johor 2003,Seksyen 5,confirmed,"split from a compound citation (per the compound-citation general rule: split into independent Citation rows) (two different state Acts in one cell, each with its own explicit year - no year ambiguity)"
+"Seksyen 3, 4, 5 dan 6 Enakmen Kesalahan Jenayah Syariah Negeri Johor 2003 and Seksyen 50 Enakmen Jenayah syariah Negeri Sembilan 1992",3,Enakmen Kesalahan Jenayah Syariah Negeri Johor 2003,Seksyen 6,confirmed,"split from a compound citation (per the compound-citation general rule: split into independent Citation rows) (two different state Acts in one cell, each with its own explicit year - no year ambiguity)"
+"Seksyen 3, 4, 5 dan 6 Enakmen Kesalahan Jenayah Syariah Negeri Johor 2003 and Seksyen 50 Enakmen Jenayah syariah Negeri Sembilan 1992",3,Enakmen Jenayah Syariah (Negeri Sembilan) 1992,Seksyen 50,confirmed,"split from a compound citation (per the compound-citation general rule: split into independent Citation rows) (two different state Acts in one cell, each with its own explicit year - no year ambiguity)"
+"Seksyen 8(a) dan (b), 14 dan 15 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",1,Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001,Seksyen 8(a) dan (b),confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"Seksyen 8(a) dan (b), 14 dan 15 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",1,Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001,Seksyen 14,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"Seksyen 8(a) dan (b), 14 dan 15 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",1,Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001,Seksyen 15,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+1) Seksyen 14dan 15 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001;,1,Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001,Seksyen 14,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows) (leading '1)' and trailing ';' list-marker artifacts stripped)
+1) Seksyen 14dan 15 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001;,1,Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001,Seksyen 15,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows) (leading '1)' and trailing ';' list-marker artifacts stripped)
+"3) Seksyen 4(1), 7(a), 9 dan 12 Enakmen Kesalahan Jenayah Syariah (Johor) 1997; and",1,Enakmen Kesalahan Jenayah Syariah Negeri Johor 1997,Seksyen 4(1),confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows) (leading '3)' / trailing '; and' list-marker artifacts stripped; '(Johor)' normalized to the confirmed 'Negeri Johor' instrument name)
+"3) Seksyen 4(1), 7(a), 9 dan 12 Enakmen Kesalahan Jenayah Syariah (Johor) 1997; and",1,Enakmen Kesalahan Jenayah Syariah Negeri Johor 1997,Seksyen 7(a),confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows) (leading '3)' / trailing '; and' list-marker artifacts stripped; '(Johor)' normalized to the confirmed 'Negeri Johor' instrument name)
+"3) Seksyen 4(1), 7(a), 9 dan 12 Enakmen Kesalahan Jenayah Syariah (Johor) 1997; and",1,Enakmen Kesalahan Jenayah Syariah Negeri Johor 1997,Seksyen 9,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows) (leading '3)' / trailing '; and' list-marker artifacts stripped; '(Johor)' normalized to the confirmed 'Negeri Johor' instrument name)
+"3) Seksyen 4(1), 7(a), 9 dan 12 Enakmen Kesalahan Jenayah Syariah (Johor) 1997; and",1,Enakmen Kesalahan Jenayah Syariah Negeri Johor 1997,Seksyen 12,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows) (leading '3)' / trailing '; and' list-marker artifacts stripped; '(Johor)' normalized to the confirmed 'Negeri Johor' instrument name)
+4) Seksyen 50(iv) dan Seksyen 54 Enakmen Jenayah Syariah (Negeri Sembilan) 1992.,1,Enakmen Jenayah Syariah (Negeri Sembilan) 1992,Seksyen 50(iv),confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows) (leading '4)' / trailing '.' list-marker artifacts stripped)
+4) Seksyen 50(iv) dan Seksyen 54 Enakmen Jenayah Syariah (Negeri Sembilan) 1992.,1,Enakmen Jenayah Syariah (Negeri Sembilan) 1992,Seksyen 54,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows) (leading '4)' / trailing '.' list-marker artifacts stripped)
+"Seksyen 4, 7 dan 13 of Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997",1,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 4,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"Seksyen 4, 7 dan 13 of Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997",1,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 7,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"Seksyen 4, 7 dan 13 of Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997",1,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 13,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"a) Bahagian III Seksyen 7, 8 dan 13, 
+ Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997;
+
+b) Seksyen 5, 8, 8(a), 8(b), 9, 14 dan 15,
+ Enakmen Kesalahan Jenayah Syariah (Takzir)(Terengganu) 2001",17,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 7 (Bahagian III),confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"a) Bahagian III Seksyen 7, 8 dan 13, 
+ Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997;
+
+b) Seksyen 5, 8, 8(a), 8(b), 9, 14 dan 15,
+ Enakmen Kesalahan Jenayah Syariah (Takzir)(Terengganu) 2001",17,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 8 (Bahagian III),confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"a) Bahagian III Seksyen 7, 8 dan 13, 
+ Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997;
+
+b) Seksyen 5, 8, 8(a), 8(b), 9, 14 dan 15,
+ Enakmen Kesalahan Jenayah Syariah (Takzir)(Terengganu) 2001",17,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 13 (Bahagian III),confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"a) Bahagian III Seksyen 7, 8 dan 13, 
+ Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997;
+
+b) Seksyen 5, 8, 8(a), 8(b), 9, 14 dan 15,
+ Enakmen Kesalahan Jenayah Syariah (Takzir)(Terengganu) 2001",17,Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001,Seksyen 5,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"a) Bahagian III Seksyen 7, 8 dan 13, 
+ Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997;
+
+b) Seksyen 5, 8, 8(a), 8(b), 9, 14 dan 15,
+ Enakmen Kesalahan Jenayah Syariah (Takzir)(Terengganu) 2001",17,Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001,Seksyen 8,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"a) Bahagian III Seksyen 7, 8 dan 13, 
+ Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997;
+
+b) Seksyen 5, 8, 8(a), 8(b), 9, 14 dan 15,
+ Enakmen Kesalahan Jenayah Syariah (Takzir)(Terengganu) 2001",17,Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001,Seksyen 8(a),confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"a) Bahagian III Seksyen 7, 8 dan 13, 
+ Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997;
+
+b) Seksyen 5, 8, 8(a), 8(b), 9, 14 dan 15,
+ Enakmen Kesalahan Jenayah Syariah (Takzir)(Terengganu) 2001",17,Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001,Seksyen 8(b),confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"a) Bahagian III Seksyen 7, 8 dan 13, 
+ Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997;
+
+b) Seksyen 5, 8, 8(a), 8(b), 9, 14 dan 15,
+ Enakmen Kesalahan Jenayah Syariah (Takzir)(Terengganu) 2001",17,Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001,Seksyen 9,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"a) Bahagian III Seksyen 7, 8 dan 13, 
+ Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997;
+
+b) Seksyen 5, 8, 8(a), 8(b), 9, 14 dan 15,
+ Enakmen Kesalahan Jenayah Syariah (Takzir)(Terengganu) 2001",17,Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001,Seksyen 14,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"a) Bahagian III Seksyen 7, 8 dan 13, 
+ Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997;
+
+b) Seksyen 5, 8, 8(a), 8(b), 9, 14 dan 15,
+ Enakmen Kesalahan Jenayah Syariah (Takzir)(Terengganu) 2001",17,Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001,Seksyen 15,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"a)Seksyen 7 and Seksyen 13, Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997;
+b)Seksyen 9, Bahagian III, Enakmen Jenayah Syariah (Negeri Perak) 1992; and
+c)Seksyen 8 and Seksyen 114, Enakmen Kesalahan Jenayah Syariah (Takzir)(Terengganu) 2001.",7,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 7,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"a)Seksyen 7 and Seksyen 13, Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997;
+b)Seksyen 9, Bahagian III, Enakmen Jenayah Syariah (Negeri Perak) 1992; and
+c)Seksyen 8 and Seksyen 114, Enakmen Kesalahan Jenayah Syariah (Takzir)(Terengganu) 2001.",7,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 13,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"a)Seksyen 7 and Seksyen 13, Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997;
+b)Seksyen 9, Bahagian III, Enakmen Jenayah Syariah (Negeri Perak) 1992; and
+c)Seksyen 8 and Seksyen 114, Enakmen Kesalahan Jenayah Syariah (Takzir)(Terengganu) 2001.",7,Enakmen Jenayah Syariah (Negeri Perak) 1992,Seksyen 9 (Bahagian III),confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"a)Seksyen 7 and Seksyen 13, Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997;
+b)Seksyen 9, Bahagian III, Enakmen Jenayah Syariah (Negeri Perak) 1992; and
+c)Seksyen 8 and Seksyen 114, Enakmen Kesalahan Jenayah Syariah (Takzir)(Terengganu) 2001.",7,Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001,Seksyen 8,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"a)Seksyen 7 and Seksyen 13, Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997;
+b)Seksyen 9, Bahagian III, Enakmen Jenayah Syariah (Negeri Perak) 1992; and
+c)Seksyen 8 and Seksyen 114, Enakmen Kesalahan Jenayah Syariah (Takzir)(Terengganu) 2001.",7,Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001,Seksyen 114,confirmed,split from a compound citation (per the compound-citation general rule: split into independent Citation rows)
+"a) Bahagian III Seksyen 7(a), (9), (12) Enakmen Jenayah Syariah  1997;
+
+b) Bahagian IV Seksyen 35 Enakmen Jenayah Syariah 1997;
+
+c) Bahagian III Seksyen 7(a) dan (c) Ordinan Kesalahan Jenayah Syariah  Sarawak 2001",5,Ordinan Kesalahan Jenayah Syariah Sarawak 2001,Seksyen 7(a) dan (c) (Bahagian III),confirmed,clause c of the multi-Act compound - split per the compound-citation general rule; matches the already-confirmed Ordinan Kesalahan Jenayah Syariah Sarawak 2001 Instrument
+"a) Bahagian III Seksyen 7(a), (9), (12) Enakmen Jenayah Syariah  1997;
+
+b) Bahagian IV Seksyen 35 Enakmen Jenayah Syariah 1997;
+
+c) Bahagian III Seksyen 7(a) dan (c) Ordinan Kesalahan Jenayah Syariah  Sarawak 2001",5,Enakmen Kesalahan Jenayah Syariah Negeri Johor 1997,"Seksyen 7(a),(9),(12) (Bahagian III)",confirmed,"state identified as Johor (year 1997 already in the raw text); resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"a) Seksyen 16 (1) (a), Seksyen 9, dan Seksyen 10 (a) Enakmen Jenayah Syariah (Negeri Selangor) 1995
+b) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 136
+c) Seksyen 6, Sekyen 7, Seksyen 8 dan Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997 [Akta 559]
+d) Bahagian II Seksyen 6 (a) dan (b), Bahagian III Seksyen 7 (a) dan Bahagian III Seksyen 8 Enakmen Kesalahan Jenayah Syariah 1997
+e) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994, Seksyen 120
+f) Seksyen 8 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 
+g) Seksyen 9 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+h) Seksyen 14 (1) (a) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+i) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 119
+j) Seksyen 6 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",4,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 16(1)(a),confirmed,clause of a 10-clause multi-Act compound - split per the compound-citation general rule
+"a) Seksyen 16 (1) (a), Seksyen 9, dan Seksyen 10 (a) Enakmen Jenayah Syariah (Negeri Selangor) 1995
+b) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 136
+c) Seksyen 6, Sekyen 7, Seksyen 8 dan Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997 [Akta 559]
+d) Bahagian II Seksyen 6 (a) dan (b), Bahagian III Seksyen 7 (a) dan Bahagian III Seksyen 8 Enakmen Kesalahan Jenayah Syariah 1997
+e) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994, Seksyen 120
+f) Seksyen 8 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 
+g) Seksyen 9 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+h) Seksyen 14 (1) (a) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+i) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 119
+j) Seksyen 6 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",4,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 9,confirmed,clause of a 10-clause multi-Act compound - split per the compound-citation general rule
+"a) Seksyen 16 (1) (a), Seksyen 9, dan Seksyen 10 (a) Enakmen Jenayah Syariah (Negeri Selangor) 1995
+b) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 136
+c) Seksyen 6, Sekyen 7, Seksyen 8 dan Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997 [Akta 559]
+d) Bahagian II Seksyen 6 (a) dan (b), Bahagian III Seksyen 7 (a) dan Bahagian III Seksyen 8 Enakmen Kesalahan Jenayah Syariah 1997
+e) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994, Seksyen 120
+f) Seksyen 8 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 
+g) Seksyen 9 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+h) Seksyen 14 (1) (a) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+i) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 119
+j) Seksyen 6 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",4,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 10(a),confirmed,clause of a 10-clause multi-Act compound - split per the compound-citation general rule
+"a) Seksyen 16 (1) (a), Seksyen 9, dan Seksyen 10 (a) Enakmen Jenayah Syariah (Negeri Selangor) 1995
+b) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 136
+c) Seksyen 6, Sekyen 7, Seksyen 8 dan Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997 [Akta 559]
+d) Bahagian II Seksyen 6 (a) dan (b), Bahagian III Seksyen 7 (a) dan Bahagian III Seksyen 8 Enakmen Kesalahan Jenayah Syariah 1997
+e) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994, Seksyen 120
+f) Seksyen 8 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 
+g) Seksyen 9 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+h) Seksyen 14 (1) (a) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+i) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 119
+j) Seksyen 6 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",4,Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 136,confirmed,clause of a 10-clause multi-Act compound - split per the compound-citation general rule
+"a) Seksyen 16 (1) (a), Seksyen 9, dan Seksyen 10 (a) Enakmen Jenayah Syariah (Negeri Selangor) 1995
+b) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 136
+c) Seksyen 6, Sekyen 7, Seksyen 8 dan Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997 [Akta 559]
+d) Bahagian II Seksyen 6 (a) dan (b), Bahagian III Seksyen 7 (a) dan Bahagian III Seksyen 8 Enakmen Kesalahan Jenayah Syariah 1997
+e) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994, Seksyen 120
+f) Seksyen 8 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 
+g) Seksyen 9 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+h) Seksyen 14 (1) (a) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+i) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 119
+j) Seksyen 6 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",4,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 6 [Akta 559],confirmed,clause of a 10-clause multi-Act compound - split per the compound-citation general rule
+"a) Seksyen 16 (1) (a), Seksyen 9, dan Seksyen 10 (a) Enakmen Jenayah Syariah (Negeri Selangor) 1995
+b) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 136
+c) Seksyen 6, Sekyen 7, Seksyen 8 dan Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997 [Akta 559]
+d) Bahagian II Seksyen 6 (a) dan (b), Bahagian III Seksyen 7 (a) dan Bahagian III Seksyen 8 Enakmen Kesalahan Jenayah Syariah 1997
+e) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994, Seksyen 120
+f) Seksyen 8 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 
+g) Seksyen 9 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+h) Seksyen 14 (1) (a) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+i) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 119
+j) Seksyen 6 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",4,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 7 [Akta 559],confirmed,clause of a 10-clause multi-Act compound - split per the compound-citation general rule
+"a) Seksyen 16 (1) (a), Seksyen 9, dan Seksyen 10 (a) Enakmen Jenayah Syariah (Negeri Selangor) 1995
+b) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 136
+c) Seksyen 6, Sekyen 7, Seksyen 8 dan Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997 [Akta 559]
+d) Bahagian II Seksyen 6 (a) dan (b), Bahagian III Seksyen 7 (a) dan Bahagian III Seksyen 8 Enakmen Kesalahan Jenayah Syariah 1997
+e) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994, Seksyen 120
+f) Seksyen 8 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 
+g) Seksyen 9 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+h) Seksyen 14 (1) (a) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+i) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 119
+j) Seksyen 6 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",4,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 8 [Akta 559],confirmed,clause of a 10-clause multi-Act compound - split per the compound-citation general rule
+"a) Seksyen 16 (1) (a), Seksyen 9, dan Seksyen 10 (a) Enakmen Jenayah Syariah (Negeri Selangor) 1995
+b) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 136
+c) Seksyen 6, Sekyen 7, Seksyen 8 dan Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997 [Akta 559]
+d) Bahagian II Seksyen 6 (a) dan (b), Bahagian III Seksyen 7 (a) dan Bahagian III Seksyen 8 Enakmen Kesalahan Jenayah Syariah 1997
+e) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994, Seksyen 120
+f) Seksyen 8 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 
+g) Seksyen 9 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+h) Seksyen 14 (1) (a) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+i) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 119
+j) Seksyen 6 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",4,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 13 [Akta 559],confirmed,clause of a 10-clause multi-Act compound - split per the compound-citation general rule
+"a) Seksyen 16 (1) (a), Seksyen 9, dan Seksyen 10 (a) Enakmen Jenayah Syariah (Negeri Selangor) 1995
+b) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 136
+c) Seksyen 6, Sekyen 7, Seksyen 8 dan Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997 [Akta 559]
+d) Bahagian II Seksyen 6 (a) dan (b), Bahagian III Seksyen 7 (a) dan Bahagian III Seksyen 8 Enakmen Kesalahan Jenayah Syariah 1997
+e) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994, Seksyen 120
+f) Seksyen 8 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 
+g) Seksyen 9 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+h) Seksyen 14 (1) (a) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+i) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 119
+j) Seksyen 6 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",4,Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 120,confirmed,clause of a 10-clause multi-Act compound - split per the compound-citation general rule
+"a) Seksyen 16 (1) (a), Seksyen 9, dan Seksyen 10 (a) Enakmen Jenayah Syariah (Negeri Selangor) 1995
+b) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 136
+c) Seksyen 6, Sekyen 7, Seksyen 8 dan Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997 [Akta 559]
+d) Bahagian II Seksyen 6 (a) dan (b), Bahagian III Seksyen 7 (a) dan Bahagian III Seksyen 8 Enakmen Kesalahan Jenayah Syariah 1997
+e) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994, Seksyen 120
+f) Seksyen 8 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 
+g) Seksyen 9 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+h) Seksyen 14 (1) (a) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+i) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 119
+j) Seksyen 6 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",4,Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001,Seksyen 8(a) dan (b),confirmed,clause of a 10-clause multi-Act compound - split per the compound-citation general rule
+"a) Seksyen 16 (1) (a), Seksyen 9, dan Seksyen 10 (a) Enakmen Jenayah Syariah (Negeri Selangor) 1995
+b) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 136
+c) Seksyen 6, Sekyen 7, Seksyen 8 dan Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997 [Akta 559]
+d) Bahagian II Seksyen 6 (a) dan (b), Bahagian III Seksyen 7 (a) dan Bahagian III Seksyen 8 Enakmen Kesalahan Jenayah Syariah 1997
+e) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994, Seksyen 120
+f) Seksyen 8 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 
+g) Seksyen 9 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+h) Seksyen 14 (1) (a) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+i) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 119
+j) Seksyen 6 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",4,Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001,Seksyen 9,confirmed,clause of a 10-clause multi-Act compound - split per the compound-citation general rule
+"a) Seksyen 16 (1) (a), Seksyen 9, dan Seksyen 10 (a) Enakmen Jenayah Syariah (Negeri Selangor) 1995
+b) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 136
+c) Seksyen 6, Sekyen 7, Seksyen 8 dan Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997 [Akta 559]
+d) Bahagian II Seksyen 6 (a) dan (b), Bahagian III Seksyen 7 (a) dan Bahagian III Seksyen 8 Enakmen Kesalahan Jenayah Syariah 1997
+e) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994, Seksyen 120
+f) Seksyen 8 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 
+g) Seksyen 9 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+h) Seksyen 14 (1) (a) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+i) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 119
+j) Seksyen 6 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",4,Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001,Seksyen 14(1)(a),confirmed,clause of a 10-clause multi-Act compound - split per the compound-citation general rule
+"a) Seksyen 16 (1) (a), Seksyen 9, dan Seksyen 10 (a) Enakmen Jenayah Syariah (Negeri Selangor) 1995
+b) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 136
+c) Seksyen 6, Sekyen 7, Seksyen 8 dan Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997 [Akta 559]
+d) Bahagian II Seksyen 6 (a) dan (b), Bahagian III Seksyen 7 (a) dan Bahagian III Seksyen 8 Enakmen Kesalahan Jenayah Syariah 1997
+e) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994, Seksyen 120
+f) Seksyen 8 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 
+g) Seksyen 9 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+h) Seksyen 14 (1) (a) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+i) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 119
+j) Seksyen 6 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",4,Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 119,confirmed,clause of a 10-clause multi-Act compound - split per the compound-citation general rule
+"a) Seksyen 16 (1) (a), Seksyen 9, dan Seksyen 10 (a) Enakmen Jenayah Syariah (Negeri Selangor) 1995
+b) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 136
+c) Seksyen 6, Sekyen 7, Seksyen 8 dan Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997 [Akta 559]
+d) Bahagian II Seksyen 6 (a) dan (b), Bahagian III Seksyen 7 (a) dan Bahagian III Seksyen 8 Enakmen Kesalahan Jenayah Syariah 1997
+e) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994, Seksyen 120
+f) Seksyen 8 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 
+g) Seksyen 9 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+h) Seksyen 14 (1) (a) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+i) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 119
+j) Seksyen 6 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",4,Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001,Seksyen 6(a) dan (b),confirmed,clause of a 10-clause multi-Act compound - split per the compound-citation general rule
+"a) Seksyen 16 (1) (a), Seksyen 9, dan Seksyen 10 (a) Enakmen Jenayah Syariah (Negeri Selangor) 1995
+b) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 136
+c) Seksyen 6, Sekyen 7, Seksyen 8 dan Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997 [Akta 559]
+d) Bahagian II Seksyen 6 (a) dan (b), Bahagian III Seksyen 7 (a) dan Bahagian III Seksyen 8 Enakmen Kesalahan Jenayah Syariah 1997
+e) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994, Seksyen 120
+f) Seksyen 8 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 
+g) Seksyen 9 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+h) Seksyen 14 (1) (a) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+i) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 119
+j) Seksyen 6 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",4,Enakmen Kesalahan Jenayah Syariah Negeri Johor 1997,Seksyen 6(a) dan (b) (Bahagian II),confirmed,"state identified as Johor (year 1997 already in the raw text), split from compound clause per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 7, 9, 10(b), 11, 13, 16 Enakmen Jenayah syariah (Negeri Selangor) 1995 and Seksyen 13 Enakmen Jenayah Syariah Negeri Johor 1997",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 7,confirmed,"split from a compound citation spanning two Acts, per the compound-citation general rule"
+"Seksyen 7, 9, 10(b), 11, 13, 16 Enakmen Jenayah syariah (Negeri Selangor) 1995 and Seksyen 13 Enakmen Jenayah Syariah Negeri Johor 1997",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 9,confirmed,"split from a compound citation spanning two Acts, per the compound-citation general rule"
+"Seksyen 7, 9, 10(b), 11, 13, 16 Enakmen Jenayah syariah (Negeri Selangor) 1995 and Seksyen 13 Enakmen Jenayah Syariah Negeri Johor 1997",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 10(b),confirmed,"split from a compound citation spanning two Acts, per the compound-citation general rule"
+"Seksyen 7, 9, 10(b), 11, 13, 16 Enakmen Jenayah syariah (Negeri Selangor) 1995 and Seksyen 13 Enakmen Jenayah Syariah Negeri Johor 1997",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 11,confirmed,"split from a compound citation spanning two Acts, per the compound-citation general rule"
+"Seksyen 7, 9, 10(b), 11, 13, 16 Enakmen Jenayah syariah (Negeri Selangor) 1995 and Seksyen 13 Enakmen Jenayah Syariah Negeri Johor 1997",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 13,confirmed,"split from a compound citation spanning two Acts, per the compound-citation general rule"
+"Seksyen 7, 9, 10(b), 11, 13, 16 Enakmen Jenayah syariah (Negeri Selangor) 1995 and Seksyen 13 Enakmen Jenayah Syariah Negeri Johor 1997",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 16,confirmed,"split from a compound citation spanning two Acts, per the compound-citation general rule"
+"Seksyen 7, 9, 10(b), 11, 13, 16 Enakmen Jenayah syariah (Negeri Selangor) 1995 and Seksyen 13 Enakmen Jenayah Syariah Negeri Johor 1997",1,Enakmen Kesalahan Jenayah Syariah Negeri Johor 1997,Seksyen 13,confirmed,"split from a compound citation spanning two Acts, per the compound-citation general rule"
+Seksyen 4-10 Akta Kesalahan-kesalahan Seksual Terhadap Kanak-Kanak 2017,2,Akta Kesalahan-Kesalahan Seksual Terhadap Kanak-Kanak 2017,Seksyen 4,confirmed,"range citation (Seksyen 4-10) treated as a compound listing every section 4 through 10, split per the general rule; 'kesalahan-kesalahan' casing variant of the already-confirmed Instrument"
+Seksyen 4-10 Akta Kesalahan-kesalahan Seksual Terhadap Kanak-Kanak 2017,2,Akta Kesalahan-Kesalahan Seksual Terhadap Kanak-Kanak 2017,Seksyen 5,confirmed,"range citation (Seksyen 4-10) treated as a compound listing every section 4 through 10, split per the general rule; 'kesalahan-kesalahan' casing variant of the already-confirmed Instrument"
+Seksyen 4-10 Akta Kesalahan-kesalahan Seksual Terhadap Kanak-Kanak 2017,2,Akta Kesalahan-Kesalahan Seksual Terhadap Kanak-Kanak 2017,Seksyen 6,confirmed,"range citation (Seksyen 4-10) treated as a compound listing every section 4 through 10, split per the general rule; 'kesalahan-kesalahan' casing variant of the already-confirmed Instrument"
+Seksyen 4-10 Akta Kesalahan-kesalahan Seksual Terhadap Kanak-Kanak 2017,2,Akta Kesalahan-Kesalahan Seksual Terhadap Kanak-Kanak 2017,Seksyen 7,confirmed,"range citation (Seksyen 4-10) treated as a compound listing every section 4 through 10, split per the general rule; 'kesalahan-kesalahan' casing variant of the already-confirmed Instrument"
+Seksyen 4-10 Akta Kesalahan-kesalahan Seksual Terhadap Kanak-Kanak 2017,2,Akta Kesalahan-Kesalahan Seksual Terhadap Kanak-Kanak 2017,Seksyen 8,confirmed,"range citation (Seksyen 4-10) treated as a compound listing every section 4 through 10, split per the general rule; 'kesalahan-kesalahan' casing variant of the already-confirmed Instrument"
+Seksyen 4-10 Akta Kesalahan-kesalahan Seksual Terhadap Kanak-Kanak 2017,2,Akta Kesalahan-Kesalahan Seksual Terhadap Kanak-Kanak 2017,Seksyen 9,confirmed,"range citation (Seksyen 4-10) treated as a compound listing every section 4 through 10, split per the general rule; 'kesalahan-kesalahan' casing variant of the already-confirmed Instrument"
+Seksyen 4-10 Akta Kesalahan-kesalahan Seksual Terhadap Kanak-Kanak 2017,2,Akta Kesalahan-Kesalahan Seksual Terhadap Kanak-Kanak 2017,Seksyen 10,confirmed,"range citation (Seksyen 4-10) treated as a compound listing every section 4 through 10, split per the general rule; 'kesalahan-kesalahan' casing variant of the already-confirmed Instrument"
+Seksyen 7 dan 8 Enakmen Jenayah Syariah (Selangor) 1995,3,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 7,confirmed,confirmed same Act as 'Negeri Selangor' - '(Selangor)' just drops the word 'Negeri'; split per the compound-citation general rule
+Seksyen 7 dan 8 Enakmen Jenayah Syariah (Selangor) 1995,3,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 8,confirmed,confirmed same Act as 'Negeri Selangor' - '(Selangor)' just drops the word 'Negeri'; split per the compound-citation general rule
+Akta Hasutan 1984,5,Akta Hasutan 1948,(unspecified provision),confirmed,confirmed typo for 1948 (real Sedition Act); no specific Seksyen in the raw citation
+Seksyen 4(1)(a) Akta Hasutan,1,Akta Hasutan 1948,Seksyen 4(1)(a),confirmed,"confirmed same Act as the 1948/1984 rows above - missing year, treated as 1948"
+Seksyen 7 dan Seksyen 8 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah) Persekutuan 1998,1,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 8,confirmed,"year 1998 standardised to 1997, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 4, 7 dan 13 of Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1998",1,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 7,confirmed,"year 1998 standardised to 1997, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 4, 7 dan 13 of Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1998",1,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 13,confirmed,"year 1998 standardised to 1997, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 4, 7 dan 13 of Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1999",1,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 7,confirmed,"year 1999 standardised to 1997, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 4, 7 dan 13 of Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1999",1,Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997,Seksyen 13,confirmed,"year 1999 standardised to 1997, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1996",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 9,confirmed,"year 1996 standardised to 1995, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1996",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 10,confirmed,"year 1996 standardised to 1995, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1996",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 11,confirmed,"year 1996 standardised to 1995, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1996",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 13,confirmed,"year 1996 standardised to 1995, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1996",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 16,confirmed,"year 1996 standardised to 1995, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1997",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 9,confirmed,"year 1997 standardised to 1995, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1997",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 10,confirmed,"year 1997 standardised to 1995, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1997",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 11,confirmed,"year 1997 standardised to 1995, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1997",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 13,confirmed,"year 1997 standardised to 1995, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"Seksyen 7, 9, 10, 11, 13 dan 16 Enakmen Jenayah Syariah (Negeri Selangor) 1997",1,Enakmen Jenayah Syariah (Negeri Selangor) 1995,Seksyen 16,confirmed,"year 1997 standardised to 1995, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 31(1) dan 32(1) Akta Eksais 1976,1,Akta Eksais 1976 (Akta 176),Seksyen 32(1),confirmed,"split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 31(1) dan 32(1) Akta Eksais 1977,1,Akta Eksais 1976 (Akta 176),Seksyen 32(1),confirmed,"year 1977 standardised to 1976, split from compound citation per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"a) Bahagian III Seksyen 7(a), (9), (12) Enakmen Jenayah Syariah  1997;
+
+b) Bahagian IV Seksyen 35 Enakmen Jenayah Syariah 1997;
+
+c) Bahagian III Seksyen 7(a) dan (c) Ordinan Kesalahan Jenayah Syariah  Sarawak 2001",5,Enakmen Kesalahan Jenayah Syariah Negeri Johor 1997,Seksyen 35 (Bahagian IV),confirmed,"state identified as Johor (year 1997 already in the raw text); resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"a) Seksyen 16 (1) (a), Seksyen 9, dan Seksyen 10 (a) Enakmen Jenayah Syariah (Negeri Selangor) 1995
+b) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 136
+c) Seksyen 6, Sekyen 7, Seksyen 8 dan Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997 [Akta 559]
+d) Bahagian II Seksyen 6 (a) dan (b), Bahagian III Seksyen 7 (a) dan Bahagian III Seksyen 8 Enakmen Kesalahan Jenayah Syariah 1997
+e) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994, Seksyen 120
+f) Seksyen 8 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 
+g) Seksyen 9 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+h) Seksyen 14 (1) (a) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+i) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 119
+j) Seksyen 6 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",4,Enakmen Kesalahan Jenayah Syariah Negeri Johor 1997,Seksyen 7(a) (Bahagian III),confirmed,"state identified as Johor (year 1997 already in the raw text), split from compound clause per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+"a) Seksyen 16 (1) (a), Seksyen 9, dan Seksyen 10 (a) Enakmen Jenayah Syariah (Negeri Selangor) 1995
+b) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 136
+c) Seksyen 6, Sekyen 7, Seksyen 8 dan Seksyen 13 Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan) 1997 [Akta 559]
+d) Bahagian II Seksyen 6 (a) dan (b), Bahagian III Seksyen 7 (a) dan Bahagian III Seksyen 8 Enakmen Kesalahan Jenayah Syariah 1997
+e) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994, Seksyen 120
+f) Seksyen 8 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001 
+g) Seksyen 9 Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+h) Seksyen 14 (1) (a) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001
+i) Enakmen Majlis Agama Islam dan Istiadat Melayu Kelantan 1994,Seksyen 119
+j) Seksyen 6 (a) dan (b) Enakmen Kesalahan Jenayah Syariah (Takzir) (Terengganu) 2001",4,Enakmen Kesalahan Jenayah Syariah Negeri Johor 1997,Seksyen 8 (Bahagian III),confirmed,"state identified as Johor (year 1997 already in the raw text), split from compound clause per the general rule; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 100 Akta Cap Dagangan 2019,4,Akta Cap Dagangan 2019 (Akta 815),Seksyen 100,confirmed,"row_count merges 3 rows tagged category 'Cap Dagangan' + 1 tagged 'Penyalahgunaan Hakcipta' in the source category-extract (same raw citation, different category tag - out of scope here); resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 99 Akta Cap Dagangan 2019,33,Akta Cap Dagangan 2019 (Akta 815),Seksyen 99,confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 22(1) Akta Perbadanan Kemajuan Filem Nasional Malaysia 1981,133,Akta Perbadanan Kemajuan Filem Nasional Malaysia 1981 (Akta 244),Seksyen 22(1),confirmed,"row_count merges 127 rows tagged category 'Paparan Filem Tanpa Kebenaran' + 6 tagged 'Penjualan Tanpa Kebenaran/Filem' in the source category-extract (same raw citation); resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 22(1) Akta Perbadanan Kemajuan Filem Nasional Malaysia 1982,2,Akta Perbadanan Kemajuan Filem Nasional Malaysia 1981 (Akta 244),Seksyen 22(1),confirmed,"year 1982 standardised to 1981; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Akta Rumah Judi Terbuka 1953,74,Akta Rumah Judi Terbuka 1953 (Akta 289),"(whole Act, no specific Seksyen cited)",confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 (1) (c) Akta Rumah Judi Terbuka 1953,71,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4(1)(c),confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 (1) Akta Rumah Judi Terbuka 1953,1506,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4(1),confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 (1)(c) Akta Rumah Judi Terbuka 1953,14,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4(1)(c),confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 (a) Akta Rumah Judi Terbuka 1953,5,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4(a),confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 (b) Akta Rumah Judi Terbuka 1953,2,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4(b),confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 Akta Rumah Judi Terbuka 1953,3580,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4,confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 Akta Rumah Judi Terbuka 1958,943,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4,confirmed,"year standardised to 1953; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 Akta Rumah Judi Terbuka 1959,1,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4,confirmed,"year standardised to 1953; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 Akta Rumah Judi Terbuka 1960,1,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4,confirmed,"year standardised to 1953; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 Akta Rumah Judi Terbuka 1961,1,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4,confirmed,"year standardised to 1953; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 Akta Rumah Judi Terbuka 1962,1,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4,confirmed,"year standardised to 1953; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 Akta Rumah Judi Terbuka 1963,1,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4,confirmed,"year standardised to 1953; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 Akta Rumah Judi Terbuka 1964,1,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4,confirmed,"year standardised to 1953; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 Akta Rumah Judi Terbuka 1965,1,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4,confirmed,"year standardised to 1953; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 Akta Rumah Judi Terbuka 1966,1,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4,confirmed,"year standardised to 1953; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 Akta Rumah Judi Terbuka 1967,1,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4,confirmed,"year standardised to 1953; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 Akta Rumah Judi Terbuka 1968,1,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4,confirmed,"year standardised to 1953; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 Akta Rumah Judi Terbuka 1969,1,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4,confirmed,"year standardised to 1953; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 Akta Rumah Judi Terbuka 1970,1,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4,confirmed,"year standardised to 1953; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 Akta Rumah Judi Terbuka 1971,1,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4,confirmed,"year standardised to 1953; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 Akta Rumah Judi Terbuka 1972,419,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4,confirmed,"year standardised to 1953; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 Akta Rumah Perjudian Terbuka 1953,6060,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4,confirmed,"row_count merges 6057 rows tagged category 'Judi' + 3 tagged 'Penjualan Tanpa Kebenaran/Kawalan Makanan' in the source category-extract (same raw citation, different category tag - out of scope here); 'Perjudian' spelling normalized to 'Judi'; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4 B(a) Akta Rumah Judi Terbuka 1953,3,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4B(a),confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4(1)(c) Akta Rumah Judi Terbuka 1953,89,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4(1)(c),confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4(1)(g) Akta Rumah Judi Terbuka 1953,239,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4(1)(g),confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4(B)(a) Akta Rumah Judi Terbuka 1953,8,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4B(a),confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4(b)(a) Akta Rumah Judi Terbuka 1953,2,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4B(a),confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 41(c) Akta Rumah Judi Terbuka 1953,3,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 41(c),confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4A(a) Akta Rumah Judi Terbuka 1953,1,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4A(a),confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4B (a) Akta Rumah Judi Terbuka 1953,14,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4B(a),confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4B (a) Akta Rumah Perjudian Terbuka 1953,65,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4B(a),confirmed,"'Perjudian' spelling normalized to 'Judi'; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4B Akta Rumah Judi Terbuka 1953,1,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4B,confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4B(a)  Akta Rumah Perjudian Terbuka 1953,5,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4B(a),confirmed,"'Perjudian' spelling normalized to 'Judi'; resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4B(a) Akta Rumah Judi Terbuka 1953,47,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4B(a),confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 4b (a) Akta Rumah Judi Terbuka 1953,7,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 4B(a),confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 8 (1) Akta Rumah Judi Terbuka 1953,1,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 8(1),confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"
+Seksyen 8(1) Akta Rumah Judi Terbuka 1953,8,Akta Rumah Judi Terbuka 1953 (Akta 289),Seksyen 8(1),confirmed,"resolved per stakeholder answer, 2026-09-13 (see docs/blocking-list-open-questions.md)"

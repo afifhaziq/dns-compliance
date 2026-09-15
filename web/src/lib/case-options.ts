@@ -3,8 +3,10 @@
 
 export const CASE_STATUS_OPTIONS = [
   { value: 'requested', label: 'Requested' },
+  { value: 'blocked', label: 'Blocked' },
   { value: 'uplift', label: 'Uplift' },
   { value: 'suspended', label: 'Suspended' },
+  { value: 'not_blocked', label: 'Not Blocked' },
   { value: 'internal', label: 'Internal' },
 ]
 

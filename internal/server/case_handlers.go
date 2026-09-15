@@ -86,7 +86,7 @@ func (h *Handlers) CreateCaseForURL(w http.ResponseWriter, r *http.Request) {
 		DueDate  *string `json:"due_date"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !urlStatusAllowed[body.Status] || body.Status == "" {
-		writeError(w, http.StatusBadRequest, "status is required and must be one of: requested, uplift, suspended, internal")
+		writeError(w, http.StatusBadRequest, "status is required and must be one of: requested, blocked, uplift, suspended, not_blocked, internal")
 		return
 	}
 	var opts db.CaseCreateOptions
@@ -344,7 +344,7 @@ func (h *Handlers) AddCaseURL(w http.ResponseWriter, r *http.Request) {
 		Status string `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" || !urlStatusAllowed[body.Status] || body.Status == "" {
-		writeError(w, http.StatusBadRequest, "url and status are required, status must be one of: requested, uplift, suspended, internal")
+		writeError(w, http.StatusBadRequest, "url and status are required, status must be one of: requested, blocked, uplift, suspended, not_blocked, internal")
 		return
 	}
 	normalized, err := urlnorm.Normalize(body.URL)
@@ -408,7 +408,7 @@ func (h *Handlers) UpdateCaseURLStatus(w http.ResponseWriter, r *http.Request) {
 		Status string `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !urlStatusAllowed[body.Status] || body.Status == "" {
-		writeError(w, http.StatusBadRequest, "status is required and must be one of: requested, uplift, suspended, internal")
+		writeError(w, http.StatusBadRequest, "status is required and must be one of: requested, blocked, uplift, suspended, not_blocked, internal")
 		return
 	}
 
