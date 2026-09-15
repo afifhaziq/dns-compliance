@@ -237,6 +237,48 @@ func TestWriteCRDCases_TracksCategoriesObserved(t *testing.T) {
 	}
 }
 
+// TestWriteCRDCases_SetsAgency verifies Case.AgencyID is get-or-created from
+// CollapsedCase.Agency ("Agensi") -- two cases sharing the same agency name
+// share one Agency row, and a case with no agency gets a nil AgencyID.
+func TestWriteCRDCases_SetsAgency(t *testing.T) {
+	gdb := newTestGormDB(t)
+	crd := mustSeedDepartment(t, gdb, "CRD")
+	cases := []CollapsedCase{
+		{ReferenceNumber: "REF-1", Domains: []CollapsedDomain{{RawDomain: "a.com", Status: "Blocked"}}, Categories: []string{"Judi"}, Agency: "PDRM"},
+		{ReferenceNumber: "REF-2", Domains: []CollapsedDomain{{RawDomain: "b.com", Status: "Blocked"}}, Categories: []string{"Judi"}, Agency: "PDRM"},
+		{ReferenceNumber: "REF-3", Domains: []CollapsedDomain{{RawDomain: "c.com", Status: "Blocked"}}, Categories: []string{"Judi"}},
+	}
+
+	if _, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, nil, false); err != nil {
+		t.Fatalf("WriteCRDCases: %v", err)
+	}
+
+	var agencies []db.Agency
+	if err := gdb.Find(&agencies).Error; err != nil {
+		t.Fatalf("listing agencies: %v", err)
+	}
+	if len(agencies) != 1 || agencies[0].Name != "PDRM" {
+		t.Fatalf("agencies = %+v, want exactly one PDRM row", agencies)
+	}
+
+	var withAgency, withoutAgency db.Case
+	if err := gdb.Joins("JOIN case_letters ON case_letters.case_id = cases.id").
+		Where("case_letters.reference_number_external = ?", "REF-1").First(&withAgency).Error; err != nil {
+		t.Fatalf("loading REF-1's case: %v", err)
+	}
+	if withAgency.AgencyID == nil || *withAgency.AgencyID != agencies[0].ID {
+		t.Fatalf("REF-1 AgencyID = %v, want %d", withAgency.AgencyID, agencies[0].ID)
+	}
+
+	if err := gdb.Joins("JOIN case_letters ON case_letters.case_id = cases.id").
+		Where("case_letters.reference_number_external = ?", "REF-3").First(&withoutAgency).Error; err != nil {
+		t.Fatalf("loading REF-3's case: %v", err)
+	}
+	if withoutAgency.AgencyID != nil {
+		t.Fatalf("REF-3 AgencyID = %v, want nil (no Agensi value)", *withoutAgency.AgencyID)
+	}
+}
+
 // TestWriteCRDCases_PreservesOriginalURLPath guards against OriginalURL
 // silently degrading to the same bare-hostname value URL.URL stores — the
 // whole point of the field is to keep what urlnorm.Normalize strips.

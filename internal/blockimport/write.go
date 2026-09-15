@@ -78,10 +78,25 @@ func createURL(ctx context.Context, gdb *gorm.DB, rawURL string) (db.URL, error)
 	return u, err
 }
 
-// WriteCRDCases creates one Case (DepartmentID = the CRD department's ID)
-// per CollapsedCase, one CaseLetter (Type: "Notice") carrying the reference
-// number, one CaseURL per domain (Status mapped from the domain's Status via
-// mapCRDStatus), and — via citationMap, see LoadCitationClassification — one
+// getOrCreateAgency get-or-creates an Agency row by exact (already-trimmed,
+// see CRDRow.Agency/cellAt) name match, same FirstOrCreate pattern as
+// createURL. "" is not a valid agency and never reaches here -- callers
+// check cc.Agency != "" first.
+func getOrCreateAgency(ctx context.Context, gdb *gorm.DB, name string) (db.Agency, error) {
+	var a db.Agency
+	err := gdb.WithContext(ctx).
+		Where("name = ?", name).
+		Attrs(db.Agency{Name: name}).
+		FirstOrCreate(&a).Error
+	return a, err
+}
+
+// WriteCRDCases creates one Case (DepartmentID = the CRD department's ID,
+// AgencyID get-or-created by name from CollapsedCase.Agency — "Agensi" — via
+// getOrCreateAgency, left nil when the row has none) per CollapsedCase, one
+// CaseLetter (Type: "Notice") carrying the reference number, one CaseURL per
+// domain (Status mapped from the domain's Status via mapCRDStatus), and —
+// via citationMap, see LoadCitationClassification — one
 // URLOffence per (resolved Citation x split Category) combination for every
 // domain in the case. A case whose CitationText has no confirmed entry in
 // citationMap still gets its Case/CaseURL rows; it just carries no offence
@@ -148,6 +163,13 @@ func WriteCRDCases(ctx context.Context, gdb *gorm.DB, crdDeptID uint, cases []Co
 			}
 
 			c := db.Case{DepartmentID: crdDeptID}
+			if cc.Agency != "" {
+				agency, err := getOrCreateAgency(ctx, tx, cc.Agency)
+				if err != nil {
+					return err
+				}
+				c.AgencyID = &agency.ID
+			}
 			if err := tx.WithContext(ctx).Create(&c).Error; err != nil {
 				return err
 			}
