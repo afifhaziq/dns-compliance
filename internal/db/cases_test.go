@@ -558,6 +558,59 @@ func TestListCases_GlobalAcrossDepartments(t *testing.T) {
 	}
 }
 
+// TestListCases_DomainsCarryTheirOwnAgency proves the real-world shape this
+// migration exists to support: two domains in the same case, each opened
+// against a different Agency (CaseURL.AgencyID, not the old case-level
+// Case.AgencyID) — each domain must report its own agency, independently.
+func TestListCases_DomainsCarryTheirOwnAgency(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	dept, err := store.CreateDepartment(ctx, "CRD")
+	if err != nil {
+		t.Fatalf("CreateDepartment: %v", err)
+	}
+	pdrm, err := store.CreateAgency(ctx, "PDRM")
+	if err != nil {
+		t.Fatalf("CreateAgency(PDRM): %v", err)
+	}
+	mcmc, err := store.CreateAgency(ctx, "MCMC")
+	if err != nil {
+		t.Fatalf("CreateAgency(MCMC): %v", err)
+	}
+	uGambling, err := store.CreateURL(ctx, "bet.example.com")
+	if err != nil {
+		t.Fatalf("CreateURL(gambling): %v", err)
+	}
+	uPorn, err := store.CreateURL(ctx, "adult.example.com")
+	if err != nil {
+		t.Fatalf("CreateURL(porn): %v", err)
+	}
+
+	c, err := store.CreateCase(ctx, dept.ID, uGambling.ID, "blocked", db.CaseCreateOptions{AgencyID: &pdrm.ID})
+	if err != nil {
+		t.Fatalf("CreateCase: %v", err)
+	}
+	if _, err := store.AddURLToCase(ctx, c.ID, uPorn.ID, "blocked", "", &mcmc.ID); err != nil {
+		t.Fatalf("AddURLToCase: %v", err)
+	}
+
+	summaries, err := store.ListCasesForDepartment(ctx, dept.ID)
+	if err != nil {
+		t.Fatalf("ListCasesForDepartment: %v", err)
+	}
+	if len(summaries) != 1 || len(summaries[0].Domains) != 2 {
+		t.Fatalf("got %+v, want one case with two domains", summaries)
+	}
+	agencyByURL := map[string]string{}
+	for _, d := range summaries[0].Domains {
+		agencyByURL[d.URL] = d.AgencyName
+	}
+	if agencyByURL["bet.example.com"] != "PDRM" || agencyByURL["adult.example.com"] != "MCMC" {
+		t.Fatalf("got %+v, want bet.example.com=PDRM, adult.example.com=MCMC", agencyByURL)
+	}
+}
+
 // TestUpdateCaseLetterFields_PartialUpdateAndScoping covers the partial-
 // update contract (touching one field leaves the others alone) and that
 // the update is scoped by (caseID, letterID) — a letter can't be edited

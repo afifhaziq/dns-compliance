@@ -188,16 +188,16 @@ func (h *Handlers) ExportCaseLetters(w http.ResponseWriter, r *http.Request) {
 	for _, u := range users {
 		oicUsernames[u.ID] = u.Username
 	}
-	agencyNameByCaseID := make(map[uint]string, len(cases))
+	agencyNameByCaseURL := make(map[blockexport.CaseURLKey]string, len(cases))
 	offencesByURL := make(map[string][]db.OffenceEntry)
 	for _, c := range cases {
-		agencyNameByCaseID[c.ID] = c.AgencyName
 		for _, d := range c.Domains {
+			agencyNameByCaseURL[blockexport.CaseURLKey{CaseID: c.ID, URL: d.URL}] = d.AgencyName
 			offencesByURL[d.URL] = d.Offences
 		}
 	}
 
-	rows := blockexport.FlattenCMODRows(letters, oicUsernames, offencesByURL, agencyNameByCaseID)
+	rows := blockexport.FlattenCMODRows(letters, oicUsernames, offencesByURL, agencyNameByCaseURL)
 	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="cmod-blocking-export-%s.xlsx"`, time.Now().UTC().Format("2006-01-02")))
 	if err := blockexport.WriteCMODWorkbook(rows, w); err != nil {

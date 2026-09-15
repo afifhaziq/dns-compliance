@@ -1531,7 +1531,16 @@ func (m *fullMockStore) listCaseSummaries(departmentID *uint) []db.CaseSummary {
 			}
 			for _, u := range m.urls {
 				if u.ID == cu.URLID {
-					cs.Domains = append(cs.Domains, db.CaseSummaryDomain{URLID: u.ID, URL: u.URL, Status: cu.Status})
+					d := db.CaseSummaryDomain{URLID: u.ID, URL: u.URL, Status: cu.Status}
+					if cu.AgencyID != nil {
+						d.AgencyID = cu.AgencyID
+						for _, a := range m.agencies {
+							if a.ID == *cu.AgencyID {
+								d.AgencyName = a.Name
+							}
+						}
+					}
+					cs.Domains = append(cs.Domains, d)
 				}
 			}
 		}

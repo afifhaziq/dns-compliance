@@ -129,7 +129,7 @@ func FlattenCRDRows(cases []db.CaseSummary, letters []db.CaseLetterEntry) []CRDR
 				my = "Yes"
 			}
 			base := CRDRow{
-				Tahun: year, AlamatLamanWeb: d.URL, Agensi: c.AgencyName,
+				Tahun: year, AlamatLamanWeb: d.URL, Agensi: d.AgencyName,
 				TarikhBlocked: blocked, NoRujukanNMD: refExternal,
 				Status: titleCaseFirst(d.Status), TarikhUplift: upliftDate,
 				NoRujukanNMSMD: refInternal, Remarks: remarks, DotMY: my,

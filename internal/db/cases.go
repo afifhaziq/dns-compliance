@@ -292,12 +292,17 @@ func (s *postgresStore) listCaseSummaries(ctx context.Context, departmentID *uin
 		URL         string
 		Status      string
 		OriginalURL string
+		AgencyID    *uint
+		AgencyName  string
 	}
 	var rows []domainRow
 	if err := s.db.WithContext(ctx).
 		Table("case_urls").
-		Select("case_urls.case_id as case_id, case_urls.url_id as url_id, urls.url as url, case_urls.status as status, case_urls.original_url as original_url").
+		Select(`case_urls.case_id as case_id, case_urls.url_id as url_id, urls.url as url,
+			case_urls.status as status, case_urls.original_url as original_url,
+			case_urls.agency_id as agency_id, agencies.name as agency_name`).
 		Joins("JOIN urls ON urls.id = case_urls.url_id").
+		Joins("LEFT JOIN agencies ON agencies.id = case_urls.agency_id").
 		Where("case_urls.case_id IN ?", caseIDs).
 		Scan(&rows).Error; err != nil {
 		return nil, err
@@ -312,7 +317,11 @@ func (s *postgresStore) listCaseSummaries(ctx context.Context, departmentID *uin
 	}
 	for _, r := range rows {
 		i := idxByCaseID[r.CaseID]
-		summaries[i].Domains = append(summaries[i].Domains, CaseSummaryDomain{URLID: r.URLID, URL: r.URL, Status: r.Status, OriginalURL: r.OriginalURL, Offences: offMap[r.URLID]})
+		summaries[i].Domains = append(summaries[i].Domains, CaseSummaryDomain{
+			URLID: r.URLID, URL: r.URL, Status: r.Status, OriginalURL: r.OriginalURL,
+			AgencyID: r.AgencyID, AgencyName: r.AgencyName,
+			Offences: offMap[r.URLID],
+		})
 	}
 	return summaries, nil
 }

@@ -17,11 +17,11 @@ func ptrTime(y int, m time.Month, d int) *time.Time {
 
 func TestFlattenCRDRows_MultiOffenceExpandsToMultipleRows(t *testing.T) {
 	cases := []db.CaseSummary{{
-		ID:         1,
-		AgencyName: "PDRM",
+		ID: 1,
 		Domains: []db.CaseSummaryDomain{{
-			URL:    "example.com",
-			Status: "requested",
+			URL:        "example.com",
+			Status:     "requested",
+			AgencyName: "PDRM",
 			Offences: []db.OffenceEntry{
 				{Citation: "s.233", Category: "Judi"},
 				{Citation: "s.234", Category: "Lucah"},

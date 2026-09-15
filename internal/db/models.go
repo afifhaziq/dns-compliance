@@ -742,8 +742,6 @@ type CaseLetterEntry struct {
 // ListDepartmentURLs) and every domain it covers. Not a persisted table.
 type CaseSummary struct {
 	ID                             uint                `json:"id"`
-	AgencyID                       *uint               `json:"agency_id,omitempty"`
-	AgencyName                     string              `json:"agency_name,omitempty"`
 	DueDate                        *time.Time          `json:"due_date,omitempty"`
 	RequestedAt                    *time.Time          `json:"requested_at,omitempty"`
 	CreatedAt                      time.Time           `json:"created_at"`
@@ -764,13 +762,17 @@ type CaseSummary struct {
 	Domains                        []CaseSummaryDomain `gorm:"-" json:"domains"`
 }
 
-// CaseSummaryDomain is one domain a CaseSummary covers, via CaseURL —
-// Status is that domain's own CaseURL.Status.
+// CaseSummaryDomain is one domain under a CaseSummary — status, offences,
+// and (2026-09-15) agency are all CaseURL-level, not Case-level, since a
+// case's domains can each diverge on all three (see CaseURL's doc comment
+// in models.go).
 type CaseSummaryDomain struct {
 	URLID       uint           `json:"url_id"`
 	URL         string         `json:"url"`
 	Status      string         `json:"status"`
 	OriginalURL string         `json:"original_url,omitempty"` // CaseURL.OriginalURL — the exact cited URL, when it differs from URL (the normalized hostname)
+	AgencyID    *uint          `json:"agency_id,omitempty"`
+	AgencyName  string         `json:"agency_name,omitempty"`
 	Offences    []OffenceEntry `json:"offences,omitempty"`
 }
 

@@ -31,6 +31,14 @@ type CMODRow struct {
 	InternalRef string // col 17
 }
 
+// CaseURLKey identifies one domain within one case — agency lives on
+// CaseURL (per case, per domain), so a case-only key can't disambiguate
+// two domains under the same case with different agencies.
+type CaseURLKey struct {
+	CaseID uint
+	URL    string
+}
+
 // FlattenCMODRows expands letters into export rows — one row per
 // CaseLetterEntry x its URLs (a letter covering 3 domains produces 3 rows,
 // Link varies, everything else repeats), further expanded per-domain-
@@ -42,17 +50,16 @@ type CMODRow struct {
 // user list — see internal/db.Store.ListUsers — not fetched here).
 // offencesByURL maps a domain string -> its []db.OffenceEntry (built by the
 // caller, keyed by the domains already present on CaseLetterEntry.URLs).
-// agencyNameByCaseID maps CaseLetter.CaseID -> the case's Agency.Name
-// (built by the caller — CaseLetterEntry does not carry Agency directly;
-// see Plan 05 for exactly how the caller builds this map by reusing
-// db.CaseSummary.AgencyName, since internal/db.cases.go's case_letters
-// query does not join agencies at all).
+// agencyNameByCaseURL maps (CaseLetter.CaseID, domain) -> that domain's own
+// Agency.Name (built by the caller from db.CaseSummary.Domains — agency is
+// CaseURL-level, not Case-level, since 2026-09-15, so two domains under the
+// same letter's case can carry two different agencies).
 // Pure function, no DB/HTTP.
 func FlattenCMODRows(
 	letters []db.CaseLetterEntry,
 	oicUsernames map[uint]string,
 	offencesByURL map[string][]db.OffenceEntry,
-	agencyNameByCaseID map[uint]string,
+	agencyNameByCaseURL map[CaseURLKey]string,
 ) []CMODRow {
 	var out []CMODRow
 	no := 0
@@ -61,9 +68,9 @@ func FlattenCMODRows(
 		if l.OICUserID != nil {
 			oic = oicUsernames[*l.OICUserID]
 		}
-		agency := agencyNameByCaseID[l.CaseID]
 
 		for _, url := range l.URLs {
+			agency := agencyNameByCaseURL[CaseURLKey{CaseID: l.CaseID, URL: url}]
 			offences := offencesByURL[url]
 			base := CMODRow{
 				LetterDate: formatDate(l.LetterDate), Recipient: l.Recipient, Type: l.Type,

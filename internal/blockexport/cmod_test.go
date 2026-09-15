@@ -116,7 +116,7 @@ func TestFlattenCMODRows_AgencyAndDatesResolved(t *testing.T) {
 			URLs: []string{"a.com"},
 		},
 	}
-	rows := FlattenCMODRows(letters, nil, nil, map[uint]string{9: "PDRM"})
+	rows := FlattenCMODRows(letters, nil, nil, map[CaseURLKey]string{{CaseID: 9, URL: "a.com"}: "PDRM"})
 	if rows[0].Agency != "PDRM" {
 		t.Fatalf("Agency = %q, want PDRM", rows[0].Agency)
 	}
