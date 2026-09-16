@@ -8,8 +8,9 @@ export async function listCases(url: string): Promise<Case[]> {
   return (Array.isArray(data) ? data : []).map(c => ({ ...c, letters: c.letters ?? [] }))
 }
 
-// agencyId/dueDate optionally seed Case.AgencyID/DueDate at creation time —
-// omitted keys are left unset server-side (see db.CaseCreateOptions).
+// agencyId seeds this url's own new CaseURL.AgencyID (moved off Case
+// 2026-09-15); dueDate seeds Case.DueDate. Both at creation time — omitted
+// keys are left unset server-side (see db.CaseCreateOptions).
 // originalUrl seeds this url's own CaseURL.OriginalURL (the exact cited
 // text, e.g. a full URL with a path, when it differs from the bare-hostname
 // `url` the case is opened for).

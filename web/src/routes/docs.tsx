@@ -235,7 +235,7 @@ function AddDocumentDialog({
         if (agencyId !== '') caseOpts.agencyId = agencyId
         if (dueDurationMinutes) caseOpts.dueDate = dueDateFromDurationMinutes(Number(dueDurationMinutes))
         const c = await createCase(created[0].url, status, caseOpts)
-        await Promise.all(created.slice(1).map(u => addUrlToCase(c.id, u.url, status)))
+        await Promise.all(created.slice(1).map(u => addUrlToCase(c.id, u.url, status, undefined, caseOpts.agencyId)))
         await Promise.all(letters.map(l => addCaseLetter(c.id, l)))
       }
       reset()

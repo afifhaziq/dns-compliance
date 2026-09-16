@@ -538,7 +538,7 @@ function AddUrlDialog({
       const caseWork = (async () => {
         const c = await createCase(created[0].url, status, { ...caseOpts, originalUrl: originalUrlFor(domains[0], created[0].url) })
         await Promise.all(created.slice(1).map((u, i) =>
-          addUrlToCase(c.id, u.url, status, originalUrlFor(domains[i + 1], u.url))
+          addUrlToCase(c.id, u.url, status, originalUrlFor(domains[i + 1], u.url), caseOpts.agencyId)
         ))
         // External/Internal ref are recorded regardless of the "Create
         // Letter" switch — CRD needs current_reference_number tracked even

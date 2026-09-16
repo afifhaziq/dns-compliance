@@ -419,12 +419,19 @@ func TestConnect_BackfillsCaseAgencyIntoCaseURLs(t *testing.T) {
 	if err := oldDB.Create(&u).Error; err != nil {
 		t.Fatalf("seed url: %v", err)
 	}
+	u2 := db.URL{URL: "example2.com"}
+	if err := oldDB.Create(&u2).Error; err != nil {
+		t.Fatalf("seed second url: %v", err)
+	}
 	legacy := legacyCase{DepartmentID: dept.ID, AgencyID: &agency.ID}
 	if err := oldDB.Create(&legacy).Error; err != nil {
 		t.Fatalf("seed legacy case: %v", err)
 	}
 	if err := oldDB.Create(&db.CaseURL{CaseID: legacy.ID, URLID: u.ID, Status: "blocked"}).Error; err != nil {
 		t.Fatalf("seed case_url: %v", err)
+	}
+	if err := oldDB.Create(&db.CaseURL{CaseID: legacy.ID, URLID: u2.ID, Status: "blocked"}).Error; err != nil {
+		t.Fatalf("seed second case_url: %v", err)
 	}
 	oldSQLDB, err := oldDB.DB()
 	if err != nil {
@@ -449,6 +456,16 @@ func TestConnect_BackfillsCaseAgencyIntoCaseURLs(t *testing.T) {
 	}
 	if cu.AgencyID == nil || *cu.AgencyID != agency.ID {
 		t.Fatalf("case_url.AgencyID = %v, want %d", cu.AgencyID, agency.ID)
+	}
+
+	// Fan-out check: the backfill must carry the old case-level agency onto
+	// EVERY domain the case covers, not just the first.
+	var cu2 db.CaseURL
+	if err := newDB.Where("case_id = ? AND url_id = ?", legacy.ID, u2.ID).First(&cu2).Error; err != nil {
+		t.Fatalf("load second case_url: %v", err)
+	}
+	if cu2.AgencyID == nil || *cu2.AgencyID != agency.ID {
+		t.Fatalf("second case_url.AgencyID = %v, want %d", cu2.AgencyID, agency.ID)
 	}
 }
 

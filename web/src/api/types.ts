@@ -79,7 +79,7 @@ export type URLEntry = {
 // One row of GET /api/cases/*url — mirrors db.CaseWithLetters (Case
 // embedded + Letters + this url's own Status/Agency from its CaseURL join).
 // due_date/requested_at are the case-level defaults shared by every URL the
-// case covers (db.Case); agency_id/agency and status are this url's own
+// case covers (db.Case); agency_id/agency_name and status are this url's own
 // CaseURL fields, independent per url within the same case (2026-09-15 —
 // agency moved off Case for the same reason status always was: a case can
 // cover domains requested by different agencies).
@@ -90,7 +90,7 @@ export type Case = {
   due_date?: string
   requested_at?: string
   agency_id?: number
-  agency?: { id: number; name: string }
+  agency_name?: string
   status: string
   letters: CaseLetter[]
 }
