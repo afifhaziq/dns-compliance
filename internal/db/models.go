@@ -233,7 +233,7 @@ type GridPreference struct {
 type ScanRun struct {
 	ID          uint       `gorm:"primaryKey" json:"id"`
 	TriggeredBy string     `json:"triggered_by"` // "scheduled", "scheduled-sla", "manual", "screenshot"
-	Status      string     `json:"status"`       // "running", "completed", "failed"
+	Status      string     `json:"status"`       // "running", "completed", "failed", "cancelled"
 	StartedAt   time.Time  `json:"started_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }

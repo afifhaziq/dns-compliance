@@ -20,7 +20,7 @@ import {
   useNavigate,
 } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/router-devtools'
-import { triggerScan, type ScanProgressResponse } from '../api/scan'
+import { triggerScan, cancelScan, type ScanProgressResponse } from '../api/scan'
 import { fetchMe, logout as apiLogout } from '../api/auth'
 import { fetchUrls } from '../api/urls'
 import type { User, URLEntry } from '../api/types'
@@ -257,6 +257,7 @@ type ScanContextValue = {
   scanning: boolean
   refreshSignal: number
   handleScanClick: () => void
+  handleCancelClick: () => void
   progress: ScanProgressResponse | null
 }
 
@@ -264,6 +265,7 @@ const ScanContext = createContext<ScanContextValue>({
   scanning: false,
   refreshSignal: 0,
   handleScanClick: () => {},
+  handleCancelClick: () => {},
   progress: null,
 })
 
@@ -332,6 +334,15 @@ function RootLayout() {
     }
   }, [scanning, navigate])
 
+  const handleCancelClick = useCallback(async () => {
+    if (!scanning) return
+    try {
+      await cancelScan()
+    } catch (err) {
+      console.error('Scan cancel failed:', err)
+    }
+  }, [scanning])
+
   const handleScanSelected = useCallback(async (urls: string[]) => {
     if (scanning) return
     const normalizedUrls = urls.map(normalizeForClient)
@@ -388,7 +399,7 @@ function RootLayout() {
 
   return (
     <AuthContext value={authValue}>
-      <ScanContext value={{ scanning, refreshSignal, handleScanClick, progress }}>
+      <ScanContext value={{ scanning, refreshSignal, handleScanClick, handleCancelClick, progress }}>
         <a href="#main" className="skip-link">Skip to main content</a>
 
         <GlassNavbar

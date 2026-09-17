@@ -12,7 +12,7 @@ import {
   getPaginationRowModel,
   useReactTable,
 } from '@tanstack/react-table'
-import { Camera, Image as ImageIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { Camera, Image as ImageIcon, ChevronLeftIcon, ChevronRightIcon, Square } from 'lucide-react'
 import { GripIcon } from '@/components/ui/grip'
 import { ChevronRight } from '@/components/ui/chevron-right'
 import { fetchResults, groupResults } from '../api/results'
@@ -139,7 +139,7 @@ function ServerEvidenceCell({
 /* ─── Latest Scan tab ─────────────────────────────────────────────────────── */
 
 function LatestScanTab() {
-  const { scanning, refreshSignal, progress } = useScan()
+  const { scanning, refreshSignal, progress, handleCancelClick } = useScan()
 
   const [results, setResults] = useState<ScanResult[]>([])
   const [loading, setLoading] = useState(true)
@@ -490,6 +490,13 @@ function LatestScanTab() {
               </span>
             </Progress>
           )}
+          <button
+            className="btn-ghost flex items-center gap-1.5 text-[13px]"
+            onClick={handleCancelClick}
+          >
+            <Square className="size-3" />
+            Cancel
+          </button>
         </div>
       )}
 
@@ -916,7 +923,7 @@ function ResultsPage() {
   const navigate = useNavigate()
 
   return (
-    <div className="mx-20 mt-10">
+    <div className="mx-20 mt-10 mb-10">
       <div className="page-header">
         <h1 className="page-title">Compliance Results</h1>
       </div>

@@ -31,7 +31,7 @@ export type ScanResult = {
 export type ScanRun = {
   id: number
   triggered_by: string
-  status: 'running' | 'completed' | 'failed'
+  status: 'running' | 'completed' | 'failed' | 'cancelled'
   started_at: string
   completed_at: string | null
 }

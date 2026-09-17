@@ -492,6 +492,18 @@ func (h *Handlers) TriggerScan(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]string{"message": "scan triggered"})
 }
 
+func (h *Handlers) CancelScan(w http.ResponseWriter, r *http.Request) {
+	if h.scanner == nil {
+		writeError(w, http.StatusServiceUnavailable, "scanner not configured")
+		return
+	}
+	if err := h.scanner.Cancel(); err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"message": "scan cancelled"})
+}
+
 func (h *Handlers) ScanStatus(w http.ResponseWriter, r *http.Request) {
 	run, err := h.store.ActiveScanRun(r.Context())
 	if err != nil {

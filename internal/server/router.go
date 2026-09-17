@@ -76,6 +76,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Get("/due-date-presets", h.ListDueDatePresets)
 
 			r.With(scanLimit).Post("/scan", h.TriggerScan)
+			r.Post("/scan/cancel", h.CancelScan)
 			r.Get("/scan/status", h.ScanStatus)
 			r.Get("/scan/progress", h.ScanProgress)
 			r.Get("/scan/progress/stream", h.ScanProgressStream)

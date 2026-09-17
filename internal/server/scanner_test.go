@@ -26,13 +26,17 @@ type fakeCrawlerClient struct {
 	lastReq *pb.SweepRequest
 }
 
-func (f *fakeCrawlerClient) StartSweep(_ context.Context, req *pb.SweepRequest, _ ...grpc.CallOption) (*pb.SweepAck, error) {
+func (f *fakeCrawlerClient) StartSweep(ctx context.Context, req *pb.SweepRequest, _ ...grpc.CallOption) (*pb.SweepAck, error) {
 	f.mu.Lock()
 	f.calls++
 	f.lastReq = req
 	f.mu.Unlock()
 	if f.delay > 0 {
-		time.Sleep(f.delay)
+		select {
+		case <-time.After(f.delay):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 	if f.err != nil {
 		return nil, f.err
@@ -212,6 +216,51 @@ func TestScannerTriggerScreenshotTargetsMultipleServers(t *testing.T) {
 	if !req.Screenshots {
 		t.Fatal("expected Screenshots to be true")
 	}
+}
+
+func TestScannerCancelRecordsCancelledStatus(t *testing.T) {
+	crawler := &fakeCrawlerClient{delay: 3 * time.Second}
+	store := &statusCapturingStore{completionCapture: completionCapture{}}
+	sc := server.NewScanner(crawler, "test-token", store, nil)
+
+	if err := sc.Trigger(context.Background(), "manual", nil); err != nil {
+		t.Fatalf("Trigger: %v", err)
+	}
+	waitUntil(t, sc.IsRunning, 1*time.Second)
+
+	if err := sc.Cancel(); err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	waitUntil(t, func() bool { return !sc.IsRunning() }, 1*time.Second)
+
+	if len(store.statuses) == 0 || store.statuses[len(store.statuses)-1] != "cancelled" {
+		t.Fatalf("expected final status %q, got %v", "cancelled", store.statuses)
+	}
+}
+
+func TestScannerCancelWithNoRunErrors(t *testing.T) {
+	crawler := &fakeCrawlerClient{}
+	store := &completionCapture{}
+	sc := server.NewScanner(crawler, "test-token", store, nil)
+
+	if err := sc.Cancel(); err == nil {
+		t.Fatal("expected an error cancelling with no scan running")
+	}
+}
+
+// statusCapturingStore records every status CompleteScanRun is called with,
+// unlike completionCapture which only records the run ID.
+type statusCapturingStore struct {
+	completionCapture
+	mu       sync.Mutex
+	statuses []string
+}
+
+func (c *statusCapturingStore) CompleteScanRun(ctx context.Context, id uint, status string, at time.Time) error {
+	c.mu.Lock()
+	c.statuses = append(c.statuses, status)
+	c.mu.Unlock()
+	return c.completionCapture.CompleteScanRun(ctx, id, status, at)
 }
 
 func TestScannerRejectsConcurrentRun(t *testing.T) {

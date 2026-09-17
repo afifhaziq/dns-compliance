@@ -12,6 +12,15 @@ export async function triggerScan(urls?: string[]): Promise<void> {
   if (!res.ok && res.status !== 409) throw new Error(`Failed to start scan: ${res.status}`)
 }
 
+export async function cancelScan(): Promise<void> {
+  const res = await fetch('/api/scan/cancel', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'X-Requested-With': 'fetch' },
+  })
+  if (!res.ok && res.status !== 409) throw new Error(`Failed to cancel scan: ${res.status}`)
+}
+
 export async function fetchScanStatus(): Promise<ScanStatus> {
   const res = await fetch('/api/scan/status')
   if (!res.ok) throw new Error(`Failed to get scan status: ${res.status}`)

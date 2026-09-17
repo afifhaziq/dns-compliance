@@ -30,6 +30,7 @@ type Scanner struct {
 	broadcaster      *Broadcaster
 	mu               sync.Mutex
 	running          bool
+	cancelRun        context.CancelFunc
 	scheduleReset    chan struct{}
 	slaScheduleReset chan struct{}
 }
@@ -72,6 +73,21 @@ func (sc *Scanner) IsRunning() bool {
 	return sc.running
 }
 
+// Cancel stops the in-progress scan, if any, by cancelling the context
+// StartSweep was called with. That context is also what pipeline.Run's
+// per-item timeouts (checkDNS/takeScreenshot) derive from on the crawler
+// side, so in-flight work fails fast and the sweep winds down instead of
+// running to completion. Returns an error if no scan is running.
+func (sc *Scanner) Cancel() error {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	if !sc.running || sc.cancelRun == nil {
+		return errors.New("no scan in progress")
+	}
+	sc.cancelRun()
+	return nil
+}
+
 // Trigger starts a DNS-only scan in a background goroutine. urls is an
 // optional list of specific domains to scan; nil or empty means scan all
 // enabled watched URLs. Returns an error if a scan is already in progress.
@@ -82,9 +98,11 @@ func (sc *Scanner) Trigger(ctx context.Context, triggeredBy string, urls []strin
 		return errors.New("scan already in progress")
 	}
 	sc.running = true
+	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	sc.cancelRun = cancel
 	sc.mu.Unlock()
 
-	go sc.run(context.WithoutCancel(ctx), triggeredBy, urls)
+	go sc.run(runCtx, triggeredBy, urls)
 	return nil
 }
 
@@ -101,9 +119,11 @@ func (sc *Scanner) TriggerScreenshot(ctx context.Context, rawURL string, dnsServ
 		return errors.New("scan already in progress")
 	}
 	sc.running = true
+	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	sc.cancelRun = cancel
 	sc.mu.Unlock()
 
-	go sc.runScreenshot(context.WithoutCancel(ctx), rawURL, dnsServerIDs)
+	go sc.runScreenshot(runCtx, rawURL, dnsServerIDs)
 	return nil
 }
 
@@ -236,12 +256,17 @@ func (sc *Scanner) compliantIPs(ctx context.Context) []string {
 }
 
 func (sc *Scanner) runCrawler(ctx context.Context, req *pb.SweepRequest, runID uint) {
+	// Bookkeeping below must survive Cancel() cancelling ctx — otherwise a
+	// cancelled scan's CompleteScanRun/broadcaster publish would themselves
+	// get cancelled and the run would stay stuck showing "running" forever.
+	bgCtx := context.WithoutCancel(ctx)
+
 	// Publish the fresh (0-completed) run immediately, before the crawler
 	// produces any results — otherwise SSE subscribers keep showing the
 	// previous run's final tally until the first result streams in, which
 	// reads as the progress bar starting full and then resetting.
 	if sc.broadcaster != nil {
-		if data, err := buildProgressPayload(ctx, sc.store); err == nil && data != nil {
+		if data, err := buildProgressPayload(bgCtx, sc.store); err == nil && data != nil {
 			sc.broadcaster.Publish(data)
 		}
 	}
@@ -250,21 +275,25 @@ func (sc *Scanner) runCrawler(ctx context.Context, req *pb.SweepRequest, runID u
 	status := "completed"
 	ack, err := sc.crawler.StartSweep(authedCtx, req)
 	if err != nil {
+		if ctx.Err() != nil {
+			status = "cancelled"
+		} else {
+			status = "failed"
+		}
 		log.Printf("scanner: crawler StartSweep failed: %v", err)
-		status = "failed"
 	} else if !ack.Accepted {
 		log.Printf("scanner: crawler rejected sweep: %s", ack.Error)
 		status = "failed"
 	}
 	now := time.Now()
-	_ = sc.store.CompleteScanRun(ctx, runID, status, now)
+	_ = sc.store.CompleteScanRun(bgCtx, runID, status, now)
 
 	// StartSweep only returns once the crawler has finished streaming
 	// results via Submit; nothing else announces the run flipping to
 	// completed/failed, so SSE subscribers would be stuck on the last
 	// "running" payload forever without this.
 	if sc.broadcaster != nil {
-		if data, err := buildProgressPayload(ctx, sc.store); err == nil && data != nil {
+		if data, err := buildProgressPayload(bgCtx, sc.store); err == nil && data != nil {
 			sc.broadcaster.Publish(data)
 		}
 	}
@@ -273,6 +302,9 @@ func (sc *Scanner) runCrawler(ctx context.Context, req *pb.SweepRequest, runID u
 func (sc *Scanner) setRunning(v bool) {
 	sc.mu.Lock()
 	sc.running = v
+	if !v {
+		sc.cancelRun = nil
+	}
 	sc.mu.Unlock()
 }
 
