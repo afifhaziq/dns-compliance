@@ -699,9 +699,17 @@ type CaseLetter struct {
 // joined through CaseURL, not stored as a scalar on URL.
 type CaseURL struct {
 	CaseID uint `gorm:"primaryKey;autoIncrement:false" json:"case_id"`
-	URLID  uint `gorm:"primaryKey;autoIncrement:false" json:"url_id"`
-	Case   Case `gorm:"foreignKey:CaseID;constraint:OnDelete:CASCADE" json:"-"`
-	URL    URL  `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
+	// URLID has its own index (the composite primary key above is
+	// (case_id, url_id), leading with case_id, so it can't serve a lookup
+	// keyed by url_id alone) — every case a url has ever been part of needs
+	// exactly that, e.g. ListDepartmentURLs' latest-case-per-url and
+	// current-reference-number subqueries. Without it those degrade to a
+	// full case_urls scan per outer row; harmless at watchlist scale but
+	// catastrophic (~30s+) once a department's list reaches the tens of
+	// thousands, as CRD's imported case history does.
+	URLID uint `gorm:"primaryKey;autoIncrement:false;index" json:"url_id"`
+	Case  Case `gorm:"foreignKey:CaseID;constraint:OnDelete:CASCADE" json:"-"`
+	URL   URL  `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
 	// default:'requested' so AutoMigrate's ADD COLUMN backfills any
 	// already-existing row (e.g. a dev DB migrated through the brief
 	// 2026-08-26 cases-level-status detour, see docs/db-schema.dbml) instead
