@@ -2,9 +2,11 @@ package server_test
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -3262,6 +3264,44 @@ func TestListAgencies_AllowedForNonAdmin(t *testing.T) {
 	}
 	var agencies []db.Agency
 	if err := json.Unmarshal(w.Body.Bytes(), &agencies); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(agencies) != 1 || agencies[0].Name != "MCMC" {
+		t.Fatalf("unexpected agencies: %+v", agencies)
+	}
+}
+
+// TestJSONResponsesAreGzipCompressed guards the middleware.Compress wiring
+// in router.go — case-summaries/case-letters responses run into multiple MB
+// uncompressed, so a regression here would silently bring that transfer
+// cost back.
+func TestJSONResponsesAreGzipCompressed(t *testing.T) {
+	store := &fullMockStore{agencies: []db.Agency{{ID: 1, Name: "MCMC"}}}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agencies", nil)
+	req.AddCookie(cookie)
+	req.Header.Set("Accept-Encoding", "gzip")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if enc := w.Header().Get("Content-Encoding"); enc != "gzip" {
+		t.Fatalf("expected Content-Encoding: gzip, got %q", enc)
+	}
+	gr, err := gzip.NewReader(w.Body)
+	if err != nil {
+		t.Fatalf("gzip.NewReader: %v", err)
+	}
+	decoded, err := io.ReadAll(gr)
+	if err != nil {
+		t.Fatalf("reading gzip body: %v", err)
+	}
+	var agencies []db.Agency
+	if err := json.Unmarshal(decoded, &agencies); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if len(agencies) != 1 || agencies[0].Name != "MCMC" {

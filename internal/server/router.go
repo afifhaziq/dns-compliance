@@ -23,6 +23,11 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	// Some JSON responses (case-summaries, case-letters at page_size=5000)
+	// run into multiple MB uncompressed — gzip cuts that by ~90% over the
+	// wire for effectively free, since every response already declares
+	// Content-Type via writeJSON.
+	r.Use(middleware.Compress(5, "application/json"))
 
 	// 5 attempts/min per IP — slows brute-force/enumeration against login
 	// without a noticeable effect on a real user occasionally mistyping.
