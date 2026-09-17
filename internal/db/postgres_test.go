@@ -842,6 +842,35 @@ func TestCreateCase_DueDateVisibleOnWatchlist(t *testing.T) {
 	}
 }
 
+// TestCreateCase_LinksNewDomainToDepartmentListDisabled covers a domain
+// that was never explicitly watchlisted before its first case — CreateCase
+// must still surface it (switched off) in the department's Domain tab.
+func TestCreateCase_LinksNewDomainToDepartmentListDisabled(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	dept, _ := s.CreateDepartment(ctx, "TestDeptCaseOnly")
+	u, err := s.CreateURL(ctx, "never-watchlisted.com")
+	if err != nil {
+		t.Fatalf("CreateURL: %v", err)
+	}
+
+	if _, err := s.CreateCase(ctx, dept.ID, u.ID, "requested", db.CaseCreateOptions{}); err != nil {
+		t.Fatalf("CreateCase: %v", err)
+	}
+
+	entries, err := s.ListDepartmentURLs(ctx, dept.ID)
+	if err != nil {
+		t.Fatalf("ListDepartmentURLs: %v", err)
+	}
+	if len(entries) != 1 || entries[0].ID != u.ID {
+		t.Fatalf("expected the case's url to appear on the department's list, got %+v", entries)
+	}
+	if entries[0].Enabled {
+		t.Fatalf("expected a case-only domain to default Enabled=false, got %+v", entries[0])
+	}
+}
+
 // TestCreateCase_AgencyAndStatusVisibleOnWatchlist covers Case.AgencyID and
 // this url's CaseURL.Status showing up in ListDepartmentURLs' derived
 // fields, and that UpdateCaseURLStatus doesn't clobber AgencyID.

@@ -112,6 +112,116 @@ func TestNormalizeAndDedupeURLs_Idempotent(t *testing.T) {
 	}
 }
 
+// TestBackfillCaseURLsToDepartmentLists_LinksImportedCaseDomain covers the
+// gap a bulk import (internal/blockimport) leaves: a case_urls row written
+// directly, with no corresponding department_urls row, so the domain never
+// showed up on that department's Domain tab.
+func TestBackfillCaseURLsToDepartmentLists_LinksImportedCaseDomain(t *testing.T) {
+	gormDB, s := rawConnect(t)
+	ctx := context.Background()
+
+	dept, _ := s.CreateDepartment(ctx, "CRD")
+	u, _ := s.CreateURL(ctx, "imported.example.com")
+	// Bypasses CreateCase/AddURLToCase on purpose, mirroring how
+	// internal/blockimport writes case_urls directly.
+	c := db.Case{DepartmentID: dept.ID}
+	if err := gormDB.Create(&c).Error; err != nil {
+		t.Fatalf("seed case: %v", err)
+	}
+	if err := gormDB.Create(&db.CaseURL{CaseID: c.ID, URLID: u.ID, Status: "requested"}).Error; err != nil {
+		t.Fatalf("seed case_url: %v", err)
+	}
+
+	if err := db.BackfillCaseURLsToDepartmentLists(ctx, gormDB); err != nil {
+		t.Fatalf("BackfillCaseURLsToDepartmentLists: %v", err)
+	}
+
+	entries, err := s.ListDepartmentURLs(ctx, dept.ID)
+	if err != nil {
+		t.Fatalf("ListDepartmentURLs: %v", err)
+	}
+	if len(entries) != 1 || entries[0].ID != u.ID {
+		t.Fatalf("expected the imported domain to appear on the department's list, got %+v", entries)
+	}
+	if entries[0].Enabled {
+		t.Fatalf("expected the backfilled link to default Enabled=false, got %+v", entries[0])
+	}
+}
+
+// TestBackfillCaseURLsToDepartmentLists_LeavesExistingLinkAlone covers the
+// idempotency/no-clobber guarantee: a domain that's already on the
+// department's watchlist (Enabled: true) via the normal add flow must not
+// be touched by this backfill, even though it's also linked via a case.
+func TestBackfillCaseURLsToDepartmentLists_LeavesExistingLinkAlone(t *testing.T) {
+	gormDB, s := rawConnect(t)
+	ctx := context.Background()
+
+	dept, _ := s.CreateDepartment(ctx, "CRD")
+	u, err := s.AddURLToWatchlist(ctx, dept.ID, "already-watched.example.com")
+	if err != nil {
+		t.Fatalf("AddURLToWatchlist: %v", err)
+	}
+	c := db.Case{DepartmentID: dept.ID}
+	if err := gormDB.Create(&c).Error; err != nil {
+		t.Fatalf("seed case: %v", err)
+	}
+	if err := gormDB.Create(&db.CaseURL{CaseID: c.ID, URLID: u.ID, Status: "requested"}).Error; err != nil {
+		t.Fatalf("seed case_url: %v", err)
+	}
+
+	if err := db.BackfillCaseURLsToDepartmentLists(ctx, gormDB); err != nil {
+		t.Fatalf("BackfillCaseURLsToDepartmentLists: %v", err)
+	}
+
+	entries, _ := s.ListDepartmentURLs(ctx, dept.ID)
+	if len(entries) != 1 || !entries[0].Enabled {
+		t.Fatalf("expected the pre-existing Enabled=true link untouched, got %+v", entries)
+	}
+}
+
+// TestBackfillCaseURLsToDepartmentLists_HandlesMultipleBatches seeds more
+// missing links than one BackfillCaseURLsToDepartmentListsBatchSize chunk
+// and confirms a single call still links every one — same multi-batch-loop
+// guarantee as TestBackfillURLValues_HandlesMultipleBatches.
+func TestBackfillCaseURLsToDepartmentLists_HandlesMultipleBatches(t *testing.T) {
+	gormDB, s := rawConnect(t)
+	ctx := context.Background()
+
+	dept, _ := s.CreateDepartment(ctx, "CRD")
+	c := db.Case{DepartmentID: dept.ID}
+	if err := gormDB.Create(&c).Error; err != nil {
+		t.Fatalf("seed case: %v", err)
+	}
+
+	n := db.BackfillCaseURLsToDepartmentListsBatchSize*2 + 5
+	urls := make([]db.URL, n)
+	for i := range urls {
+		urls[i] = db.URL{URL: fmt.Sprintf("case-host%d.example.com", i)}
+	}
+	if err := gormDB.CreateInBatches(urls, 500).Error; err != nil {
+		t.Fatalf("seed urls: %v", err)
+	}
+	caseURLs := make([]db.CaseURL, n)
+	for i, u := range urls {
+		caseURLs[i] = db.CaseURL{CaseID: c.ID, URLID: u.ID, Status: "requested"}
+	}
+	if err := gormDB.CreateInBatches(caseURLs, 500).Error; err != nil {
+		t.Fatalf("seed case_urls: %v", err)
+	}
+
+	if err := db.BackfillCaseURLsToDepartmentLists(ctx, gormDB); err != nil {
+		t.Fatalf("BackfillCaseURLsToDepartmentLists: %v", err)
+	}
+
+	var count int64
+	if err := gormDB.Model(&db.DepartmentURL{}).Where("department_id = ?", dept.ID).Count(&count).Error; err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if int(count) != n {
+		t.Fatalf("expected all %d urls linked, got %d", n, count)
+	}
+}
+
 func TestBackfillURLValues_RewritesDivergedRows(t *testing.T) {
 	gormDB, s := rawConnect(t)
 	ctx := context.Background()

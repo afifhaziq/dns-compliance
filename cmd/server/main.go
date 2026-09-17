@@ -87,6 +87,14 @@ func main() {
 		log.Printf("backfilling scan_results.error_class: %v", err)
 	}
 
+	// Links every url already on a department's case (case_urls) but not
+	// yet on that department's watchlist (department_urls) — a gap left by
+	// bulk imports (internal/blockimport) writing case_urls directly. Same
+	// non-fatal reasoning as the backfills above.
+	if err := db.BackfillCaseURLsToDepartmentLists(context.Background(), gormDB); err != nil {
+		log.Printf("backfilling case_urls into department_urls: %v", err)
+	}
+
 	if err := db.SeedDepartments(gormDB); err != nil {
 		log.Printf("seed departments: %v", err)
 	}

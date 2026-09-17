@@ -86,6 +86,63 @@ func NormalizeAndDedupeURLs(ctx context.Context, database *gorm.DB) error {
 	})
 }
 
+// BackfillCaseURLsToDepartmentListsBatchSize bounds how many case_urls rows
+// are read and linked per iteration, same statement_timeout-avoidance
+// rationale as BackfillURLValuesBatchSize.
+const BackfillCaseURLsToDepartmentListsBatchSize = 1000
+
+// BackfillCaseURLsToDepartmentLists ensures every url already linked to a
+// department via a Case (case_urls -> cases.department_id) also has a
+// DepartmentURL row for that department — the same thing CreateCase and
+// AddCaseURL now do for a case's urls going forward (see ensureDepartmentURL
+// in postgres.go), needed here because a bulk import (internal/blockimport)
+// writes case_urls directly and never went through either of those. Without
+// this, a department's Domain tab (GET /api/urls, department-scoped) stays
+// empty for every domain that only ever arrived via an imported case.
+// New rows default Enabled: false — this backfill's whole point is to make
+// an already-known domain visible and toggleable, not to silently start
+// scanning tens of thousands of domains no one has reviewed yet. Idempotent:
+// only touches (department, url) pairs with no DepartmentURL row at all, so
+// a pair already linked (via this backfill, AddURLToWatchlist, or the
+// normal case-creation flow) is left alone regardless of its Enabled value.
+// Runs as one batched INSERT...SELECT per iteration (not a per-row Go loop
+// calling ensureDepartmentURL — CRD-import scale here is ~36k case_urls
+// rows, and a round trip per row measurably slowed startup), repeating
+// until a batch inserts zero rows — same convergence shape as
+// BackfillURLValues, and just as non-fatal on error (see its call site in
+// cmd/server/main.go). The `false` literal lands as a real `false`, not
+// department_urls.enabled's `default:true`, because this is a raw INSERT
+// rather than a GORM struct Create (see ensureDepartmentURL's doc comment
+// for why that distinction matters).
+func BackfillCaseURLsToDepartmentLists(ctx context.Context, database *gorm.DB) error {
+	// CURRENT_TIMESTAMP, not a bound time.Now() parameter — pgx can't infer
+	// a bound parameter's type here (no column context to match against in
+	// a bare SELECT list next to a DISTINCT), so it arrives as text and
+	// Postgres rejects it against created_at's timestamptz column. The
+	// keyword form is standard SQL and sidesteps that entirely, and both
+	// engines this runs against (Postgres, SQLite in tests) support it.
+	stmt := `INSERT INTO department_urls (department_id, url_id, enabled, created_at)
+		SELECT DISTINCT cases.department_id, case_urls.url_id, false, CURRENT_TIMESTAMP
+		FROM case_urls
+		JOIN cases ON cases.id = case_urls.case_id
+		WHERE NOT EXISTS (
+			SELECT 1 FROM department_urls du
+			WHERE du.department_id = cases.department_id AND du.url_id = case_urls.url_id
+		)
+		LIMIT ?
+		ON CONFLICT DO NOTHING`
+
+	for {
+		res := database.WithContext(ctx).Exec(stmt, BackfillCaseURLsToDepartmentListsBatchSize)
+		if res.Error != nil {
+			return fmt.Errorf("linking case_urls to department_urls: %w", res.Error)
+		}
+		if res.RowsAffected == 0 {
+			return nil
+		}
+	}
+}
+
 // BackfillURLValuesBatchSize caps each UPDATE to a bounded chunk of rows —
 // on a first deploy (pre-branch, every url_value diverges) this would
 // otherwise be a single full-table rewrite, risking a managed-Postgres

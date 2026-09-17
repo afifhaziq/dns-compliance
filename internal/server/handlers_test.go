@@ -405,6 +405,16 @@ func (m *fullMockStore) AddURLToWatchlist(ctx context.Context, departmentID uint
 	return u, nil
 }
 
+func (m *fullMockStore) EnsureURLOnDepartmentList(_ context.Context, departmentID, urlID uint) error {
+	for _, du := range m.departmentURLs {
+		if du.DepartmentID == departmentID && du.URLID == urlID {
+			return nil // already linked — leave its Enabled value alone
+		}
+	}
+	m.departmentURLs = append(m.departmentURLs, db.DepartmentURL{DepartmentID: departmentID, URLID: urlID, Enabled: false, CreatedAt: time.Now()})
+	return nil
+}
+
 func (m *fullMockStore) SetURLEnabled(_ context.Context, departmentID, urlID uint, enabled bool) (bool, error) {
 	for i, du := range m.departmentURLs {
 		if du.DepartmentID == departmentID && du.URLID == urlID {

@@ -146,6 +146,36 @@ func TestAddCaseURL_PassesThroughOriginalURL(t *testing.T) {
 	}
 }
 
+// AddCaseURL links a domain that was never on the case's department's
+// watchlist — it must still surface (switched off) in that department's
+// Domain tab, not stay invisible until someone separately watchlists it.
+func TestAddCaseURL_LinksNewDomainToDepartmentListDisabled(t *testing.T) {
+	store := &fullMockStore{}
+	u := db.URL{ID: 2, URL: "second.example.com"}
+	store.urls = append(store.urls, u)
+	store.cases = append(store.cases, db.Case{ID: 1, DepartmentID: 1})
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+
+	body, _ := json.Marshal(map[string]string{"url": "second.example.com", "status": "requested"})
+	req := httptest.NewRequest(http.MethodPost, "/api/cases/1/urls", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.departmentURLs) != 1 {
+		t.Fatalf("expected exactly one DepartmentURL row, got %+v", store.departmentURLs)
+	}
+	du := store.departmentURLs[0]
+	if du.DepartmentID != 1 || du.URLID != u.ID || du.Enabled {
+		t.Fatalf("expected {dept:1 url:%d enabled:false}, got %+v", u.ID, du)
+	}
+}
+
 func TestCreateCaseForURL_NonOwningDepartment404(t *testing.T) {
 	store := &fullMockStore{}
 	u := db.URL{ID: 1, URL: "example.com"}

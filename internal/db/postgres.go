@@ -679,6 +679,38 @@ func (s *postgresStore) AddURLToWatchlist(ctx context.Context, departmentID uint
 	return u, err
 }
 
+// ensureDepartmentURL makes sure urlID has a DepartmentURL row for
+// departmentID, defaulting Enabled to false. OnConflict DoNothing, not an
+// upsert: a pre-existing row (from AddURLToWatchlist or an earlier case)
+// keeps whatever Enabled value it already has. Takes a *gorm.DB (plain or
+// a transaction) so callers that need this atomic with another write, e.g.
+// CreateCase, can pass their tx.
+//
+// Enabled can't just be set to false on the struct literal below —
+// Enabled's `default:true` column tag means GORM substitutes that default
+// for the field's zero value (false) right into the INSERT regardless of
+// what's assigned, so a fresh row always lands Enabled=true from this
+// Create alone. RowsAffected tells us whether this call's Create actually
+// inserted a new row (1) vs. hit the conflict and did nothing (0); only in
+// the former case do we flip it back to false afterwards.
+func ensureDepartmentURL(db *gorm.DB, departmentID, urlID uint) error {
+	link := DepartmentURL{DepartmentID: departmentID, URLID: urlID}
+	res := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&link)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil
+	}
+	return db.Model(&DepartmentURL{}).
+		Where("department_id = ? AND url_id = ?", departmentID, urlID).
+		Update("enabled", false).Error
+}
+
+func (s *postgresStore) EnsureURLOnDepartmentList(ctx context.Context, departmentID, urlID uint) error {
+	return ensureDepartmentURL(s.db.WithContext(ctx), departmentID, urlID)
+}
+
 // RemoveURLFromWatchlist deletes the DepartmentURL link only — it never
 // touches URL or ScanResult, so scan history is preserved even once no
 // department watches the domain anymore. Returns false if the URL wasn't

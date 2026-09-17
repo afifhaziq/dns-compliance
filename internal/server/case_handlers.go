@@ -368,6 +368,13 @@ func (h *Handlers) AddCaseURL(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w, err)
 		return
 	}
+	// So this domain shows up (switched off) in the case's own department's
+	// Domain tab even if that department never separately added it to its
+	// watchlist — see CreateCase's identical call for the case's first url.
+	if err := h.store.EnsureURLOnDepartmentList(r.Context(), c.DepartmentID, u.ID); err != nil {
+		writeInternalError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusCreated, cu)
 }
 

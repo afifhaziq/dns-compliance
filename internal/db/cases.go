@@ -12,7 +12,10 @@ func (s *postgresStore) CreateCase(ctx context.Context, departmentID, urlID uint
 		if err := tx.Create(&c).Error; err != nil {
 			return err
 		}
-		return tx.Create(&CaseURL{CaseID: c.ID, URLID: urlID, Status: status, OriginalURL: opts.OriginalURL, AgencyID: opts.AgencyID}).Error
+		if err := tx.Create(&CaseURL{CaseID: c.ID, URLID: urlID, Status: status, OriginalURL: opts.OriginalURL, AgencyID: opts.AgencyID}).Error; err != nil {
+			return err
+		}
+		return ensureDepartmentURL(tx, departmentID, urlID)
 	})
 	return c, err
 }

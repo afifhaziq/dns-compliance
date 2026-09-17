@@ -18,6 +18,13 @@ type URLStore interface {
 
 	ListDepartmentURLs(ctx context.Context, departmentID uint) ([]URLEntry, error)
 	AddURLToWatchlist(ctx context.Context, departmentID uint, rawURL string) (URL, error)
+	// EnsureURLOnDepartmentList makes sure urlID has a DepartmentURL row for
+	// departmentID, creating one with Enabled: false if none exists yet —
+	// called wherever a URL becomes associated with a department via a
+	// Case, so it shows up in that department's Domain tab (switched off)
+	// without silently opting it into the scan sweep. A pre-existing row
+	// (from AddURLToWatchlist or an earlier case) is left untouched.
+	EnsureURLOnDepartmentList(ctx context.Context, departmentID, urlID uint) error
 	RemoveURLFromWatchlist(ctx context.Context, departmentID, urlID uint) (bool, error)      // false if no row was deleted (not on that watchlist)
 	SetURLEnabled(ctx context.Context, departmentID, urlID uint, enabled bool) (bool, error) // false if the URL is not on that watchlist
 	ListWatchedURLs(ctx context.Context) ([]URL, error)                                      // urls with >=1 enabled DepartmentURL row — used by the scan sweep
@@ -251,6 +258,12 @@ type LegalCitationStore interface {
 	DeleteInstrument(ctx context.Context, id uint) error // cascades to Citation/Category/Element/URLOffence
 
 	ListCitationsByInstrument(ctx context.Context, instrumentID uint) ([]Citation, error)
+	// ListAllCitations/ListAllCategories/ListAllElements/ListAllSubElements
+	// are the flat, unscoped counterparts of the four List*By* methods
+	// above — see their doc comment in legalcite.go. Used only by the
+	// legal-citations catalog page's up-front tree load, which needs every
+	// row at each level, not one parent's worth.
+	ListAllCitations(ctx context.Context) ([]Citation, error)
 	// CreateCitation/UpdateCitation always recompute SortKey server-side
 	// from c.Parsed.ProvisionNum/ProvisionSuffix — never trust a
 	// client-supplied sort key.
@@ -259,16 +272,19 @@ type LegalCitationStore interface {
 	DeleteCitation(ctx context.Context, id uint) error // cascades to Category/Element/URLOffence
 
 	ListCategoriesByCitation(ctx context.Context, citationID uint) ([]Category, error)
+	ListAllCategories(ctx context.Context) ([]Category, error)
 	CreateCategory(ctx context.Context, cat Category) (Category, error)
 	UpdateCategory(ctx context.Context, id uint, name string) (Category, error)
 	DeleteCategory(ctx context.Context, id uint) error // cascades to Element/URLOffence
 
 	ListElementsByCategory(ctx context.Context, categoryID uint) ([]Element, error)
+	ListAllElements(ctx context.Context) ([]Element, error)
 	CreateElement(ctx context.Context, el Element) (Element, error)
 	UpdateElement(ctx context.Context, id uint, name string) (Element, error)
 	DeleteElement(ctx context.Context, id uint) error // cascades to SubElement/URLOffence
 
 	ListSubElementsByElement(ctx context.Context, elementID uint) ([]SubElement, error)
+	ListAllSubElements(ctx context.Context) ([]SubElement, error)
 	CreateSubElement(ctx context.Context, se SubElement) (SubElement, error)
 	UpdateSubElement(ctx context.Context, id uint, name string) (SubElement, error)
 	DeleteSubElement(ctx context.Context, id uint) error // cascades to URLOffence
