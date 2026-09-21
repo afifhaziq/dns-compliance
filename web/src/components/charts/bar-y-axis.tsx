@@ -46,7 +46,7 @@ function BarYAxisLabel({
           opacity: 0.7,
           color: "var(--chart-label, var(--color-zinc-500))",
         }}
-        style={{ maxWidth: 150 }}
+        style={{ maxWidth: 220 }}
         transition={{ duration: 0.15 }}
       >
         {label}

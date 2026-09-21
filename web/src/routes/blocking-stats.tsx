@@ -38,20 +38,19 @@ function toLines(rows: BlockingStatRow[]): Line[] {
   return [...m.values()].sort((a, b) => a.agency.localeCompare(b.agency) || b.total - a.total)
 }
 
-// Count cell with an inline proportional bar in the theme accent.
-function BarCell({ value, max }: { value: number; max: number }) {
+// Count + inline proportional bar, as two fixed-width cells so every table lines up.
+function BarCells({ value, max }: { value: number; max: number }) {
   return (
-    <TableCell className="tabular-nums">
-      <div className="flex items-center gap-3">
-        <span className="w-16 text-right">{fmt(value)}</span>
-        <div className="h-2 flex-1 rounded-sm" style={{ maxWidth: 240, background: 'color-mix(in srgb, var(--ink) 12%, transparent)' }}>
+    <>
+      <TableCell className="text-right tabular-nums">{fmt(value)}</TableCell>
+      <TableCell>
+        <div className="h-2 rounded-sm" style={{ background: 'color-mix(in srgb, var(--ink) 12%, transparent)' }}>
           <div className="h-full rounded-sm" style={{ background: SHADES[1], width: `${max ? (value / max) * 100 : 0}%` }} />
         </div>
-      </div>
-    </TableCell>
+      </TableCell>
+    </>
   )
 }
-
 
 // Monochromatic ramp of the theme's --ink accent (follows light/dark via the variable).
 const SHADES = [100, 68, 46, 30, 19, 11].map(p => `color-mix(in srgb, var(--ink) ${p}%, transparent)`)
@@ -83,21 +82,26 @@ function Kpi({ label, value }: { label: string; value: string }) {
   )
 }
 
+// Charts keep a minimum width and scroll inside their card on narrow screens.
+function ChartScroll({ children }: { children: React.ReactNode }) {
+  return <div className="overflow-x-auto"><div className="min-w-[520px]">{children}</div></div>
+}
+
 // Horizontal bars, one per label, sorted by value.
-function HBar({ items }: { items: { label: string; value: number }[] }) {
-  const data = [...items].sort((a, b) => b.value - a.value).map(i => ({ name: i.label, value: i.value }))
+function HBar({ items, left = 160, max = 8, wide }: { items: { label: string; value: number }[]; left?: number; max?: number; wide?: boolean }) {
+  const data = topN(items, max - 1).map(i => ({ name: i.label, value: i.value }))
   return (
-    <BarChart
+    <ChartScroll><BarChart
       data={data}
       orientation="horizontal"
-      aspectRatio={`640 / ${data.length * 34 + 30}`}
-      margin={{ top: 10, right: 30, bottom: 20, left: 160 }}
+      aspectRatio={`${wide ? 1300 : 640} / ${data.length * 34 + 30}`}
+      margin={{ top: 10, right: 30, bottom: 20, left }}
     >
       <Grid horizontal={false} vertical />
       <Bar dataKey="value" fill={SHADES[0]} />
       <BarYAxis maxLabels={data.length} />
       <ChartTooltip />
-    </BarChart>
+    </BarChart></ChartScroll>
   )
 }
 
@@ -106,7 +110,7 @@ function Donut({ items, label }: { items: { label: string; value: number }[]; la
   const data = topN(items, 5).map((d, i) => ({ ...d, color: shade(i) }))
   const total = data.reduce((s, d) => s + d.value, 0)
   return (
-    <div className="flex items-center gap-6 flex-wrap">
+    <div className="flex flex-1 items-center gap-6 flex-wrap">
       <div style={{ width: 220, height: 220 }}>
         <PieChart data={data} size={220} innerRadius={70} padAngle={0.02}>
           {data.map((_, i) => <PieSlice key={i} index={i} />)}
@@ -130,12 +134,12 @@ function Donut({ items, label }: { items: { label: string; value: number }[]; la
 function YearBars({ data, series, stacked, wide }: { data: Record<string, unknown>[]; series: { key: string; label: string }[]; stacked?: boolean; wide?: boolean }) {
   return (
     <>
-      <BarChart data={data} stacked={stacked} stackGap={1} aspectRatio={wide ? '4.5 / 1' : '2.2 / 1'} margin={{ top: 20, right: 20, bottom: 30, left: 50 }}>
+      <ChartScroll><BarChart data={data} stacked={stacked} stackGap={1} aspectRatio={wide ? '4.5 / 1' : '2.2 / 1'} margin={{ top: 8, right: 16, bottom: 30, left: 16 }}>
         <Grid horizontal vertical={false} />
         {series.map((s, i) => <Bar key={s.key} dataKey={s.key} fill={shade(i)} />)}
         <BarXAxis />
         <ChartTooltip />
-      </BarChart>
+      </BarChart></ChartScroll>
       <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2">
         {series.map((s, i) => (
           <li key={s.key} className="flex items-center gap-1.5">
@@ -151,38 +155,57 @@ function yearRows(years: number[], pick: (y: number) => Record<string, number>) 
   return years.map(y => ({ name: String(y), ...pick(y) }))
 }
 
-function OffenceTable({ title, lines, showAgency }: { title: string; lines: { agency: string; offence: string; total: number }[]; showAgency?: boolean }) {
+const PREVIEW_ROWS = 10
+
+// "Show all N" toggle for long tables; returns the visible slice + the button.
+function useRowLimit<T>(rows: T[], limit = PREVIEW_ROWS) {
+  const [all, setAll] = useState(false)
+  const shown = all ? rows : rows.slice(0, limit)
+  const toggle = rows.length > limit && (
+    <button className="btn-ghost mt-3" onClick={() => setAll(v => !v)}>
+      {all ? 'Show fewer' : `Show all ${rows.length} rows`}
+    </button>
+  )
+  return { shown, toggle }
+}
+
+function OffenceTable({ title, lines, showAgency, hideOffence }: { title: string; lines: { agency: string; offence: string; total: number }[]; showAgency?: boolean; hideOffence?: boolean }) {
   const total = lines.reduce((s, l) => s + l.total, 0)
   const max = Math.max(0, ...lines.map(l => l.total))
   const sorted = [...lines].sort((a, b) => b.total - a.total)
+  const { shown, toggle } = useRowLimit(sorted)
+  const lead = (showAgency ? 1 : 0) + (hideOffence ? 0 : 1)
   return (
     <section className="mb-10">
       <h2 className="text-base font-semibold mb-3">{title}</h2>
-      <Table>
+      <Table className="table-fixed min-w-[680px]">
         <TableHeader>
           <TableRow>
-            {showAgency && <TableHead>Agency</TableHead>}
-            <TableHead>Offence</TableHead>
-            <TableHead>Blocked</TableHead>
-            <TableHead className="text-right">Share</TableHead>
+            {showAgency && <TableHead className="w-28">Agency</TableHead>}
+            {!hideOffence && <TableHead>Offence</TableHead>}
+            <TableHead className="w-24 text-right">Blocked</TableHead>
+            <TableHead className="w-[30%]"><span className="sr-only">Proportion</span></TableHead>
+            <TableHead className="w-24 text-right">Share</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sorted.map(l => (
+          {shown.map(l => (
             <TableRow key={l.agency + l.offence}>
               {showAgency && <TableCell>{l.agency}</TableCell>}
-              <TableCell>{l.offence}</TableCell>
-              <BarCell value={l.total} max={max} />
+              {!hideOffence && <TableCell className="truncate">{l.offence}</TableCell>}
+              <BarCells value={l.total} max={max} />
               <TableCell className="text-right tabular-nums">{pct(l.total, total)}</TableCell>
             </TableRow>
           ))}
           <TableRow className="font-semibold">
-            <TableCell colSpan={showAgency ? 2 : 1}>Total</TableCell>
-            <TableCell className="tabular-nums">{fmt(total)}</TableCell>
+            <TableCell colSpan={lead}>Total</TableCell>
+            <TableCell className="text-right tabular-nums">{fmt(total)}</TableCell>
+            <TableCell />
             <TableCell className="text-right">100%</TableCell>
           </TableRow>
         </TableBody>
       </Table>
+      {toggle}
     </section>
   )
 }
@@ -202,7 +225,7 @@ function TabA({ lines, years }: { lines: Line[]; years: number[] }) {
   })
   return (
     <>
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-3 mb-6">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-3 mb-6">
         <Kpi label={`MCMC blocks ${years[0]}–${latest}`} value={fmt(total)} />
         <Kpi label={`MCMC blocks ${latest}`} value={fmt(thisYear.reduce((s, l) => s + l.total, 0))} />
         <Kpi label="Offence types" value={String(overall.length)} />
@@ -229,24 +252,37 @@ function TabB({ lines, years }: { lines: Line[]; years: number[] }) {
   const agencyLines = agencyItems.map(a => ({ agency: a.label, offence: '—', total: a.value }))
   return (
     <>
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-2 mb-6">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 mb-6">
         <Kpi label="Blocks by other agencies" value={fmt(agencyItems.reduce((s, a) => s + a.value, 0))} />
         <Kpi label="Agencies" value={String(agencyItems.length)} />
       </div>
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 mb-10">
         <Card title="By agency"><HBar items={agencyItems} /></Card>
         <Card title="Share of blocks"><Donut items={agencyItems} label="Blocks" /></Card>
-        <Card title="Top agency–offence pairs" className="col-span-full">
-          <HBar items={other.map(l => ({ label: `${l.agency} · ${l.offence}`, value: l.total })).sort((a, b) => b.value - a.value).slice(0, 12)} />
+        <Card title="Agency and offence" className="col-span-full">
+          <HBar items={other.map(l => ({ label: `${l.agency} · ${l.offence}`, value: l.total }))} left={250} max={10} wide />
         </Card>
       </div>
-      <OffenceTable title="Blocks by agency (excluding MCMC)" lines={agencyLines} showAgency />
+      <OffenceTable title="Blocks by agency (excluding MCMC)" lines={agencyLines} showAgency hideOffence />
       <OffenceTable title="Blocks by agency and offence" lines={other} showAgency />
     </>
   )
 }
 
 const sumYears = (l: Line, years: number[]) => years.reduce((s, y) => s + (l.byYear[y] ?? 0), 0)
+
+const zero = (n: number) => (n ? fmt(n) : <span className="opacity-30">–</span>)
+
+// Year/total/share column widths shared by both TabC tables so they align.
+function NumHeads({ years }: { years: number[] }) {
+  return (
+    <>
+      {years.map(y => <TableHead key={y} className="w-20 text-right">{y}</TableHead>)}
+      <TableHead className="w-24 text-right">Total</TableHead>
+      <TableHead className="w-24 text-right">Share</TableHead>
+    </>
+  )
+}
 
 function TabC({ lines, years }: { lines: Line[]; years: number[] }) {
   const yearTotals = (pred: (l: Line) => boolean) => years.map(y => lines.filter(pred).reduce((s, l) => s + (l.byYear[y] ?? 0), 0))
@@ -270,6 +306,7 @@ function TabC({ lines, years }: { lines: Line[]; years: number[] }) {
     .map(([k, r]) => [k, Object.values(r).reduce((s, n) => s + n, 0)] as const)
     .sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k]) => k)
   const detail = lines.filter(l => sumYears(l, years)).sort((a, b) => sumYears(b, years) - sumYears(a, years))
+  const { shown, toggle } = useRowLimit(detail, 12)
   return (
     <>
       <section className="mb-10">
@@ -291,21 +328,19 @@ function TabC({ lines, years }: { lines: Line[]; years: number[] }) {
             />
           </Card>
         </div>
-        <Table>
+        <Table className="table-fixed min-w-[900px]">
           <TableHeader>
             <TableRow>
-              <TableHead>Jurisdiction</TableHead>
-              {years.map(y => <TableHead key={y} className="text-right">{y}</TableHead>)}
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="text-right">Share</TableHead>
+              <TableHead colSpan={2}>Jurisdiction</TableHead>
+              <NumHeads years={years} />
             </TableRow>
-          </TableHeader>
+</TableHeader>
           <TableBody>
             {rows.map(r => {
               const t = r.vals.reduce((s, n) => s + n, 0)
               return (
                 <TableRow key={r.label}>
-                  <TableCell>{r.label}</TableCell>
+                  <TableCell colSpan={2}>{r.label}</TableCell>
                   {r.vals.map((v, i) => <TableCell key={years[i]} className="text-right tabular-nums">{fmt(v)}</TableCell>)}
                   <TableCell className="text-right tabular-nums">{fmt(t)}</TableCell>
                   <TableCell className="text-right tabular-nums">{pct(t, grand)}</TableCell>
@@ -313,7 +348,7 @@ function TabC({ lines, years }: { lines: Line[]; years: number[] }) {
               )
             })}
             <TableRow className="font-semibold">
-              <TableCell>Total</TableCell>
+              <TableCell colSpan={2}>Total</TableCell>
               {all.map((v, i) => <TableCell key={years[i]} className="text-right tabular-nums">{fmt(v)}</TableCell>)}
               <TableCell className="text-right tabular-nums">{fmt(grand)}</TableCell>
               <TableCell className="text-right">100%</TableCell>
@@ -324,28 +359,27 @@ function TabC({ lines, years }: { lines: Line[]; years: number[] }) {
 
       <section className="mb-10">
         <h2 className="text-base font-semibold mb-3">Blocks by agency, offence and year</h2>
-        <Table>
+        <Table className="table-fixed min-w-[900px]">
           <TableHeader>
             <TableRow>
-              <TableHead>Agency</TableHead>
+              <TableHead className="w-28">Agency</TableHead>
               <TableHead>Offence</TableHead>
-              {years.map(y => <TableHead key={y} className="text-right">{y}</TableHead>)}
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="text-right">Share</TableHead>
+              <NumHeads years={years} />
             </TableRow>
-          </TableHeader>
+</TableHeader>
           <TableBody>
-            {detail.map(l => (
+            {shown.map(l => (
               <TableRow key={l.agency + l.offence}>
                 <TableCell>{l.agency}</TableCell>
-                <TableCell>{l.offence}</TableCell>
-                {years.map(y => <TableCell key={y} className="text-right tabular-nums">{fmt(l.byYear[y] ?? 0)}</TableCell>)}
+                <TableCell className="truncate">{l.offence}</TableCell>
+                {years.map(y => <TableCell key={y} className="text-right tabular-nums">{zero(l.byYear[y] ?? 0)}</TableCell>)}
                 <TableCell className="text-right tabular-nums">{fmt(sumYears(l, years))}</TableCell>
                 <TableCell className="text-right tabular-nums">{pct(sumYears(l, years), grand)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
+        {toggle}
       </section>
     </>
   )
@@ -362,7 +396,7 @@ function BlockingStatsPage() {
   const years = useMemo(() => [...new Set(lines.flatMap(l => Object.keys(l.byYear).map(Number)))].sort(), [lines])
 
   return (
-    <div className="mx-20 mt-10">
+    <div className="mx-4 sm:mx-8 lg:mx-20 mt-10 pb-10">
       <div className="page-header">
         <h1 className="page-title mb-4">Blocking Statistics</h1>
         <p className="page-subtitle">Domains blocked since {FIRST_YEAR}, by Notice-letter year. A domain with several offences counts under each.</p>
