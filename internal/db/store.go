@@ -433,6 +433,8 @@ type CaseStore interface {
 	// sorted variant; ListCases stays for the full-list export.
 	ListCaseSummariesPage(ctx context.Context, p CaseListParams) ([]CaseSummary, int, error)
 	ListCasesForDepartment(ctx context.Context, departmentID uint) ([]CaseSummary, error)
+	// BlockingStats backs the dashboard's Blocking Statistics page; nil departmentID = global.
+	BlockingStats(ctx context.Context, departmentID *uint) ([]BlockingStatRow, error)
 
 	// UpdateCaseLetterFields applies a partial update to one CaseLetter's
 	// fields, scoped by (caseID, letterID) so a letter can't be edited

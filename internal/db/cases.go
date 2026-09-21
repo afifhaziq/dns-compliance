@@ -581,3 +581,38 @@ func (s *postgresStore) DeleteCaseLetter(ctx context.Context, caseID, letterID u
 	res := s.db.WithContext(ctx).Where("id = ? AND case_id = ?", letterID, caseID).Delete(&CaseLetter{})
 	return res.RowsAffected > 0, res.Error
 }
+
+// BlockingStatRow is one (year, agency, offence) bucket of blocked domains.
+// Year is 0 when the case has no dated Notice letter.
+type BlockingStatRow struct {
+	Year    int    `json:"year"`
+	Agency  string `json:"agency"`
+	Offence string `json:"offence"`
+	Count   int    `json:"count"`
+}
+
+// BlockingStats counts (case, domain) blocks — status blocked/uplift/suspended,
+// i.e. ever blocked — by Notice-letter year, agency and offence category.
+// A domain carrying several offences on one case counts once under each.
+// ponytail: Postgres-only (EXTRACT); no SQLite test.
+func (s *postgresStore) BlockingStats(ctx context.Context, departmentID *uint) ([]BlockingStatRow, error) {
+	q := `SELECT COALESCE(EXTRACT(YEAR FROM (SELECT MIN(cl.letter_date) FROM case_letters cl
+		WHERE cl.case_id = cu.case_id AND cl.type = 'Notice'))::int, 0) AS year,
+	  COALESCE(a.name, 'Unassigned') AS agency,
+	  COALESCE(cat.name, 'Unclassified') AS offence,
+	  COUNT(*) AS count
+	FROM case_urls cu
+	JOIN cases c ON c.id = cu.case_id
+	LEFT JOIN agencies a ON a.id = cu.agency_id
+	LEFT JOIN url_offences o ON o.case_id = cu.case_id AND o.url_id = cu.url_id
+	LEFT JOIN categories cat ON cat.id = o.category_id
+	WHERE cu.status IN ('blocked','uplift','suspended')`
+	args := []any{}
+	if departmentID != nil {
+		q += " AND c.department_id = ?"
+		args = append(args, *departmentID)
+	}
+	q += " GROUP BY 1, 2, 3"
+	var rows []BlockingStatRow
+	return rows, s.db.WithContext(ctx).Raw(q, args...).Scan(&rows).Error
+}

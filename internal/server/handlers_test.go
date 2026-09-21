@@ -1599,6 +1599,10 @@ func (m *fullMockStore) listCaseSummaries(departmentID *uint) []db.CaseSummary {
 	return out
 }
 
+func (m *fullMockStore) BlockingStats(_ context.Context, _ *uint) ([]db.BlockingStatRow, error) {
+	return nil, nil
+}
+
 func (m *fullMockStore) ListCases(_ context.Context) ([]db.CaseSummary, error) {
 	return m.listCaseSummaries(nil), nil
 }

@@ -797,3 +797,27 @@ func (h *Handlers) DeleteCaseLetter(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// BlockingStats (GET /api/blocking-stats) — year/agency/offence block counts;
+// admin: global, non-admin: own department only.
+func (h *Handlers) BlockingStats(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	var dept *uint
+	if !user.IsAdmin {
+		if user.DepartmentID == nil {
+			writeError(w, http.StatusForbidden, "user has no department")
+			return
+		}
+		dept = user.DepartmentID
+	}
+	rows, err := h.store.BlockingStats(r.Context(), dept)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load blocking stats")
+		return
+	}
+	writeJSON(w, http.StatusOK, rows)
+}
