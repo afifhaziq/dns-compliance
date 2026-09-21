@@ -131,7 +131,7 @@ export type CaseLettersResponse = { letters: CaseLetterEntry[]; total: number }
 // Memo when both exist, same convention as current_reference_number) and
 // every domain it covers. There's no case-level status — see
 // CaseSummaryDomain.status.
-export type CaseSummaryDomain = { url_id: number; url: string; status: string; original_url?: string; agency_id?: number; agency_name?: string; offences?: OffenceEntry[] }
+export type CaseSummaryDomain = { url_id: number; url: string; status: string; original_url?: string; agency_id?: number; agency_name?: string; offences?: OffenceEntry[]; scan_total?: number; scan_compliant?: number; scanned_at?: string }
 
 export type CaseSummary = {
   id: number

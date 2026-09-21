@@ -3,6 +3,7 @@ package db_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -869,6 +870,9 @@ func TestListCaseSummariesPage_PagesFiltersAndSorts(t *testing.T) {
 	if got, total := list(db.CaseListParams{DepartmentID: &deptA.ID}); total != 2 || len(got) != 2 {
 		t.Fatalf("dept scope: %v total %d", ids(got), total)
 	}
+	if got, total := list(db.CaseListParams{Query: fmt.Sprintf("#%d", c2.ID)}); total != 1 || got[0].ID != c2.ID {
+		t.Fatalf("search by case id: %v total %d", ids(got), total)
+	}
 	if got, total := list(db.CaseListParams{Query: "OTHER-thr"}); total != 1 || got[0].ID != c3.ID || len(got[0].Domains) != 1 {
 		t.Fatalf("search by domain: %v total %d", ids(got), total)
 	}
@@ -959,6 +963,44 @@ func TestListCaseSummariesPage_LetterDatesAndSort(t *testing.T) {
 			}
 			if c.UpliftLetterDate == nil || !c.UpliftLetterDate.Equal(*day(time.March, 1)) {
 				t.Fatalf("UpliftLetterDate = %v", c.UpliftLetterDate)
+			}
+		}
+	}
+}
+
+func TestListCaseSummariesPage_LatestScanOutcomePerDomain(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	dept, _ := store.CreateDepartment(ctx, "CRD")
+	scanned, _ := store.CreateURL(ctx, "scanned.com")
+	unscanned, _ := store.CreateURL(ctx, "unscanned.com")
+	c, _ := store.CreateCase(ctx, dept.ID, scanned.ID, "blocked", db.CaseCreateOptions{})
+	if _, err := store.AddURLToCase(ctx, c.ID, unscanned.ID, "blocked", "", nil); err != nil {
+		t.Fatalf("AddURLToCase: %v", err)
+	}
+	s1, _ := store.CreateDNSServer(ctx, db.DNSServer{Name: "A", Address: "1.1.1.1:53", Protocol: "udp"})
+	s2, _ := store.CreateDNSServer(ctx, db.DNSServer{Name: "B", Address: "8.8.8.8:53", Protocol: "udp"})
+	old, _ := store.CreateScanRun(ctx, "manual")
+	// The older run says everything is compliant; only the latest run should count.
+	store.InsertResult(ctx, db.ScanResult{ScanRunID: old.ID, URLID: scanned.ID, URLValue: scanned.URL, DNSServerID: s1.ID, Compliant: true, ScannedAt: time.Now().Add(-48 * time.Hour)})
+	time.Sleep(10 * time.Millisecond)
+	run, _ := store.CreateScanRun(ctx, "manual")
+	store.InsertResult(ctx, db.ScanResult{ScanRunID: run.ID, URLID: scanned.ID, URLValue: scanned.URL, DNSServerID: s1.ID, Compliant: true, ScannedAt: time.Now()})
+	store.InsertResult(ctx, db.ScanResult{ScanRunID: run.ID, URLID: scanned.ID, URLValue: scanned.URL, DNSServerID: s2.ID, Compliant: false, ScannedAt: time.Now()})
+
+	got, _, err := store.ListCaseSummariesPage(ctx, db.CaseListParams{Page: 1, PageSize: 10})
+	if err != nil || len(got) != 1 {
+		t.Fatalf("list: %v %+v", err, got)
+	}
+	for _, d := range got[0].Domains {
+		switch d.URL {
+		case "scanned.com":
+			if d.ScanTotal != 2 || d.ScanCompliant != 1 || d.ScannedAt == nil {
+				t.Fatalf("scanned.com: %+v", d)
+			}
+		case "unscanned.com":
+			if d.ScanTotal != 0 || d.ScannedAt != nil {
+				t.Fatalf("unscanned.com: %+v", d)
 			}
 		}
 	}

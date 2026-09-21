@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -323,7 +324,7 @@ type DateFilter struct{ Op, From, To string }
 type CaseListParams struct {
 	DepartmentID   *uint // RBAC scope; nil = global (admin)
 	Page, PageSize int
-	Query          string // case-insensitive: notice refs or any domain
+	Query          string // case-insensitive: case id, notice refs or any domain
 	Status         string // some domain has this status
 	AgencyID       *uint  // some domain has this agency
 	RequestingDept *uint  // some domain is also covered by a case of this department
@@ -384,8 +385,10 @@ func (s *postgresStore) ListCaseSummariesPage(ctx context.Context, p CaseListPar
 	q := s.caseSummaryQuery(ctx, p.DepartmentID)
 	if qs := strings.ToLower(strings.TrimSpace(p.Query)); qs != "" {
 		like := "%" + qs + "%"
-		q = q.Where(`LOWER(notice.reference_number_external) LIKE ? OR LOWER(notice.reference_number_internal) LIKE ?
-			OR EXISTS (SELECT 1 FROM case_urls cu JOIN urls u ON u.id = cu.url_id WHERE cu.case_id = cases.id AND LOWER(u.url) LIKE ?)`, like, like, like)
+		// A bare number (optionally "#"-prefixed, as the table shows it) also matches the case id.
+		caseID, _ := strconv.ParseUint(strings.TrimPrefix(qs, "#"), 10, 64)
+		q = q.Where(`cases.id = ? OR LOWER(notice.reference_number_external) LIKE ? OR LOWER(notice.reference_number_internal) LIKE ?
+			OR EXISTS (SELECT 1 FROM case_urls cu JOIN urls u ON u.id = cu.url_id WHERE cu.case_id = cases.id AND LOWER(u.url) LIKE ?)`, caseID, like, like, like)
 	}
 	if p.Status != "" {
 		q = q.Where("EXISTS (SELECT 1 FROM case_urls cu WHERE cu.case_id = cases.id AND cu.status = ?)", p.Status)
@@ -472,6 +475,29 @@ func (s *postgresStore) attachCaseDomains(ctx context.Context, summaries []CaseS
 	if err != nil {
 		return nil, err
 	}
+	// Latest scan run's per-domain outcome (same run the Results page shows).
+	type scanAgg struct{ Total, Compliant int }
+	scanByURL := map[uint]scanAgg{}
+	var scannedAt *time.Time
+	if run, err := s.LastScanRun(ctx); err != nil {
+		return nil, err
+	} else if run != nil {
+		var aggs []struct {
+			URLID     uint
+			Total     int
+			Compliant int
+		}
+		if err := s.db.WithContext(ctx).Table("scan_results").
+			Select("url_id, COUNT(*) AS total, SUM(CASE WHEN compliant THEN 1 ELSE 0 END) AS compliant").
+			Where("scan_run_id = ? AND url_id IN ?", run.ID, domainURLIDs).
+			Group("url_id").Scan(&aggs).Error; err != nil {
+			return nil, err
+		}
+		for _, a := range aggs {
+			scanByURL[a.URLID] = scanAgg{a.Total, a.Compliant}
+		}
+		scannedAt = &run.StartedAt
+	}
 	for _, r := range rows {
 		i := idxByCaseID[r.CaseID]
 		// This case's own offences; legacy rows with no case link fall back
@@ -480,11 +506,15 @@ func (s *postgresStore) attachCaseDomains(ctx context.Context, summaries []CaseS
 		if len(offences) == 0 {
 			offences = offMap[r.URLID]
 		}
-		summaries[i].Domains = append(summaries[i].Domains, CaseSummaryDomain{
+		d := CaseSummaryDomain{
 			URLID: r.URLID, URL: r.URL, Status: r.Status, OriginalURL: r.OriginalURL,
 			AgencyID: r.AgencyID, AgencyName: r.AgencyName,
-			Offences: offences,
-		})
+			Offences: offences, ScanTotal: scanByURL[r.URLID].Total, ScanCompliant: scanByURL[r.URLID].Compliant,
+		}
+		if d.ScanTotal > 0 {
+			d.ScannedAt = scannedAt
+		}
+		summaries[i].Domains = append(summaries[i].Domains, d)
 	}
 	return summaries, nil
 }

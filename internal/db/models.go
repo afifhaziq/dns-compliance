@@ -788,6 +788,12 @@ type CaseSummaryDomain struct {
 	AgencyID    *uint          `json:"agency_id,omitempty"`
 	AgencyName  string         `json:"agency_name,omitempty"`
 	Offences    []OffenceEntry `json:"offences,omitempty"`
+	// Latest scan run's outcome for this domain: how many DNS servers were
+	// checked and how many were compliant (failed to resolve). ScanTotal 0 =
+	// not in the latest run. ScannedAt is that run's start time.
+	ScanTotal     int        `json:"scan_total,omitempty"`
+	ScanCompliant int        `json:"scan_compliant,omitempty"`
+	ScannedAt     *time.Time `json:"scanned_at,omitempty"`
 }
 
 // CaseLetterFields is a partial update to a CaseLetter's fields (PATCH

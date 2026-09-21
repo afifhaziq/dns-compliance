@@ -1737,6 +1737,27 @@ function URLsPage() {
       },
     },
     {
+      id: 'scan_status',
+      header: 'Latest Scan',
+      // Per-domain, like Status above: the latest scan run's outcome across every DNS server checked.
+      // Not the case's workflow Status — this is what the scan actually observed.
+      accessorFn: r => r.kind === 'domain' ? (r.domain.scan_total ?? 0) : 0,
+      meta: { headerTitle: 'Latest Scan', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => {
+        const original = row.original
+        if (original.kind === 'case') return <span className="dns-name">—</span>
+        const { scan_total: total = 0, scan_compliant: compliant = 0, scanned_at } = original.domain
+        if (total === 0) return <span className="dns-name">Not scanned</span>
+        const all = compliant === total
+        return (
+          <span className="status-dot-label" title={scanned_at ? `Scan run started ${DUE_DATE_FMT.format(new Date(scanned_at))}` : undefined}>
+            <span className={`status-dot ${all ? 'dot-compliant' : 'dot-violation'}`} aria-hidden="true" />
+            <span className={all ? 'label-compliant' : 'label-violation'}>{compliant} of {total} compliant</span>
+          </span>
+        )
+      },
+    },
+    {
       id: 'offence_citation',
       header: 'Offence Details',
       // Same reasoning as status above — offences are per-domain, so a case
@@ -1984,7 +2005,7 @@ function URLsPage() {
             <div className="filter-bar flex flex-row items-center justify-start gap-4 w-full">
               <Input
                 type="search"
-                placeholder="Search case ref. or domain..."
+                placeholder="Search case #, ref. or domain..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="max-w-64"
