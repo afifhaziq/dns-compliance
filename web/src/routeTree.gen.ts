@@ -16,7 +16,6 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as LegalCitationsRouteImport } from './routes/legal-citations'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as DnsServersRouteImport } from './routes/dns-servers'
-import { Route as BlockingStatsRouteImport } from './routes/blocking-stats'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResultsIndexRouteImport } from './routes/results.index'
@@ -60,11 +59,6 @@ const DnsServersRoute = DnsServersRouteImport.update({
   path: '/dns-servers',
   getParentRoute: () => rootRouteImport,
 } as any)
-const BlockingStatsRoute = BlockingStatsRouteImport.update({
-  id: '/blocking-stats',
-  path: '/blocking-stats',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
@@ -104,7 +98,6 @@ const DomainUrlRoute = DomainUrlRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
-  '/blocking-stats': typeof BlockingStatsRoute
   '/dns-servers': typeof DnsServersRoute
   '/docs': typeof DocsRoute
   '/legal-citations': typeof LegalCitationsRoute
@@ -120,7 +113,6 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/blocking-stats': typeof BlockingStatsRoute
   '/dns-servers': typeof DnsServersRoute
   '/docs': typeof DocsRoute
   '/legal-citations': typeof LegalCitationsRoute
@@ -137,7 +129,6 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
-  '/blocking-stats': typeof BlockingStatsRoute
   '/dns-servers': typeof DnsServersRoute
   '/docs': typeof DocsRoute
   '/legal-citations': typeof LegalCitationsRoute
@@ -156,7 +147,6 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
-    | '/blocking-stats'
     | '/dns-servers'
     | '/docs'
     | '/legal-citations'
@@ -172,7 +162,6 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/blocking-stats'
     | '/dns-servers'
     | '/docs'
     | '/legal-citations'
@@ -188,7 +177,6 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/admin'
-    | '/blocking-stats'
     | '/dns-servers'
     | '/docs'
     | '/legal-citations'
@@ -206,7 +194,6 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRouteWithChildren
-  BlockingStatsRoute: typeof BlockingStatsRoute
   DnsServersRoute: typeof DnsServersRoute
   DocsRoute: typeof DocsRoute
   LegalCitationsRoute: typeof LegalCitationsRoute
@@ -268,13 +255,6 @@ declare module '@tanstack/react-router' {
       path: '/dns-servers'
       fullPath: '/dns-servers'
       preLoaderRoute: typeof DnsServersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/blocking-stats': {
-      id: '/blocking-stats'
-      path: '/blocking-stats'
-      fullPath: '/blocking-stats'
-      preLoaderRoute: typeof BlockingStatsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -353,7 +333,6 @@ const ResultsRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
-  BlockingStatsRoute: BlockingStatsRoute,
   DnsServersRoute: DnsServersRoute,
   DocsRoute: DocsRoute,
   LegalCitationsRoute: LegalCitationsRoute,

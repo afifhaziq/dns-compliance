@@ -10,6 +10,8 @@ import { Line } from '@/components/charts/line'
 import { Grid } from '@/components/charts/grid'
 import { XAxis } from '@/components/charts/x-axis'
 import { ChartTooltip } from '@/components/charts/tooltip'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/motion/tabs'
+import { BlockingStatsTab } from '@/components/blocking-stats'
 import { getISPNames, ISPBentoGrid, ISPBentoSkeleton } from '@/components/isp-bento-grid'
 
 export const Route = createFileRoute('/')({ component: DashboardPage })
@@ -90,82 +92,95 @@ function DashboardPage() {
         </div>
       )}
 
-      {error ? (
-        <div className="dash-section">
-          <div className="error-state">
-            <p className="error-message">{error}</p>
-            <button className="btn-primary" onClick={load}>Retry</button>
+      <Tabs defaultValue="isp" variant="underline">
+        <TabsList>
+          <TabsTrigger value="isp">ISP</TabsTrigger>
+          <TabsTrigger value="mcmc">MCMC</TabsTrigger>
+          <TabsTrigger value="agencies">Other agencies</TabsTrigger>
+          <TabsTrigger value="compare">Comparison</TabsTrigger>
+        </TabsList>
+        <TabsContent value="isp">
+        {error ? (
+          <div className="dash-section">
+            <div className="error-state">
+              <p className="error-message">{error}</p>
+              <button className="btn-primary" onClick={load}>Retry</button>
+            </div>
           </div>
-        </div>
-      ) : (
-        <div className="dash-body">
-          {!loading && hasResults && (
-            <div className="dash-section mt-4">
-              <p className="section-title mb-3">National Compliance</p>
-              <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
-                <div>
-                  <p className="server-count" style={{ color: 'var(--ink)' }}>{nationalRate}%</p>
-                  <p className="dash-label">Overall compliance</p>
+        ) : (
+          <div className="dash-body">
+            {!loading && hasResults && (
+              <div className="dash-section mt-4">
+                <p className="section-title mb-3">National Compliance</p>
+                <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+                  <div>
+                    <p className="server-count" style={{ color: 'var(--ink)' }}>{nationalRate}%</p>
+                    <p className="dash-label">Overall compliance</p>
+                  </div>
+                  <div>
+                    <p className="server-count" style={{ color: 'var(--ink)' }}>{nationalCompliant} / {nationalTotal}</p>
+                    <p className="dash-label">Checks compliant</p>
+                  </div>
+                  <div>
+                    <p className="server-count" style={{ color: 'var(--ink)' }}>{requestedThisMonth ?? 0}</p>
+                    <p className="dash-label">URLs requested this month</p>
+                  </div>
+                  <div>
+                    <p className={resurfaced.length > 0 ? 'server-count label-violation' : 'server-count'} style={resurfaced.length > 0 ? undefined : { color: 'var(--ink)' }}>{resurfaced.length}</p>
+                    <p className="dash-label">Resurfaced</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="server-count" style={{ color: 'var(--ink)' }}>{nationalCompliant} / {nationalTotal}</p>
-                  <p className="dash-label">Checks compliant</p>
-                </div>
-                <div>
-                  <p className="server-count" style={{ color: 'var(--ink)' }}>{requestedThisMonth ?? 0}</p>
-                  <p className="dash-label">URLs requested this month</p>
-                </div>
-                <div>
-                  <p className={resurfaced.length > 0 ? 'server-count label-violation' : 'server-count'} style={resurfaced.length > 0 ? undefined : { color: 'var(--ink)' }}>{resurfaced.length}</p>
-                  <p className="dash-label">Resurfaced</p>
-                </div>
+                {trendChartData.length >= 2 && (
+                  <div className="mt-4">
+                    <p className="section-title mb-3">Compliance Trend (last 30 days)</p>
+                    <LineChart
+                      data={trendChartData}
+                      xDataKey="date"
+                      aspectRatio="6 / 1"
+                      margin={{ top: 16, right: 40, bottom: 36, left: 40 }}
+                    >
+                      <Grid horizontal numTicksRows={4} />
+                      <XAxis numTicks={5} />
+                      <Line
+                        dataKey="compliance"
+                        stroke="var(--ink)"
+                        strokeWidth={2}
+                        showMarkers
+                        markers={{ radius: 3, fill: 'var(--ink)', stroke: 'var(--chart-background)', strokeWidth: 2 }}
+                        fadeEdges={false}
+                      />
+                      <ChartTooltip
+                        rows={(point) => [{
+                          color: 'var(--ink)',
+                          label: 'Compliance',
+                          value: `${point.compliance as number}%`,
+                        }]}
+                      />
+                    </LineChart>
+                  </div>
+                )}
               </div>
-              {trendChartData.length >= 2 && (
-                <div className="mt-4">
-                  <p className="section-title mb-3">Compliance Trend (last 30 days)</p>
-                  <LineChart
-                    data={trendChartData}
-                    xDataKey="date"
-                    aspectRatio="6 / 1"
-                    margin={{ top: 16, right: 40, bottom: 36, left: 40 }}
-                  >
-                    <Grid horizontal numTicksRows={4} />
-                    <XAxis numTicks={5} />
-                    <Line
-                      dataKey="compliance"
-                      stroke="var(--ink)"
-                      strokeWidth={2}
-                      showMarkers
-                      markers={{ radius: 3, fill: 'var(--ink)', stroke: 'var(--chart-background)', strokeWidth: 2 }}
-                      fadeEdges={false}
-                    />
-                    <ChartTooltip
-                      rows={(point) => [{
-                        color: 'var(--ink)',
-                        label: 'Compliance',
-                        value: `${point.compliance as number}%`,
-                      }]}
-                    />
-                  </LineChart>
+            )}
+            <div className="dash-section mt-4">
+              <p className="section-title mb-3">ISP Compliance Status</p>
+              {loading ? (
+                <ISPBentoSkeleton count={4} />
+              ) : !hasResults ? (
+                <div className="dash-table-wrap dash-empty">
+                  <p className="dash-empty-heading">No scan data yet</p>
+                  <p className="dash-empty-body">Run a scan to see ISP compliance status.</p>
                 </div>
+              ) : (
+                <ISPBentoGrid results={results} />
               )}
             </div>
-          )}
-          <div className="dash-section mt-4">
-            <p className="section-title mb-3">ISP Compliance Status</p>
-            {loading ? (
-              <ISPBentoSkeleton count={4} />
-            ) : !hasResults ? (
-              <div className="dash-table-wrap dash-empty">
-                <p className="dash-empty-heading">No scan data yet</p>
-                <p className="dash-empty-body">Run a scan to see ISP compliance status.</p>
-              </div>
-            ) : (
-              <ISPBentoGrid results={results} />
-            )}
           </div>
-        </div>
-      )}
+        )}
+        </TabsContent>
+        <TabsContent value="mcmc"><BlockingStatsTab part="a" /></TabsContent>
+        <TabsContent value="agencies"><BlockingStatsTab part="b" /></TabsContent>
+        <TabsContent value="compare"><BlockingStatsTab part="c" /></TabsContent>
+      </Tabs>
     </div>
   )
 }

@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/motion/tabs'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { BarChart } from '@/components/charts/bar-chart'
 import { Bar } from '@/components/charts/bar'
@@ -12,10 +10,6 @@ import { PieCenter } from '@/components/charts/pie-center'
 import { Grid } from '@/components/charts/grid'
 import { ChartTooltip } from '@/components/charts/tooltip'
 import { fetchBlockingStats, type BlockingStatRow } from '../api/blocking-stats'
-
-export const Route = createFileRoute('/blocking-stats')({
-  component: BlockingStatsPage,
-})
 
 // Mirrors the source workbook's scope (2022 onward, MCMC vs everyone else).
 const FIRST_YEAR = 2022
@@ -385,7 +379,10 @@ function TabC({ lines, years }: { lines: Line[]; years: number[] }) {
   )
 }
 
-function BlockingStatsPage() {
+export type StatsPart = 'a' | 'b' | 'c'
+
+// One Statistics view (A: MCMC, B: other agencies, C: comparison); fetches on mount.
+export function BlockingStatsTab({ part }: { part: StatsPart }) {
   const [rows, setRows] = useState<BlockingStatRow[] | null>(null)
   const [error, setError] = useState('')
   useEffect(() => {
@@ -395,26 +392,15 @@ function BlockingStatsPage() {
   const lines = useMemo(() => toLines((rows ?? []).filter(r => r.year >= FIRST_YEAR)), [rows])
   const years = useMemo(() => [...new Set(lines.flatMap(l => Object.keys(l.byYear).map(Number)))].sort(), [lines])
 
+  if (error) return <p className="text-sm mt-4">{error}</p>
+  if (!rows) return null
+  if (years.length === 0) return <p className="text-sm mt-4">No blocked domains with a dated Notice letter yet.</p>
   return (
-    <div className="mx-4 sm:mx-8 lg:mx-20 mt-10 pb-10">
-      <div className="page-header">
-        <h1 className="page-title mb-4">Blocking Statistics</h1>
-        <p className="page-subtitle">Domains blocked since {FIRST_YEAR}, by Notice-letter year. A domain with several offences counts under each.</p>
-      </div>
-      {error && <p className="text-sm mb-4">{error}</p>}
-      {rows && years.length > 0 && (
-        <Tabs defaultValue="a" variant="underline">
-          <TabsList>
-            <TabsTrigger value="a">A. MCMC</TabsTrigger>
-            <TabsTrigger value="b">B. Other agencies</TabsTrigger>
-            <TabsTrigger value="c">C. Comparison</TabsTrigger>
-          </TabsList>
-          <TabsContent value="a"><TabA lines={lines} years={years} /></TabsContent>
-          <TabsContent value="b"><TabB lines={lines} years={years} /></TabsContent>
-          <TabsContent value="c"><TabC lines={lines} years={years} /></TabsContent>
-        </Tabs>
-      )}
-      {rows && years.length === 0 && <p className="text-sm">No blocked domains with a dated Notice letter yet.</p>}
+    <div className="mt-4">
+      <p className="page-subtitle mb-4">Domains blocked since {FIRST_YEAR}, by Notice-letter year. A domain with several offences counts under each.</p>
+      {part === 'a' && <TabA lines={lines} years={years} />}
+      {part === 'b' && <TabB lines={lines} years={years} />}
+      {part === 'c' && <TabC lines={lines} years={years} />}
     </div>
   )
 }
