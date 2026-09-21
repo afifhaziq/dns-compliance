@@ -493,6 +493,53 @@ func (h *Handlers) UpdateCaseURLAgency(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// RemoveCaseURL unlinks one url from a case (DELETE /api/cases/{id}/urls/{url_id}).
+// Same ownership check as UpdateCaseURLAgency; 409 if it is the case's last url.
+func (h *Handlers) RemoveCaseURL(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	urlID, err := strconv.ParseUint(chi.URLParam(r, "url_id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid url_id")
+		return
+	}
+	c, err := h.store.GetCase(r.Context(), uint(id))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		writeInternalError(w, err)
+		return
+	}
+	if !user.IsAdmin && (user.DepartmentID == nil || *user.DepartmentID != c.DepartmentID) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	found, err := h.store.RemoveURLFromCase(r.Context(), uint(id), uint(urlID))
+	if errors.Is(err, db.ErrLastCaseURL) {
+		writeError(w, http.StatusConflict, "a case must keep at least one domain")
+		return
+	}
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ListCaseLetters is the Docs page's data source — every CaseLetter across
 // every case, admin: global, non-admin: scoped to their own department's
 // cases (cases.department_id, same ownership axis AddCaseLetter checks),
@@ -508,7 +555,7 @@ func (h *Handlers) ListCaseLetters(w http.ResponseWriter, r *http.Request) {
 		page = p
 	}
 	pageSize := defaultDomainSummaryPageSize
-	if ps, err := strconv.Atoi(r.URL.Query().Get("page_size")); err == nil && ps > 0 && ps <= maxDomainSummaryPageSize {
+	if ps, err := strconv.Atoi(r.URL.Query().Get("page_size")); err == nil && ps > 0 && ps <= maxCaseLettersPageSize {
 		pageSize = ps
 	}
 
@@ -532,31 +579,63 @@ func (h *Handlers) ListCaseLetters(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListCaseSummaries is the Cases view's data source (GET
-// /api/case-summaries) — one row per case with its own fields, its Notice
-// letter's fields, and every domain it covers. Same admin-global/non-admin-
-// department-scoped split as ListCaseLetters.
+// /api/case-summaries) — one page of cases, each with its own fields, its
+// Notice letter's fields and every domain it covers, plus the total number of
+// cases matching the filters. Query params (all optional): page, page_size,
+// q (notice refs or domain), status, agency_id, dept_id (requesting dept),
+// created_op/created_from/created_to and due_op/due_from/due_to (date
+// filters), sort (id|due_date|notice_letter_date|uplift_letter_date) and dir (asc|desc). Same admin-global/
+// non-admin-department-scoped split as ListCaseLetters; the full-list export
+// lives at /case-summaries/export instead.
 func (h *Handlers) ListCaseSummaries(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "not authenticated")
 		return
 	}
-	var summaries []db.CaseSummary
-	var err error
-	if user.IsAdmin {
-		summaries, err = h.store.ListCases(r.Context())
-	} else {
+	qs := r.URL.Query()
+	p := db.CaseListParams{
+		Page:     1,
+		PageSize: defaultDomainSummaryPageSize,
+		Query:    qs.Get("q"),
+		Status:   qs.Get("status"),
+		Created:  db.DateFilter{Op: qs.Get("created_op"), From: qs.Get("created_from"), To: qs.Get("created_to")},
+		Due:      db.DateFilter{Op: qs.Get("due_op"), From: qs.Get("due_from"), To: qs.Get("due_to")},
+		SortDesc: qs.Get("dir") == "desc",
+	}
+	if n, err := strconv.Atoi(qs.Get("page")); err == nil && n > 0 {
+		p.Page = n
+	}
+	if n, err := strconv.Atoi(qs.Get("page_size")); err == nil && n > 0 && n <= maxDomainSummaryPageSize {
+		p.PageSize = n
+	}
+	if n, err := strconv.ParseUint(qs.Get("agency_id"), 10, 64); err == nil {
+		id := uint(n)
+		p.AgencyID = &id
+	}
+	if n, err := strconv.ParseUint(qs.Get("dept_id"), 10, 64); err == nil {
+		id := uint(n)
+		p.RequestingDept = &id
+	}
+	if sort := qs.Get("sort"); sort == "id" || sort == "due_date" || sort == "notice_letter_date" || sort == "uplift_letter_date" {
+		p.SortBy = sort
+	}
+	if !user.IsAdmin {
 		if user.DepartmentID == nil {
 			writeError(w, http.StatusForbidden, "user has no department")
 			return
 		}
-		summaries, err = h.store.ListCasesForDepartment(r.Context(), *user.DepartmentID)
+		p.DepartmentID = user.DepartmentID
 	}
+	cases, total, err := h.store.ListCaseSummariesPage(r.Context(), p)
 	if err != nil {
 		writeInternalError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, summaries)
+	if cases == nil {
+		cases = []db.CaseSummary{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"cases": cases, "total": total})
 }
 
 // UpdateCaseLetter applies a partial update to one CaseLetter's fields —

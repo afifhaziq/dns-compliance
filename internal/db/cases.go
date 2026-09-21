@@ -2,9 +2,16 @@ package db
 
 import (
 	"context"
+	"errors"
+	"strings"
+	"time"
 
 	"gorm.io/gorm"
 )
+
+// ErrLastCaseURL is returned by RemoveURLFromCase when the url is the
+// case's only one.
+var ErrLastCaseURL = errors.New("cannot remove a case's last domain")
 
 func (s *postgresStore) CreateCase(ctx context.Context, departmentID, urlID uint, status string, opts CaseCreateOptions) (Case, error) {
 	c := Case{DepartmentID: departmentID, DueDate: opts.DueDate}
@@ -39,6 +46,27 @@ func (s *postgresStore) UpdateCaseURLAgency(ctx context.Context, caseID, urlID u
 		Where("case_id = ? AND url_id = ?", caseID, urlID).
 		Update("agency_id", agencyID)
 	return res.RowsAffected > 0, res.Error
+}
+
+// RemoveURLFromCase — see Store.RemoveURLFromCase.
+func (s *postgresStore) RemoveURLFromCase(ctx context.Context, caseID, urlID uint) (bool, error) {
+	found := false
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var n int64
+		if err := tx.Model(&CaseURL{}).Where("case_id = ?", caseID).Count(&n).Error; err != nil {
+			return err
+		}
+		res := tx.Where("case_id = ? AND url_id = ?", caseID, urlID).Delete(&CaseURL{})
+		if res.Error != nil || res.RowsAffected == 0 {
+			return res.Error
+		}
+		if n <= 1 {
+			return ErrLastCaseURL // rolls the delete back
+		}
+		found = true
+		return tx.Where("case_id = ? AND url_id = ?", caseID, urlID).Delete(&URLOffence{}).Error
+	})
+	return found, err
 }
 
 // UpdateCaseFields applies a partial update to a case's shared fields —
@@ -256,13 +284,17 @@ func (s *postgresStore) caseSummaryQuery(ctx context.Context, departmentID *uint
 			notice.reference_number_external as notice_reference_number_external,
 			notice.reference_number_internal as notice_reference_number_internal,
 			notice.recipient as notice_recipient, notice.requestor as notice_requestor,
-			notice.letter_date as notice_letter_date, notice.received_at as notice_received_at,
+			notice.letter_date as notice_letter_date, uplift.letter_date as uplift_letter_date, notice.received_at as notice_received_at,
 			notice.submitted_at as notice_submitted_at, notice.remarks as notice_remarks,
 			memo.id as memo_letter_id, memo.subject as memo_subject,
 			memo.reference_number_internal as memo_reference_number_internal`).
 		Joins(`LEFT JOIN case_letters notice ON notice.id = (
 			SELECT cl.id FROM case_letters cl
 			WHERE cl.case_id = cases.id AND cl.type IN ('Notice', 'Notice (Uplift)')
+			ORDER BY (cl.type = 'Notice') DESC, cl.letter_date DESC LIMIT 1)`).
+		Joins(`LEFT JOIN case_letters uplift ON uplift.id = (
+			SELECT cl.id FROM case_letters cl
+			WHERE cl.case_id = cases.id AND cl.type = 'Notice (Uplift)'
 			ORDER BY cl.letter_date DESC LIMIT 1)`).
 		Joins(`LEFT JOIN case_letters memo ON memo.id = (
 			SELECT cl.id FROM case_letters cl
@@ -279,6 +311,124 @@ func (s *postgresStore) listCaseSummaries(ctx context.Context, departmentID *uin
 	if err := s.caseSummaryQuery(ctx, departmentID).Order("cases.created_at desc").Scan(&summaries).Error; err != nil {
 		return nil, err
 	}
+	return s.attachCaseDomains(ctx, summaries)
+}
+
+// DateFilter is one Cases-view date filter chip: Op is on/before/after/
+// between, From/To are YYYY-MM-DD (To only for between). Compared on the UTC
+// calendar day, same as the old client-side filter compared ISO prefixes.
+type DateFilter struct{ Op, From, To string }
+
+// CaseListParams drives ListCaseSummariesPage. Zero values mean "no filter".
+type CaseListParams struct {
+	DepartmentID   *uint // RBAC scope; nil = global (admin)
+	Page, PageSize int
+	Query          string // case-insensitive: notice refs or any domain
+	Status         string // some domain has this status
+	AgencyID       *uint  // some domain has this agency
+	RequestingDept *uint  // some domain is also covered by a case of this department
+	Created, Due   DateFilter
+	SortBy         string // "id" | "due_date" | "notice_letter_date" | "uplift_letter_date"; default newest-created first
+	SortDesc       bool
+}
+
+// dayRange turns a DateFilter into a half-open [from, to) UTC range so the
+// comparison is a plain timestamp range check on both Postgres and SQLite.
+// ok=false when the chip has no usable date yet (filter is skipped).
+func (f DateFilter) dayRange() (from, to *time.Time, ok bool) {
+	parse := func(s string) *time.Time {
+		t, err := time.Parse("2006-01-02", s)
+		if err != nil {
+			return nil
+		}
+		return &t
+	}
+	a, b := parse(f.From), parse(f.To)
+	next := func(t *time.Time) *time.Time { n := t.AddDate(0, 0, 1); return &n }
+	switch {
+	case a == nil && b == nil:
+		return nil, nil, false
+	case f.Op == "on" && a != nil:
+		return a, next(a), true
+	case f.Op == "before" && a != nil:
+		return nil, a, true
+	case f.Op == "after" && a != nil:
+		return next(a), nil, true
+	case f.Op == "between":
+		if b != nil {
+			b = next(b)
+		}
+		return a, b, true
+	}
+	return nil, nil, false
+}
+
+func applyDateFilter(q *gorm.DB, col string, f DateFilter) *gorm.DB {
+	from, to, ok := f.dayRange()
+	if !ok {
+		return q
+	}
+	if from != nil {
+		q = q.Where(col+" >= ?", *from)
+	}
+	if to != nil {
+		q = q.Where(col+" < ?", *to)
+	}
+	return q
+}
+
+// ListCaseSummariesPage is the Cases view's server-side paged/filtered/sorted
+// list. Returns the page's cases (domains attached) and the total number of
+// cases matching the filters.
+func (s *postgresStore) ListCaseSummariesPage(ctx context.Context, p CaseListParams) ([]CaseSummary, int, error) {
+	q := s.caseSummaryQuery(ctx, p.DepartmentID)
+	if qs := strings.ToLower(strings.TrimSpace(p.Query)); qs != "" {
+		like := "%" + qs + "%"
+		q = q.Where(`LOWER(notice.reference_number_external) LIKE ? OR LOWER(notice.reference_number_internal) LIKE ?
+			OR EXISTS (SELECT 1 FROM case_urls cu JOIN urls u ON u.id = cu.url_id WHERE cu.case_id = cases.id AND LOWER(u.url) LIKE ?)`, like, like, like)
+	}
+	if p.Status != "" {
+		q = q.Where("EXISTS (SELECT 1 FROM case_urls cu WHERE cu.case_id = cases.id AND cu.status = ?)", p.Status)
+	}
+	if p.AgencyID != nil {
+		q = q.Where("EXISTS (SELECT 1 FROM case_urls cu WHERE cu.case_id = cases.id AND cu.agency_id = ?)", *p.AgencyID)
+	}
+	if p.RequestingDept != nil {
+		q = q.Where(`EXISTS (SELECT 1 FROM case_urls cu
+			JOIN case_urls cu2 ON cu2.url_id = cu.url_id JOIN cases c2 ON c2.id = cu2.case_id
+			WHERE cu.case_id = cases.id AND c2.department_id = ?)`, *p.RequestingDept)
+	}
+	q = applyDateFilter(q, "cases.created_at", p.Created)
+	q = applyDateFilter(q, "cases.due_date", p.Due)
+
+	var total int64
+	if err := q.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	dir := "desc"
+	if !p.SortDesc && p.SortBy != "" {
+		dir = "asc"
+	}
+	switch p.SortBy {
+	case "id":
+		q = q.Order("cases.id " + dir)
+	case "due_date", "notice_letter_date", "uplift_letter_date":
+		col := map[string]string{"due_date": "cases.due_date", "notice_letter_date": "notice.letter_date", "uplift_letter_date": "uplift.letter_date"}[p.SortBy]
+		q = q.Order(col + " IS NULL").Order(col + " " + dir).Order("cases.id desc") // empty dates always last
+	default:
+		q = q.Order("cases.created_at desc, cases.id desc")
+	}
+	var summaries []CaseSummary
+	if err := q.Limit(p.PageSize).Offset((p.Page - 1) * p.PageSize).Scan(&summaries).Error; err != nil {
+		return nil, 0, err
+	}
+	out, err := s.attachCaseDomains(ctx, summaries)
+	return out, int(total), err
+}
+
+// attachCaseDomains loads each summary's domains (with per-domain agency and
+// offences) in three queries total, however many summaries there are.
+func (s *postgresStore) attachCaseDomains(ctx context.Context, summaries []CaseSummary) ([]CaseSummary, error) {
 	if len(summaries) == 0 {
 		return summaries, nil
 	}
@@ -318,12 +468,22 @@ func (s *postgresStore) listCaseSummaries(ctx context.Context, departmentID *uin
 	if err != nil {
 		return nil, err
 	}
+	caseOffMap, err := s.offencesByCase(ctx, caseIDs)
+	if err != nil {
+		return nil, err
+	}
 	for _, r := range rows {
 		i := idxByCaseID[r.CaseID]
+		// This case's own offences; legacy rows with no case link fall back
+		// to the url-level (distinct) set.
+		offences := caseOffMap[[2]uint{r.CaseID, r.URLID}]
+		if len(offences) == 0 {
+			offences = offMap[r.URLID]
+		}
 		summaries[i].Domains = append(summaries[i].Domains, CaseSummaryDomain{
 			URLID: r.URLID, URL: r.URL, Status: r.Status, OriginalURL: r.OriginalURL,
 			AgencyID: r.AgencyID, AgencyName: r.AgencyName,
-			Offences: offMap[r.URLID],
+			Offences: offences,
 		})
 	}
 	return summaries, nil

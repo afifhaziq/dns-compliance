@@ -91,27 +91,52 @@ export async function fetchCaseLetters(page: number, pageSize: number): Promise<
   return { letters: Array.isArray(data.letters) ? data.letters : [], total: data.total ?? 0 }
 }
 
-// Loads every case_letters row by paging through the (deliberately capped,
-// see internal/server/CLAUDE.md) /api/case-letters endpoint, so the Docs
-// page can filter/sort/paginate entirely client-side — same shape as
-// fetchUrls(), which already does this for the (much larger) urls table.
-const CASE_LETTERS_FETCH_PAGE_SIZE = 100
+// Loads every case_letters row by paging through the (capped at
+// maxCaseLettersPageSize server-side, see internal/server/handlers.go)
+// /api/case-letters endpoint, so the Docs page can filter/sort/paginate
+// entirely client-side — same shape as fetchUrls(), which already does this
+// for the (much larger) urls table.
+const CASE_LETTERS_FETCH_PAGE_SIZE = 5000
 
 export async function fetchAllCaseLetters(): Promise<CaseLettersResponse['letters']> {
-  let page = 1
-  let all: CaseLettersResponse['letters'] = []
-  for (;;) {
-    const res = await fetchCaseLetters(page, CASE_LETTERS_FETCH_PAGE_SIZE)
-    all = all.concat(res.letters)
-    if (res.letters.length === 0 || all.length >= res.total) break
-    page++
-  }
-  return all
+  const first = await fetchCaseLetters(1, CASE_LETTERS_FETCH_PAGE_SIZE)
+  const totalPages = Math.ceil(first.total / CASE_LETTERS_FETCH_PAGE_SIZE)
+  // Remaining pages fetched concurrently rather than one-at-a-time — at CRD's
+  // post-import scale (14k+ rows -> 144 pages), a sequential loop here took
+  // ~4s of pure round-trip latency for a page whose own queries are each
+  // under 100ms.
+  const rest = await Promise.all(
+    Array.from({ length: totalPages - 1 }, (_, i) => fetchCaseLetters(i + 2, CASE_LETTERS_FETCH_PAGE_SIZE))
+  )
+  return [first, ...rest].flatMap(res => res.letters)
 }
 
-export async function fetchCaseSummaries(): Promise<CaseSummary[]> {
-  const data = await api.get<CaseSummary[]>('/case-summaries')
-  return Array.isArray(data) ? data : []
+export type CaseListQuery = {
+  page: number
+  pageSize: number
+  q?: string
+  status?: string
+  agencyId?: string
+  deptId?: string
+  created?: { op: string; from?: string; to?: string }
+  due?: { op: string; from?: string; to?: string }
+  sort?: 'id' | 'due_date' | 'notice_letter_date' | 'uplift_letter_date'
+  desc?: boolean
+}
+
+// One page of GET /api/case-summaries — filtering, sorting and paging all
+// happen server-side; `total` is the count matching the filters.
+export async function fetchCaseSummariesPage(query: CaseListQuery): Promise<{ cases: CaseSummary[]; total: number }> {
+  const p = new URLSearchParams({ page: String(query.page), page_size: String(query.pageSize) })
+  const set = (k: string, v?: string) => { if (v) p.set(k, v) }
+  set('q', query.q?.trim()); set('status', query.status); set('agency_id', query.agencyId); set('dept_id', query.deptId)
+  for (const [key, f] of [['created', query.created], ['due', query.due]] as const) {
+    if (!f) continue
+    set(`${key}_op`, f.op); set(`${key}_from`, f.from); set(`${key}_to`, f.to)
+  }
+  if (query.sort) { p.set('sort', query.sort); p.set('dir', query.desc ? 'desc' : 'asc') }
+  const data = await api.get<{ cases: CaseSummary[]; total: number }>(`/case-summaries?${p}`)
+  return { cases: data?.cases ?? [], total: data?.total ?? 0 }
 }
 
 export type CaseLetterFieldsUpdate = Partial<{
@@ -156,8 +181,8 @@ export async function deleteCaseLetter(caseId: number, letterId: number): Promis
 }
 
 // Triggers the CRD-format .xlsx export (GET /api/case-summaries/export).
-// caseIds scopes to "current view" (the Cases-view's caseTreeData ids);
-// omitted/empty means "All cases" — every case in the caller's RBAC scope.
+// The Cases view is paged server-side, so it always exports the full list
+// (every case in the caller's RBAC scope); caseIds can still narrow it.
 export function exportCaseSummaries(caseIds?: number[]): Promise<BlobDownload> {
   const path = caseIds === undefined ? '/case-summaries/export' : `/case-summaries/export?case_ids=${caseIds.join(',')}`
   return api.getBlob(path)
@@ -169,4 +194,10 @@ export function exportCaseSummaries(caseIds?: number[]): Promise<BlobDownload> {
 export function exportCaseLetters(letterIds?: number[]): Promise<BlobDownload> {
   const path = letterIds === undefined ? '/case-letters/export' : `/case-letters/export?letter_ids=${letterIds.join(',')}`
   return api.getBlob(path)
+}
+
+// Unlinks one url from a case (and the offences that case raised for it).
+// 409 if it is the case's last url.
+export async function removeUrlFromCase(caseId: number, urlId: number): Promise<void> {
+  await api.delete<void>(`/cases/${caseId}/urls/${urlId}`)
 }

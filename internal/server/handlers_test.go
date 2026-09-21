@@ -731,6 +731,9 @@ func (m *fullMockStore) ListCitationsByInstrument(_ context.Context, instrumentI
 	}
 	return out, nil
 }
+func (m *fullMockStore) ListAllCitations(_ context.Context) ([]db.Citation, error) {
+	return m.citations, nil
+}
 func (m *fullMockStore) CreateCitation(_ context.Context, c db.Citation) (db.Citation, error) {
 	c.ID = uint(len(m.citations) + 1)
 	c.SortKey = db.BuildProvisionSortKey(c.Parsed.ProvisionNum, c.Parsed.ProvisionSuffix)
@@ -774,6 +777,9 @@ func (m *fullMockStore) ListCategoriesByCitation(_ context.Context, citationID u
 	}
 	return out, nil
 }
+func (m *fullMockStore) ListAllCategories(_ context.Context) ([]db.Category, error) {
+	return m.categories, nil
+}
 func (m *fullMockStore) CreateCategory(_ context.Context, cat db.Category) (db.Category, error) {
 	cat.ID = uint(len(m.categories) + 1)
 	m.categories = append(m.categories, cat)
@@ -813,6 +819,9 @@ func (m *fullMockStore) ListElementsByCategory(_ context.Context, categoryID uin
 		}
 	}
 	return out, nil
+}
+func (m *fullMockStore) ListAllElements(_ context.Context) ([]db.Element, error) {
+	return m.elements, nil
 }
 func (m *fullMockStore) CreateElement(_ context.Context, el db.Element) (db.Element, error) {
 	el.ID = uint(len(m.elements) + 1)
@@ -859,6 +868,9 @@ func (m *fullMockStore) ListSubElementsByElement(_ context.Context, elementID ui
 		}
 	}
 	return out, nil
+}
+func (m *fullMockStore) ListAllSubElements(_ context.Context) ([]db.SubElement, error) {
+	return m.subElements, nil
 }
 func (m *fullMockStore) CreateSubElement(_ context.Context, se db.SubElement) (db.SubElement, error) {
 	se.ID = uint(len(m.subElements) + 1)
@@ -1457,6 +1469,24 @@ func (m *fullMockStore) UpdateCaseURLStatus(_ context.Context, caseID, urlID uin
 	}
 	return false, nil
 }
+func (m *fullMockStore) RemoveURLFromCase(_ context.Context, caseID, urlID uint) (bool, error) {
+	n := 0
+	for _, cu := range m.caseURLs {
+		if cu.CaseID == caseID {
+			n++
+		}
+	}
+	for i, cu := range m.caseURLs {
+		if cu.CaseID == caseID && cu.URLID == urlID {
+			if n <= 1 {
+				return false, db.ErrLastCaseURL
+			}
+			m.caseURLs = append(m.caseURLs[:i], m.caseURLs[i+1:]...)
+			return true, nil
+		}
+	}
+	return false, nil
+}
 func (m *fullMockStore) UpdateCaseURLAgency(_ context.Context, caseID, urlID uint, agencyID *uint) (bool, error) {
 	for i, cu := range m.caseURLs {
 		if cu.CaseID == caseID && cu.URLID == urlID {
@@ -1571,6 +1601,19 @@ func (m *fullMockStore) listCaseSummaries(departmentID *uint) []db.CaseSummary {
 
 func (m *fullMockStore) ListCases(_ context.Context) ([]db.CaseSummary, error) {
 	return m.listCaseSummaries(nil), nil
+}
+
+func (m *fullMockStore) ListCaseSummariesPage(_ context.Context, p db.CaseListParams) ([]db.CaseSummary, int, error) {
+	all := m.listCaseSummaries(p.DepartmentID)
+	lo := (p.Page - 1) * p.PageSize
+	if lo > len(all) {
+		lo = len(all)
+	}
+	hi := lo + p.PageSize
+	if hi > len(all) {
+		hi = len(all)
+	}
+	return all[lo:hi], len(all), nil
 }
 
 func (m *fullMockStore) ListCasesForDepartment(_ context.Context, departmentID uint) ([]db.CaseSummary, error) {

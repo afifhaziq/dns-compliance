@@ -59,6 +59,8 @@ func main() {
 	fmt.Printf("[%s] %d rows parsed, %d cases collapsed\n", mode, len(rows), len(cases))
 	fmt.Printf("  cases created:              %d\n", summary.CasesCreated)
 	fmt.Printf("  cases already existed:      %d\n", summary.CasesSkippedExist)
+	fmt.Printf("  letter dates backfilled:    %d\n", summary.LetterDatesBackfilled)
+	fmt.Printf("  uplift letters created:     %d\n", summary.UpliftLettersCreated)
 	fmt.Printf("  urls skipped (bad url):     %d\n", summary.URLsSkippedBadURL)
 	fmt.Printf("  distinct categories seen:   %d\n", len(summary.CategoriesObserved))
 	fmt.Printf("  url offences created:       %d\n", summary.URLOffencesCreated)

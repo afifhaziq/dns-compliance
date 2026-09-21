@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState, type ElementType, type ReactNode } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { Landmark, BookText, Tag, ListTree, FileText } from 'lucide-react'
+import { Landmark, BookText, Tag, ListTree, FileText, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { Files, FolderItem, FolderTrigger, FolderContent, FileItem, SubFiles } from '@/components/animate-ui/components/radix/files'
 import {
   fetchInstruments, createInstrument, updateInstrument, deleteInstrument,
-  fetchCitations, parseCitationPreview, createCitation, updateCitation, deleteCitation,
-  fetchCategories, createCategory, updateCategory, deleteCategory,
-  fetchElements, createElement, updateElement, deleteElement,
-  fetchSubElements, createSubElement, updateSubElement, deleteSubElement,
+  fetchAllCitations, parseCitationPreview, createCitation, updateCitation, deleteCitation,
+  fetchAllCategories, createCategory, updateCategory, deleteCategory,
+  fetchAllElements, createElement, updateElement, deleteElement,
+  fetchAllSubElements, createSubElement, updateSubElement, deleteSubElement,
   formatParsedCitation,
 } from '@/api/legal'
 import type { Instrument, Citation, LegalCategory, LegalElement, LegalSubElement, LegalCitationParsed } from '@/api/types'
@@ -49,39 +49,63 @@ type LegalTreeRow = {
 // table via getSubRows — a reference catalog like this is small enough that
 // loading it all up front (rather than lazy-fetching per expand) is simpler
 // and keeps expand/collapse instant.
+//
+// Built from 5 flat requests (one per level, via fetchAllCitations/
+// fetchAllCategories/fetchAllElements/fetchAllSubElements), grouped by
+// parent id client-side, rather than one request per parent node — walking
+// node-by-node against the real catalog (dozens of instruments, hundreds of
+// citations/categories) fires 500+ sequential-per-level round trips before
+// the tree can render at all.
+function groupBy<T, K>(rows: T[], key: (row: T) => K): Map<K, T[]> {
+  const map = new Map<K, T[]>()
+  for (const row of rows) {
+    const k = key(row)
+    const group = map.get(k)
+    if (group) group.push(row)
+    else map.set(k, [row])
+  }
+  return map
+}
+
 async function loadTree(): Promise<LegalTreeRow[]> {
-  const instruments = await fetchInstruments()
-  return Promise.all(instruments.map(async (inst): Promise<LegalTreeRow> => {
-    const citations = await fetchCitations(inst.id)
-    const citationRows = await Promise.all(citations.map(async (cit): Promise<LegalTreeRow> => {
-      const categories = await fetchCategories(cit.id)
-      const categoryRows = await Promise.all(categories.map(async (cat): Promise<LegalTreeRow> => {
-        const elements = await fetchElements(cat.id)
-        const elementRows: LegalTreeRow[] = await Promise.all(elements.map(async (el): Promise<LegalTreeRow> => {
-          const subElements = await fetchSubElements(el.id)
-          const subElementRows: LegalTreeRow[] = subElements.map(se => ({
-            id: `subelement-${se.id}`, kind: 'subelement', refId: se.id, label: se.name, subElement: se,
-          }))
-          return {
-            id: `element-${el.id}`, kind: 'element', refId: el.id, label: el.name, element: el,
-            children: subElementRows.length > 0 ? subElementRows : undefined,
-          }
-        }))
-        return {
-          id: `category-${cat.id}`, kind: 'category', refId: cat.id, label: cat.name, category: cat,
-          children: elementRows.length > 0 ? elementRows : undefined,
-        }
-      }))
-      return {
-        id: `citation-${cit.id}`, kind: 'citation', refId: cit.id, label: cit.raw_text, citation: cit,
-        children: categoryRows.length > 0 ? categoryRows : undefined,
-      }
+  const [instruments, citations, categories, elements, subElements] = await Promise.all([
+    fetchInstruments(), fetchAllCitations(), fetchAllCategories(), fetchAllElements(), fetchAllSubElements(),
+  ])
+  const citationsByInstrument = groupBy(citations, c => c.instrument_id)
+  const categoriesByCitation = groupBy(categories, c => c.citation_id)
+  const elementsByCategory = groupBy(elements, e => e.category_id)
+  const subElementsByElement = groupBy(subElements, se => se.element_id)
+
+  const buildElement = (el: LegalElement): LegalTreeRow => {
+    const subElementRows: LegalTreeRow[] = (subElementsByElement.get(el.id) ?? []).map(se => ({
+      id: `subelement-${se.id}`, kind: 'subelement', refId: se.id, label: se.name, subElement: se,
     }))
+    return {
+      id: `element-${el.id}`, kind: 'element', refId: el.id, label: el.name, element: el,
+      children: subElementRows.length > 0 ? subElementRows : undefined,
+    }
+  }
+  const buildCategory = (cat: LegalCategory): LegalTreeRow => {
+    const elementRows = (elementsByCategory.get(cat.id) ?? []).map(buildElement)
+    return {
+      id: `category-${cat.id}`, kind: 'category', refId: cat.id, label: cat.name, category: cat,
+      children: elementRows.length > 0 ? elementRows : undefined,
+    }
+  }
+  const buildCitation = (cit: Citation): LegalTreeRow => {
+    const categoryRows = (categoriesByCitation.get(cit.id) ?? []).map(buildCategory)
+    return {
+      id: `citation-${cit.id}`, kind: 'citation', refId: cit.id, label: cit.raw_text, citation: cit,
+      children: categoryRows.length > 0 ? categoryRows : undefined,
+    }
+  }
+  return instruments.map((inst): LegalTreeRow => {
+    const citationRows = (citationsByInstrument.get(inst.id) ?? []).map(buildCitation)
     return {
       id: `instrument-${inst.id}`, kind: 'instrument', refId: inst.id, label: inst.short_title, instrument: inst,
       children: citationRows.length > 0 ? citationRows : undefined,
     }
-  }))
+  })
 }
 
 const IS_ONLY = [{ value: 'is', label: 'is' }]
@@ -689,6 +713,10 @@ function LegalCitationsPage() {
   const [openFolders, setOpenFolders] = useState<string[]>([])
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<Filter<string>[]>([])
+  // Paginated at the top (Instrument) level only — each instrument's full
+  // subtree still renders in full once expanded, so a page never splits a
+  // citation/category/element/sub-element away from its parent.
+  const [page, setPage] = useState(1)
 
   const [addInstrumentOpen, setAddInstrumentOpen] = useState(false)
   const [addCitationFor, setAddCitationFor] = useState<Instrument | null>(null)
@@ -746,6 +774,11 @@ function LegalCitationsPage() {
     if (jurisdictionFilter) rows = rows.filter(r => r.instrument?.jurisdiction === jurisdictionFilter)
     return filterTreeBySearch(rows, search.trim().toLowerCase())
   }, [tree, search, typeFilter, jurisdictionFilter])
+
+  const LEGAL_PAGE_SIZE = 20
+  const totalPages = Math.max(1, Math.ceil(filteredTree.length / LEGAL_PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+  const pagedTree = filteredTree.slice((currentPage - 1) * LEGAL_PAGE_SIZE, currentPage * LEGAL_PAGE_SIZE)
 
   // Which "+" a row's add-child button creates, and where it goes — keyed
   // off the row's own kind since each level only ever adds the next one down.
@@ -850,11 +883,11 @@ function LegalCitationsPage() {
               type="search"
               placeholder="Search instruments, citations, categories…"
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={e => { setSearch(e.target.value); setPage(1) }}
               className="max-w-64"
               aria-label="Search legal citations"
             />
-            <Filters filters={filters} fields={filterFields} onChange={setFilters} />
+            <Filters filters={filters} fields={filterFields} onChange={f => { setFilters(f); setPage(1) }} />
           </div>
 
           <div className="results-wrap w-full mt-4">
@@ -863,9 +896,33 @@ function LegalCitationsPage() {
                 <p className="empty-heading">No legal citations match the current filters</p>
               </div>
             ) : (
-              <Files open={openFolders} onOpenChange={setOpenFolders}>{filteredTree.map(renderNode)}</Files>
+              <Files open={openFolders} onOpenChange={setOpenFolders}>{pagedTree.map(renderNode)}</Files>
             )}
           </div>
+
+          {totalPages > 1 && (
+            <div className="pagination">
+              <span className="pagination-label">Page {currentPage} of {totalPages}</span>
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => setPage(p => p - 1)}
+                disabled={currentPage <= 1}
+                aria-label="Previous page"
+              >
+                <ChevronLeftIcon className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => setPage(p => p + 1)}
+                disabled={currentPage >= totalPages}
+                aria-label="Next page"
+              >
+                <ChevronRightIcon className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       )}
 

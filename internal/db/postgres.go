@@ -565,7 +565,7 @@ func (s *postgresStore) ListDepartmentURLs(ctx context.Context, departmentID uin
 			 JOIN cases c ON c.id = cl.case_id
 			 JOIN case_urls cu ON cu.case_id = c.id
 			 WHERE cu.url_id = urls.id AND cl.type IN ('Notice', 'Notice (Uplift)')
-			 ORDER BY cl.letter_date DESC LIMIT 1) AS current_reference_number`).
+			 ORDER BY (cl.type = 'Notice') DESC, cl.letter_date DESC LIMIT 1) AS current_reference_number`).
 		Joins("JOIN department_urls du ON du.url_id = urls.id AND du.department_id = ?", departmentID).
 		// latest_case is this url's most-recently-created Case — the source
 		// of the case-metadata fields URLEntry exposes under the same JSON
@@ -639,6 +639,7 @@ func (s *postgresStore) offencesByURLIDs(ctx context.Context, urlIDs []uint) (ma
 	type offenceRow struct {
 		URLID      uint
 		RawText    string
+		Instrument string
 		Category   string
 		Element    string
 		SubElement string
@@ -646,10 +647,11 @@ func (s *postgresStore) offencesByURLIDs(ctx context.Context, urlIDs []uint) (ma
 	var rows []offenceRow
 	if err := s.db.WithContext(ctx).
 		Table("url_offences").
-		Select(`url_offences.url_id as url_id, citations.raw_text as raw_text, categories.name as category,
+		Select(`url_offences.url_id as url_id, citations.raw_text as raw_text, instruments.short_title as instrument, categories.name as category,
 			COALESCE(elements.name, '') as element, COALESCE(sub_elements.name, '') as sub_element`).
 		Joins("JOIN categories ON categories.id = url_offences.category_id").
 		Joins("JOIN citations ON citations.id = categories.citation_id").
+		Joins("JOIN instruments ON instruments.id = citations.instrument_id").
 		Joins("LEFT JOIN elements ON elements.id = url_offences.element_id").
 		Joins("LEFT JOIN sub_elements ON sub_elements.id = url_offences.sub_element_id").
 		Where("url_offences.url_id IN ?", urlIDs).
@@ -657,10 +659,23 @@ func (s *postgresStore) offencesByURLIDs(ctx context.Context, urlIDs []uint) (ma
 		Scan(&rows).Error; err != nil {
 		return nil, err
 	}
+	// A domain blocked repeatedly under the same citation has one url_offences
+	// row per historical event; collapse identical tuples so each shows once.
+	// OffenceEntry carries no row id, so nothing here needs the duplicates.
+	type seenKey struct {
+		urlID                                   uint
+		citation, category, element, subElement string
+	}
+	seen := make(map[seenKey]struct{}, len(rows))
 	out := make(map[uint][]OffenceEntry, len(rows))
 	for _, r := range rows {
+		k := seenKey{r.URLID, r.RawText, r.Category, r.Element, r.SubElement}
+		if _, dup := seen[k]; dup {
+			continue
+		}
+		seen[k] = struct{}{}
 		out[r.URLID] = append(out[r.URLID], OffenceEntry{
-			Citation: r.RawText, Category: r.Category, Element: r.Element, SubElement: r.SubElement,
+			Instrument: r.Instrument, Citation: r.RawText, Category: r.Category, Element: r.Element, SubElement: r.SubElement,
 		})
 	}
 	return out, nil
@@ -1877,4 +1892,44 @@ func (s *postgresStore) HasRecentResurfacedNotification(ctx context.Context, dep
 		Where("department_id = ? AND url_value = ? AND type = ? AND created_at >= ?", departmentID, urlValue, "resurfaced", sinceResurfacedAt).
 		Count(&count).Error
 	return count > 0, err
+}
+
+// offencesByCase is the case-scoped counterpart of offencesByURLIDs: the
+// offences one case raised against one of its urls, keyed by [caseID, urlID].
+// Rows imported before url_offences.case_id existed have a NULL case and are
+// simply absent here; callers fall back to the url-level set for those.
+func (s *postgresStore) offencesByCase(ctx context.Context, caseIDs []uint) (map[[2]uint][]OffenceEntry, error) {
+	if len(caseIDs) == 0 {
+		return nil, nil
+	}
+	type row struct {
+		CaseID     uint
+		URLID      uint
+		RawText    string
+		Instrument string
+		Category   string
+		Element    string
+		SubElement string
+	}
+	var rows []row
+	if err := s.db.WithContext(ctx).
+		Table("url_offences").
+		Select(`url_offences.case_id as case_id, url_offences.url_id as url_id, citations.raw_text as raw_text, instruments.short_title as instrument,
+			categories.name as category, COALESCE(elements.name, '') as element, COALESCE(sub_elements.name, '') as sub_element`).
+		Joins("JOIN categories ON categories.id = url_offences.category_id").
+		Joins("JOIN citations ON citations.id = categories.citation_id").
+		Joins("JOIN instruments ON instruments.id = citations.instrument_id").
+		Joins("LEFT JOIN elements ON elements.id = url_offences.element_id").
+		Joins("LEFT JOIN sub_elements ON sub_elements.id = url_offences.sub_element_id").
+		Where("url_offences.case_id IN ?", caseIDs).
+		Order("url_offences.recorded_at asc").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[[2]uint][]OffenceEntry, len(rows))
+	for _, r := range rows {
+		k := [2]uint{r.CaseID, r.URLID}
+		out[k] = append(out[k], OffenceEntry{Instrument: r.Instrument, Citation: r.RawText, Category: r.Category, Element: r.Element, SubElement: r.SubElement})
+	}
+	return out, nil
 }

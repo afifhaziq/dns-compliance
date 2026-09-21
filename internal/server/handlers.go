@@ -1414,6 +1414,11 @@ func (h *Handlers) ResurfacedDomains(w http.ResponseWriter, r *http.Request) {
 const (
 	defaultDomainSummaryPageSize = 25
 	maxDomainSummaryPageSize     = 100
+	// maxCaseLettersPageSize is its own (larger) cap, not maxDomainSummaryPageSize --
+	// docs.tsx's fetchAllCaseLetters needs the whole table for client-side
+	// grouping/sort/filter, and after the CRD import (14k+ rows) a 100-row
+	// cap meant 144 round trips per page load.
+	maxCaseLettersPageSize = 5000
 )
 
 func (h *Handlers) DomainSummaries(w http.ResponseWriter, r *http.Request) {

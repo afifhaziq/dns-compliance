@@ -792,11 +792,15 @@ func TestListCaseSummaries_NonAdminScopedToOwnDepartment(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	var summaries []db.CaseSummary
-	if err := json.Unmarshal(w.Body.Bytes(), &summaries); err != nil {
+	var resp struct {
+		Cases []db.CaseSummary `json:"cases"`
+		Total int              `json:"total"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if len(summaries) != 1 || summaries[0].ID != 1 {
+	summaries := resp.Cases
+	if len(summaries) != 1 || summaries[0].ID != 1 || resp.Total != 1 {
 		t.Fatalf("expected only dept 1's case, got %+v", summaries)
 	}
 }
@@ -825,11 +829,15 @@ func TestListCaseSummaries_AdminSeesGlobal(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	var summaries []db.CaseSummary
-	if err := json.Unmarshal(w.Body.Bytes(), &summaries); err != nil {
+	var resp struct {
+		Cases []db.CaseSummary `json:"cases"`
+		Total int              `json:"total"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if len(summaries) != 2 {
+	summaries := resp.Cases
+	if len(summaries) != 2 || resp.Total != 2 {
 		t.Fatalf("expected both cases for admin, got %+v", summaries)
 	}
 }
@@ -954,5 +962,31 @@ func TestUpdateCaseLetter_CrossDepartmentOICUserIDRejected(t *testing.T) {
 	}
 	if store.caseLetters[0].OICUserID != nil {
 		t.Fatalf("expected OICUserID left unset, got %+v", store.caseLetters[0])
+	}
+}
+
+func TestRemoveCaseURL(t *testing.T) {
+	store := &fullMockStore{
+		urls:     []db.URL{{ID: 1, URL: "a.com"}, {ID: 2, URL: "b.com"}},
+		cases:    []db.Case{{ID: 1, DepartmentID: 1}},
+		caseURLs: []db.CaseURL{{CaseID: 1, URLID: 1, Status: "blocked"}, {CaseID: 1, URLID: 2, Status: "blocked"}},
+	}
+	cookie := deptCookie(store, 1)
+	r := setupRouter(store, nil)
+	del := func(urlID string) int {
+		req := httptest.NewRequest(http.MethodDelete, "/api/cases/1/urls/"+urlID, nil)
+		req.AddCookie(cookie)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w.Code
+	}
+	if c := del("1"); c != http.StatusNoContent {
+		t.Fatalf("first delete: got %d, want 204", c)
+	}
+	if c := del("2"); c != http.StatusConflict {
+		t.Fatalf("last domain: got %d, want 409", c)
+	}
+	if c := del("9"); c != http.StatusNotFound {
+		t.Fatalf("unknown url: got %d, want 404", c)
 	}
 }

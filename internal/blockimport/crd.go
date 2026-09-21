@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/xuri/excelize/v2"
 )
@@ -28,6 +29,8 @@ type CRDRow struct {
 	CitationText    string // "Butiran Kesalahan"
 	Agency          string // "Agensi"
 	Year            int
+	NoticeDate      *time.Time // "Tarikh Maklum IASP (Blocked)" — nil when blank or not a real date ("NA", "Oct/Nov")
+	UpliftDate      *time.Time // "Tarikh Maklum ISP (Uplift)" — same parsing rules
 }
 
 // isInternalReference reports whether a "No. Rujukan NMD"/"NMSMD" value is
@@ -91,6 +94,37 @@ type CollapsedDomain struct {
 	// domains. Last-write-wins across the group if it repeats, same as
 	// Status.
 	Agency string
+	// Offences are this domain's own classifications, one per distinct
+	// (citation, category, element, sub-element) tuple among its rows. Kept
+	// per domain, not collapsed to one case-wide winner, so a citation is
+	// never paired with a category from a different row -- see the note on
+	// CollapsedCase's case-level fields below.
+	Offences []DomainOffence
+}
+
+// DomainOffence is the classification carried by one spreadsheet row.
+type DomainOffence struct {
+	CitationText string
+	Categories   []string // split on "," for compound Kategori values
+	Element      string
+	SubElement   string
+}
+
+func (o DomainOffence) key() string {
+	return strings.Join([]string{o.CitationText, strings.Join(o.Categories, ","), o.Element, o.SubElement}, "\x00")
+}
+
+// addOffence appends o to d unless d already carries an identical one.
+func (d *CollapsedDomain) addOffence(o DomainOffence) {
+	if o.key() == "\x00\x00\x00" {
+		return // row carried no classification at all
+	}
+	for _, e := range d.Offences {
+		if e.key() == o.key() {
+			return
+		}
+	}
+	d.Offences = append(d.Offences, o)
 }
 
 // CollapsedCase is one (base reference number) group after collapsing — the
@@ -101,10 +135,32 @@ type CollapsedCase struct {
 	ReferenceNumber string
 	NMSMD           string // secondary MCMC reference (see CRDRow.NMSMD) -- goes on CaseLetter.ReferenceNumberExternal alongside ReferenceNumber's own internal/external routing
 	Domains         []CollapsedDomain
-	Categories      []string // split on "," for compound Kategori values, most-common-group's categories
-	Element         string
-	SubElement      string
-	CitationText    string
+	// Case-level classification: the most common value of each field across
+	// the group's rows, each picked independently, so they can mix values
+	// from different rows. Only a fallback (WriteCRDCases uses it when no
+	// domain carries its own Offences) -- Domains[].Offences is authoritative.
+	Categories   []string // split on "," for compound Kategori values, most-common-group's categories
+	Element      string
+	SubElement   string
+	CitationText string
+	// NoticeDate is the earliest parseable "Tarikh Maklum IASP (Blocked)" across
+	// the group's rows (the CRD export reads it back as the earliest Notice's
+	// LetterDate). nil when no row has a real date.
+	NoticeDate *time.Time
+	// UpliftDate is the same for "Tarikh Maklum ISP (Uplift)"; becomes a Notice
+	// (Uplift) letter carrying only that date.
+	UpliftDate *time.Time
+}
+
+// parseNoticeDate reads the sheet's dd-Mon-yy dates ("30-May-11", "7-Jul-12");
+// anything else ("NA", "Oct/Nov", blank) is nil. UTC midnight, matching how the
+// dashboard stores letter dates.
+func parseNoticeDate(raw string) *time.Time {
+	t, err := time.Parse("2-Jan-06", strings.TrimSpace(raw))
+	if err != nil {
+		return nil
+	}
+	return &t
 }
 
 var (
@@ -196,6 +252,8 @@ func ParseCRDRows(path string) ([]CRDRow, error) {
 	citationCol := col("Butiran Kesalahan")
 	agencyCol := col("Agensi")
 	yearCol := col("Tahun")
+	noticeDateCol := col("Tarikh Maklum IASP (Blocked)")
+	upliftDateCol := col("Tarikh Maklum ISP (Uplift)")
 
 	var out []CRDRow
 	for _, r := range rows[headerRow+1:] {
@@ -230,6 +288,8 @@ func ParseCRDRows(path string) ([]CRDRow, error) {
 			CitationText:    cellAt(r, citationCol),
 			Agency:          cellAt(r, agencyCol),
 			Year:            year,
+			NoticeDate:      parseNoticeDate(cellAt(r, noticeDateCol)),
+			UpliftDate:      parseNoticeDate(cellAt(r, upliftDateCol)),
 		})
 	}
 	return out, nil
@@ -277,12 +337,18 @@ func CollapseCRDRows(rows []CRDRow) []CollapsedCase {
 			domainIdx[row.Domain] = len(c.Domains)
 			c.Domains = append(c.Domains, CollapsedDomain{RawDomain: row.Domain, Status: row.Status, Agency: row.Agency})
 		}
+		c.Domains[domainIdx[row.Domain]].addOffence(DomainOffence{
+			CitationText: row.CitationText, Categories: splitCategories(row.Category),
+			Element: row.Element, SubElement: row.SubElement,
+		})
 
 		bumpCount(categoryCounts[key], row.Category)
 		bumpCount(elementCounts[key], row.Element)
 		bumpCount(subElementCounts[key], row.SubElement)
 		bumpCount(citationCounts[key], row.CitationText)
 		bumpCount(nmsmdCounts[key], row.NMSMD)
+		c.NoticeDate = earlierDate(c.NoticeDate, row.NoticeDate)
+		c.UpliftDate = earlierDate(c.UpliftDate, row.UpliftDate)
 	}
 
 	cases := make([]CollapsedCase, 0, len(order))
@@ -298,6 +364,14 @@ func CollapseCRDRows(rows []CRDRow) []CollapsedCase {
 	return cases
 }
 
+// earlierDate returns the earlier of two optional dates (nil = absent).
+func earlierDate(cur, candidate *time.Time) *time.Time {
+	if candidate != nil && (cur == nil || candidate.Before(*cur)) {
+		return candidate
+	}
+	return cur
+}
+
 func bumpCount(counts map[string]int, val string) {
 	if val == "" {
 		return
@@ -305,14 +379,16 @@ func bumpCount(counts map[string]int, val string) {
 	counts[val]++
 }
 
-// mostCommon returns the value with the highest count, breaking ties by
-// first-seen-wins (Go map iteration order is randomized, so this scans in a
-// deterministic way isn't guaranteed on ties — acceptable since ties only
-// occur among values already judged equally representative).
+// mostCommon returns the value with the highest count. Ties go to the
+// lexicographically smallest value so the import is reproducible -- Go's map
+// iteration order is random, and a random tie-break made every run of the
+// import classify tied cases differently.
+// ponytail: arbitrary-but-stable on ties; a first-seen rule would need order
+// tracking in every counts map.
 func mostCommon(counts map[string]int) string {
 	best, bestCount := "", 0
 	for val, count := range counts {
-		if count > bestCount {
+		if count > bestCount || (count == bestCount && val < best) {
 			best, bestCount = val, count
 		}
 	}

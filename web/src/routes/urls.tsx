@@ -22,7 +22,7 @@ import { DataGridTableRowExpand } from '@/components/reui/data-grid/data-grid-ta
 import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
 import { fetchUrls, createUrl, deleteUrl, setUrlEnabled } from '../api/urls'
 import { normalizeForClient } from './__root'
-import { createCase, addCaseLetter, addUrlToCase, updateCase, updateCaseURLStatus, updateCaseURLAgency, updateCaseLetter, fetchCaseSummaries, exportCaseSummaries } from '../api/cases'
+import { createCase, addCaseLetter, addUrlToCase, updateCase, updateCaseURLStatus, updateCaseURLAgency, removeUrlFromCase, updateCaseLetter, fetchCaseSummariesPage, exportCaseSummaries } from '../api/cases'
 import { downloadBlob } from '@/lib/download'
 import { fetchAgencies } from '../api/agencies'
 import { fetchDepartmentsOpen } from '../api/departments'
@@ -30,7 +30,7 @@ import { fetchDueDatePresets } from '../api/due-date-presets'
 import { fetchRecipients } from '../api/recipients'
 import { fetchRequestors } from '../api/requestors'
 import { useGridPreference } from '@/hooks/use-grid-preference'
-import type { URLEntry, Agency, Department, DueDatePreset, Instrument, Citation, LegalCategory, LegalElement, LegalSubElement, URLOffence, Recipient, Requestor, CaseSummary, CaseSummaryDomain } from '../api/types'
+import type { URLEntry, Agency, Department, DueDatePreset, Instrument, OffenceEntry, Citation, LegalCategory, LegalElement, LegalSubElement, URLOffence, Recipient, Requestor, CaseSummary, CaseSummaryDomain } from '../api/types'
 import { fetchInstruments, fetchCitations, fetchCategories, fetchElements, fetchSubElements, attachOffence, fetchOffencesByUrl, detachOffence, formatParsedCitation } from '../api/legal'
 import {
   Dialog,
@@ -343,6 +343,50 @@ const MultiOffencePicker = forwardRef<MultiOffencePickerHandle, {
 // edited inline in the grid, not here). Due Date remains a case-level
 // default; Agency (like Status) is per-domain — this dialog's Agency field
 // seeds every url created in this submission the same way Status does.
+const DOMAIN_ROW_STYLE: React.CSSProperties = {
+  display: 'flex', gap: '0.75rem', alignItems: 'flex-start',
+  border: '1px solid var(--border)', borderRadius: 8, padding: '0.5rem 0.75rem', marginBottom: '0.375rem',
+}
+
+// Per-domain Agency + Status selects, laid out as two fixed columns so the
+// triggers can't overlap. Used by both existing-domain and new-domain rows.
+function DomainSettings({ agencies, agencyId, status, onChange, disabled, idPrefix }: {
+  agencies: Agency[]
+  agencyId: number | ''
+  status: string
+  onChange: (patch: { agencyId?: number | ''; status?: string }) => void
+  disabled: boolean
+  idPrefix: string
+}) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '170px 170px', gap: '0.5rem', flexShrink: 0 }}>
+      <div style={{ minWidth: 0 }}>
+        <label className="form-label" id={`${idPrefix}-agency`} style={{ marginBottom: 2 }}>Agency</label>
+        <Select value={String(agencyId)} onValueChange={v => onChange({ agencyId: v === '' ? '' : Number(v) })} disabled={disabled}>
+          <SelectTrigger aria-labelledby={`${idPrefix}-agency`} placeholder="—" className="w-full" />
+          <SelectContent>
+            <SelectItem index={0} value="">—</SelectItem>
+            {agencies.map((a, i) => (
+              <SelectItem key={a.id} index={i + 1} value={String(a.id)}>{a.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <label className="form-label" id={`${idPrefix}-status`} style={{ marginBottom: 2 }}>Status</label>
+        <Select value={status} onValueChange={v => onChange({ status: v })} disabled={disabled}>
+          <SelectTrigger aria-labelledby={`${idPrefix}-status`} placeholder="—" className="w-full" />
+          <SelectContent>
+            {CASE_STATUS_OPTIONS.map((opt, i) => (
+              <SelectItem key={opt.value} index={i} value={opt.value}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  )
+}
+
 function AddUrlDialog({
   open,
   onClose,
@@ -365,6 +409,11 @@ function AddUrlDialog({
   const [value, setValue] = useState('')
   const [offences, setOffences] = useState<StagedOffence[]>([])
   const [agencyId, setAgencyId] = useState<number | ''>('')
+  // Edit mode: domains staged for removal (applied on Save) and new domain rows, each with its own agency/status.
+  const [removedIds, setRemovedIds] = useState<Set<number>>(new Set())
+  const [newRows, setNewRows] = useState<{ url: string; agencyId: number | ''; status: string }[]>([])
+  // Per-domain agency/status edits when editing a case, keyed by url_id — seeded from `editing`, diffed on save.
+  const [domainEdits, setDomainEdits] = useState<Record<number, { agencyId: number | ''; status: string }>>({})
   const [dueDurationMinutes, setDueDurationMinutes] = useState('1440')
   const [status, setStatus] = useState('requested')
   const [createLetter, setCreateLetter] = useState(false)
@@ -409,6 +458,9 @@ function AddUrlDialog({
       setAgencyId('') // agency is per-domain now; this only seeds newly-added domains, not the case's existing ones
       setDueDurationMinutes('') // existing due date shown read-only; picking a duration replaces it (see the read-only line in the form below)
       setStatus('requested') // status is per-domain now; this only seeds newly-added domains, not the case's existing ones
+      setRemovedIds(new Set())
+      setNewRows([])
+      setDomainEdits(Object.fromEntries(editing.domains.map(d => [d.url_id, { agencyId: d.agency_id ?? '', status: d.status }])))
       setCreateLetter(true)
       setReferenceNumberExternal(editing.notice_reference_number_external ?? '')
       setReferenceNumberInternal(editing.notice_reference_number_internal ?? '')
@@ -433,7 +485,9 @@ function AddUrlDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const domains = value.split('\n').map(s => s.trim()).filter(Boolean)
+    const domains = editing
+      ? editing.domains.filter(d => !removedIds.has(d.url_id)).map(d => d.url).concat(newRows.map(r => r.url.trim()).filter(Boolean))
+      : value.split('\n').map(s => s.trim()).filter(Boolean)
     if (domains.length === 0) { setError('At least one domain is required'); return }
     // Catch a filled-in-but-not-yet-"+ Add offence"-clicked selection sitting
     // in the picker — otherwise it's silently dropped rather than attached.
@@ -452,24 +506,20 @@ function AddUrlDialog({
           ...(caseOpts.dueDate ? { dueDate: caseOpts.dueDate } : {}),
         })
 
-        // editing.domains (from the backend) is already server-normalized;
-        // the raw textarea input isn't, so normalize before diffing or an
-        // already-attached domain typed in a different raw form (e.g.
-        // "https://example.com/" vs the stored "example.com") looks new.
-        // rawByNormalized keeps the as-typed line for each normalized value
-        // so a full URL survives as CaseURL.OriginalURL below.
-        const normalizedTyped = domains.map(normalizeForClient)
-        const rawByNormalized = new Map(domains.map((raw, i) => [normalizedTyped[i], raw]))
+        // editing.domains is already server-normalized; typed rows aren't, so
+        // normalize before diffing or an already-attached domain typed in a
+        // different raw form (e.g. "https://example.com/") looks new. The
+        // as-typed text survives as CaseURL.OriginalURL. New domains must be
+        // get-or-created first — addUrlToCase 404s on a url with no db.URL row.
         const existingURLs = new Set(editing.domains.map(d => d.url))
-        const newDomains = normalizedTyped.filter(d => !existingURLs.has(d))
-        // Removing a line from the textarea is a deliberate no-op — there's
-        // no "unlink domain from case" endpoint (see the spec's Out of
-        // Scope section); only additions are applied. New domains must be
-        // get-or-created first (mirrors create mode below) — addUrlToCase
-        // 404s on a url that doesn't already exist as a db.URL row.
-        const createdDomains = await Promise.all(newDomains.map(d => createUrl(d)))
-        await Promise.all(createdDomains.map(u =>
-          addUrlToCase(editing.id, u.url, status, originalUrlFor(rawByNormalized.get(u.url), u.url), agencyId === '' ? undefined : agencyId)
+        const rowsToAdd = newRows
+          .map(r => ({ ...r, raw: r.url.trim() }))
+          .filter(r => r.raw)
+          .map(r => ({ ...r, norm: normalizeForClient(r.raw) }))
+          .filter(r => !existingURLs.has(r.norm))
+        const createdDomains = await Promise.all(rowsToAdd.map(r => createUrl(r.norm)))
+        await Promise.all(createdDomains.map((u, i) =>
+          addUrlToCase(editing.id, u.url, rowsToAdd[i].status, originalUrlFor(rowsToAdd[i].raw, u.url), rowsToAdd[i].agencyId === '' ? undefined : rowsToAdd[i].agencyId)
         ))
 
         // Unconditional (not `|| undefined`) so a field the user blanked out
@@ -522,8 +572,19 @@ function AddUrlDialog({
             reference_number_internal: memoReferenceNumberInternal.trim() || undefined,
           }))
         }
+        // Per-domain agency/status edits — only the ones that actually changed.
+        const domainWork = editing.domains.flatMap(d => {
+          if (removedIds.has(d.url_id)) return [removeUrlFromCase(editing.id, d.url_id)]
+          const e = domainEdits[d.url_id]
+          if (!e) return []
+          const work: Promise<unknown>[] = []
+          if (e.agencyId !== (d.agency_id ?? '')) work.push(updateCaseURLAgency(editing.id, d.url_id, e.agencyId === '' ? undefined : e.agencyId))
+          if (e.status !== d.status) work.push(updateCaseURLStatus(editing.id, d.url_id, e.status))
+          return work
+        })
         await Promise.all([
           ...letterWork,
+          ...domainWork,
           ...createdDomains.flatMap(u => allOffences.map(o => attachOffence(u.url, o.categoryId, o.elementId, o.subElementId))),
         ])
         reset()
@@ -588,84 +649,114 @@ function AddUrlDialog({
 
   const handleClose = () => { reset(); onClose() }
   const domainCount = value.split('\n').map(s => s.trim()).filter(Boolean).length
+  const newDomainCount = newRows.filter(r => r.url.trim()).length
+  const visibleExisting = editing ? editing.domains.filter(d => !removedIds.has(d.url_id)) : []
+  const canRemoveDomain = visibleExisting.length + newDomainCount > 1
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
-      <DialogContent showCloseButton={false} style={{ maxWidth: 560 }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: editing ? 960 : 560 }}>
         <DialogHeader>
           <DialogTitle>{editing ? 'Edit Case' : 'Create Case'}</DialogTitle>
           <DialogDescription>
             {editing
-              ? 'Update this case\'s shared fields. Adding a domain line links it to this case; removing a line here does not unlink it — remove a domain from Cases view instead.'
+              ? 'Case details apply to the whole case; domain details (agency, status, offences) belong to each domain. Linking a new domain adds it to this case; removing a domain line does not unlink it.'
               : <>Enter one or more domains or full URLs to monitor for DNS compliance — full URLs will have their domain automatically extracted, and multiple entries (one per line) share the case opened below. A case is required to add {domainCount > 1 ? 'these domains' : 'a domain'}; if a later batch covers a different offence, open a new case for it instead of reusing this one.</>}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
-          <div className="form-field">
-            <label className="form-label" htmlFor="add-url-input">Domain</label>
-            <textarea
-              id="add-url-input"
-              className="form-input form-input-strong"
-              placeholder={'https://example.com\nhttps://example2.com'}
-              value={value}
-              onChange={e => setValue(e.target.value)}
-              autoFocus
-              disabled={loading}
-              rows={4}
-              style={{ resize: 'vertical', fontFamily: 'inherit' }}
-            />
-          </div>
+          {!editing && (
+            <>
+              <div className="form-field">
+                <label className="form-label" htmlFor="add-url-input">Domain</label>
+                <textarea
+                  id="add-url-input"
+                  className="form-input form-input-strong"
+                  placeholder={'https://example.com\nhttps://example2.com'}
+                  value={value}
+                  onChange={e => setValue(e.target.value)}
+                  autoFocus
+                  disabled={loading}
+                  rows={4}
+                  style={{ resize: 'vertical', fontFamily: 'inherit' }}
+                />
+              </div>
 
-          <MultiOffencePicker
-            ref={pickerRef}
-            value={offences}
-            onChange={setOffences}
-            disabled={loading}
-          />
+              <MultiOffencePicker
+                ref={pickerRef}
+                value={offences}
+                onChange={setOffences}
+                disabled={loading}
+              />
 
-          <div className="form-row">
-            <div className="form-field">
-              <label className="form-label" id="add-agency-label">Agency</label>
-              <Select value={String(agencyId)} onValueChange={v => setAgencyId(v === '' ? '' : Number(v))} disabled={loading}>
-                <SelectTrigger aria-labelledby="add-agency-label" placeholder="—" className="w-full" />
-                <SelectContent>
-                  <SelectItem index={0} value="">—</SelectItem>
-                  {agencies.map((a, i) => (
-                    <SelectItem key={a.id} index={i + 1} value={String(a.id)}>{a.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+              <div className="form-row">
+                <div className="form-field">
+                  <label className="form-label" id="add-agency-label">Agency</label>
+                  <Select value={String(agencyId)} onValueChange={v => setAgencyId(v === '' ? '' : Number(v))} disabled={loading}>
+                    <SelectTrigger aria-labelledby="add-agency-label" placeholder="—" className="w-full" />
+                    <SelectContent>
+                      <SelectItem index={0} value="">—</SelectItem>
+                      {agencies.map((a, i) => (
+                        <SelectItem key={a.id} index={i + 1} value={String(a.id)}>{a.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <div className="form-field">
-              <label className="form-label" id="add-case-status-label">Status</label>
-              <Select value={status} onValueChange={setStatus} disabled={loading}>
-                <SelectTrigger aria-labelledby="add-case-status-label" placeholder="—" className="w-full" />
-                <SelectContent>
-                  {CASE_STATUS_OPTIONS.map((opt, i) => (
-                    <SelectItem key={opt.value} index={i} value={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                <div className="form-field">
+                  <label className="form-label" id="add-case-status-label">Status</label>
+                  <Select value={status} onValueChange={setStatus} disabled={loading}>
+                    <SelectTrigger aria-labelledby="add-case-status-label" placeholder="—" className="w-full" />
+                    <SelectContent>
+                      {CASE_STATUS_OPTIONS.map((opt, i) => (
+                        <SelectItem key={opt.value} index={i} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <div className="form-field">
-              <label className="form-label" id="add-due-date-label">Time to Block</label>
-              {editing && (
-                <p className="text-xs text-stone-muted" style={{ marginTop: 0, marginBottom: 4 }}>
-                  Current deadline: {editing.due_date ? DUE_DATE_FMT.format(new Date(editing.due_date)) : '—'} — pick a duration below to replace it
-                </p>
-              )}
-              <Select value={dueDurationMinutes} onValueChange={setDueDurationMinutes} disabled={loading}>
-                <SelectTrigger aria-labelledby="add-due-date-label" placeholder="—" className="w-full" />
-                <SelectContent>
-                  {dueDateOptionsFrom(duePresets).map((opt, i) => (
-                    <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+                <div className="form-field">
+                  <label className="form-label" id="add-due-date-label">Time to Block</label>
+                  {editing && (
+                    <p className="text-xs text-stone-muted" style={{ marginTop: 0, marginBottom: 4 }}>
+                      Current deadline: {editing.due_date ? DUE_DATE_FMT.format(new Date(editing.due_date)) : '—'} — pick a duration below to replace it
+                    </p>
+                  )}
+                  <Select value={dueDurationMinutes} onValueChange={setDueDurationMinutes} disabled={loading}>
+                    <SelectTrigger aria-labelledby="add-due-date-label" placeholder="—" className="w-full" />
+                    <SelectContent>
+                      {dueDateOptionsFrom(duePresets).map((opt, i) => (
+                        <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </>
+          )}
+          {editing && (
+            <>
+              <p className="form-label" style={{ fontSize: 13, fontWeight: 600, margin: '0.75rem 0 0.5rem' }}>Case details</p>
+              <div className="form-row">
+                <div className="form-field">
+                  <label className="form-label" id="add-due-date-label">Time to Block</label>
+                  {editing && (
+                    <p className="text-xs text-stone-muted" style={{ marginTop: 0, marginBottom: 4 }}>
+                      Current deadline: {editing.due_date ? DUE_DATE_FMT.format(new Date(editing.due_date)) : '—'} — pick a duration below to replace it
+                    </p>
+                  )}
+                  <Select value={dueDurationMinutes} onValueChange={setDueDurationMinutes} disabled={loading}>
+                    <SelectTrigger aria-labelledby="add-due-date-label" placeholder="—" className="w-full" />
+                    <SelectContent>
+                      {dueDateOptionsFrom(duePresets).map((opt, i) => (
+                        <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </>
+          )}
 
           <div className="form-row">
             <div className="form-field">
@@ -694,6 +785,83 @@ function AddUrlDialog({
           <p className="text-xs text-stone-muted" style={{ marginTop: '-0.5rem', marginBottom: '0.75rem' }}>
             Recorded as a Notice against this case regardless of "Create Letter" below.
           </p>
+
+          {editing && (
+            <>
+              <p className="form-label" style={{ fontSize: 13, fontWeight: 600, margin: '0.5rem 0 0.25rem' }}>Domain details</p>
+              {visibleExisting.map(d => {
+                const e = domainEdits[d.url_id] ?? { agencyId: d.agency_id ?? '', status: d.status }
+                const setE = (patch: Partial<typeof e>) => setDomainEdits(prev => ({ ...prev, [d.url_id]: { ...e, ...patch } }))
+                return (
+                  <div key={d.url_id} style={DOMAIN_ROW_STYLE}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="form-label" style={{ margin: 0, wordBreak: 'break-all' }}>{d.url}</div>
+                      {d.original_url && d.original_url !== d.url && (
+                        <p className="text-xs text-stone-muted" style={{ margin: '2px 0 0', wordBreak: 'break-all' }}>Cited as {d.original_url}</p>
+                      )}
+                      {(d.offences ?? []).length > 0 ? (
+                        <ul className="offence-chip-list" style={{ marginTop: 4, marginBottom: 0 }}>
+                          {(d.offences ?? []).map((o, i) => (
+                            <li key={i} className="offence-chip">
+                              <span>{citationLabel(o)} — {o.category}{o.element ? ` (${o.element})` : ''}{o.sub_element ? ` › ${o.sub_element}` : ''}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : <p className="text-xs text-stone-muted" style={{ margin: '4px 0 0' }}>No offences recorded.</p>}
+                    </div>
+                    <DomainSettings agencies={agencies} agencyId={e.agencyId} status={e.status} onChange={setE} disabled={loading} idPrefix={`edit-${d.url_id}`} />
+                    <button
+                      type="button"
+                      className="screenshot-icon-btn"
+                      style={{ visibility: canRemoveDomain ? 'visible' : 'hidden' }}
+                      onClick={() => setRemovedIds(prev => new Set(prev).add(d.url_id))}
+                      disabled={loading || !canRemoveDomain}
+                      aria-label={`Remove ${d.url} from this case`}
+                      title="Remove from case (applied on Save)"
+                    >
+                      <XIcon size={14} />
+                    </button>
+                  </div>
+                )
+              })}
+
+              {newRows.map((row, i) => {
+                const setRow = (patch: Partial<typeof row>) => setNewRows(prev => prev.map((r, j) => j === i ? { ...r, ...patch } : r))
+                return (
+                  <div key={i} style={DOMAIN_ROW_STYLE}>
+                    <input
+                      className="form-input form-input-strong"
+                      style={{ flex: 1, minWidth: 0 }}
+                      placeholder="https://example.com"
+                      aria-label="New domain"
+                      value={row.url}
+                      autoFocus={!row.url}
+                      onChange={ev => setRow({ url: ev.target.value })}
+                      disabled={loading}
+                    />
+                    <DomainSettings agencies={agencies} agencyId={row.agencyId} status={row.status} onChange={setRow} disabled={loading} idPrefix={`new-${i}`} />
+                    <button
+                      type="button"
+                      className="screenshot-icon-btn"
+                      onClick={() => setNewRows(prev => prev.filter((_, j) => j !== i))}
+                      disabled={loading}
+                      aria-label="Remove new domain row"
+                    >
+                      <XIcon size={14} />
+                    </button>
+                  </div>
+                )
+              })}
+              <div style={{ margin: '0.25rem 0 0.5rem' }}>
+                <button type="button" className="btn-ghost" onClick={() => setNewRows(prev => [...prev, { url: '', agencyId: '', status: 'requested' }])} disabled={loading}>
+                  + Add domain
+                </button>
+              </div>
+              {newDomainCount > 0 && (
+                <MultiOffencePicker ref={pickerRef} value={offences} onChange={setOffences} disabled={loading} />
+              )}
+            </>
+          )}
 
           <div className="form-field">
             <label className="form-label flex items-center justify-between" htmlFor="add-case-create-letter">
@@ -994,6 +1162,10 @@ const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric', month: 'short', year: 'numeric',
 })
 
+const LETTER_DATE_FMT = new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+})
+
 // Explicit timeZone so the deadline reads the same regardless of the
 // viewing browser's OS timezone — matches the backend's own hardcoded
 // Asia/Kuala_Lumpur reporting convention (see postgresStore's
@@ -1007,6 +1179,9 @@ const DUE_DATE_FMT = new Intl.DateTimeFormat('en-GB', {
 // sub-fields, which a domain can have several of) as one line per instance,
 // wrapping the row's height rather than truncating — shared by the
 // Domain-view and Cases-view offence columns below.
+// Act + section, so a bare "Seksyen 233" never appears without its instrument.
+const citationLabel = (o: OffenceEntry) => o.instrument ? `${o.instrument}, ${o.citation}` : o.citation
+
 function joinedCell(values: (string | undefined)[]) {
   const list = values.filter((v): v is string => !!v)
   if (list.length === 0) return <span className="dns-name">—</span>
@@ -1083,7 +1258,10 @@ function URLsPage() {
   const [caseSummaries, setCaseSummaries] = useState<CaseSummary[]>([])
   const [addOpen, setAddOpen] = useState(false)
   const [editingCase, setEditingCase] = useState<CaseSummary | null>(null)
-  const [exportScope, setExportScope] = useState<'current' | 'all'>('current')
+  // Cases are paged/filtered/sorted on the server; `casesNonce` re-runs the fetch after an edit.
+  const [casesTotal, setCasesTotal] = useState(0)
+  const [casesLoading, setCasesLoading] = useState(true)
+  const [casesNonce, setCasesNonce] = useState(0)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
 
@@ -1136,8 +1314,8 @@ function URLsPage() {
     setLoading(true)
     try {
       setError(null)
-      const [u, a, d, p, rc, rq, cs] = await Promise.all([
-        fetchUrls(), fetchAgencies(), fetchDepartmentsOpen(), fetchDueDatePresets(), fetchRecipients(), fetchRequestors(), fetchCaseSummaries(),
+      const [u, a, d, p, rc, rq] = await Promise.all([
+        fetchUrls(), fetchAgencies(), fetchDepartmentsOpen(), fetchDueDatePresets(), fetchRecipients(), fetchRequestors(),
       ])
       setUrls(u)
       setAgencies(a)
@@ -1145,7 +1323,6 @@ function URLsPage() {
       setDuePresets(p)
       setRecipients(rc)
       setRequestors(rq)
-      setCaseSummaries(cs)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load domains')
     } finally {
@@ -1185,41 +1362,6 @@ function URLsPage() {
     load()
   }
 
-  // Status is per-domain (CaseURL.Status) — updating one domain's status
-  // within a case must not touch its sibling domains' own status values.
-  const handleDomainStatusChange = useCallback(async (caseId: number, urlId: number, status: string) => {
-    const prev = caseSummaries.find(c => c.id === caseId)?.domains.find(d => d.url_id === urlId)?.status
-    setCaseSummaries(prevList => prevList.map(c => c.id === caseId
-      ? { ...c, domains: c.domains.map(d => d.url_id === urlId ? { ...d, status } : d) }
-      : c))
-    try {
-      await updateCaseURLStatus(caseId, urlId, status)
-    } catch {
-      setCaseSummaries(prevList => prevList.map(c => c.id === caseId
-        ? { ...c, domains: c.domains.map(d => d.url_id === urlId ? { ...d, status: prev ?? d.status } : d) }
-        : c))
-    }
-  }, [caseSummaries])
-
-  // Agency is per-domain (CaseURL.AgencyID) — updating one domain's agency
-  // within a case must not touch its sibling domains' own agency values.
-  const handleDomainAgencyChange = useCallback(async (caseId: number, urlId: number, agencyId: number | undefined) => {
-    const prevDomain = caseSummaries.find(c => c.id === caseId)?.domains.find(d => d.url_id === urlId)
-    const prevAgencyId = prevDomain?.agency_id
-    const prevAgencyName = prevDomain?.agency_name
-    const agencyName = agencyId !== undefined ? agencies.find(a => a.id === agencyId)?.name : undefined
-    setCaseSummaries(prevList => prevList.map(c => c.id === caseId
-      ? { ...c, domains: c.domains.map(d => d.url_id === urlId ? { ...d, agency_id: agencyId, agency_name: agencyName } : d) }
-      : c))
-    try {
-      await updateCaseURLAgency(caseId, urlId, agencyId)
-    } catch {
-      setCaseSummaries(prevList => prevList.map(c => c.id === caseId
-        ? { ...c, domains: c.domains.map(d => d.url_id === urlId ? { ...d, agency_id: prevAgencyId, agency_name: prevAgencyName } : d) }
-        : c))
-    }
-  }, [caseSummaries, agencies])
-
   const filterFields = useMemo<FilterFieldConfig<string>[]>(() => [
     { key: 'status', label: 'Status', type: 'select', operators: IS_ONLY, options: STATUS_OPTIONS.filter(o => o.value).map(o => ({ value: o.value, label: o.label })) },
     { key: 'requesting_dept', label: 'Requesting Dept.', type: 'select', operators: IS_ONLY, options: departments.map(d => ({ value: String(d.id), label: d.name })) },
@@ -1247,32 +1389,48 @@ function URLsPage() {
     )
   }, [urls, search, statusFilter, deptFilterName, agencyFilter, createdAtFilter, dueDateFilter])
 
-  const urlDeptMap = useMemo(() => {
-    const m = new Map<string, string[]>()
-    urls.forEach(u => m.set(u.url, u.requesting_departments ?? []))
-    return m
-  }, [urls])
+  // Debounced so typing in the search box doesn't fire a request per keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
 
-  const filteredCases = useMemo(() => {
-    const query = search.trim().toLowerCase()
-    return caseSummaries.filter(c => {
-      const matchesSearch = !query
-        || (c.notice_reference_number_external ?? '').toLowerCase().includes(query)
-        || (c.notice_reference_number_internal ?? '').toLowerCase().includes(query)
-        || c.domains.some(d => d.url.toLowerCase().includes(query))
-      const matchesStatus = !statusFilter || c.domains.some(d => d.status === statusFilter)
-      const matchesDept = !deptFilterName || c.domains.some(d => (urlDeptMap.get(d.url) ?? []).includes(deptFilterName))
-      const matchesAgency = !agencyFilter || c.domains.some(d => String(d.agency_id ?? '') === agencyFilter)
-      return matchesSearch && matchesStatus && matchesDept && matchesAgency
-        && matchesDateFilter(c.created_at, createdAtFilter)
-        && matchesDateFilter(c.due_date, dueDateFilter)
+  // Column id -> the server's sort key; columns not listed aren't sortable.
+  const CASE_SORT_KEYS = { case: 'id', due_date: 'due_date', notice_letter_date: 'notice_letter_date', uplift_letter_date: 'uplift_letter_date' } as const
+  const casesSortKey = CASE_SORT_KEYS[casesSorting[0]?.id as keyof typeof CASE_SORT_KEYS]
+  const casesSortDesc = casesSorting[0]?.desc
+  const createdKey = JSON.stringify(createdAtFilter)
+  const dueKey = JSON.stringify(dueDateFilter)
+  useEffect(() => {
+    if (!casesGridPrefReady) return // wait for the saved page size so the first fetch is the only one
+    let stale = false
+    setCasesLoading(true)
+    const dateQuery = (f: Filter<string> | undefined) => (f ? { op: f.operator, from: f.values[0], to: f.values[1] } : undefined)
+    fetchCaseSummariesPage({
+      page: casesPagination.pageIndex + 1,
+      pageSize: casesPagination.pageSize,
+      q: debouncedSearch,
+      status: statusFilter,
+      agencyId: agencyFilter,
+      deptId: deptFilter,
+      created: dateQuery(createdAtFilter),
+      due: dateQuery(dueDateFilter),
+      sort: casesSortKey,
+      desc: casesSortDesc,
     })
-  }, [caseSummaries, search, statusFilter, deptFilterName, agencyFilter, createdAtFilter, dueDateFilter, urlDeptMap])
+      .then(r => { if (!stale) { setCaseSummaries(r.cases); setCasesTotal(r.total); setError(null) } })
+      .catch(err => { if (!stale) setError(err instanceof Error ? err.message : 'Failed to load cases') })
+      .finally(() => { if (!stale) setCasesLoading(false) })
+    return () => { stale = true }
+    // createdAtFilter/dueDateFilter are re-created every render; their JSON keys are the stable deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [casesPagination.pageIndex, casesPagination.pageSize, debouncedSearch, statusFilter, agencyFilter, deptFilter, createdKey, dueKey, casesSortKey, casesSortDesc, casesNonce, casesGridPrefReady])
 
   useEffect(() => {
     setPagination(p => ({ ...p, pageIndex: 0 }))
     setCasesPagination(p => ({ ...p, pageIndex: 0 }))
-  }, [search, statusFilter, deptFilter, agencyFilter, createdAtFilter, dueDateFilter])
+  }, [search, statusFilter, deptFilter, agencyFilter, createdAtFilter, dueDateFilter, casesSortKey, casesSortDesc])
 
   const columns = useMemo<ColumnDef<URLEntry>[]>(() => [
     {
@@ -1338,11 +1496,11 @@ function URLsPage() {
     },
     {
       id: 'offence_citation',
-      accessorFn: u => (u.offences ?? []).map(o => o.citation).join('; '),
+      accessorFn: u => (u.offences ?? []).map(citationLabel).join('; '),
       size: 220,
       header: 'Offence Details',
       meta: { headerTitle: 'Offence Details', headerClassName: 'col-status', cellClassName: 'col-status' },
-      cell: ({ row }) => joinedCell((row.original.offences ?? []).map(o => o.citation)),
+      cell: ({ row }) => joinedCell((row.original.offences ?? []).map(citationLabel)),
     },
     {
       id: 'offence_category',
@@ -1478,30 +1636,26 @@ function URLsPage() {
   // already in its final shape instead of flashing plain defaults first.
   const gridLoading = loading || !gridPrefReady
 
-  const caseTreeData = useMemo<CaseRow[]>(() => filteredCases.map(summary => ({
+  const caseTreeData = useMemo<CaseRow[]>(() => caseSummaries.map(summary => ({
     kind: 'case',
     summary,
     subRows: summary.domains.map(domain => ({ kind: 'domain', caseId: summary.id, status: domain.status, domain })),
-  })), [filteredCases])
+  })), [caseSummaries])
 
   const handleExportCases = useCallback(async () => {
     setExporting(true)
     setExportError(null)
     try {
-      // "Current view" with no filter narrowing anything still means "every
-      // case in scope" — pass undefined instead of the full id list so an
-      // unfiltered export doesn't send an unbounded query string (a real
-      // reverse proxy's header-size limit can 414 on exactly this case).
-      const currentIds = caseTreeData.map(r => r.summary.id)
-      const ids = exportScope === 'current' && currentIds.length < caseSummaries.length ? currentIds : undefined
-      const { blob, filename } = await exportCaseSummaries(ids)
+      // Always the full list — the table only holds one page, and the server
+      // already scopes the export to the caller's own cases.
+      const { blob, filename } = await exportCaseSummaries()
       downloadBlob(blob, filename ?? `blocking-list-export-${new Date().toISOString().slice(0, 10)}.xlsx`)
     } catch (err) {
       setExportError(err instanceof Error ? err.message : 'Failed to export cases')
     } finally {
       setExporting(false)
     }
-  }, [exportScope, caseTreeData, caseSummaries])
+  }, [])
 
   const caseColumns = useMemo<ColumnDef<CaseTreeRow>[]>(() => [
     {
@@ -1563,20 +1717,7 @@ function URLsPage() {
         if (original.kind === 'case') {
           return <span className="dns-name">—</span>
         }
-        return (
-          <Select
-            value={original.domain.agency_id != null ? String(original.domain.agency_id) : ''}
-            onValueChange={v => handleDomainAgencyChange(original.caseId, original.domain.url_id, v === '' ? undefined : Number(v))}
-          >
-            <SelectTrigger aria-label={`Agency for ${original.domain.url}`} placeholder="—" className="w-full" />
-            <SelectContent>
-              <SelectItem index={0} value="">—</SelectItem>
-              {agencies.map((a, i) => (
-                <SelectItem key={a.id} index={i + 1} value={String(a.id)}>{a.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )
+        return <span className="dns-name">{original.domain.agency_name ?? '—'}</span>
       },
     },
     {
@@ -1592,16 +1733,7 @@ function URLsPage() {
         if (original.kind === 'case') {
           return <span className="dns-name">—</span>
         }
-        return (
-          <Select value={original.status} onValueChange={v => handleDomainStatusChange(original.caseId, original.domain.url_id, v)}>
-            <SelectTrigger aria-label={`Status for ${original.domain.url}`} placeholder="—" className="w-full" />
-            <SelectContent>
-              {STATUS_OPTIONS.map((opt, i) => (
-                <SelectItem key={opt.value || 'none'} index={i} value={opt.value}>{opt.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )
+        return <span className="dns-name">{STATUS_OPTIONS.find(o => o.value === original.status)?.label ?? original.status}</span>
       },
     },
     {
@@ -1609,11 +1741,11 @@ function URLsPage() {
       header: 'Offence Details',
       // Same reasoning as status above — offences are per-domain, so a case
       // row (whose domains can each carry different ones) is left blank.
-      accessorFn: r => r.kind === 'domain' ? (r.domain.offences ?? []).map(o => o.citation).join('; ') : '',
+      accessorFn: r => r.kind === 'domain' ? (r.domain.offences ?? []).map(citationLabel).join('; ') : '',
       meta: { headerTitle: 'Offence Details', headerClassName: 'col-status', cellClassName: 'col-status' },
       cell: ({ row }) => {
         const original = row.original
-        return original.kind === 'case' ? <span className="dns-name">—</span> : joinedCell((original.domain.offences ?? []).map(o => o.citation))
+        return original.kind === 'case' ? <span className="dns-name">—</span> : joinedCell((original.domain.offences ?? []).map(citationLabel))
       },
     },
     {
@@ -1670,6 +1802,25 @@ function URLsPage() {
       cell: ({ row }) => row.original.kind === 'case' ? <span className="dns-name">{row.original.summary.notice_reference_number_external || '—'}</span> : null,
     },
     {
+      id: 'notice_letter_date',
+      header: ({ column }) => <SortableHeader column={column} title="Notice Letter Date" />,
+      accessorFn: r => r.kind === 'case' ? (r.summary.notice_letter_date ?? '') : '',
+      meta: { headerTitle: 'Notice Letter Date', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      // Letter dates are stored as UTC midnight (a calendar day, not an instant), so format in UTC.
+      cell: ({ row }) => row.original.kind === 'case'
+        ? <span className="dns-name">{row.original.summary.notice_letter_date ? LETTER_DATE_FMT.format(new Date(row.original.summary.notice_letter_date)) : '—'}</span>
+        : null,
+    },
+    {
+      id: 'uplift_letter_date',
+      header: ({ column }) => <SortableHeader column={column} title="Uplift Letter Date" />,
+      accessorFn: r => r.kind === 'case' ? (r.summary.uplift_letter_date ?? '') : '',
+      meta: { headerTitle: 'Uplift Letter Date', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
+      cell: ({ row }) => row.original.kind === 'case'
+        ? <span className="dns-name">{row.original.summary.uplift_letter_date ? LETTER_DATE_FMT.format(new Date(row.original.summary.uplift_letter_date)) : '—'}</span>
+        : null,
+    },
+    {
       id: 'domain_count',
       header: 'Domains',
       accessorFn: r => r.kind === 'case' ? r.summary.domains.length : '',
@@ -1714,13 +1865,16 @@ function URLsPage() {
         )
       },
     },
-  ], [handleDomainStatusChange, handleDomainAgencyChange, agencies])
+  ], [])
 
   const casesTable = useReactTable({
     data: caseTreeData,
     columns: caseColumns,
     initialState: { columnPinning: { left: ['case'], right: ['action'] } },
     state: { sorting: casesSorting, pagination: casesPagination, columnVisibility: casesColumnVisibility, expanded: casesExpanded },
+    manualPagination: true,
+    manualSorting: true,
+    rowCount: casesTotal,
     onSortingChange: setCasesSorting,
     onPaginationChange: setCasesPagination,
     onColumnVisibilityChange: setCasesColumnVisibility,
@@ -1728,14 +1882,15 @@ function URLsPage() {
     getRowId: r => r.kind === 'case' ? `case:${r.summary.id}` : `case-domain:${r.caseId}:${r.domain.url_id}`,
     getSubRows: r => r.kind === 'case' ? r.subRows : undefined,
     getRowCanExpand: row => row.original.kind === 'case' && row.original.subRows.length > 0,
-    paginateExpandedRows: false,
+    // Paging is server-side (manualPagination), so sub-rows must join the expanded model directly —
+    // with false they'd only be spliced in by getPaginationRowModel, which manualPagination bypasses.
+    paginateExpandedRows: true,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
   })
 
-  const casesGridLoading = loading || !casesGridPrefReady
+  const casesGridLoading = loading || casesLoading || !casesGridPrefReady
+  const noCasesAtAll = !casesGridLoading && casesTotal === 0 && !debouncedSearch && filters.length === 0
 
   return (
     <div className="mx-20 mt-10 mb-10">
@@ -1817,7 +1972,7 @@ function URLsPage() {
             <p className="error-message">{error}</p>
             <button className="btn-primary" onClick={load}>Retry</button>
           </div>
-        ) : !casesGridLoading && caseSummaries.length === 0 ? (
+        ) : noCasesAtAll ? (
           <div className="empty-state">
             <EmptyIcon />
             <p className="empty-heading">No cases yet</p>
@@ -1836,13 +1991,6 @@ function URLsPage() {
                 aria-label="Search cases"
               />
               <Filters filters={filters} fields={filterFields} onChange={setFilters} />
-              <Select value={exportScope} onValueChange={v => setExportScope(v as 'current' | 'all')}>
-                <SelectTrigger aria-label="Export scope" className="w-40" />
-                <SelectContent>
-                  <SelectItem index={0} value="current">Current view</SelectItem>
-                  <SelectItem index={1} value="all">All cases</SelectItem>
-                </SelectContent>
-              </Select>
               {exportError && <p className="error-message">{exportError}</p>}
               <div style={{ marginLeft: 'auto' }} className="flex items-center gap-2">
                 <Button variant="outline" size="icon" onClick={handleExportCases} disabled={exporting} aria-label={exporting ? 'Exporting…' : 'Export'} title={exporting ? 'Exporting…' : 'Export'}>
@@ -1852,14 +2000,14 @@ function URLsPage() {
               </div>
             </div>
             <div className="results-wrap w-full">
-              {!casesGridLoading && filteredCases.length === 0 ? (
+              {!casesGridLoading && casesTotal === 0 ? (
                 <div className="empty-state" style={{ padding: '3rem 0' }}>
                   <p className="empty-heading">No cases match the current filters</p>
                 </div>
               ) : (
                 <DataGrid
                   table={casesTable}
-                  recordCount={caseTreeData.length}
+                  recordCount={casesTotal}
                   isLoading={casesGridLoading}
                   tableClassNames={{ base: 'results-table results-table--pinned' }}
                   tableLayout={{ columnsPinnable: true }}
@@ -1879,7 +2027,7 @@ function URLsPage() {
       <AddUrlDialog
         open={addOpen || editingCase !== null}
         onClose={() => { setAddOpen(false); setEditingCase(null) }}
-        onAdded={load}
+        onAdded={() => { load(); setCasesNonce(n => n + 1) }}
         agencies={agencies}
         duePresets={duePresets}
         recipients={recipients}

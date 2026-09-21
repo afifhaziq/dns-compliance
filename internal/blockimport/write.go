@@ -3,7 +3,9 @@ package blockimport
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/afif/dns-tracking/internal/db"
 	"github.com/afif/dns-tracking/internal/urlnorm"
@@ -19,6 +21,8 @@ var errDryRunRollback = errors.New("blockimport: dry run rollback")
 type ImportSummary struct {
 	CasesCreated              int
 	CasesSkippedExist         int            // already imported (idempotency)
+	LetterDatesBackfilled     int            // existing Notice letters that had no letter_date and got one from the sheet
+	UpliftLettersCreated      int            // Notice (Uplift) letters created from the sheet's uplift date
 	URLsSkippedBadURL         int            // failed urlnorm.Normalize
 	CategoriesObserved        map[string]int // raw Category/Offence value -> row count, for visibility only
 	URLOffencesCreated        int            // URLOffence rows created (CRD only, see WriteCRDCases)
@@ -157,6 +161,22 @@ func WriteCRDCases(ctx context.Context, gdb *gorm.DB, crdDeptID uint, cases []Co
 			}
 			if err == nil {
 				summary.CasesSkippedExist++
+				// Re-runs only ever fill in a missing letter date (imports before
+				// this column was read left every letter_date NULL); nothing else
+				// on an existing case is touched.
+				if existing.LetterDate == nil && cc.NoticeDate != nil {
+					if err := tx.WithContext(ctx).Model(&db.CaseLetter{}).Where("id = ?", existing.ID).Update("letter_date", *cc.NoticeDate).Error; err != nil {
+						return err
+					}
+					summary.LetterDatesBackfilled++
+				}
+				if cc.UpliftDate != nil {
+					n, err := ensureUpliftLetter(ctx, tx, existing.CaseID, *cc.UpliftDate)
+					if err != nil {
+						return err
+					}
+					summary.UpliftLettersCreated += n
+				}
 				continue
 			}
 			if err != gorm.ErrRecordNotFound {
@@ -167,7 +187,7 @@ func WriteCRDCases(ctx context.Context, gdb *gorm.DB, crdDeptID uint, cases []Co
 			if err := tx.WithContext(ctx).Create(&c).Error; err != nil {
 				return err
 			}
-			letter := db.CaseLetter{CaseID: c.ID, Type: "Notice"}
+			letter := db.CaseLetter{CaseID: c.ID, Type: "Notice", LetterDate: cc.NoticeDate}
 			if isInternal {
 				letter.ReferenceNumberInternal = cc.ReferenceNumber
 			} else {
@@ -184,6 +204,13 @@ func WriteCRDCases(ctx context.Context, gdb *gorm.DB, crdDeptID uint, cases []Co
 			if err := tx.WithContext(ctx).Create(&letter).Error; err != nil {
 				return err
 			}
+			if cc.UpliftDate != nil {
+				n, err := ensureUpliftLetter(ctx, tx, c.ID, *cc.UpliftDate)
+				if err != nil {
+					return err
+				}
+				summary.UpliftLettersCreated += n
+			}
 
 			// Two raw domain spellings within the same reference can
 			// normalize to the same URL row (e.g. "http://foo.com" and
@@ -191,12 +218,14 @@ func WriteCRDCases(ctx context.Context, gdb *gorm.DB, crdDeptID uint, cases []Co
 			// on exact raw string — track by URLID here too, last-write-wins
 			// on Status, to avoid a duplicate (case_id, url_id) insert.
 			caseURLByID := make(map[uint]*db.CaseURL)
+			offencesByURL := make(map[uint][]DomainOffence)
 			for _, d := range cc.Domains {
 				u, err := createURL(ctx, tx, d.RawDomain)
 				if err != nil {
 					summary.URLsSkippedBadURL++
 					continue
 				}
+				offencesByURL[u.ID] = append(offencesByURL[u.ID], d.Offences...)
 				var agencyID *uint
 				if d.Agency != "" {
 					agency, err := getOrCreateAgency(ctx, tx, d.Agency)
@@ -225,18 +254,56 @@ func WriteCRDCases(ctx context.Context, gdb *gorm.DB, crdDeptID uint, cases []Co
 				}
 			}
 
-			if targets := citationMap[cc.CitationText]; len(targets) > 0 {
-				urlIDs := make([]uint, 0, len(caseURLByID))
-				for urlID := range caseURLByID {
+			perRow := false
+			for _, offs := range offencesByURL {
+				if len(offs) > 0 {
+					perRow = true
+					break
+				}
+			}
+			if !perRow {
+				// No domain carries its own classification (hand-built
+				// cases): fall back to the case-level one.
+				if targets := citationMap[cc.CitationText]; len(targets) > 0 {
+					urlIDs := make([]uint, 0, len(caseURLByID))
+					for urlID := range caseURLByID {
+						urlIDs = append(urlIDs, urlID)
+					}
+					created, err := attachOffences(ctx, tx, c.ID, urlIDs, targets, cc.Categories, cc.Element, cc.SubElement)
+					if err != nil {
+						return err
+					}
+					summary.URLOffencesCreated += created
+				} else if cc.CitationText != "" {
+					summary.OffencesSkippedNoCitation++
+				}
+			} else {
+				urlIDs := make([]uint, 0, len(offencesByURL))
+				for urlID := range offencesByURL {
 					urlIDs = append(urlIDs, urlID)
 				}
-				created, err := attachOffences(ctx, tx, urlIDs, targets, cc.Categories, cc.Element, cc.SubElement)
-				if err != nil {
-					return err
+				sort.Slice(urlIDs, func(i, j int) bool { return urlIDs[i] < urlIDs[j] })
+				for _, urlID := range urlIDs {
+					seen := make(map[string]bool)
+					for _, o := range offencesByURL[urlID] {
+						if seen[o.key()] {
+							continue // two raw spellings of one url, same classification
+						}
+						seen[o.key()] = true
+						targets := citationMap[o.CitationText]
+						if len(targets) == 0 {
+							if o.CitationText != "" {
+								summary.OffencesSkippedNoCitation++
+							}
+							continue
+						}
+						created, err := attachOffences(ctx, tx, c.ID, []uint{urlID}, targets, o.Categories, o.Element, o.SubElement)
+						if err != nil {
+							return err
+						}
+						summary.URLOffencesCreated += created
+					}
 				}
-				summary.URLOffencesCreated += created
-			} else if cc.CitationText != "" {
-				summary.OffencesSkippedNoCitation++
 			}
 
 			summary.CasesCreated++
@@ -250,4 +317,17 @@ func WriteCRDCases(ctx context.Context, gdb *gorm.DB, crdDeptID uint, cases []Co
 		return summary, err
 	}
 	return summary, nil
+}
+
+// ensureUpliftLetter gives a case its Notice (Uplift) letter (carrying only the
+// date) unless it already has one; returns how many it created (0 or 1).
+func ensureUpliftLetter(ctx context.Context, tx *gorm.DB, caseID uint, date time.Time) (int, error) {
+	var n int64
+	if err := tx.WithContext(ctx).Model(&db.CaseLetter{}).Where("case_id = ? AND type = ?", caseID, "Notice (Uplift)").Count(&n).Error; err != nil || n > 0 {
+		return 0, err
+	}
+	if err := tx.WithContext(ctx).Create(&db.CaseLetter{CaseID: caseID, Type: "Notice (Uplift)", LetterDate: &date}).Error; err != nil {
+		return 0, err
+	}
+	return 1, nil
 }

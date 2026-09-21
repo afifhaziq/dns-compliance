@@ -45,7 +45,15 @@ echo " ready"
 echo "==> Starting MinIO..."
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d minio minio-init
 echo -n "    Waiting for MinIO"
+tries=0
 until curl -sf -o /dev/null http://localhost:9000/minio/health/live 2>/dev/null; do
+  if (( ++tries > 30 )); then
+    echo ""
+    echo "MinIO not reachable on localhost:9000 after 30s." >&2
+    echo "If 'docker ps' shows 9000-9001/tcp with no '->' host binding (Docker Desktop/WSL lost the port map), run:" >&2
+    echo "  docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --force-recreate minio" >&2
+    exit 1
+  fi
   echo -n "."
   sleep 1
 done

@@ -20,7 +20,7 @@
 // Updated 2026-08-19: urls.reference_number/requesting_dept_id removed and
 // replaced by the cases/case_letters/case_urls tables (28-table AutoMigrate
 // list) — see urls' Note and the new tables below. Design history for this
-// change: docs/db-schema-proposed.dbml (now shipped, kept for archaeology).
+// change: see docs/superpowers/plans/2026-08-19-cases-schema-*.md (proposal file removed; now shipped).
 //
 // Updated 2026-08-20: adds recipients/requestors (30-table AutoMigrate list)
 // — admin-managed lookup tables backing the Recipient/Requestor dropdowns on
@@ -446,6 +446,7 @@ Table url_offences {
   category_id    integer   [not null, note: 'indexed']
   element_id     integer   [null, note: 'indexed']
   sub_element_id integer   [null, note: 'indexed']
+  case_id        integer   [null, note: 'indexed, FK cases OnDelete:CASCADE -- case that raised this offence; NULL on rows imported before 2026-09-21']
   recorded_at    timestamptz [not null]
 
   Note: '''
@@ -454,9 +455,15 @@ Table url_offences {
     SubElement. Surrogate ID PK rather than composite (unlike
     department_urls) because element_id/sub_element_id are nullable and SQL
     NULL != NULL breaks composite-PK uniqueness.
+    case_id links the offence to the case that raised it (2026-09-21). The CRD
+    import sets it; earlier rows are NULL because the import wrote one row per
+    case event with nothing tying it back. Case views read by case_id (falling
+    back to the url-level set for NULL rows); the Domain view shows the
+    distinct set across cases (offencesByURLIDs dedupes identical tuples).
   '''
 }
 Ref: url_offences.url_id > urls.id [delete: cascade]
+Ref: url_offences.case_id > cases.id [delete: cascade]
 Ref: url_offences.category_id > categories.id [delete: cascade]
 Ref: url_offences.element_id > elements.id [delete: cascade]
 Ref: url_offences.sub_element_id > sub_elements.id [delete: cascade]
@@ -535,7 +542,7 @@ Ref: case_letters.oic_user_id > users.id [delete: set null]
 
 Table case_urls {
   case_id   integer [not null]
-  url_id    integer [not null]
+  url_id    integer [not null, note: 'indexed (fb6f99e, 2026-09-17)']
   status    varchar [not null, note: 'requested | uplift | suspended -- this url\'s own status within the case, independent of any other url the same case covers']
   agency_id integer [null, note: 'indexed, FK OnDelete:SET NULL -- this url\'s own agency within the case, moved here from cases.agency_id 2026-09-15']
 

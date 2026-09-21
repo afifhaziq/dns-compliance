@@ -35,6 +35,15 @@ export async function fetchCitations(instrumentId: number): Promise<Citation[]> 
   return Array.isArray(data) ? data : []
 }
 
+// Flat/unscoped counterparts of fetchCitations/fetchCategories/fetchElements/
+// fetchSubElements below — used by legal-citations.tsx's up-front tree load
+// to fetch each level in one request instead of one per parent node (see
+// loadTree's doc comment there).
+export async function fetchAllCitations(): Promise<Citation[]> {
+  const data = await api.get<Citation[]>('/legal/citations')
+  return Array.isArray(data) ? data : []
+}
+
 export type CitationParsePreview = { parsed: LegalCitationParsed; parse_confidence: 'OK' | 'NEEDS_REVIEW' }
 
 // Runs internal/legalcite.Parse against free text without persisting
@@ -70,6 +79,11 @@ export async function fetchCategories(citationId: number): Promise<LegalCategory
   return Array.isArray(data) ? data : []
 }
 
+export async function fetchAllCategories(): Promise<LegalCategory[]> {
+  const data = await api.get<LegalCategory[]>('/legal/categories')
+  return Array.isArray(data) ? data : []
+}
+
 export function createCategory(citationId: number, name: string): Promise<LegalCategory> {
   return api.post<LegalCategory>('/legal/categories', { citation_id: citationId, name })
 }
@@ -87,6 +101,11 @@ export async function fetchElements(categoryId: number): Promise<LegalElement[]>
   return Array.isArray(data) ? data : []
 }
 
+export async function fetchAllElements(): Promise<LegalElement[]> {
+  const data = await api.get<LegalElement[]>('/legal/elements')
+  return Array.isArray(data) ? data : []
+}
+
 export function createElement(categoryId: number, name: string): Promise<LegalElement> {
   return api.post<LegalElement>('/legal/elements', { category_id: categoryId, name })
 }
@@ -101,6 +120,11 @@ export function deleteElement(id: number): Promise<void> {
 
 export async function fetchSubElements(elementId: number): Promise<LegalSubElement[]> {
   const data = await api.get<LegalSubElement[]>(`/legal/elements/${elementId}/subelements`)
+  return Array.isArray(data) ? data : []
+}
+
+export async function fetchAllSubElements(): Promise<LegalSubElement[]> {
+  const data = await api.get<LegalSubElement[]>('/legal/subelements')
   return Array.isArray(data) ? data : []
 }
 

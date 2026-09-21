@@ -110,6 +110,19 @@ func (h *Handlers) ListCitationsByInstrument(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, citations)
 }
 
+// ListAllCitations/ListAllCategories/ListAllElements/ListAllSubElements
+// back the legal-citations catalog page's up-front tree load — see the
+// store-layer doc comment (internal/db/legalcite.go) for why these exist
+// alongside the parent-scoped List*By* handlers above.
+func (h *Handlers) ListAllCitations(w http.ResponseWriter, r *http.Request) {
+	citations, err := h.store.ListAllCitations(r.Context())
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, citations)
+}
+
 // legalParsedToDB converts a legalcite.Parse result into the db-shaped,
 // JSON-tagged struct clients expect — legalcite.Parsed itself carries no
 // JSON tags, by design (see the package doc: it returns a plain struct for
@@ -226,6 +239,15 @@ func (h *Handlers) ListCategoriesByCitation(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, categories)
 }
 
+func (h *Handlers) ListAllCategories(w http.ResponseWriter, r *http.Request) {
+	categories, err := h.store.ListAllCategories(r.Context())
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, categories)
+}
+
 // CreateCategory is scoped to one citation, not a shared lookup — see
 // db.Category's doc comment.
 func (h *Handlers) CreateCategory(w http.ResponseWriter, r *http.Request) {
@@ -296,6 +318,15 @@ func (h *Handlers) ListElementsByCategory(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, elements)
 }
 
+func (h *Handlers) ListAllElements(w http.ResponseWriter, r *http.Request) {
+	elements, err := h.store.ListAllElements(r.Context())
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, elements)
+}
+
 func (h *Handlers) CreateElement(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		CategoryID uint   `json:"category_id"`
@@ -356,6 +387,15 @@ func (h *Handlers) ListSubElementsByElement(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	subElements, err := h.store.ListSubElementsByElement(r.Context(), uint(id))
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, subElements)
+}
+
+func (h *Handlers) ListAllSubElements(w http.ResponseWriter, r *http.Request) {
+	subElements, err := h.store.ListAllSubElements(r.Context())
 	if err != nil {
 		writeInternalError(w, err)
 		return

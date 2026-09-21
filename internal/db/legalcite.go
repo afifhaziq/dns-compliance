@@ -81,6 +81,24 @@ func (s *postgresStore) ListCategoriesByCitation(ctx context.Context, citationID
 	return categories, s.db.WithContext(ctx).Preload("Citation").Where("citation_id = ?", citationID).Order("name asc").Find(&categories).Error
 }
 
+// ListAllCitations/ListAllCategories/ListAllElements/ListAllSubElements back
+// the legal-citations catalog page's tree, which loads the whole
+// Instrument->Citation->Category->Element->SubElement hierarchy up front
+// (see legal-citations.tsx's loadTree doc comment). Walking it via the
+// parent-scoped List*By* methods above means one request per node at every
+// level (~500+ round trips on the real catalog) before the tree can render
+// at all; these four flat queries replace that with one request per level,
+// and the frontend groups the results by parent id client-side.
+func (s *postgresStore) ListAllCitations(ctx context.Context) ([]Citation, error) {
+	var citations []Citation
+	return citations, s.db.WithContext(ctx).Preload("Instrument").Order("sort_key asc").Find(&citations).Error
+}
+
+func (s *postgresStore) ListAllCategories(ctx context.Context) ([]Category, error) {
+	var categories []Category
+	return categories, s.db.WithContext(ctx).Preload("Citation").Order("name asc").Find(&categories).Error
+}
+
 func (s *postgresStore) CreateCategory(ctx context.Context, cat Category) (Category, error) {
 	cat.ID = 0
 	return cat, s.db.WithContext(ctx).Create(&cat).Error
@@ -104,6 +122,11 @@ func (s *postgresStore) ListElementsByCategory(ctx context.Context, categoryID u
 	return elements, s.db.WithContext(ctx).Where("category_id = ?", categoryID).Order("name asc").Find(&elements).Error
 }
 
+func (s *postgresStore) ListAllElements(ctx context.Context) ([]Element, error) {
+	var elements []Element
+	return elements, s.db.WithContext(ctx).Order("name asc").Find(&elements).Error
+}
+
 func (s *postgresStore) CreateElement(ctx context.Context, el Element) (Element, error) {
 	el.ID = 0
 	return el, s.db.WithContext(ctx).Create(&el).Error
@@ -125,6 +148,11 @@ func (s *postgresStore) DeleteElement(ctx context.Context, id uint) error {
 func (s *postgresStore) ListSubElementsByElement(ctx context.Context, elementID uint) ([]SubElement, error) {
 	var subElements []SubElement
 	return subElements, s.db.WithContext(ctx).Where("element_id = ?", elementID).Order("name asc").Find(&subElements).Error
+}
+
+func (s *postgresStore) ListAllSubElements(ctx context.Context) ([]SubElement, error) {
+	var subElements []SubElement
+	return subElements, s.db.WithContext(ctx).Order("name asc").Find(&subElements).Error
 }
 
 func (s *postgresStore) CreateSubElement(ctx context.Context, se SubElement) (SubElement, error) {

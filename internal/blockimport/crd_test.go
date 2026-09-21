@@ -338,3 +338,66 @@ func TestCollapseCRDRows_SplitsCompoundCategory(t *testing.T) {
 		}
 	}
 }
+
+func TestCollapseCRDRows_TieBreakIsDeterministic(t *testing.T) {
+	rows := []CRDRow{
+		{ReferenceNumber: "KKMM/1", Domain: "a.com", Category: "Judi", CitationText: "Seksyen 4"},
+		{ReferenceNumber: "KKMM/1", Domain: "b.com", Category: "Lucah", CitationText: "Seksyen 211"},
+	}
+	first := CollapseCRDRows(rows)[0]
+	for i := 0; i < 50; i++ {
+		got := CollapseCRDRows(rows)[0]
+		if got.CitationText != first.CitationText || got.Categories[0] != first.Categories[0] {
+			t.Fatalf("run %d: got %q/%v, first run was %q/%v", i, got.CitationText, got.Categories, first.CitationText, first.Categories)
+		}
+	}
+}
+
+func TestCollapseCRDRows_KeepsPerDomainClassificationTogether(t *testing.T) {
+	rows := []CRDRow{
+		{ReferenceNumber: "MCMC(S)CMOD/1", Domain: "a.com", Category: "Judi", CitationText: "Seksyen 4"},
+		{ReferenceNumber: "MCMC(S)CMOD/1", Domain: "b.com", Category: "Lucah", CitationText: "Seksyen 211"},
+	}
+	c := CollapseCRDRows(rows)[0]
+	a, b := c.Domains[0].Offences, c.Domains[1].Offences
+	if len(a) != 1 || a[0].CitationText != "Seksyen 4" || a[0].Categories[0] != "Judi" ||
+		len(b) != 1 || b[0].CitationText != "Seksyen 211" || b[0].Categories[0] != "Lucah" {
+		t.Fatalf("got a=%+v b=%+v", a, b)
+	}
+}
+
+func TestParseNoticeDate(t *testing.T) {
+	for raw, want := range map[string]string{"30-May-11": "2011-05-30", "7-Jul-12": "2012-07-07", " 13-Jan-26 ": "2026-01-13"} {
+		if got := parseNoticeDate(raw); got == nil || got.Format("2006-01-02") != want {
+			t.Errorf("parseNoticeDate(%q) = %v, want %s", raw, got, want)
+		}
+	}
+	for _, raw := range []string{"", "NA", "Oct/Nov"} {
+		if got := parseNoticeDate(raw); got != nil {
+			t.Errorf("parseNoticeDate(%q) = %v, want nil", raw, got)
+		}
+	}
+}
+
+func TestCollapseCRDRows_UpliftDateIsEarliestInGroup(t *testing.T) {
+	d1, d2 := parseNoticeDate("15-Nov-21"), parseNoticeDate("3-Jul-23")
+	got := CollapseCRDRows([]CRDRow{
+		{ReferenceNumber: "MCMC(S)X/2", Domain: "a.com", UpliftDate: d2},
+		{ReferenceNumber: "MCMC(S)X/2", Domain: "b.com", UpliftDate: d1},
+	})
+	if len(got) != 1 || got[0].UpliftDate == nil || !got[0].UpliftDate.Equal(*d1) {
+		t.Fatalf("got %+v, want earliest uplift date %v", got, d1)
+	}
+}
+
+func TestCollapseCRDRows_NoticeDateIsEarliestInGroup(t *testing.T) {
+	d1, d2 := parseNoticeDate("13-Jan-26"), parseNoticeDate("2-Jan-26")
+	got := CollapseCRDRows([]CRDRow{
+		{ReferenceNumber: "MCMC(S)X/1", Domain: "a.com", NoticeDate: d1},
+		{ReferenceNumber: "MCMC(S)X/1", Domain: "b.com", NoticeDate: d2},
+		{ReferenceNumber: "MCMC(S)X/1", Domain: "c.com"},
+	})
+	if len(got) != 1 || got[0].NoticeDate == nil || !got[0].NoticeDate.Equal(*d2) {
+		t.Fatalf("got %+v, want the earliest date %v", got, d2)
+	}
+}

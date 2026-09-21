@@ -3,6 +3,7 @@ package blockimport
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/afif/dns-tracking/internal/db"
 	"github.com/glebarez/sqlite"
@@ -373,6 +374,11 @@ func TestWriteCRDCases_AttachesOffencesViaCitationMap(t *testing.T) {
 		t.Fatalf("got instruments=%d citations=%d categories=%d elements=%d offences=%d, want 1,1,2,2,2",
 			instrumentCount, citationCount, categoryCount, elementCount, offenceCount)
 	}
+	var unlinked int64
+	gdb.Model(&db.URLOffence{}).Where("case_id IS NULL").Count(&unlinked)
+	if unlinked != 0 {
+		t.Fatalf("%d imported offences have no case_id, want 0", unlinked)
+	}
 
 	var instrument db.Instrument
 	if err := gdb.First(&instrument).Error; err != nil {
@@ -406,6 +412,30 @@ func TestWriteCRDCases_SharesInstrumentAndCategoryAcrossCases(t *testing.T) {
 	if instrumentCount != 1 || citationCount != 1 || categoryCount != 1 || offenceCount != 2 {
 		t.Fatalf("got instruments=%d citations=%d categories=%d offences=%d, want 1,1,1,2 (shared catalog rows, one offence per url)",
 			instrumentCount, citationCount, categoryCount, offenceCount)
+	}
+}
+
+func TestWriteCRDCases_CategoryLookupIsCaseInsensitive(t *testing.T) {
+	gdb := newTestGormDB(t)
+	crd := mustSeedDepartment(t, gdb, "CRD")
+	citationMap := map[string][]citationTarget{
+		"Seksyen 58": {{Instrument: "Akta Pasaran Modal dan Perkhidmatan 2007", Provision: "Seksyen 58"}},
+	}
+	cases := []CollapsedCase{
+		{ReferenceNumber: "REF-1", Domains: []CollapsedDomain{{RawDomain: "a.com", Status: "Blocked"}}, Categories: []string{"Tidak Berdaftar"}, CitationText: "Seksyen 58"},
+		{ReferenceNumber: "REF-2", Domains: []CollapsedDomain{{RawDomain: "b.com", Status: "Blocked"}}, Categories: []string{"Tidak berdaftar"}, CitationText: "Seksyen 58"},
+	}
+
+	if _, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, citationMap, false); err != nil {
+		t.Fatalf("WriteCRDCases: %v", err)
+	}
+
+	var categoryCount, offenceCount int64
+	gdb.Model(&db.Category{}).Count(&categoryCount)
+	gdb.Model(&db.URLOffence{}).Count(&offenceCount)
+	if categoryCount != 1 || offenceCount != 2 {
+		t.Fatalf("got categories=%d offences=%d, want 1,2 (differently-cased spellings of the same category must collapse into one row)",
+			categoryCount, offenceCount)
 	}
 }
 
@@ -608,5 +638,101 @@ func TestMapCRDStatus(t *testing.T) {
 		if got := mapCRDStatus(in); got != want {
 			t.Errorf("mapCRDStatus(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestWriteCRDCases_KeepsEachDomainsOwnClassification(t *testing.T) {
+	gdb := newTestGormDB(t)
+	crd := mustSeedDepartment(t, gdb, "CRD")
+	citationMap := map[string][]citationTarget{
+		"Seksyen 4":   {{Instrument: "Akta Perjudian", Provision: "Seksyen 4"}},
+		"Seksyen 211": {{Instrument: "Akta Komunikasi", Provision: "Seksyen 211"}},
+	}
+	// One case whose two domains carry different classifications: neither may
+	// pick up the other's citation or category.
+	cases := []CollapsedCase{{
+		ReferenceNumber: "MCMC(S)CMOD/1",
+		Domains: []CollapsedDomain{
+			{RawDomain: "a.com", Status: "Blocked", Offences: []DomainOffence{{CitationText: "Seksyen 4", Categories: []string{"Judi"}}}},
+			{RawDomain: "b.com", Status: "Blocked", Offences: []DomainOffence{{CitationText: "Seksyen 211", Categories: []string{"Lucah"}}}},
+		},
+	}}
+	if _, err := WriteCRDCases(context.Background(), gdb, crd.ID, cases, citationMap, false); err != nil {
+		t.Fatalf("WriteCRDCases: %v", err)
+	}
+	var got []string
+	gdb.Raw(`SELECT u.url || '|' || ci.raw_text || '|' || ca.name FROM url_offences o
+		JOIN urls u ON u.id = o.url_id JOIN categories ca ON ca.id = o.category_id
+		JOIN citations ci ON ci.id = ca.citation_id ORDER BY u.url`).Scan(&got)
+	if len(got) != 2 || got[0] != "a.com|Seksyen 4|Judi" || got[1] != "b.com|Seksyen 211|Lucah" {
+		t.Fatalf("got %v, want [a.com|Seksyen 4|Judi b.com|Seksyen 211|Lucah]", got)
+	}
+}
+
+func TestWriteCRDCases_SetsAndBackfillsNoticeLetterDate(t *testing.T) {
+	gdb := newTestGormDB(t)
+	crd := mustSeedDepartment(t, gdb, "CRD")
+	ctx := context.Background()
+	day := time.Date(2026, 1, 13, 0, 0, 0, 0, time.UTC)
+	mk := func(d *time.Time) []CollapsedCase {
+		return []CollapsedCase{{
+			ReferenceNumber: "MCMC(S)CMOD/BLK/2026(36-2)",
+			Domains:         []CollapsedDomain{{RawDomain: "date-test.com", Status: "Blocked"}},
+			NoticeDate:      d,
+		}}
+	}
+
+	// First import predates the column: no date.
+	if _, err := WriteCRDCases(ctx, gdb, crd.ID, mk(nil), nil, false); err != nil {
+		t.Fatalf("first import: %v", err)
+	}
+	var letter db.CaseLetter
+	gdb.First(&letter)
+	if letter.LetterDate != nil {
+		t.Fatalf("LetterDate = %v, want nil", letter.LetterDate)
+	}
+
+	// Re-run with the date: the existing letter is filled in, nothing new is created.
+	sum, err := WriteCRDCases(ctx, gdb, crd.ID, mk(&day), nil, false)
+	if err != nil {
+		t.Fatalf("rerun: %v", err)
+	}
+	if sum.CasesCreated != 0 || sum.LetterDatesBackfilled != 1 {
+		t.Fatalf("summary = %+v, want 0 created / 1 backfilled", sum)
+	}
+	gdb.First(&letter)
+	if letter.LetterDate == nil || !letter.LetterDate.Equal(day) {
+		t.Fatalf("LetterDate = %v, want %v", letter.LetterDate, day)
+	}
+
+	// A later re-run never overwrites an existing date (e.g. one edited in the dashboard).
+	other := day.AddDate(0, 0, 5)
+	if sum, _ = WriteCRDCases(ctx, gdb, crd.ID, mk(&other), nil, false); sum.LetterDatesBackfilled != 0 {
+		t.Fatalf("overwrote an existing date: %+v", sum)
+	}
+}
+
+func TestWriteCRDCases_CreatesUpliftLetterOnceFromUpliftDate(t *testing.T) {
+	gdb := newTestGormDB(t)
+	crd := mustSeedDepartment(t, gdb, "CRD")
+	ctx := context.Background()
+	up := time.Date(2021, 11, 15, 0, 0, 0, 0, time.UTC)
+	cases := []CollapsedCase{{
+		ReferenceNumber: "MCMC(S)CMOD/BLK/2021(1-2)",
+		Domains:         []CollapsedDomain{{RawDomain: "uplift-test.com", Status: "Uplift"}},
+		UpliftDate:      &up,
+	}}
+	// New case: gets a Notice and a Notice (Uplift); a rerun creates no second uplift letter.
+	sum, err := WriteCRDCases(ctx, gdb, crd.ID, cases, nil, false)
+	if err != nil || sum.UpliftLettersCreated != 1 {
+		t.Fatalf("first run: %+v err=%v", sum, err)
+	}
+	if sum, _ = WriteCRDCases(ctx, gdb, crd.ID, cases, nil, false); sum.UpliftLettersCreated != 0 {
+		t.Fatalf("rerun created another uplift letter: %+v", sum)
+	}
+	var letters []db.CaseLetter
+	gdb.Order("type").Find(&letters)
+	if len(letters) != 2 || letters[1].Type != "Notice (Uplift)" || letters[1].LetterDate == nil || !letters[1].LetterDate.Equal(up) {
+		t.Fatalf("letters = %+v", letters)
 	}
 }

@@ -198,23 +198,29 @@ func legalParsedToDB(p legalcite.Parsed) db.LegalCitationParsed {
 	}
 }
 
+// Category/Element/SubElement lookups match on LOWER(name), not exact name --
+// the raw spreadsheet spells the same category inconsistently across rows
+// (e.g. "Tidak Berdaftar" vs "Tidak berdaftar"), and an exact match would
+// silently create a second row splitting that category's offences across
+// two ids instead of collapsing them under whichever casing was seen first.
+
 func getOrCreateCategory(ctx context.Context, tx *gorm.DB, citationID uint, name string) (db.Category, error) {
 	var existing db.Category
-	err := tx.WithContext(ctx).Where("citation_id = ? AND name = ?", citationID, name).
+	err := tx.WithContext(ctx).Where("citation_id = ? AND LOWER(name) = LOWER(?)", citationID, name).
 		Attrs(db.Category{CitationID: citationID, Name: name}).FirstOrCreate(&existing).Error
 	return existing, err
 }
 
 func getOrCreateElement(ctx context.Context, tx *gorm.DB, categoryID uint, name string) (db.Element, error) {
 	var existing db.Element
-	err := tx.WithContext(ctx).Where("category_id = ? AND name = ?", categoryID, name).
+	err := tx.WithContext(ctx).Where("category_id = ? AND LOWER(name) = LOWER(?)", categoryID, name).
 		Attrs(db.Element{CategoryID: categoryID, Name: name}).FirstOrCreate(&existing).Error
 	return existing, err
 }
 
 func getOrCreateSubElement(ctx context.Context, tx *gorm.DB, elementID uint, name string) (db.SubElement, error) {
 	var existing db.SubElement
-	err := tx.WithContext(ctx).Where("element_id = ? AND name = ?", elementID, name).
+	err := tx.WithContext(ctx).Where("element_id = ? AND LOWER(name) = LOWER(?)", elementID, name).
 		Attrs(db.SubElement{ElementID: elementID, Name: name}).FirstOrCreate(&existing).Error
 	return existing, err
 }
@@ -225,7 +231,7 @@ func getOrCreateSubElement(ctx context.Context, tx *gorm.DB, elementID uint, nam
 // cell splits into several categories), and per the compound rule in
 // docs/blocking-list-migration-clarifications.md §3, every combination is
 // an independent real fact, not an ambiguous one to pick among.
-func attachOffences(ctx context.Context, tx *gorm.DB, urlIDs []uint, targets []citationTarget, categories []string, element, subElement string) (int, error) {
+func attachOffences(ctx context.Context, tx *gorm.DB, caseID uint, urlIDs []uint, targets []citationTarget, categories []string, element, subElement string) (int, error) {
 	created := 0
 	for _, target := range targets {
 		instrument, err := getOrCreateInstrument(ctx, tx, parseInstrumentText(target.Instrument))
@@ -257,7 +263,7 @@ func attachOffences(ctx context.Context, tx *gorm.DB, urlIDs []uint, targets []c
 				}
 			}
 			for _, urlID := range urlIDs {
-				offence := db.URLOffence{URLID: urlID, CategoryID: category.ID, ElementID: elementID, SubElementID: subElementID, RecordedAt: time.Now()}
+				offence := db.URLOffence{URLID: urlID, CaseID: &caseID, CategoryID: category.ID, ElementID: elementID, SubElementID: subElementID, RecordedAt: time.Now()}
 				if err := tx.WithContext(ctx).Create(&offence).Error; err != nil {
 					return created, err
 				}

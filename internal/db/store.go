@@ -402,6 +402,12 @@ type CaseStore interface {
 	// than the rest (see CaseURL.AgencyID's doc comment — moved off Case
 	// 2026-09-15). nil clears it. False if no such CaseURL row exists.
 	UpdateCaseURLAgency(ctx context.Context, caseID, urlID uint, agencyID *uint) (bool, error)
+	// RemoveURLFromCase unlinks one url from a case: deletes its CaseURL row
+	// and the url_offences that case raised for it (the URL itself, its
+	// scan history and its other cases are untouched). ErrLastCaseURL if it
+	// is the case's only url — a case with no domains is meaningless.
+	// False if no such CaseURL row exists.
+	RemoveURLFromCase(ctx context.Context, caseID, urlID uint) (bool, error)
 	// UpdateCaseFields applies a partial update to a case's shared fields
 	// (DueDate/RequestedAt), mirroring the old UpdateURLCaseFields' double-
 	// pointer clear-vs-untouched semantics. Ownership (departmentID must own
@@ -423,6 +429,9 @@ type CaseStore interface {
 	// Notice letter's fields, and every domain it covers. Same admin-global
 	// vs department-scoped split as ListCaseLetters/ForDepartment.
 	ListCases(ctx context.Context) ([]CaseSummary, error)
+	// ListCaseSummariesPage is the Cases view's server-side paged, filtered and
+	// sorted variant; ListCases stays for the full-list export.
+	ListCaseSummariesPage(ctx context.Context, p CaseListParams) ([]CaseSummary, int, error)
 	ListCasesForDepartment(ctx context.Context, departmentID uint) ([]CaseSummary, error)
 
 	// UpdateCaseLetterFields applies a partial update to one CaseLetter's

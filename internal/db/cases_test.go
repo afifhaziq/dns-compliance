@@ -2,6 +2,7 @@ package db_test
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -783,6 +784,182 @@ func TestUpdateCaseLetterFields_SetsAndClearsOICUserID(t *testing.T) {
 	for i := range entries {
 		if entries[i].ID == letter.ID && entries[i].OICUserID != nil {
 			t.Fatalf("expected OICUserID cleared, got %+v", entries[i])
+		}
+	}
+}
+
+func TestRemoveURLFromCase(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	dept, _ := store.CreateDepartment(ctx, "CRD")
+	u1, _ := store.CreateURL(ctx, "rm-one.com")
+	u2, _ := store.CreateURL(ctx, "rm-two.com")
+	c, err := store.CreateCase(ctx, dept.ID, u1.ID, "requested", db.CaseCreateOptions{})
+	if err != nil {
+		t.Fatalf("CreateCase: %v", err)
+	}
+	if _, err := store.AddURLToCase(ctx, c.ID, u2.ID, "requested", "", nil); err != nil {
+		t.Fatalf("AddURLToCase: %v", err)
+	}
+	if ok, err := store.RemoveURLFromCase(ctx, c.ID, u2.ID); err != nil || !ok {
+		t.Fatalf("remove u2: ok=%v err=%v", ok, err)
+	}
+	if _, err := store.RemoveURLFromCase(ctx, c.ID, u1.ID); !errors.Is(err, db.ErrLastCaseURL) {
+		t.Fatalf("remove last: err=%v, want ErrLastCaseURL", err)
+	}
+	ids, _ := store.ListCaseURLIDs(ctx, c.ID)
+	if len(ids) != 1 || ids[0] != u1.ID {
+		t.Fatalf("case urls = %v, want just u1", ids)
+	}
+}
+
+func TestListCaseSummariesPage_PagesFiltersAndSorts(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	deptA, _ := store.CreateDepartment(ctx, "CRD")
+	deptB, _ := store.CreateDepartment(ctx, "CMOD")
+	agency, _ := store.CreateAgency(ctx, "PDRM")
+	mk := func(dept uint, host, status string, due *time.Time) db.Case {
+		u, err := store.CreateURL(ctx, host)
+		if err != nil {
+			t.Fatalf("CreateURL: %v", err)
+		}
+		c, err := store.CreateCase(ctx, dept, u.ID, status, db.CaseCreateOptions{DueDate: due})
+		if err != nil {
+			t.Fatalf("CreateCase: %v", err)
+		}
+		return c
+	}
+	d1 := time.Date(2026, 1, 10, 9, 0, 0, 0, time.UTC)
+	d2 := time.Date(2026, 3, 5, 9, 0, 0, 0, time.UTC)
+	c1 := mk(deptA.ID, "page-one.com", "blocked", &d1)
+	c2 := mk(deptA.ID, "page-two.com", "requested", &d2)
+	c3 := mk(deptB.ID, "other-three.com", "blocked", nil)
+	if _, err := store.UpdateCaseURLAgency(ctx, c2.ID, 2, &agency.ID); err != nil {
+		t.Fatalf("agency: %v", err)
+	}
+
+	list := func(p db.CaseListParams) ([]db.CaseSummary, int) {
+		if p.Page == 0 {
+			p.Page = 1
+		}
+		if p.PageSize == 0 {
+			p.PageSize = 10
+		}
+		got, total, err := store.ListCaseSummariesPage(ctx, p)
+		if err != nil {
+			t.Fatalf("ListCaseSummariesPage(%+v): %v", p, err)
+		}
+		return got, total
+	}
+	ids := func(cs []db.CaseSummary) []uint {
+		out := make([]uint, len(cs))
+		for i, c := range cs {
+			out[i] = c.ID
+		}
+		return out
+	}
+
+	if got, total := list(db.CaseListParams{PageSize: 2}); len(got) != 2 || total != 3 {
+		t.Fatalf("page 1 of 3 cases: got %d rows, total %d", len(got), total)
+	}
+	if got, _ := list(db.CaseListParams{Page: 2, PageSize: 2}); len(got) != 1 {
+		t.Fatalf("page 2: got %d rows, want 1", len(got))
+	}
+	if got, total := list(db.CaseListParams{DepartmentID: &deptA.ID}); total != 2 || len(got) != 2 {
+		t.Fatalf("dept scope: %v total %d", ids(got), total)
+	}
+	if got, total := list(db.CaseListParams{Query: "OTHER-thr"}); total != 1 || got[0].ID != c3.ID || len(got[0].Domains) != 1 {
+		t.Fatalf("search by domain: %v total %d", ids(got), total)
+	}
+	if _, total := list(db.CaseListParams{Status: "blocked"}); total != 2 {
+		t.Fatalf("status filter: total %d, want 2", total)
+	}
+	if got, _ := list(db.CaseListParams{AgencyID: &agency.ID}); len(got) != 1 || got[0].ID != c2.ID {
+		t.Fatalf("agency filter: %v", ids(got))
+	}
+	if got, _ := list(db.CaseListParams{Due: db.DateFilter{Op: "on", From: "2026-01-10"}}); len(got) != 1 || got[0].ID != c1.ID {
+		t.Fatalf("due on: %v", ids(got))
+	}
+	if got, _ := list(db.CaseListParams{Due: db.DateFilter{Op: "between", From: "2026-01-01", To: "2026-03-05"}}); len(got) != 2 {
+		t.Fatalf("due between (inclusive of To): %v", ids(got))
+	}
+	if got, _ := list(db.CaseListParams{Due: db.DateFilter{Op: "after", From: "2026-01-10"}}); len(got) != 1 || got[0].ID != c2.ID {
+		t.Fatalf("due after: %v", ids(got))
+	}
+	if got, _ := list(db.CaseListParams{SortBy: "id"}); got[0].ID != c1.ID {
+		t.Fatalf("sort id asc: %v", ids(got))
+	}
+	if got, _ := list(db.CaseListParams{SortBy: "id", SortDesc: true}); got[0].ID != c3.ID {
+		t.Fatalf("sort id desc: %v", ids(got))
+	}
+	if got, _ := list(db.CaseListParams{RequestingDept: &deptB.ID}); len(got) != 1 || got[0].ID != c3.ID {
+		t.Fatalf("requesting dept: %v", ids(got))
+	}
+}
+
+func TestListCaseSummariesPage_LetterDatesAndSort(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	dept, _ := store.CreateDepartment(ctx, "CRD")
+	day := func(m time.Month, d int) *time.Time { t := time.Date(2026, m, d, 0, 0, 0, 0, time.UTC); return &t }
+	mk := func(host string, notice, uplift *time.Time) uint {
+		u, _ := store.CreateURL(ctx, host)
+		c, err := store.CreateCase(ctx, dept.ID, u.ID, "blocked", db.CaseCreateOptions{})
+		if err != nil {
+			t.Fatalf("CreateCase: %v", err)
+		}
+		if _, err := store.AddCaseLetter(ctx, db.CaseLetter{CaseID: c.ID, Type: "Notice", ReferenceNumberInternal: host, LetterDate: notice}); err != nil {
+			t.Fatalf("notice: %v", err)
+		}
+		if uplift != nil {
+			if _, err := store.AddCaseLetter(ctx, db.CaseLetter{CaseID: c.ID, Type: "Notice (Uplift)", LetterDate: uplift}); err != nil {
+				t.Fatalf("uplift: %v", err)
+			}
+		}
+		return c.ID
+	}
+	early := mk("early.com", day(time.January, 5), day(time.March, 1))
+	late := mk("late.com", day(time.February, 9), nil)
+	none := mk("none.com", nil, nil)
+
+	list := func(sort string, desc bool) []db.CaseSummary {
+		got, _, err := store.ListCaseSummariesPage(ctx, db.CaseListParams{Page: 1, PageSize: 10, SortBy: sort, SortDesc: desc})
+		if err != nil {
+			t.Fatalf("list %s: %v", sort, err)
+		}
+		return got
+	}
+	order := func(cs []db.CaseSummary) []uint {
+		out := make([]uint, len(cs))
+		for i, c := range cs {
+			out[i] = c.ID
+		}
+		return out
+	}
+	eq := func(got []db.CaseSummary, want ...uint) {
+		t.Helper()
+		g := order(got)
+		for i := range want {
+			if g[i] != want[i] {
+				t.Fatalf("order = %v, want %v", g, want)
+			}
+		}
+	}
+	// Empty dates sort last in both directions.
+	eq(list("notice_letter_date", false), early, late, none)
+	eq(list("notice_letter_date", true), late, early, none)
+	eq(list("uplift_letter_date", false), early, none, late) // only one has an uplift date; ties fall back to id desc
+
+	// The uplift letter doesn't displace the Notice's own refs/date, and its date is exposed.
+	for _, c := range list("", false) {
+		if c.ID == early {
+			if c.NoticeReferenceNumberInternal != "early.com" || c.NoticeLetterDate == nil || !c.NoticeLetterDate.Equal(*day(time.January, 5)) {
+				t.Fatalf("notice fields taken from the wrong letter: %+v", c)
+			}
+			if c.UpliftLetterDate == nil || !c.UpliftLetterDate.Equal(*day(time.March, 1)) {
+				t.Fatalf("UpliftLetterDate = %v", c.UpliftLetterDate)
+			}
 		}
 	}
 }

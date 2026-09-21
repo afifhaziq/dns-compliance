@@ -158,6 +158,7 @@ type URLEntry struct {
 // so the frontend can render them in their own columns, mirroring the
 // Excel source's own Butiran Kesalahan/Kategori/Elemen/Sub-Elemen split.
 type OffenceEntry struct {
+	Instrument string `json:"instrument,omitempty"`
 	Citation   string `json:"citation"`
 	Category   string `json:"category"`
 	Element    string `json:"element,omitempty"`
@@ -593,6 +594,10 @@ type URLOffence struct {
 	ID           uint        `gorm:"primaryKey" json:"id"`
 	URLID        uint        `gorm:"not null;index" json:"url_id"`
 	URL          URL         `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
+	// CaseID is the case that raised this offence. Nullable: rows imported
+	// before 2026-09-21 predate the column and carry no case link.
+	CaseID       *uint       `gorm:"index" json:"case_id,omitempty"`
+	Case         *Case       `gorm:"foreignKey:CaseID;constraint:OnDelete:CASCADE" json:"-"`
 	CategoryID   uint        `gorm:"not null;index" json:"category_id"`
 	Category     Category    `gorm:"foreignKey:CategoryID;constraint:OnDelete:CASCADE" json:"category"`
 	ElementID    *uint       `gorm:"index" json:"element_id,omitempty"`
@@ -761,6 +766,7 @@ type CaseSummary struct {
 	NoticeRecipient                string              `json:"notice_recipient,omitempty"`
 	NoticeRequestor                string              `json:"notice_requestor,omitempty"`
 	NoticeLetterDate               *time.Time          `json:"notice_letter_date,omitempty"`
+	UpliftLetterDate               *time.Time          `json:"uplift_letter_date,omitempty"` // date of the case's Notice (Uplift) letter, if any
 	NoticeReceivedAt               *time.Time          `json:"notice_received_at,omitempty"`
 	NoticeSubmittedAt              *time.Time          `json:"notice_submitted_at,omitempty"`
 	NoticeRemarks                  string              `json:"notice_remarks,omitempty"`

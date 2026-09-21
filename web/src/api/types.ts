@@ -51,6 +51,7 @@ export type GroupedResult = {
 // separate fields (mirroring the Excel source's own Butiran Kesalahan/
 // Kategori/Elemen/Sub-Elemen column split) rather than one formatted label.
 export type OffenceEntry = {
+  instrument?: string
   citation: string
   category: string
   element?: string
@@ -145,6 +146,7 @@ export type CaseSummary = {
   notice_recipient?: string
   notice_requestor?: string
   notice_letter_date?: string
+  uplift_letter_date?: string // date of the case's Notice (Uplift) letter, if any
   notice_received_at?: string
   notice_submitted_at?: string
   notice_remarks?: string
