@@ -51,7 +51,7 @@ const SHADES = [100, 68, 46, 30, 19, 11].map(p => `color-mix(in srgb, var(--ink)
 const shade = (i: number) => SHADES[Math.min(i, SHADES.length - 1)]
 
 // Categorical palette (MCMC tab): one hue per offence, same colour in every chart.
-const CATEGORY = ['#ff0a94', '#2f6fed', '#f5a524', '#12a594', '#8b5cf6', '#e5484d']
+const CATEGORY = ['#4c78a8', '#f58518', '#54a24b', '#b279a2', '#eeca3b', '#e45756']
 const REST = '#9aa0ae'
 type ColorOf = (label: string) => string
 
