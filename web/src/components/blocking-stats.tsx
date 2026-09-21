@@ -50,11 +50,6 @@ function BarCells({ value, max }: { value: number; max: number }) {
 const SHADES = [100, 68, 46, 30, 19, 11].map(p => `color-mix(in srgb, var(--ink) ${p}%, transparent)`)
 const shade = (i: number) => SHADES[Math.min(i, SHADES.length - 1)]
 
-// Categorical palette (MCMC tab): one hue per offence, same colour in every chart.
-const CATEGORY = ['#ff0a94', '#2f6fed', '#f5a524', '#12a594', '#8b5cf6', '#e5484d']
-const REST = '#9aa0ae'
-type ColorOf = (label: string) => string
-
 // Keep the top n by total, fold the rest into "Other".
 function topN<T extends { label: string; value: number }>(items: T[], n: number): { label: string; value: number }[] {
   const sorted = [...items].sort((a, b) => b.value - a.value)
@@ -87,20 +82,17 @@ function ChartScroll({ children }: { children: React.ReactNode }) {
 }
 
 // Horizontal bars, one per label, sorted by value.
-function HBar({ items, left = 160, max = 8, wide, colorOf }: { items: { label: string; value: number }[]; left?: number; max?: number; wide?: boolean; colorOf?: ColorOf }) {
-  const rows = topN(items, max - 1)
-  // Colourful: one stacked series per label (each row fills only its own), so each bar gets its own colour.
-  const data = colorOf ? rows.map(i => ({ name: i.label, [i.label]: i.value })) : rows.map(i => ({ name: i.label, value: i.value }))
+function HBar({ items, left = 160, max = 8, wide }: { items: { label: string; value: number }[]; left?: number; max?: number; wide?: boolean }) {
+  const data = topN(items, max - 1).map(i => ({ name: i.label, value: i.value }))
   return (
     <ChartScroll><BarChart
       data={data}
-      stacked={!!colorOf}
       orientation="horizontal"
       aspectRatio={`${wide ? 1300 : 640} / ${data.length * 34 + 30}`}
       margin={{ top: 10, right: 30, bottom: 20, left }}
     >
       <Grid horizontal={false} vertical />
-      {colorOf ? rows.map(r => <Bar key={r.label} dataKey={r.label} fill={colorOf(r.label)} />) : <Bar dataKey="value" fill={SHADES[0]} />}
+      <Bar dataKey="value" fill={SHADES[0]} />
       <BarYAxis maxLabels={data.length} />
       <ChartTooltip />
     </BarChart></ChartScroll>
@@ -108,8 +100,8 @@ function HBar({ items, left = 160, max = 8, wide, colorOf }: { items: { label: s
 }
 
 // Donut with a swatch legend beside it.
-function Donut({ items, label, colorOf }: { items: { label: string; value: number }[]; label: string; colorOf?: ColorOf }) {
-  const data = topN(items, 5).map((d, i) => ({ ...d, color: colorOf ? colorOf(d.label) : shade(i) }))
+function Donut({ items, label }: { items: { label: string; value: number }[]; label: string }) {
+  const data = topN(items, 5).map((d, i) => ({ ...d, color: shade(i) }))
   const total = data.reduce((s, d) => s + d.value, 0)
   return (
     <div className="flex flex-1 items-center gap-6 flex-wrap">
@@ -133,20 +125,19 @@ function Donut({ items, label, colorOf }: { items: { label: string; value: numbe
 }
 
 // Vertical bars per year, one series per key (stacked or grouped).
-function YearBars({ data, series, stacked, wide, colorOf }: { data: Record<string, unknown>[]; series: { key: string; label: string }[]; stacked?: boolean; wide?: boolean; colorOf?: ColorOf }) {
-  const colour = (s: { label: string }, i: number) => (colorOf ? colorOf(s.label) : shade(i))
+function YearBars({ data, series, stacked, wide }: { data: Record<string, unknown>[]; series: { key: string; label: string }[]; stacked?: boolean; wide?: boolean }) {
   return (
     <>
       <ChartScroll><BarChart data={data} stacked={stacked} stackGap={1} aspectRatio={wide ? '4.5 / 1' : '2.2 / 1'} margin={{ top: 8, right: 16, bottom: 30, left: 16 }}>
         <Grid horizontal vertical={false} />
-        {series.map((s, i) => <Bar key={s.key} dataKey={s.key} fill={colour(s, i)} />)}
+        {series.map((s, i) => <Bar key={s.key} dataKey={s.key} fill={shade(i)} />)}
         <BarXAxis />
         <ChartTooltip />
       </BarChart></ChartScroll>
       <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2">
         {series.map((s, i) => (
           <li key={s.key} className="flex items-center gap-1.5">
-            <span className="inline-block size-2.5 rounded-sm" style={{ background: colour(s, i) }} />{s.label}
+            <span className="inline-block size-2.5 rounded-sm" style={{ background: shade(i) }} />{s.label}
           </li>
         ))}
       </ul>
@@ -220,8 +211,6 @@ function TabA({ lines, years }: { lines: Line[]; years: number[] }) {
   const thisYear = mcmc.map(l => ({ ...l, total: l.byYear[latest] ?? 0 })).filter(l => l.total)
   const total = overall.reduce((s, l) => s + l.total, 0)
   const top = topN(overall.map(l => ({ label: l.offence, value: l.total })), 4).map(t => t.label).filter(l => l !== 'Other')
-  const ranked = [...overall].sort((a, b) => b.total - a.total).map(l => l.offence)
-  const colorOf: ColorOf = label => (ranked.indexOf(label) >= 0 && ranked.indexOf(label) < CATEGORY.length ? CATEGORY[ranked.indexOf(label)] : REST)
   const stackedSeries = [...top.map(t => ({ key: t, label: t })), { key: 'Other', label: 'Other' }]
   const perYear = yearRows(years, y => {
     const r: Record<string, number> = { Other: 0 }
@@ -236,9 +225,9 @@ function TabA({ lines, years }: { lines: Line[]; years: number[] }) {
         <Kpi label="Offence types" value={String(overall.length)} />
       </div>
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 mb-10">
-        <Card title="By offence"><HBar colorOf={colorOf} items={overall.map(l => ({ label: l.offence, value: l.total }))} /></Card>
-        <Card title="Share of blocks"><Donut colorOf={colorOf} items={overall.map(l => ({ label: l.offence, value: l.total }))} label="Blocks" /></Card>
-        <Card title="By year and offence" className="col-span-full"><YearBars data={perYear} series={stackedSeries} stacked wide colorOf={colorOf} /></Card>
+        <Card title="By offence"><HBar items={overall.map(l => ({ label: l.offence, value: l.total }))} /></Card>
+        <Card title="Share of blocks"><Donut items={overall.map(l => ({ label: l.offence, value: l.total }))} label="Blocks" /></Card>
+        <Card title="By year and offence" className="col-span-full"><YearBars data={perYear} series={stackedSeries} stacked wide /></Card>
       </div>
       <OffenceTable title={`MCMC blocks by offence, ${years[0]}–${latest}`} lines={overall} />
       <OffenceTable title={`MCMC blocks by offence, ${latest}`} lines={thisYear} />
