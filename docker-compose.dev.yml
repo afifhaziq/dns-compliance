@@ -29,6 +29,7 @@ services:
   redis:
     image: redis:7-alpine
     command: redis-server --appendonly yes
+    restart: "no"  # dev only: don't auto-start with Docker; dev.sh brings it up
     ports:
       - "6379:6379"
     volumes:
