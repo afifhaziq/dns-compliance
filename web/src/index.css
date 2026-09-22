@@ -21,6 +21,17 @@
   --ink-subtle: color-mix(in srgb, var(--pal-royal-plum) 10%, var(--pal-ghost-white) 90%);
   --ink-text: var(--pal-ghost-white);
 
+  /* Single-hue sequential ramp for multi-series charts (offence/agency breakdowns) —
+     steps toward --ink-hover, not toward transparent: at --ink's own lightness,
+     fading to transparent over a near-white page washes out to illegible pastel
+     within 2-3 steps (see blocking-stats.tsx history). */
+  --ink-scale-1: var(--ink);
+  --ink-scale-2: #db0f83;
+  --ink-scale-3: #b81475;
+  --ink-scale-4: #951967;
+  --ink-scale-5: #701f59;
+  --ink-scale-6: #472549;
+
   /* Destructive red — violation status only (sole non-gray in the system) */
   --violation: oklch(0.577 0.245 27.325);
   --violation-subtle: oklch(0.97 0.015 27);
@@ -244,6 +255,15 @@ html.dark {
   --ink-active: color-mix(in srgb, var(--pal-magenta-bloom) 92%, var(--pal-black) 8%);
   --ink-subtle: color-mix(in srgb, var(--pal-magenta-bloom) 20%, var(--pal-black) 80%);
   --ink-text: var(--pal-black);
+
+  /* Same ramp, opposite direction: page bg is near-black here, so steps go
+     toward --ink-hover's lighter tint instead of --ink-hover's light-mode plum. */
+  --ink-scale-1: var(--ink);
+  --ink-scale-2: #df6987;
+  --ink-scale-3: #e38aa2;
+  --ink-scale-4: #e7a8ba;
+  --ink-scale-5: #ebc5d2;
+  --ink-scale-6: #eee1e9;
 
   --violation: oklch(0.704 0.191 22.216);
   --violation-subtle: oklch(0.25 0.02 27);

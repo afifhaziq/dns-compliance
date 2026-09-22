@@ -14,6 +14,10 @@ import { fetchBlockingStats, type BlockingStatRow } from '../api/blocking-stats'
 // Mirrors the source workbook's scope (2022 onward, MCMC vs everyone else).
 const FIRST_YEAR = 2022
 const MCMC = 'MCMC'
+// The MCMC workbook only ever classifies offences under these five categories —
+// anything else on an MCMC-owned case is stray/legacy data, not a sixth category.
+const MCMC_CATEGORIES = ['Lucah', 'Sumbang', 'Palsu', 'Jelik', 'Mengancam']
+const isMcmcCategory = (offence: string) => MCMC_CATEGORIES.some(c => c.toLowerCase() === offence.toLowerCase())
 const fmt = (n: number) => n.toLocaleString()
 const pct = (n: number, total: number) => (total ? `${((n / total) * 100).toFixed(2)}%` : '—')
 
@@ -46,16 +50,18 @@ function BarCells({ value, max }: { value: number; max: number }) {
   )
 }
 
-// Monochromatic ramp of the theme's --ink accent (follows light/dark via the variable).
-const SHADES = [100, 68, 46, 30, 19, 11].map(p => `color-mix(in srgb, var(--ink) ${p}%, transparent)`)
+// Single-hue --ink-scale-N ramp (index.css) — follows light/dark via the variables.
+const SHADES = [1, 2, 3, 4, 5, 6].map(n => `var(--ink-scale-${n})`)
 const shade = (i: number) => SHADES[Math.min(i, SHADES.length - 1)]
 
-// Keep the top n by total, fold the rest into "Other".
+// Keep the top n by total, fold the rest into "Other" — but only when that
+// actually collapses 2+ items; folding a single leftover just relabels it.
 function topN<T extends { label: string; value: number }>(items: T[], n: number): { label: string; value: number }[] {
   const sorted = [...items].sort((a, b) => b.value - a.value)
+  if (sorted.length <= n + 1) return sorted
   const head = sorted.slice(0, n)
   const rest = sorted.slice(n).reduce((s, x) => s + x.value, 0)
-  return rest ? [...head, { label: 'Other', value: rest }] : head
+  return [...head, { label: 'Other', value: rest }]
 }
 
 function Card({ title, children, className = '' }: { title: string; children: React.ReactNode; className?: string }) {
@@ -125,14 +131,24 @@ function Donut({ items, label }: { items: { label: string; value: number }[]; la
 }
 
 // Vertical bars per year, one series per key (stacked or grouped).
-function YearBars({ data, series, stacked, wide }: { data: Record<string, unknown>[]; series: { key: string; label: string }[]; stacked?: boolean; wide?: boolean }) {
+// showShare appends each series' percentage of that bar's total to its tooltip row.
+function YearBars({ data, series, stacked, wide, showShare }: { data: Record<string, unknown>[]; series: { key: string; label: string }[]; stacked?: boolean; wide?: boolean; showShare?: boolean }) {
+  const rows = showShare
+    ? (point: Record<string, unknown>) => {
+        const total = series.reduce((s, x) => s + (Number(point[x.key]) || 0), 0)
+        return series.map((s, i) => {
+          const value = Number(point[s.key]) || 0
+          return { color: shade(i), label: s.label, value: `${fmt(value)} · ${pct(value, total)}` }
+        })
+      }
+    : undefined
   return (
     <>
       <ChartScroll><BarChart data={data} stacked={stacked} stackGap={1} aspectRatio={wide ? '4.5 / 1' : '2.2 / 1'} margin={{ top: 8, right: 16, bottom: 30, left: 16 }}>
         <Grid horizontal vertical={false} />
         {series.map((s, i) => <Bar key={s.key} dataKey={s.key} fill={shade(i)} />)}
         <BarXAxis />
-        <ChartTooltip />
+        <ChartTooltip rows={rows} />
       </BarChart></ChartScroll>
       <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2">
         {series.map((s, i) => (
@@ -205,13 +221,15 @@ function OffenceTable({ title, lines, showAgency, hideOffence }: { title: string
 }
 
 function TabA({ lines, years }: { lines: Line[]; years: number[] }) {
-  const mcmc = lines.filter(l => l.agency === MCMC)
+  const mcmc = lines.filter(l => l.agency === MCMC && isMcmcCategory(l.offence))
   const latest = years[years.length - 1]
   const overall = mcmc.map(l => ({ ...l, total: sumYears(l, years) })).filter(l => l.total)
   const thisYear = mcmc.map(l => ({ ...l, total: l.byYear[latest] ?? 0 })).filter(l => l.total)
   const total = overall.reduce((s, l) => s + l.total, 0)
   const top = topN(overall.map(l => ({ label: l.offence, value: l.total })), 4).map(t => t.label).filter(l => l !== 'Other')
-  const stackedSeries = [...top.map(t => ({ key: t, label: t })), { key: 'Other', label: 'Other' }]
+  const stackedSeries = top.length < overall.length
+    ? [...top.map(t => ({ key: t, label: t })), { key: 'Other', label: 'Other' }]
+    : top.map(t => ({ key: t, label: t }))
   const perYear = yearRows(years, y => {
     const r: Record<string, number> = { Other: 0 }
     for (const l of mcmc) r[top.includes(l.offence) ? l.offence : 'Other'] = (r[top.includes(l.offence) ? l.offence : 'Other'] ?? 0) + (l.byYear[y] ?? 0)
@@ -224,13 +242,10 @@ function TabA({ lines, years }: { lines: Line[]; years: number[] }) {
         <Kpi label={`MCMC blocks ${latest}`} value={fmt(thisYear.reduce((s, l) => s + l.total, 0))} />
         <Kpi label="Offence types" value={String(overall.length)} />
       </div>
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 mb-10">
-        <Card title="By offence"><HBar items={overall.map(l => ({ label: l.offence, value: l.total }))} /></Card>
+      <div className="grid gap-4 grid-cols-1">
         <Card title="Share of blocks"><Donut items={overall.map(l => ({ label: l.offence, value: l.total }))} label="Blocks" /></Card>
-        <Card title="By year and offence" className="col-span-full"><YearBars data={perYear} series={stackedSeries} stacked wide /></Card>
+        <Card title="By year and offence"><YearBars data={perYear} series={stackedSeries} stacked wide showShare /></Card>
       </div>
-      <OffenceTable title={`MCMC blocks by offence, ${years[0]}–${latest}`} lines={overall} />
-      <OffenceTable title={`MCMC blocks by offence, ${latest}`} lines={thisYear} />
     </>
   )
 }
