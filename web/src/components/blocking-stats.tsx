@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
+import { curveCatmullRom } from '@visx/curve'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { BarChart } from '@/components/charts/bar-chart'
 import { Bar } from '@/components/charts/bar'
 import { BarXAxis } from '@/components/charts/bar-x-axis'
 import { BarYAxis } from '@/components/charts/bar-y-axis'
+import { LineChart } from '@/components/charts/line-chart'
+import { Line } from '@/components/charts/line'
+import { Background } from '@/components/charts/background'
 import { PieChart } from '@/components/charts/pie-chart'
 import { PieSlice } from '@/components/charts/pie-slice'
 import { PieCenter } from '@/components/charts/pie-center'
 import { Grid } from '@/components/charts/grid'
-import { ChartTooltip } from '@/components/charts/tooltip'
+import { ChartTooltip, TooltipContent } from '@/components/charts/tooltip'
 import { fetchBlockingStats, type BlockingStatRow } from '../api/blocking-stats'
 
 // Mirrors the source workbook's scope (2022 onward, MCMC vs everyone else).
@@ -161,8 +165,49 @@ function YearBars({ data, series, stacked, wide, showShare }: { data: Record<str
   )
 }
 
+// Multi-line take on YearBars: one curved line per series, tooltip rows show
+// each series' share of that year's total.
+function YearLines({ data, series }: { data: Record<string, unknown>[]; series: { key: string; label: string }[] }) {
+  const chartMargin = { top: 8, right: 16, bottom: 8, left: 16 }
+  return (
+    <>
+      <ChartScroll><LineChart data={data} xDataKey="date" aspectRatio="4.5 / 1" margin={chartMargin}>
+        <Background pattern="dots" opacity={0.85} />
+        {series.map((s, i) => (
+          <Line key={s.key} dataKey={s.key} stroke={shade(i)} curve={curveCatmullRom} strokeWidth={2} fadeEdges />
+        ))}
+        <ChartTooltip
+          showDatePill={false}
+          content={({ point }) => (
+            <TooltipContent
+              title={String((point.date as Date).getFullYear())}
+              rows={series.map((s, i) => {
+                const total = series.reduce((sum, x) => sum + (Number(point[x.key]) || 0), 0)
+                const value = Number(point[s.key]) || 0
+                return { color: shade(i), label: s.label, value: `${fmt(value)} · ${pct(value, total)}` }
+              })}
+            />
+          )}
+        />
+      </LineChart></ChartScroll>
+      {/* One point per year, no day-level granularity — the vendored XAxis/date-pill format
+          to month/day and can't be overridden, so ticks are a plain static row here instead. */}
+      <div className="flex justify-between text-xs text-chart-label" style={{ paddingLeft: chartMargin.left, paddingRight: chartMargin.right }}>
+        {data.map((d, i) => <span key={i}>{d.name as string}</span>)}
+      </div>
+      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2">
+        {series.map((s, i) => (
+          <li key={s.key} className="flex items-center gap-1.5">
+            <span className="inline-block size-2.5 rounded-sm" style={{ background: shade(i) }} />{s.label}
+          </li>
+        ))}
+      </ul>
+    </>
+  )
+}
+
 function yearRows(years: number[], pick: (y: number) => Record<string, number>) {
-  return years.map(y => ({ name: String(y), ...pick(y) }))
+  return years.map(y => ({ name: String(y), date: new Date(y, 0, 1), ...pick(y) }))
 }
 
 const PREVIEW_ROWS = 10
@@ -242,9 +287,9 @@ function TabA({ lines, years }: { lines: Line[]; years: number[] }) {
         <Kpi label={`MCMC blocks ${latest}`} value={fmt(thisYear.reduce((s, l) => s + l.total, 0))} />
         <Kpi label="Offence types" value={String(overall.length)} />
       </div>
-      <div className="grid gap-4 grid-cols-1">
+      <div className="grid gap-4 grid-cols-1 mb-10">
         <Card title="Share of blocks"><Donut items={overall.map(l => ({ label: l.offence, value: l.total }))} label="Blocks" /></Card>
-        <Card title="By year and offence"><YearBars data={perYear} series={stackedSeries} stacked wide showShare /></Card>
+        <Card title="By year and offence"><YearLines data={perYear} series={stackedSeries} /></Card>
       </div>
     </>
   )
