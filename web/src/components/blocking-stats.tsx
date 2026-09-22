@@ -169,12 +169,21 @@ function YearBars({ data, series, stacked, wide, showShare }: { data: Record<str
 // each series' share of that year's total.
 function YearLines({ data, series }: { data: Record<string, unknown>[]; series: { key: string; label: string }[] }) {
   const chartMargin = { top: 8, right: 16, bottom: 8, left: 16 }
+  // The shared LineChart's y-scale is hardcoded to scaleLinear (grid, tween, tooltip
+  // positions all assume it) — no log-scale switch, and a real one would break on any
+  // zero-count year anyway. log1p the plotted values instead so a small series isn't
+  // flattened by a much bigger one; tooltip rows below read the untransformed fields.
+  const logData = data.map(d => {
+    const row = { ...d }
+    for (const s of series) row[`${s.key}__log`] = Math.log1p(Number(d[s.key]) || 0)
+    return row
+  })
   return (
     <>
-      <ChartScroll><LineChart data={data} xDataKey="date" aspectRatio="4.5 / 1" margin={chartMargin}>
+      <LineChart data={logData} xDataKey="date" aspectRatio="4.5 / 1" margin={chartMargin}>
         <Background pattern="dots" opacity={0.85} />
         {series.map((s, i) => (
-          <Line key={s.key} dataKey={s.key} stroke={shade(i)} curve={curveCatmullRom} strokeWidth={2} fadeEdges />
+          <Line key={s.key} dataKey={`${s.key}__log`} stroke={shade(i)} curve={curveCatmullRom} strokeWidth={2} fadeEdges />
         ))}
         <ChartTooltip
           showDatePill={false}
@@ -189,10 +198,10 @@ function YearLines({ data, series }: { data: Record<string, unknown>[]; series: 
             />
           )}
         />
-      </LineChart></ChartScroll>
+      </LineChart>
       {/* One point per year, no day-level granularity — the vendored XAxis/date-pill format
           to month/day and can't be overridden, so ticks are a plain static row here instead. */}
-      <div className="flex justify-between text-xs text-chart-label" style={{ paddingLeft: chartMargin.left, paddingRight: chartMargin.right }}>
+      <div className="flex justify-between text-xs text-chart-label">
         {data.map((d, i) => <span key={i}>{d.name as string}</span>)}
       </div>
       <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2">
