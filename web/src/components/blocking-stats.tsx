@@ -11,6 +11,12 @@ import { Background } from '@/components/charts/background'
 import { PieChart } from '@/components/charts/pie-chart'
 import { PieSlice } from '@/components/charts/pie-slice'
 import { PieCenter } from '@/components/charts/pie-center'
+import { SunburstChart } from '@/components/charts/sunburst-chart'
+import { SunburstSegment } from '@/components/charts/sunburst-segment'
+import { SunburstCenter } from '@/components/charts/sunburst-center'
+import { buildArcs, type ArcDatum } from '@/components/charts/sunburst'
+import type { SunburstNode } from '@/components/charts/sunburst-data'
+import { Legend, LegendItem, LegendMarker, LegendLabel, LegendValue, type LegendItemData } from '@/components/charts/legend'
 import { Grid } from '@/components/charts/grid'
 import { ChartTooltip, TooltipContent } from '@/components/charts/tooltip'
 import { fetchBlockingStats, type BlockingStatRow } from '../api/blocking-stats'
@@ -114,13 +120,20 @@ function Donut({ items, label }: { items: { label: string; value: number }[]; la
   const data = topN(items, 5).map((d, i) => ({ ...d, color: shade(i) }))
   const total = data.reduce((s, d) => s + d.value, 0)
   return (
-    <div className="flex flex-1 items-center gap-6 flex-wrap">
-      <div style={{ width: 220, height: 220 }}>
-        <PieChart data={data} size={220} innerRadius={70} padAngle={0.02}>
-          {data.map((_, i) => <PieSlice key={i} index={i} />)}
-          <PieCenter defaultLabel={label} />
-        </PieChart>
-      </div>
+    <div className="flex flex-1 flex-col items-center gap-4">
+      {/* size/hoverOffset grown together (+14 each way) vs the plain 176/10 pair so the
+          ring's own radius (176/2 - 10 = 78) is unchanged — outerRadius = size/2 - hoverOffset
+          stays 78 — while the box gets extra margin for the hover glow's 12px blur, which
+          the default 10px hoverOffset margin alone was too tight for and got clipped by the
+          svg's own edge. */}
+      <PieChart data={data} size={204} innerRadius={56} padAngle={0.02} hoverOffset={24}>
+        {/* hoverEffect="none": the default "translate" pop-out shifts a hovered slice's
+            whole path by one fixed vector — fine for a modest wedge, but with one
+            category near 100% share it shears the near-full-circle arc and shows up
+            as a seam/detached fragment where the minor slices are squeezed together. */}
+        {data.map((_, i) => <PieSlice key={i} index={i} hoverEffect="none" />)}
+        <PieCenter defaultLabel={label} />
+      </PieChart>
       <ul className="text-sm space-y-1">
         {data.map(d => (
           <li key={d.label} className="flex items-center gap-2">
@@ -130,6 +143,85 @@ function Donut({ items, label }: { items: { label: string; value: number }[]; la
           </li>
         ))}
       </ul>
+    </div>
+  )
+}
+
+// Returns the direct children of the focused node as legend items (value +
+// share of that node's total) plus their arcIndex list, for wiring the
+// Legend's hover state to the chart's. Not exported by @bklit/sunburst-chart
+// itself (its docs demo defines the equivalent inline) — buildArcs() already
+// gives us everything it needs: filter arcs whose parent is the current focus.
+function legendForFocus(arcs: ArcDatum[], focusId: string): { items: LegendItemData[]; arcIndices: number[] } {
+  const children = arcs.filter(a => a.parentId === focusId)
+  // LegendValue's percentage is value/maxValue — "relative to the largest item
+  // here" (a mini progress bar), not "share of the whole" — that's the
+  // library's own semantics (see its demo: 198/145/95 → 100%/73%/48%, which
+  // only makes sense against the top item, not summing to 100).
+  const maxValue = Math.max(0, ...children.map(a => a.value))
+  return {
+    items: children.map(a => ({ label: a.name, value: a.value, maxValue, color: a.color ?? shade(a.categoryIndex) })),
+    arcIndices: children.map(a => a.arcIndex),
+  }
+}
+
+// Agency -> offence drill-down sunburst (real @bklit/sunburst-chart, already
+// vendored alongside the other chart primitives) — inner ring is agency,
+// outer ring is that agency's offence breakdown, arc size is total blocked.
+// Legend tracks whatever ring is currently focused (root = agencies; click a
+// segment to drill into that agency's offences, click center to zoom out).
+function AgencySunburst({ rows, label }: { rows: { agency: string; offence: string; total: number }[]; label: string }) {
+  const data: SunburstNode = useMemo(() => {
+    const byAgency = new Map<string, { name: string; value: number }[]>()
+    for (const r of rows) {
+      if (!byAgency.has(r.agency)) byAgency.set(r.agency, [])
+      byAgency.get(r.agency)!.push({ name: r.offence, value: r.total })
+    }
+    // Color per agency from this page's own ink-scale ramp (SHADES/shade, used
+    // by Donut/HBar elsewhere) rather than the library's default --chart-1..5
+    // grayscale — every offence child gets its parent's color too so the outer
+    // ring reads as the same agency (the library dims it via depth-based
+    // opacity already, so same hue at two opacities is the intended look).
+    return {
+      name: label,
+      children: [...byAgency].map(([agency, children], i) => {
+        const color = shade(i)
+        return { name: agency, color, children: children.map(c => ({ ...c, color })) }
+      }),
+    }
+  }, [rows, label])
+  const { arcs, total } = useMemo(() => buildArcs(data), [data])
+  const [focusId, setFocusId] = useState(data.name)
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+
+  const { items, arcIndices } = legendForFocus(arcs, focusId)
+  const focusTotal = focusId === data.name ? total : items.reduce((s, i) => s + i.value, 0)
+  const legendHoveredIndex = hoveredIndex != null ? arcIndices.indexOf(hoveredIndex) : null
+
+  return (
+    <div className="flex flex-1 flex-col items-center gap-4">
+      <div className="relative">
+        <SunburstChart data={data} size={220} focusId={focusId} onFocusChange={setFocusId} hoveredIndex={hoveredIndex} onHoverChange={setHoveredIndex}>
+          {arcs.map(arc => <SunburstSegment index={arc.arcIndex} key={arc.id} />)}
+          <SunburstCenter />
+        </SunburstChart>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-lg font-semibold tabular-nums">{fmt(focusTotal)}</span>
+          <span className="text-xs opacity-60">{label}</span>
+        </div>
+      </div>
+      <Legend
+        items={items}
+        hoveredIndex={legendHoveredIndex}
+        onHoverChange={i => setHoveredIndex(i == null ? null : (arcIndices[i] ?? null))}
+        className="flex-row flex-wrap justify-center gap-x-4 gap-y-1"
+      >
+        <LegendItem className="flex items-center gap-1.5">
+          <LegendMarker />
+          <LegendLabel />
+          <LegendValue showPercentage />
+        </LegendItem>
+      </Legend>
     </div>
   )
 }
@@ -180,7 +272,7 @@ function YearLines({ data, series }: { data: Record<string, unknown>[]; series: 
   })
   return (
     <>
-      <LineChart data={logData} xDataKey="date" aspectRatio="4.5 / 1" margin={chartMargin}>
+      <LineChart data={logData} xDataKey="date" aspectRatio="4.5 / 1.5" margin={chartMargin}>
         <Background pattern="dots" opacity={0.85} />
         {series.map((s, i) => (
           <Line key={s.key} dataKey={`${s.key}__log`} stroke={shade(i)} curve={curveCatmullRom} strokeWidth={2} fadeEdges />
@@ -296,7 +388,7 @@ function TabA({ lines, years }: { lines: Line[]; years: number[] }) {
         <Kpi label={`MCMC blocks ${latest}`} value={fmt(thisYear.reduce((s, l) => s + l.total, 0))} />
         <Kpi label="Offence types" value={String(overall.length)} />
       </div>
-      <div className="grid gap-4 grid-cols-1 mb-10">
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-[3fr_7fr] mb-10">
         <Card title="Share of blocks"><Donut items={overall.map(l => ({ label: l.offence, value: l.total }))} label="Blocks" /></Card>
         <Card title="By year and offence"><YearLines data={perYear} series={stackedSeries} /></Card>
       </div>
@@ -321,7 +413,7 @@ function TabB({ lines, years }: { lines: Line[]; years: number[] }) {
       </div>
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 mb-10">
         <Card title="By agency"><HBar items={agencyItems} /></Card>
-        <Card title="Share of blocks"><Donut items={agencyItems} label="Blocks" /></Card>
+        <Card title="Share of blocks"><AgencySunburst rows={other} label="Blocks" /></Card>
         <Card title="Agency and offence" className="col-span-full">
           <HBar items={other.map(l => ({ label: `${l.agency} · ${l.offence}`, value: l.total }))} left={250} max={10} wide />
         </Card>
@@ -349,8 +441,8 @@ function NumHeads({ years }: { years: number[] }) {
 
 function TabC({ lines, years }: { lines: Line[]; years: number[] }) {
   const yearTotals = (pred: (l: Line) => boolean) => years.map(y => lines.filter(pred).reduce((s, l) => s + (l.byYear[y] ?? 0), 0))
-  const mcmc = yearTotals(l => l.agency === MCMC)
-  const other = yearTotals(l => l.agency !== MCMC)
+  const mcmc = yearTotals(l => l.agency === MCMC && isMcmcCategory(l.offence))
+  const other = yearTotals(l => l.agency !== MCMC || !isMcmcCategory(l.offence))
   const all = years.map((_, i) => mcmc[i] + other[i])
   const grand = all.reduce((s, n) => s + n, 0)
   const maxYear = Math.max(0, ...all)
