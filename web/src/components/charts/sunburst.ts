@@ -59,6 +59,16 @@ export function sumValues(node: SunburstNode): number {
   return node.value ?? 0;
 }
 
+function sumWeights(node: SunburstNode): number {
+  if (node.weight != null) {
+    return node.weight;
+  }
+  if (node.children?.length) {
+    return node.children.reduce((sum, child) => sum + sumWeights(child), 0);
+  }
+  return node.value ?? 0;
+}
+
 interface BuildContext {
   arcs: ArcDatum[];
   focusById: Map<string, Focus>;
@@ -116,10 +126,10 @@ function layoutNode(
   }
 
   const span = a1 - a0;
+  const totalWeight = node.children.reduce((sum, c) => sum + sumWeights(c), 0);
   let cursor = a0;
   for (const [index, child] of node.children.entries()) {
-    const childValue = sumValues(child);
-    const childSpan = value > 0 ? (childValue / value) * span : 0;
+    const childSpan = totalWeight > 0 ? (sumWeights(child) / totalWeight) * span : 0;
     const childId = nodeId(id, child.name);
     const childCategory = depth === 0 ? index : categoryIndex;
     layoutNode(

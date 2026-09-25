@@ -242,7 +242,7 @@ const SunburstChartCore = memo(function SunburstChartCore({
       }
       setZoomT(0);
       zoomControls.current = animate(0, 1, {
-        duration: 0.75,
+        duration: 0.45,
         ease: [0.22, 1, 0.36, 1],
         onUpdate: (value) => {
           if (zoomGen.current === gen) {

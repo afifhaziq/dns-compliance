@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { curveCatmullRom } from '@visx/curve'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { BarChart } from '@/components/charts/bar-chart'
@@ -14,11 +15,12 @@ import { PieCenter } from '@/components/charts/pie-center'
 import { SunburstChart } from '@/components/charts/sunburst-chart'
 import { SunburstSegment } from '@/components/charts/sunburst-segment'
 import { SunburstCenter } from '@/components/charts/sunburst-center'
+import { SunburstLabels } from '@/components/charts/sunburst-labels'
 import { buildArcs, type ArcDatum } from '@/components/charts/sunburst'
 import type { SunburstNode } from '@/components/charts/sunburst-data'
 import { Legend, LegendItem, LegendMarker, LegendLabel, LegendValue, type LegendItemData } from '@/components/charts/legend'
 import { Grid } from '@/components/charts/grid'
-import { ChartTooltip, TooltipContent } from '@/components/charts/tooltip'
+import { ChartTooltip, TooltipBox, TooltipContent } from '@/components/charts/tooltip'
 import { fetchBlockingStats, type BlockingStatRow } from '../api/blocking-stats'
 
 // Mirrors the source workbook's scope (2022 onward, MCMC vs everyone else).
@@ -63,6 +65,14 @@ function BarCells({ value, max }: { value: number; max: number }) {
 // Single-hue --ink-scale-N ramp (index.css) — follows light/dark via the variables.
 const SHADES = [1, 2, 3, 4, 5, 6].map(n => `var(--ink-scale-${n})`)
 const shade = (i: number) => SHADES[Math.min(i, SHADES.length - 1)]
+// Colour for item i of n, interpolated along the 6-step ramp so every item gets
+// a distinct shade (the ramp alone runs out at 6).
+const ramp = (i: number, n: number) => {
+  const t = n > 1 ? (i / (n - 1)) * (SHADES.length - 1) : 0
+  const lo = Math.floor(t)
+  const hi = Math.min(lo + 1, SHADES.length - 1)
+  return `color-mix(in srgb, ${SHADES[lo]}, ${SHADES[hi]} ${Math.round((t - lo) * 100)}%)`
+}
 
 // Keep the top n by total, fold the rest into "Other" — but only when that
 // actually collapses 2+ items; folding a single leftover just relabels it.
@@ -85,9 +95,9 @@ function Card({ title, children, className = '' }: { title: string; children: Re
 
 function Kpi({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bento-card">
-      <div className="text-xs opacity-70">{label}</div>
-      <div className="text-3xl font-semibold tabular-nums mt-1">{value}</div>
+    <div>
+      <p className="server-count" style={{ color: 'var(--ink)' }}>{value}</p>
+      <p className="dash-label">{label}</p>
     </div>
   )
 }
@@ -170,58 +180,111 @@ function legendForFocus(arcs: ArcDatum[], focusId: string): { items: LegendItemD
 // outer ring is that agency's offence breakdown, arc size is total blocked.
 // Legend tracks whatever ring is currently focused (root = agencies; click a
 // segment to drill into that agency's offences, click center to zoom out).
+// Library default is a 1.1s tween per segment plus 0.08s/segment stagger; this is ~2.5x quicker.
+const SUNBURST_ENTER = { type: "tween", duration: 0.45, ease: [0.22, 1, 0.36, 1] } as const
+
 function AgencySunburst({ rows, label }: { rows: { agency: string; offence: string; total: number }[]; label: string }) {
   const data: SunburstNode = useMemo(() => {
-    const byAgency = new Map<string, { name: string; value: number }[]>()
+    const byAgency = new Map<string, Map<string, number>>()
     for (const r of rows) {
-      if (!byAgency.has(r.agency)) byAgency.set(r.agency, [])
-      byAgency.get(r.agency)!.push({ name: r.offence, value: r.total })
+      const m = byAgency.get(r.agency) ?? new Map<string, number>()
+      m.set(r.offence, (m.get(r.offence) ?? 0) + r.total)
+      byAgency.set(r.agency, m)
     }
-    // Color per agency from this page's own ink-scale ramp (SHADES/shade, used
-    // by Donut/HBar elsewhere) rather than the library's default --chart-1..5
-    // grayscale — every offence child gets its parent's color too so the outer
-    // ring reads as the same agency (the library dims it via depth-based
-    // opacity already, so same hue at two opacities is the intended look).
+    const agencies = [...byAgency]
+      .map(([agency, offences]) => ({ agency, offences, total: [...offences.values()].reduce((s, v) => s + v, 0) }))
+      .sort((a, b) => b.total - a.total)
+    // Arc angles are log1p-scaled (weight) so tiny agencies stay visible and
+    // clickable; value stays the real count for the tooltip/legend/centre.
     return {
       name: label,
-      children: [...byAgency].map(([agency, children], i) => {
-        const color = shade(i)
-        return { name: agency, color, children: children.map(c => ({ ...c, color })) }
+      children: agencies.map(({ agency, offences, total }, i) => {
+        const color = ramp(i, agencies.length)
+        return {
+          name: agency,
+          color,
+          weight: Math.log1p(total),
+          children: [...offences].map(([name, value]) => ({ name, value, weight: Math.log1p(value), color })),
+        }
       }),
     }
   }, [rows, label])
   const { arcs, total } = useMemo(() => buildArcs(data), [data])
   const [focusId, setFocusId] = useState(data.name)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const boxRef = useRef<HTMLDivElement>(null)
+  const [pointer, setPointer] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
 
   const { items, arcIndices } = legendForFocus(arcs, focusId)
-  const focusTotal = focusId === data.name ? total : items.reduce((s, i) => s + i.value, 0)
   const legendHoveredIndex = hoveredIndex != null ? arcIndices.indexOf(hoveredIndex) : null
+  // Legend only makes sense once the user has drilled into an agency — at the
+  // root it would just repeat what the chart's own agency ring already shows.
+  const showLegend = focusId !== data.name
+
+  const hoveredArc = hoveredIndex != null ? arcs[hoveredIndex] : null
+  const hoveredParent = hoveredArc?.parentId ? arcs.find(a => a.id === hoveredArc.parentId) : undefined
+  // Ring 1 = agency (share of the grand total); ring 2 = offence (share of its agency).
+  const hoveredShareOf = hoveredArc && hoveredArc.depth === 1 ? total : (hoveredParent?.value ?? hoveredArc?.value ?? 0)
 
   return (
     <div className="flex flex-1 flex-col items-center gap-4">
-      <div className="relative">
-        <SunburstChart data={data} size={220} focusId={focusId} onFocusChange={setFocusId} hoveredIndex={hoveredIndex} onHoverChange={setHoveredIndex}>
+      <div
+        className="relative"
+        ref={boxRef}
+        onPointerMove={e => {
+          const rect = boxRef.current?.getBoundingClientRect()
+          if (rect) setPointer({ x: e.clientX - rect.left, y: e.clientY - rect.top, width: rect.width, height: rect.height })
+        }}
+        onPointerLeave={() => setPointer(null)}
+      >
+        <SunburstChart data={data} size={260} enterTransition={SUNBURST_ENTER} enterStaggerScale={0.4} focusId={focusId} onFocusChange={setFocusId} hoveredIndex={hoveredIndex} onHoverChange={setHoveredIndex}>
           {arcs.map(arc => <SunburstSegment index={arc.arcIndex} key={arc.id} />)}
+          <SunburstLabels onlyDepth={1} minArcLength={12} fontSize={10} fill="light-dark(#000, #fff)" strokeWidth={0} />
           <SunburstCenter />
         </SunburstChart>
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-lg font-semibold tabular-nums">{fmt(focusTotal)}</span>
-          <span className="text-xs opacity-60">{label}</span>
-        </div>
+        {hoveredArc && pointer && (
+          <TooltipBox
+            containerHeight={pointer.height}
+            containerRef={boxRef}
+            containerWidth={pointer.width}
+            visible
+            x={pointer.x}
+            y={pointer.y}
+          >
+            <TooltipContent
+              rows={[{
+                color: hoveredArc.color ?? shade(hoveredArc.categoryIndex),
+                label: hoveredArc.depth === 1 ? 'Agency' : 'Offence',
+                value: `${fmt(hoveredArc.value)} · ${pct(hoveredArc.value, hoveredShareOf)}`,
+              }]}
+              title={hoveredArc.depth === 1 ? hoveredArc.name : `${hoveredParent?.name ?? ''} · ${hoveredArc.name}`}
+            />
+          </TooltipBox>
+        )}
       </div>
-      <Legend
-        items={items}
-        hoveredIndex={legendHoveredIndex}
-        onHoverChange={i => setHoveredIndex(i == null ? null : (arcIndices[i] ?? null))}
-        className="flex-row flex-wrap justify-center gap-x-4 gap-y-1"
-      >
-        <LegendItem className="flex items-center gap-1.5">
-          <LegendMarker />
-          <LegendLabel />
-          <LegendValue showPercentage />
-        </LegendItem>
-      </Legend>
+      <AnimatePresence>
+        {showLegend && (
+          <motion.div
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            initial={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+          >
+            <Legend
+              items={items}
+              hoveredIndex={legendHoveredIndex}
+              onHoverChange={i => setHoveredIndex(i == null ? null : (arcIndices[i] ?? null))}
+              className="flex-row flex-wrap justify-center gap-x-4 gap-y-1"
+            >
+              <LegendItem className="flex items-center gap-1.5">
+                <LegendMarker />
+                <LegendLabel />
+                <LegendValue showPercentage />
+              </LegendItem>
+            </Legend>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
@@ -383,7 +446,7 @@ function TabA({ lines, years }: { lines: Line[]; years: number[] }) {
   })
   return (
     <>
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-3 mb-6">
+      <div className="flex flex-wrap gap-8 mb-6">
         <Kpi label={`MCMC blocks ${years[0]}–${latest}`} value={fmt(total)} />
         <Kpi label={`MCMC blocks ${latest}`} value={fmt(thisYear.reduce((s, l) => s + l.total, 0))} />
         <Kpi label="Offence types" value={String(overall.length)} />
@@ -396,6 +459,95 @@ function TabA({ lines, years }: { lines: Line[]; years: number[] }) {
   )
 }
 
+// Vertical stacked bars: one bar per agency, one stack segment per offence,
+// filtered to a single year or a from–to range.
+function AgencyOffenceStack({ lines, years }: { lines: Line[]; years: number[] }) {
+  const first = years[0]
+  const last = years[years.length - 1]
+  const [mode, setMode] = useState<'single' | 'range'>('range')
+  const [from, setFrom] = useState(first)
+  const [to, setTo] = useState(last)
+  const selected = mode === 'single' ? [from] : years.filter(y => y >= Math.min(from, to) && y <= Math.max(from, to))
+
+  const { data, series } = useMemo(() => {
+    const byAgency = new Map<string, Map<string, number>>()
+    const byOffence = new Map<string, number>()
+    for (const l of lines) {
+      const t = sumYears(l, selected)
+      if (!t) continue
+      const m = byAgency.get(l.agency) ?? new Map<string, number>()
+      m.set(l.offence, (m.get(l.offence) ?? 0) + t)
+      byAgency.set(l.agency, m)
+      byOffence.set(l.offence, (byOffence.get(l.offence) ?? 0) + t)
+    }
+    const offences = [...byOffence].sort((a, b) => b[1] - a[1]).map(([o]) => o)
+    const agencies = [...byAgency]
+      .map(([name, m]) => ({ name, m, total: [...m.values()].reduce((a, b) => a + b, 0) }))
+      .sort((a, b) => b.total - a.total)
+    return {
+      series: offences.map(o => ({ key: o, label: o })),
+      // The shared BarChart's value scale is hardcoded linear, so log the plotted
+      // height instead: each bar's total becomes log1p(total), split into segments
+      // in their real proportions. Real counts ride along in `raw` for the tooltip.
+      data: agencies.map(a => {
+        const raw = Object.fromEntries(offences.map(o => [o, a.m.get(o) ?? 0]))
+        const k = Math.log1p(a.total) / a.total
+        return { name: a.name, raw, ...Object.fromEntries(offences.map(o => [o, raw[o] * k])) }
+      }),
+    }
+  }, [lines, selected.join(",")])
+
+  const tooltipRows = (point: Record<string, unknown>) => {
+    const raw = point.raw as Record<string, number>
+    const total = series.reduce((s, x) => s + (raw[x.key] || 0), 0)
+    return series
+      .map((x, i) => ({ color: ramp(i, series.length), label: x.label, v: raw[x.key] || 0 }))
+      .filter(r => r.v)
+      .map(r => ({ color: r.color, label: r.label, value: `${fmt(r.v)} · ${pct(r.v, total)}` }))
+  }
+  const yearSelect = (value: number, onChange: (y: number) => void, label: string) => (
+    <select aria-label={label} className="filter-select" value={value} onChange={e => onChange(Number(e.target.value))}>
+      {years.map(y => <option key={y} value={y}>{y}</option>)}
+    </select>
+  )
+
+  return (
+    <>
+      <div className="filter-bar mb-3 flex-wrap">
+        <span className="filter-label">Period</span>
+        <select aria-label="Filter mode" className="filter-select" value={mode} onChange={e => setMode(e.target.value as 'single' | 'range')}>
+          <option value="range">Year range</option>
+          <option value="single">Single year</option>
+        </select>
+        {mode === 'single'
+          ? yearSelect(from, setFrom, 'Year')
+          : <>{yearSelect(from, setFrom, 'From year')}<span className="filter-label">to</span>{yearSelect(to, setTo, 'To year')}</>}
+      </div>
+      {data.length === 0 ? <p className="text-sm opacity-60">No blocks in this period.</p> : (
+        <>
+          <div className="overflow-x-auto">
+            <div style={{ minWidth: Math.max(520, data.length * 72) }}>
+              <BarChart data={data} stacked stackGap={1} aspectRatio="2.4 / 1" margin={{ top: 8, right: 16, bottom: 30, left: 16 }}>
+                <Grid horizontal vertical={false} />
+                {series.map((s, i) => <Bar key={s.key} dataKey={s.key} fill={ramp(i, series.length)} />)}
+                <BarXAxis />
+                <ChartTooltip rows={tooltipRows} />
+              </BarChart>
+            </div>
+          </div>
+          <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2">
+            {series.map((s, i) => (
+              <li key={s.key} className="flex items-center gap-1.5">
+                <span className="inline-block size-2.5 rounded-sm" style={{ background: ramp(i, series.length) }} />{s.label}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </>
+  )
+}
+
 function TabB({ lines, years }: { lines: Line[]; years: number[] }) {
   const other = lines
     .filter(l => l.agency !== MCMC)
@@ -404,22 +556,19 @@ function TabB({ lines, years }: { lines: Line[]; years: number[] }) {
   const byAgency = new Map<string, number>()
   for (const l of other) byAgency.set(l.agency, (byAgency.get(l.agency) ?? 0) + l.total)
   const agencyItems = [...byAgency].map(([label, value]) => ({ label, value }))
-  const agencyLines = agencyItems.map(a => ({ agency: a.label, offence: '—', total: a.value }))
   return (
     <>
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 mb-6">
+      <div className="flex flex-wrap gap-8 mb-6">
         <Kpi label="Blocks by other agencies" value={fmt(agencyItems.reduce((s, a) => s + a.value, 0))} />
         <Kpi label="Agencies" value={String(agencyItems.length)} />
       </div>
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 mb-10">
-        <Card title="By agency"><HBar items={agencyItems} /></Card>
-        <Card title="Share of blocks"><AgencySunburst rows={other} label="Blocks" /></Card>
+        <Card title="Share of blocks" className="col-span-full"><AgencySunburst rows={other} label="Blocks" /></Card>
+        <Card title="By agency" className="col-span-full"><HBar items={agencyItems} wide /></Card>
         <Card title="Agency and offence" className="col-span-full">
-          <HBar items={other.map(l => ({ label: `${l.agency} · ${l.offence}`, value: l.total }))} left={250} max={10} wide />
+          <AgencyOffenceStack lines={lines.filter(l => l.agency !== MCMC)} years={years} />
         </Card>
       </div>
-      <OffenceTable title="Blocks by agency (excluding MCMC)" lines={agencyLines} showAgency hideOffence />
-      <OffenceTable title="Blocks by agency and offence" lines={other} showAgency />
     </>
   )
 }

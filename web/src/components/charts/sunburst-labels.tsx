@@ -14,6 +14,10 @@ import { useEnterComplete } from "./use-enter-complete";
 import { useMountProgress } from "./use-mount-progress";
 
 export interface SunburstLabelsProps {
+  /** Only label arcs at this depth (1 = innermost ring). Default: all rings. */
+  onlyDepth?: number;
+  /** Minimum arc length (px) at the label's radius before it is drawn. */
+  minArcLength?: number;
   fontSize?: number;
   fill?: string;
   stroke?: string;
@@ -22,6 +26,8 @@ export interface SunburstLabelsProps {
 }
 
 export const SunburstLabels = memo(function SunburstLabels({
+  onlyDepth,
+  minArcLength = 26,
   fontSize = 11,
   fill = sunburstCssVars.label,
   stroke = sunburstCssVars.background,
@@ -62,6 +68,9 @@ export const SunburstLabels = memo(function SunburstLabels({
   return (
     <g className={className}>
       {arcs.map((arc) => {
+        if (onlyDepth !== undefined && arc.depth !== onlyDepth) {
+          return null;
+        }
         const base = transitionGeometry(
           arc,
           prevFocus,
@@ -79,9 +88,10 @@ export const SunburstLabels = memo(function SunburstLabels({
           growAmountForArc,
           maxExpandedThickness
         );
-        const angleSpan = g.a1 - g.a0;
+        // Size check runs on the un-grown arc: hover-grow enlarges the hovered
+        // segment, which would make its label pop in only while hovered.
         const r = geomCentroidRadius(g);
-        if (angleSpan * r < 26 || g.outerR - g.innerR < 16) {
+        if ((base.a1 - base.a0) * r < minArcLength || base.outerR - base.innerR < 16) {
           return null;
         }
         if (!isRelated(arc)) {
