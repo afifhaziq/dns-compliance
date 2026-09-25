@@ -20,6 +20,10 @@ import { buildArcs, type ArcDatum } from '@/components/charts/sunburst'
 import type { SunburstNode } from '@/components/charts/sunburst-data'
 import { Legend, LegendItem, LegendMarker, LegendLabel, LegendValue, type LegendItemData } from '@/components/charts/legend'
 import { Grid } from '@/components/charts/grid'
+import { Filters } from '@/components/reui/filters/filters'
+import { createFilterQuery, type FilterQuery } from '@/components/reui/filters/filters-query'
+import type { FilterField } from '@/components/reui/filters/filters-types'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { ChartTooltip, TooltipBox, TooltipContent } from '@/components/charts/tooltip'
 import { fetchBlockingStats, type BlockingStatRow } from '../api/blocking-stats'
 
@@ -84,10 +88,13 @@ function topN<T extends { label: string; value: number }>(items: T[], n: number)
   return [...head, { label: 'Other', value: rest }]
 }
 
-function Card({ title, children, className = '' }: { title: string; children: React.ReactNode; className?: string }) {
+function Card({ title, children, className = '', action }: { title: string; children: React.ReactNode; className?: string; action?: React.ReactNode }) {
   return (
     <div className={`bento-card ${className}`}>
-      <h3 className="text-sm font-semibold mb-3">{title}</h3>
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        {action}
+      </div>
       {children}
     </div>
   )
@@ -462,12 +469,30 @@ function TabA({ lines, years }: { lines: Line[]; years: number[] }) {
 // Vertical stacked bars: one bar per agency, one stack segment per offence,
 // filtered to a single year or a from–to range.
 function AgencyOffenceStack({ lines, years }: { lines: Line[]; years: number[] }) {
-  const first = years[0]
-  const last = years[years.length - 1]
-  const [mode, setMode] = useState<'single' | 'range'>('range')
-  const [from, setFrom] = useState(first)
-  const [to, setTo] = useState(last)
-  const selected = mode === 'single' ? [from] : years.filter(y => y >= Math.min(from, to) && y <= Math.max(from, to))
+  const [query, setQuery] = useState<FilterQuery>(() => createFilterQuery<unknown>([]))
+  const yearField = useMemo<FilterField[]>(() => [{
+    id: 'year',
+    label: 'Year',
+    type: 'number',
+    // is = one year, between = inclusive range; no rule = every year.
+    operators: [
+      { value: 'eq', label: 'is', inverse: 'neq' },
+      { value: 'between', label: 'is between', arity: 'range', inverse: 'not_between' },
+    ],
+    defaultOperator: 'eq',
+    placeholder: String(years[years.length - 1]),
+  }], [years])
+  const rule = query.rules.find((r): r is Extract<typeof r, { type: 'rule' }> => r.type === 'rule' && r.path[0] === 'year')
+  const [lo, hi] = (() => {
+    const v = rule?.value
+    if (rule?.operator === 'eq' && v != null && v !== '') return [Number(v), Number(v)]
+    if (rule?.operator === 'between' && Array.isArray(v)) {
+      const [a, b] = v.map(x => (x == null || x === '' ? NaN : Number(x)))
+      return [Math.min(...[a, b].filter(n => !isNaN(n)), Infinity), Math.max(...[a, b].filter(n => !isNaN(n)), -Infinity)]
+    }
+    return [-Infinity, Infinity]
+  })()
+  const selected = years.filter(y => y >= lo && y <= hi)
 
   const { data, series } = useMemo(() => {
     const byAgency = new Map<string, Map<string, number>>()
@@ -489,9 +514,12 @@ function AgencyOffenceStack({ lines, years }: { lines: Line[]; years: number[] }
       // The shared BarChart's value scale is hardcoded linear, so log the plotted
       // height instead: each bar's total becomes log1p(total), split into segments
       // in their real proportions. Real counts ride along in `raw` for the tooltip.
+      // Plotted units are arbitrary (there's no axis), so rescale until the tallest
+      // bar is 90% of the plot — the chart's own [0, max*1.1] nice() domain then
+      // lands on exactly 100 and the plot fills its box instead of leaving a gap.
       data: agencies.map(a => {
         const raw = Object.fromEntries(offences.map(o => [o, a.m.get(o) ?? 0]))
-        const k = Math.log1p(a.total) / a.total
+        const k = (Math.log1p(a.total) / a.total) * (90 / Math.log1p(agencies[0].total))
         return { name: a.name, raw, ...Object.fromEntries(offences.map(o => [o, raw[o] * k])) }
       }),
     }
@@ -505,36 +533,23 @@ function AgencyOffenceStack({ lines, years }: { lines: Line[]; years: number[] }
       .filter(r => r.v)
       .map(r => ({ color: r.color, label: r.label, value: `${fmt(r.v)} · ${pct(r.v, total)}` }))
   }
-  const yearSelect = (value: number, onChange: (y: number) => void, label: string) => (
-    <select aria-label={label} className="filter-select" value={value} onChange={e => onChange(Number(e.target.value))}>
-      {years.map(y => <option key={y} value={y}>{y}</option>)}
-    </select>
+  const filters = (
+    <TooltipProvider>
+      <Filters fields={yearField} query={query} onQueryChange={setQuery} showClear size="sm" className="justify-end" />
+    </TooltipProvider>
   )
-
   return (
-    <>
-      <div className="filter-bar mb-3 flex-wrap">
-        <span className="filter-label">Period</span>
-        <select aria-label="Filter mode" className="filter-select" value={mode} onChange={e => setMode(e.target.value as 'single' | 'range')}>
-          <option value="range">Year range</option>
-          <option value="single">Single year</option>
-        </select>
-        {mode === 'single'
-          ? yearSelect(from, setFrom, 'Year')
-          : <>{yearSelect(from, setFrom, 'From year')}<span className="filter-label">to</span>{yearSelect(to, setTo, 'To year')}</>}
-      </div>
+    <Card title="Agency and offence" className="col-span-full" action={filters}>
       {data.length === 0 ? <p className="text-sm opacity-60">No blocks in this period.</p> : (
         <>
-          <div className="overflow-x-auto">
-            <div style={{ minWidth: Math.max(520, data.length * 72) }}>
-              <BarChart data={data} stacked stackGap={1} aspectRatio="2.4 / 1" margin={{ top: 8, right: 16, bottom: 30, left: 16 }}>
-                <Grid horizontal vertical={false} />
-                {series.map((s, i) => <Bar key={s.key} dataKey={s.key} fill={ramp(i, series.length)} />)}
-                <BarXAxis />
-                <ChartTooltip rows={tooltipRows} />
-              </BarChart>
-            </div>
-          </div>
+          {/* No scroll wrapper: the hover tooltip lives inside the chart box, and an
+              overflow-x-auto parent turned a tooltip poking past the edge into a scrollbar. */}
+          <BarChart data={data} stacked stackGap={1} aspectRatio="2.4 / 1" margin={{ top: 8, right: 0, bottom: 30, left: 0 }}>
+            <Grid horizontal vertical={false} />
+            {series.map((s, i) => <Bar key={s.key} dataKey={s.key} fill={ramp(i, series.length)} />)}
+            <BarXAxis />
+            <ChartTooltip rows={tooltipRows} />
+          </BarChart>
           <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2">
             {series.map((s, i) => (
               <li key={s.key} className="flex items-center gap-1.5">
@@ -544,7 +559,7 @@ function AgencyOffenceStack({ lines, years }: { lines: Line[]; years: number[] }
           </ul>
         </>
       )}
-    </>
+    </Card>
   )
 }
 
@@ -565,9 +580,7 @@ function TabB({ lines, years }: { lines: Line[]; years: number[] }) {
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 mb-10">
         <Card title="Share of blocks" className="col-span-full"><AgencySunburst rows={other} label="Blocks" /></Card>
         <Card title="By agency" className="col-span-full"><HBar items={agencyItems} wide /></Card>
-        <Card title="Agency and offence" className="col-span-full">
-          <AgencyOffenceStack lines={lines.filter(l => l.agency !== MCMC)} years={years} />
-        </Card>
+        <AgencyOffenceStack lines={lines.filter(l => l.agency !== MCMC)} years={years} />
       </div>
     </>
   )
