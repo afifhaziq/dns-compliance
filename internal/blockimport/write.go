@@ -113,7 +113,22 @@ func WriteCRDCases(ctx context.Context, gdb *gorm.DB, crdDeptID uint, cases []Co
 	summary := ImportSummary{CategoriesObserved: make(map[string]int)}
 
 	err := gdb.Transaction(func(tx *gorm.DB) error {
-		for _, cc := range cases {
+		for i, cc := range cases {
+			// ponytail: this whole transaction inserts tens of thousands of
+			// rows, but every existence-check query below joins against
+			// those same growing tables — without fresh planner stats,
+			// Postgres keeps costing them off the empty-table row estimate
+			// from before the transaction started and picks sequential
+			// scans that get slower as the tables grow, turning an O(n)
+			// import into O(n^2). Re-ANALYZE periodically so the planner's
+			// row estimates stay roughly current; upgrade to a single
+			// preloaded existing-letters map if this loop ever needs to
+			// beat this cadence.
+			if i > 0 && i%500 == 0 {
+				if err := tx.Exec("ANALYZE cases, case_letters, case_urls, urls, url_offences, agencies").Error; err != nil {
+					return err
+				}
+			}
 			for _, cat := range cc.Categories {
 				summary.CategoriesObserved[cat]++
 			}
