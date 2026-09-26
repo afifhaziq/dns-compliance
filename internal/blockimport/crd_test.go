@@ -419,3 +419,22 @@ func TestParseCRDRows_PromotesOrphanSubElementToElement(t *testing.T) {
 		t.Fatalf("normal row changed: got Element=%q SubElement=%q", rows[1].Element, rows[1].SubElement)
 	}
 }
+
+func TestParseCRDRows_CanonicalizesCategoryCasingToTitleCase(t *testing.T) {
+	path := writeTestXLSX(t, "2011-2026", [][]string{
+		{"No. Rujukan NMD", "No. Rujukan NMSMD", "Alamat Laman Web", "Status", "Kategori", "Elemen", "Butiran Kesalahan", "Agensi", "Tahun"},
+		{"R1", "", "http://a.example.com", "Blocked", "Tidak Berdaftar", "", "", "", "2020"},
+		{"R2", "", "http://b.example.com", "Blocked", "Tidak berdaftar", "", "", "", "2020"},
+		{"R3", "", "http://c.example.com", "Blocked", "Tidak berdaftar", "", "", "", "2020"},
+		{"R4", "", "http://d.example.com", "Blocked", "Jelik, tidak berdaftar", "", "", "", "2020"},
+	})
+	rows, err := ParseCRDRows(path)
+	if err != nil {
+		t.Fatalf("ParseCRDRows: %v", err)
+	}
+	for i, want := range []string{"Tidak Berdaftar", "Tidak Berdaftar", "Tidak Berdaftar", "Jelik,Tidak Berdaftar"} {
+		if rows[i].Category != want {
+			t.Errorf("row %d: got %q, want %q", i, rows[i].Category, want)
+		}
+	}
+}

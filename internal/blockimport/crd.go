@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/xuri/excelize/v2"
 )
@@ -300,7 +301,43 @@ func ParseCRDRows(path string) ([]CRDRow, error) {
 			UpliftDate:      parseNoticeDate(cellAt(r, upliftDateCol)),
 		})
 	}
+	canonicalizeCategoryCasing(out)
 	return out, nil
+}
+
+// canonicalizeCategoryCasing rewrites every Kategori token to a single
+// spelling per case-insensitive form ("Tidak berdaftar" / "Tidak Berdaftar").
+// Categories are per-citation rows, so the importer's LOWER(name) get-or-create
+// can't merge these across citations -- the spellings would otherwise surface
+// as separate choices in the offence picker. The spelling with the most
+// capitals wins (the catalog is Title Case throughout, and the sheet's
+// lowercase variant is the typo, even where it happens to be commoner); ties
+// go to the lexicographically smallest.
+func canonicalizeCategoryCasing(rows []CRDRow) {
+	caps := func(s string) (n int) {
+		for _, r := range s {
+			if unicode.IsUpper(r) {
+				n++
+			}
+		}
+		return
+	}
+	best := map[string]string{}
+	for _, r := range rows {
+		for _, c := range splitCategories(r.Category) {
+			l := strings.ToLower(c)
+			if b, ok := best[l]; !ok || caps(c) > caps(b) || (caps(c) == caps(b) && c < b) {
+				best[l] = c
+			}
+		}
+	}
+	for i := range rows {
+		parts := splitCategories(rows[i].Category)
+		for j, c := range parts {
+			parts[j] = best[strings.ToLower(c)]
+		}
+		rows[i].Category = strings.Join(parts, ",")
+	}
 }
 
 // CollapseCRDRows groups rows by groupingKey into one CollapsedCase per
