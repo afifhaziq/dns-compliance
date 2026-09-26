@@ -40,7 +40,7 @@ Flag gotchas not covered by `--help`:
 - `--auth-token` (crawler) / `--crawler-token` (server): shared secret, must match on both sides.
 - `--tls-cert`/`--tls-key`/`--tls-ca` (both binaries): all three or none — see gRPC section below.
 - `--redis-addr` (server): notification task queue backend — see the `notifications` skill.
-- `--bootstrap-admin-username`/`--bootstrap-admin-password` (server): creates the admin only if `users` is empty; both required together on first run, or no one can log in. Local dev DB (`docker-compose.dev.yml`) login: `admin` / `aaAA1234`.
+- `--bootstrap-admin-username`/`--bootstrap-admin-password` (server): creates the admin only if `users` is empty; both required together on first run, or no one can log in. `./dev.sh` seeds login `admin` / `admin` (applies when users table is empty).
 - `--subfinder-path` (server): empty disables subdomain enumeration entirely.
 
 ## Docker
