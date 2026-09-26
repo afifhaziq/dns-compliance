@@ -216,3 +216,17 @@ That distinctness is exactly why "import at the domain level" would lose real in
 **Question:** collapse each duplicate group to a single row before import (keeping one), or is there a reason a spreadsheet row might legitimately need to repeat identically (e.g. two separate manual actions logged the same day)?
 
 **Item 15 resolution, 2026-09-15: already handled, no new code.** A byte-for-byte duplicate row shares its reference number (that's one of the "every column identical" columns), and `CollapseCRDRows` (`internal/blockimport/crd.go`) already groups by reference number and dedupes repeated `(reference, domain)` pairs within a group down to one `CollapsedDomain` (last-write-wins on `Status`, see `TestCollapseCRDRows_LastWriteWinsOnRepeatedDomainStatus`) before `WriteCRDCases` ever runs. So the 474 groups collapse to one case/domain each automatically — there was never a second CaseURL row to create in the first place, and no "is this a legitimate repeat" ambiguity to resolve, since a genuine same-day double-action would need to differ in at least one column (the row wouldn't be byte-for-byte identical) to matter.
+
+---
+
+## 6. Post-import spot-check of the legal citation mapping (2026-09-26)
+
+Every sheet row was compared against `url_offences → category → citation → instrument` in the DB (39,714 expected offence tuples), plus a 60-row eyeball sample. The classification itself held up; three things came out of it.
+
+**Same-year unnumbered Acts merged into one Instrument (fixed).** `getOrCreateInstrument` keyed on `(type, jurisdiction, number, year)` and ignored the title, so unnumbered Acts sharing a year collapsed onto whichever was imported first: Dangerous Drugs 1952 under Poisons, Customs 1967 under Accountants, Business Registration 1956 under Medicines (Advertisement and Sale), Wildlife Conservation 2010 under Personal Data Protection, Money Services Business 2011 under Trade Descriptions, Computer Crimes 1997 under the WP Syariah Criminal Offences Act. 8 citations / ~19 offence rows. The lookup now also matches `short_title` when `number` is empty (`internal/blockimport/legalcatalog.go`, `internal/db/legalcite.go`; `TestGetOrCreateInstrument_UnnumberedSameYearDistinctByTitle`). Because `import-crd` skips cases that already exist, a re-run does not repair an already-populated DB — the local dev DB was repaired in place by creating the 6 missing Instruments and re-pointing the 8 citations; any other environment populated by the earlier import needs the same repair.
+
+**11 orphan sub-elements (decision: treat as Element).** Excel rows 4381, 4490, 4491, 4513, 4886, 5041, 5098, 5144, 5193, 5367, 5891 (Jelik, s233 AKM) have `Sub-Elemen` = "Ngeri / Grafik keterlaluan" but a blank `Elemen`. A sub-element needs a parent element, so the importer used to drop it silently. Per stakeholder decision the value is now promoted to the Element (`ParseCRDRows`, `TestParseCRDRows_PromotesOrphanSubElementToElement`); the dev DB got one new Element under Jelik for these 11 offences.
+
+**19 "extra" offences are the known unrecoverable URLs (§4), not mapping errors.** They sit on `urls.url` values stored as raw text (`https://www. escort33.com`, `m. webook88.com`, `http://www.apostatesof islam.com`, ...) that can't be matched back to a normalised sheet host, so a host-keyed comparison reports them as extras. Their citations/categories are correct.
+
+After these, the comparison shows 0 missing and only the 19 raw-text-URL extras.
