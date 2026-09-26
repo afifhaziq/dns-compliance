@@ -13,24 +13,29 @@
   --pal-royal-plum: rgb(255, 10, 145);
   --pal-magenta-bloom: #da4167;
   --pal-ghost-white: #f0eff4;
+  /* Light-mode palette — Rosé Pine Dawn (only the four roles the code needs) */
+  --pal-dawn-base: #faf4ed;
+  --pal-dawn-surface: #fffaf3;
+  --pal-dawn-text: #575279;
+  --pal-dawn-love: #b4637a;
 
   /* Accent — action/identity. Not status, not decoration. */
-  --ink: var(--pal-royal-plum);
-  --ink-hover: var(--pal-midnight-violet);
-  --ink-active: color-mix(in srgb, var(--pal-midnight-violet) 85%, var(--pal-black) 15%);
-  --ink-subtle: color-mix(in srgb, var(--pal-royal-plum) 10%, var(--pal-ghost-white) 90%);
-  --ink-text: var(--pal-ghost-white);
+  --ink: var(--pal-dawn-love);
+  --ink-hover: color-mix(in srgb, var(--pal-dawn-love) 75%, var(--pal-black) 25%);
+  --ink-active: color-mix(in srgb, var(--pal-dawn-love) 60%, var(--pal-black) 40%);
+  --ink-subtle: color-mix(in srgb, var(--pal-dawn-love) 10%, var(--pal-dawn-base) 90%);
+  --ink-text: var(--pal-dawn-surface);
 
   /* Single-hue sequential ramp for multi-series charts (offence/agency breakdowns) —
      steps toward --ink-hover, not toward transparent: at --ink's own lightness,
      fading to transparent over a near-white page washes out to illegible pastel
      within 2-3 steps (see blocking-stats.tsx history). */
   --ink-scale-1: var(--ink);
-  --ink-scale-2: #db0f83;
-  --ink-scale-3: #b81475;
-  --ink-scale-4: #951967;
-  --ink-scale-5: #701f59;
-  --ink-scale-6: #472549;
+  --ink-scale-2: #9e576b;
+  --ink-scale-3: #894b5d;
+  --ink-scale-4: #73404e;
+  --ink-scale-5: #5e3440;
+  --ink-scale-6: #482831;
 
   /* Destructive red — violation status only (sole non-gray in the system) */
   --violation: oklch(0.577 0.245 27.325);
@@ -49,13 +54,13 @@
   --compliant-subtle: oklch(0.95 0 0);
   --compliant-text: oklch(0.40 0 0);
 
-  /* Neutral ramp — tinted toward the palette's violet instead of pure gray */
-  --stone-bg: var(--pal-ghost-white);
-  --stone-nav: var(--pal-ghost-white);
-  --stone-panel: color-mix(in srgb, var(--pal-ghost-white) 88%, var(--pal-midnight-violet) 12%);
-  --stone-border: color-mix(in srgb, var(--pal-ghost-white) 78%, var(--pal-midnight-violet) 22%);
-  --stone-muted: color-mix(in srgb, var(--pal-midnight-violet) 72%, var(--pal-ghost-white) 28%);
-  --stone-text: var(--pal-black);
+  /* Neutral ramp — tinted toward Dawn's text purple instead of pure gray */
+  --stone-bg: var(--pal-dawn-base);
+  --stone-nav: var(--pal-dawn-base);
+  --stone-panel: color-mix(in srgb, var(--pal-dawn-base) 88%, var(--pal-dawn-text) 12%);
+  --stone-border: color-mix(in srgb, var(--pal-dawn-base) 78%, var(--pal-dawn-text) 22%);
+  --stone-muted: color-mix(in srgb, var(--pal-dawn-text) 85%, var(--pal-dawn-base) 15%);
+  --stone-text: var(--pal-dawn-text);
 
   /* Typography */
   --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
@@ -66,21 +71,21 @@
      same palette instead of shadcn's stock near-white/near-black. */
   --background: var(--stone-bg);
   --foreground: var(--stone-text);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
+  --card: var(--pal-dawn-surface);
+  --card-foreground: var(--pal-dawn-text);
+  --popover: var(--pal-dawn-surface);
+  --popover-foreground: var(--pal-dawn-text);
   --primary: var(--ink);
   --primary-foreground: var(--ink-text);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --secondary: var(--stone-panel);
+  --secondary-foreground: var(--stone-text);
+  --muted: var(--stone-panel);
+  --muted-foreground: var(--stone-muted);
+  --accent: var(--stone-panel);
+  --accent-foreground: var(--stone-text);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
+  --border: var(--stone-border);
+  --input: var(--stone-border);
   --ring: var(--ink);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
@@ -88,15 +93,15 @@
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar: var(--pal-dawn-surface);
+  --sidebar-foreground: var(--stone-text);
   --sidebar-primary: var(--ink);
   --sidebar-primary-foreground: var(--ink-text);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-accent: var(--stone-panel);
+  --sidebar-accent-foreground: var(--stone-text);
+  --sidebar-border: var(--stone-border);
   --sidebar-ring: var(--ink);
-  --chart-background: oklch(1 0 0);
+  --chart-background: var(--pal-dawn-surface);
   --chart-foreground: oklch(0.145 0.004 285);
   --chart-foreground-muted: oklch(0.55 0.014 260);
   --chart-line-primary: var(--chart-1);
