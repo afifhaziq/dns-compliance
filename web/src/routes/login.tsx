@@ -33,15 +33,15 @@ function LoginPage() {
 
       <div
         className="rounded-2xl shadow-2xl backdrop-blur-md"
-        style={{ width: 360, padding: 32, background: 'rgba(20, 20, 22, 0.45)' }}
+        style={{ width: 360, padding: 32, background: 'var(--auth-card-bg)' }}
       >
         <div className="page-header mb-4" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4, padding: 0 }}>
-          <h1 className="page-title" style={{ color: '#fff' }}>Citadel</h1>
-          <p className="page-subtitle" style={{ color: 'rgba(255,255,255,0.6)' }}>Sign in to continue</p>
+          <h1 className="page-title" style={{ color: 'var(--auth-card-fg)' }}>Citadel</h1>
+          <p className="page-subtitle" style={{ color: 'var(--auth-card-fg-muted)' }}>Sign in to continue</p>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="form-field">
-            <label className="form-label" htmlFor="login-username" style={{ color: 'rgba(255,255,255,0.85)' }}>Username</label>
+            <label className="form-label" htmlFor="login-username" style={{ color: 'var(--auth-card-label)' }}>Username</label>
             <input
               id="login-username"
               className="form-input"
@@ -54,7 +54,7 @@ function LoginPage() {
             />
           </div>
           <div className="form-field">
-            <label className="form-label" htmlFor="login-password" style={{ color: 'rgba(255,255,255,0.85)' }}>Password</label>
+            <label className="form-label" htmlFor="login-password" style={{ color: 'var(--auth-card-label)' }}>Password</label>
             <input
               id="login-password"
               className="form-input"

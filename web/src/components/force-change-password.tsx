@@ -35,17 +35,17 @@ export function ForceChangePasswordScreen({ onChanged }: { onChanged: () => Prom
 
       <div
         className="rounded-2xl shadow-2xl backdrop-blur-md"
-        style={{ width: 380, padding: 32, background: 'rgba(20, 20, 22, 0.45)' }}
+        style={{ width: 380, padding: 32, background: 'var(--auth-card-bg)' }}
       >
         <div className="page-header mb-4" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4, padding: 0 }}>
-          <h1 className="page-title" style={{ color: '#fff' }}>Set a New Password</h1>
-          <p className="page-subtitle" style={{ color: 'rgba(255,255,255,0.6)' }}>
+          <h1 className="page-title" style={{ color: 'var(--auth-card-fg)' }}>Set a New Password</h1>
+          <p className="page-subtitle" style={{ color: 'var(--auth-card-fg-muted)' }}>
             Your password was reset by an admin. Set your own before continuing.
           </p>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="form-field">
-            <label className="form-label" htmlFor="fcp-current" style={{ color: 'rgba(255,255,255,0.85)' }}>Temporary Password</label>
+            <label className="form-label" htmlFor="fcp-current" style={{ color: 'var(--auth-card-label)' }}>Temporary Password</label>
             <input
               id="fcp-current"
               className="form-input"
@@ -58,7 +58,7 @@ export function ForceChangePasswordScreen({ onChanged }: { onChanged: () => Prom
             />
           </div>
           <div className="form-field">
-            <label className="form-label" htmlFor="fcp-new" style={{ color: 'rgba(255,255,255,0.85)' }}>New Password</label>
+            <label className="form-label" htmlFor="fcp-new" style={{ color: 'var(--auth-card-label)' }}>New Password</label>
             <input
               id="fcp-new"
               className="form-input"
@@ -70,7 +70,7 @@ export function ForceChangePasswordScreen({ onChanged }: { onChanged: () => Prom
             />
           </div>
           <div className="form-field">
-            <label className="form-label" htmlFor="fcp-confirm" style={{ color: 'rgba(255,255,255,0.85)' }}>Confirm New Password</label>
+            <label className="form-label" htmlFor="fcp-confirm" style={{ color: 'var(--auth-card-label)' }}>Confirm New Password</label>
             <input
               id="fcp-confirm"
               className="form-input"

@@ -6,13 +6,13 @@ import { cn } from "@/lib/utils";
 
 export interface AuroraBarsProps {
   barCount?: number; // default: 24
-  colors?: string[]; // default: ["#ffd6eb","#ff9acb","#ff5aa6","#ff2d78","#00000000"]
+  colors?: string[]; // default: --aurora-1..4 (theme-aware), then transparent
   maxHeightRatio?: number; // default: 0.92
   minHeightRatio?: number; // default: 0.18
   speed?: number; // default: 0.5
   gap?: number; // default: 3
   blur?: number; // default: 0
-  background?: string; // default: "#000000"
+  background?: string; // default: var(--aurora-bg)
   className?: string;
 }
 
@@ -34,13 +34,13 @@ function barHeight(
 
 export function AuroraBars({
   barCount = 24,
-  colors = ["#ffd6eb", "#ff9acb", "#ff5aa6", "#ff2d78", "#00000000"],
+  colors = ["var(--aurora-1)", "var(--aurora-2)", "var(--aurora-3)", "var(--aurora-4)", "transparent"],
   maxHeightRatio = 0.92,
   minHeightRatio = 0.18,
   speed = 0.5,
   gap = 3,
   blur = 0,
-  background = "#060407",
+  background = "var(--aurora-bg)",
   className,
 }: AuroraBarsProps) {
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -102,7 +102,7 @@ export function AuroraBars({
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: "radial-gradient(ellipse 90% 80% at 50% 100%, transparent 40%, #000000cc 100%)",
+          background: "radial-gradient(ellipse 90% 80% at 50% 100%, transparent 40%, var(--aurora-vignette) 100%)",
         }}
       />
     </div>

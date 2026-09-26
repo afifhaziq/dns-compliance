@@ -18,6 +18,7 @@
   --pal-dawn-surface: #fffaf3;
   --pal-dawn-text: #575279;
   --pal-dawn-love: #b4637a;
+  --pal-dawn-pine: #286983;
 
   /* Accent — action/identity. Not status, not decoration. */
   --ink: var(--pal-dawn-love);
@@ -61,6 +62,19 @@
   --stone-border: color-mix(in srgb, var(--pal-dawn-base) 78%, var(--pal-dawn-text) 22%);
   --stone-muted: color-mix(in srgb, var(--pal-dawn-text) 85%, var(--pal-dawn-base) 15%);
   --stone-text: var(--pal-dawn-text);
+
+  /* Login / force-change-password screen — aurora bars sit on the page background,
+     the card stays dark glass with white text. Bars run bottom→top, then fade out. */
+  --aurora-1: color-mix(in srgb, var(--pal-dawn-love) 25%, var(--pal-dawn-base));
+  --aurora-2: color-mix(in srgb, var(--pal-dawn-love) 55%, var(--pal-dawn-base));
+  --aurora-3: color-mix(in srgb, var(--pal-dawn-love) 85%, var(--pal-dawn-base));
+  --aurora-4: var(--pal-dawn-love);
+  --aurora-bg: var(--stone-bg);
+  --aurora-vignette: color-mix(in srgb, var(--pal-dawn-base) 80%, transparent);
+  --auth-card-bg: rgba(20, 20, 22, 0.45);
+  --auth-card-fg: #fff;
+  --auth-card-fg-muted: rgba(255, 255, 255, 0.6);
+  --auth-card-label: rgba(255, 255, 255, 0.85);
 
   /* Typography */
   --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
@@ -288,6 +302,16 @@ html.dark {
   --stone-border: color-mix(in srgb, var(--pal-midnight-violet) 45%, var(--pal-black) 55%);
   --stone-muted: color-mix(in srgb, var(--pal-ghost-white) 45%, var(--pal-midnight-violet) 55%);
   --stone-text: var(--pal-ghost-white);
+
+  --aurora-1: #ffd6eb;
+  --aurora-2: #ff9acb;
+  --aurora-3: #ff5aa6;
+  --aurora-4: #ff2d78;
+  --aurora-vignette: #000000cc;
+  --auth-card-bg: rgba(20, 20, 22, 0.45);
+  --auth-card-fg: #fff;
+  --auth-card-fg-muted: rgba(255, 255, 255, 0.6);
+  --auth-card-label: rgba(255, 255, 255, 0.85);
 
   --background: var(--stone-bg);
   --foreground: var(--stone-text);
