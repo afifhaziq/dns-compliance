@@ -15,7 +15,7 @@ declare module '@tanstack/react-router' {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ThemeProvider attribute="class" defaultTheme="light" disableTransitionOnChange={false}>
+    <ThemeProvider attribute="class" defaultTheme="dark" disableTransitionOnChange={false}>
       <RouterProvider router={router} />
     </ThemeProvider>
   </StrictMode>,

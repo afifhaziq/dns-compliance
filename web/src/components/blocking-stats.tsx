@@ -547,7 +547,7 @@ function AgencyOffenceStack({ lines, years }: { lines: Line[]; years: number[] }
           <BarChart data={data} stacked stackGap={1} aspectRatio="2.4 / 1" margin={{ top: 8, right: 0, bottom: 30, left: 0 }}>
             <Grid horizontal vertical={false} />
             {series.map((s, i) => <Bar key={s.key} dataKey={s.key} fill={ramp(i, series.length)} />)}
-            <BarXAxis />
+            <BarXAxis showAllLabels />
             <ChartTooltip rows={tooltipRows} />
           </BarChart>
           <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2">

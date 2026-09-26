@@ -92,7 +92,7 @@ function DashboardPage() {
         </div>
       )}
 
-      <Tabs defaultValue="isp" variant="underline">
+      <Tabs defaultValue="mcmc" variant="underline">
         <TabsList>
           <TabsTrigger value="isp">ISP</TabsTrigger>
           <TabsTrigger value="mcmc">MCMC</TabsTrigger>
