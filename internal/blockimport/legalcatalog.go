@@ -72,10 +72,10 @@ func LoadCitationClassification(path string) (map[string][]citationTarget, error
 }
 
 var (
-	// trailingAktaNumberRe pulls "(Akta 289)"-style official-number suffixes
+	// trailingAktaNumberRe pulls "(Akta 289)" / "[Akta 289]"-style official-number suffixes
 	// off the end of an instrument string, e.g. "Akta Rumah Judi Terbuka
 	// 1953 (Akta 289)" -> Number "289", ShortTitle "Akta Rumah Judi Terbuka 1953".
-	trailingAktaNumberRe = regexp.MustCompile(`\s*\(Akta (\d+)\)\s*$`)
+	trailingAktaNumberRe = regexp.MustCompile(`\s*[(\[]Akta (\d+)[)\]]\s*$`)
 	// trailingYearRe pulls a trailing 4-digit year off the (Number-stripped)
 	// short title. Absent for the one instrument cited without a year by
 	// convention (Kanun Keseksaan, the Penal Code).
