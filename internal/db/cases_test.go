@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -1003,5 +1004,69 @@ func TestListCaseSummariesPage_LatestScanOutcomePerDomain(t *testing.T) {
 				t.Fatalf("unscanned.com: %+v", d)
 			}
 		}
+	}
+}
+
+// TestMergeOffenceCasing covers the "Tidak Berdaftar" vs "Tidak berdaftar"
+// bug: categories rows that differ only in casing must collapse into one
+// BlockingStatRow per (year, agency) with counts summed, and — modelled on
+// the real data for "Penjualan (T|t)anpa Kebenaran"/agency MOTAC, where the
+// lowercase variant actually wins some individual years and the uppercase
+// variant wins others — the winning casing must be picked once globally so
+// the same offence never re-splits across years in the frontend's
+// (agency, offence)-string grouping.
+func TestMergeOffenceCasing(t *testing.T) {
+	in := []db.BlockingStatRow{
+		{Year: 2024, Agency: "MCMC", Offence: "Tidak Berdaftar", Count: 5},
+		{Year: 2024, Agency: "MCMC", Offence: "Tidak berdaftar", Count: 1},
+		// Different year/agency buckets must stay separate.
+		{Year: 2023, Agency: "MCMC", Offence: "Tidak Berdaftar", Count: 2},
+		{Year: 2024, Agency: "KPDNHEP", Offence: "tidak berdaftar", Count: 3},
+		// MOTAC: lowercase wins 2016+2017, uppercase wins 2018+2021 — the
+		// global total (13+64=77 lower vs 8+1=9 upper) must still pick one
+		// consistent name for every MOTAC row, not flip year to year.
+		{Year: 2016, Agency: "MOTAC", Offence: "Penjualan Tanpa Kebenaran", Count: 3},
+		{Year: 2016, Agency: "MOTAC", Offence: "Penjualan tanpa kebenaran", Count: 10},
+		{Year: 2017, Agency: "MOTAC", Offence: "Penjualan Tanpa Kebenaran", Count: 19},
+		{Year: 2017, Agency: "MOTAC", Offence: "Penjualan tanpa kebenaran", Count: 45},
+		{Year: 2018, Agency: "MOTAC", Offence: "Penjualan Tanpa Kebenaran", Count: 8},
+		{Year: 2021, Agency: "MOTAC", Offence: "Penjualan Tanpa Kebenaran", Count: 1},
+	}
+	got := db.MergeOffenceCasing(in)
+	if len(got) != 7 {
+		t.Fatalf("len(got) = %d, want 7: %+v", len(got), got)
+	}
+	byKey := map[string]db.BlockingStatRow{}
+	for _, r := range got {
+		byKey[fmt.Sprintf("%d/%s/%s", r.Year, r.Agency, strings.ToLower(r.Offence))] = r
+	}
+	tb := byKey["2024/MCMC/tidak berdaftar"]
+	if tb.Count != 6 || tb.Offence != "Tidak Berdaftar" {
+		t.Fatalf("tidak berdaftar 2024/MCMC = %+v, want count=6 offence=Tidak Berdaftar", tb)
+	}
+	if r := byKey["2023/MCMC/tidak berdaftar"]; r.Count != 2 {
+		t.Fatalf("2023/MCMC bucket should stay separate: %+v", r)
+	}
+	if r := byKey["2024/KPDNHEP/tidak berdaftar"]; r.Count != 3 {
+		t.Fatalf("2024/KPDNHEP bucket should stay separate: %+v", r)
+	}
+
+	// Every MOTAC row must share one display name — the global-plurality
+	// lowercase variant — even the 2018/2021 rows that only ever appeared
+	// with the uppercase spelling in their own bucket.
+	wantCounts := map[int]int{2016: 13, 2017: 64, 2018: 8, 2021: 1}
+	names := map[string]bool{}
+	for year, wantCount := range wantCounts {
+		r := byKey[fmt.Sprintf("%d/MOTAC/penjualan tanpa kebenaran", year)]
+		if r.Count != wantCount {
+			t.Fatalf("MOTAC %d count = %d, want %d: %+v", year, r.Count, wantCount, r)
+		}
+		names[r.Offence] = true
+	}
+	if len(names) != 1 {
+		t.Fatalf("MOTAC rows use %d distinct display names, want 1: %v", len(names), names)
+	}
+	if !names["Penjualan tanpa kebenaran"] {
+		t.Fatalf("MOTAC display name = %v, want the global-plurality lowercase variant", names)
 	}
 }

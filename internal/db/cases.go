@@ -594,6 +594,10 @@ type BlockingStatRow struct {
 // BlockingStats counts (case, domain) blocks — status blocked/uplift/suspended,
 // i.e. ever blocked — by Notice-letter year, agency and offence category.
 // A domain carrying several offences on one case counts once under each.
+// `categories` has multiple rows for what's really the same offence but
+// differently cased (e.g. "Tidak Berdaftar" vs "Tidak berdaftar") — the SQL
+// groups by the raw name (so it stays untouched by the offence-casing fix),
+// and MergeOffenceCasing folds those variants together afterward.
 // ponytail: Postgres-only (EXTRACT); no SQLite test.
 func (s *postgresStore) BlockingStats(ctx context.Context, departmentID *uint) ([]BlockingStatRow, error) {
 	q := `SELECT COALESCE(EXTRACT(YEAR FROM (SELECT MIN(cl.letter_date) FROM case_letters cl
@@ -614,5 +618,68 @@ func (s *postgresStore) BlockingStats(ctx context.Context, departmentID *uint) (
 	}
 	q += " GROUP BY 1, 2, 3"
 	var rows []BlockingStatRow
-	return rows, s.db.WithContext(ctx).Raw(q, args...).Scan(&rows).Error
+	if err := s.db.WithContext(ctx).Raw(q, args...).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	return MergeOffenceCasing(rows), nil
+}
+
+// MergeOffenceCasing folds BlockingStatRow buckets that differ only in the
+// offence name's casing into one. The display name is picked globally per
+// offence — the casing variant with the highest total count across every
+// row, ties broken alphabetically (which also happens to prefer Title Case,
+// since uppercase sorts before lowercase in ASCII) — deterministic either
+// way, and crucially *not* decided separately per (year, agency) bucket:
+// picking it per-bucket let the winning casing flip from one year to the
+// next for the same agency, which just re-split the offence in the
+// frontend's own (agency, offence)-string grouping instead of fixing it.
+// Exported for unit testing without a database (parallels
+// db.DailyComplianceLevel).
+func MergeOffenceCasing(rows []BlockingStatRow) []BlockingStatRow {
+	// Pass 1: total each exact casing variant's count within its
+	// case-insensitive group, to find the group's overall winner.
+	variantCounts := make(map[string]map[string]int)
+	for _, r := range rows {
+		lower := strings.ToLower(r.Offence)
+		if variantCounts[lower] == nil {
+			variantCounts[lower] = make(map[string]int)
+		}
+		variantCounts[lower][r.Offence] += r.Count
+	}
+	displayName := make(map[string]string, len(variantCounts))
+	for lower, variants := range variantCounts {
+		best, bestCount := "", -1
+		for name, count := range variants {
+			if count > bestCount || (count == bestCount && name < best) {
+				best, bestCount = name, count
+			}
+		}
+		displayName[lower] = best
+	}
+
+	// Pass 2: merge same-bucket duplicates (a year/agency can itself carry
+	// both casings, e.g. two cases in the same year classified differently)
+	// and apply the group's single display name throughout.
+	type key struct {
+		year   int
+		agency string
+		lower  string
+	}
+	order := make([]key, 0, len(rows))
+	merged := make(map[key]*BlockingStatRow, len(rows))
+	for _, r := range rows {
+		lower := strings.ToLower(r.Offence)
+		k := key{r.Year, r.Agency, lower}
+		if existing, ok := merged[k]; ok {
+			existing.Count += r.Count
+			continue
+		}
+		merged[k] = &BlockingStatRow{Year: r.Year, Agency: r.Agency, Offence: displayName[lower], Count: r.Count}
+		order = append(order, k)
+	}
+	out := make([]BlockingStatRow, 0, len(order))
+	for _, k := range order {
+		out = append(out, *merged[k])
+	}
+	return out
 }
