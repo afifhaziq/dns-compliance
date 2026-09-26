@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -543,7 +544,15 @@ func (h *Handlers) TriggerScan(w http.ResponseWriter, r *http.Request) {
 	//nolint:errcheck
 	json.NewDecoder(r.Body).Decode(&body) // #nosec G104 -- body is optional, a decode error just leaves body.URLs nil (full sweep)
 	if err := h.scanner.Trigger(r.Context(), "manual", body.URLs); err != nil {
-		writeError(w, http.StatusConflict, err.Error())
+		// Nothing-to-scan is a distinct, non-transient condition from
+		// "already running" — 422 so callers (and triggerScan on the
+		// frontend, which deliberately swallows 409 as a benign race) don't
+		// mistake a real no-op for a harmless concurrent-trigger conflict.
+		status := http.StatusConflict
+		if errors.Is(err, ErrNoWatchedURLs) || errors.Is(err, ErrNoEnabledDNSServers) {
+			status = http.StatusUnprocessableEntity
+		}
+		writeError(w, status, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"message": "scan triggered"})

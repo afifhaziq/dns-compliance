@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"sync"
@@ -14,6 +15,18 @@ import (
 	pb "github.com/afif/dns-tracking/proto"
 	"google.golang.org/grpc"
 )
+
+// ErrNoWatchedURLs is returned by Trigger for a full sweep (nil/empty urls)
+// when the watchlist has nothing enabled to scan — surfaced to API callers
+// instead of silently accepting the request and having the background run
+// log-and-return with nothing to show for it (see run's own belt-and-suspenders
+// re-check below, for the rare TOCTOU window between this check and the goroutine
+// actually starting).
+var ErrNoWatchedURLs = errors.New("no enabled watchlist domains to scan")
+
+// ErrNoEnabledDNSServers is returned by Trigger when there are no enabled DNS
+// servers to sweep against, for the same reason as ErrNoWatchedURLs above.
+var ErrNoEnabledDNSServers = errors.New("no enabled DNS servers to scan against")
 
 // crawlerClient is the subset of pb.CrawlerControlClient the Scanner needs,
 // narrowed to a small interface so tests can inject a fake instead of
@@ -92,6 +105,34 @@ func (sc *Scanner) Cancel() error {
 // optional list of specific domains to scan; nil or empty means scan all
 // enabled watched URLs. Returns an error if a scan is already in progress.
 func (sc *Scanner) Trigger(ctx context.Context, triggeredBy string, urls []string) error {
+	sc.mu.Lock()
+	if sc.running {
+		sc.mu.Unlock()
+		return errors.New("scan already in progress")
+	}
+	sc.mu.Unlock()
+
+	// Pre-checks so a request with nothing to scan gets a clear synchronous
+	// error instead of a 202 followed by run() silently logging and
+	// returning. Every caller (manual trigger, "Scan Selected", both
+	// schedulers) routes through here, so this is the one place to catch it.
+	if len(urls) == 0 {
+		watched, err := sc.store.ListWatchedURLs(ctx)
+		if err != nil {
+			return fmt.Errorf("load watchlist: %w", err)
+		}
+		if len(watched) == 0 {
+			return ErrNoWatchedURLs
+		}
+	}
+	servers, err := sc.store.ListEnabledDNSServers(ctx)
+	if err != nil {
+		return fmt.Errorf("load dns servers: %w", err)
+	}
+	if len(servers) == 0 {
+		return ErrNoEnabledDNSServers
+	}
+
 	sc.mu.Lock()
 	if sc.running {
 		sc.mu.Unlock()

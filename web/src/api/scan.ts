@@ -43,6 +43,19 @@ export type ScanProgressResponse = {
   per_dns: ProgressEntry[]
 }
 
+// fetchScanProgress backs the "Scan All" confirmation dialog's domain count.
+// total_urls is computed fresh from ListWatchedURLs on every call, so it's
+// accurate for the *current* watchlist state even though it's served
+// alongside the last scan run's per-DNS tally. Returns null (not an error)
+// when no scan has ever run — GET /api/scan/progress 404s in that case since
+// there's no ScanRun row to attach the payload to.
+export async function fetchScanProgress(): Promise<ScanProgressResponse | null> {
+  const res = await fetch('/api/scan/progress', { credentials: 'same-origin' })
+  if (res.status === 404) return null
+  if (!res.ok) throw new Error(`Failed to get scan progress: ${res.status}`)
+  return res.json()
+}
+
 export async function triggerScreenshot(url: string, dnsServerIds: number[]): Promise<void> {
   await api.post<void>('/screenshot', { url, dns_server_ids: dnsServerIds })
 }

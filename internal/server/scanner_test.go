@@ -263,6 +263,55 @@ func (c *statusCapturingStore) CompleteScanRun(ctx context.Context, id uint, sta
 	return c.completionCapture.CompleteScanRun(ctx, id, status, at)
 }
 
+// emptyWatchlistStore overrides ListWatchedURLs to simulate every watchlist
+// row being disabled (see the repo CLAUDE.md's "34,285 rows, all
+// enabled=false" scenario that made a full sweep a silent no-op).
+type emptyWatchlistStore struct{ completionCapture }
+
+func (c *emptyWatchlistStore) ListWatchedURLs(_ context.Context) ([]db.URL, error) {
+	return nil, nil
+}
+
+func TestScannerTriggerRejectsWhenNothingToScan(t *testing.T) {
+	crawler := &fakeCrawlerClient{}
+
+	t.Run("no enabled watchlist domains", func(t *testing.T) {
+		store := &emptyWatchlistStore{}
+		sc := server.NewScanner(crawler, "test-token", store, nil)
+
+		err := sc.Trigger(context.Background(), "manual", nil)
+		if err != server.ErrNoWatchedURLs {
+			t.Fatalf("expected ErrNoWatchedURLs, got %v", err)
+		}
+		if sc.IsRunning() {
+			t.Fatal("scan should not have started")
+		}
+	})
+
+	t.Run("no enabled DNS servers", func(t *testing.T) {
+		store := &completionCapture{dnsServers: []db.DNSServer{}}
+		sc := server.NewScanner(crawler, "test-token", store, nil)
+
+		err := sc.Trigger(context.Background(), "manual", nil)
+		if err != server.ErrNoEnabledDNSServers {
+			t.Fatalf("expected ErrNoEnabledDNSServers, got %v", err)
+		}
+		if sc.IsRunning() {
+			t.Fatal("scan should not have started")
+		}
+	})
+
+	t.Run("targeted scan still requires enabled DNS servers", func(t *testing.T) {
+		store := &completionCapture{dnsServers: []db.DNSServer{}}
+		sc := server.NewScanner(crawler, "test-token", store, nil)
+
+		err := sc.Trigger(context.Background(), "manual", []string{"example.com"})
+		if err != server.ErrNoEnabledDNSServers {
+			t.Fatalf("expected ErrNoEnabledDNSServers, got %v", err)
+		}
+	})
+}
+
 func TestScannerRejectsConcurrentRun(t *testing.T) {
 	// Sleeps briefly so the second Trigger hits while the first is still running.
 	crawler := &fakeCrawlerClient{delay: 300 * time.Millisecond}

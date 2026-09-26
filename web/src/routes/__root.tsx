@@ -20,7 +20,8 @@ import {
   useNavigate,
 } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/router-devtools'
-import { triggerScan, cancelScan, type ScanProgressResponse } from '../api/scan'
+import { triggerScan, cancelScan, fetchScanProgress, type ScanProgressResponse } from '../api/scan'
+import { fetchDnsServers } from '../api/dns-servers'
 import { fetchMe, logout as apiLogout } from '../api/auth'
 import { fetchUrls } from '../api/urls'
 import type { User, URLEntry } from '../api/types'
@@ -48,6 +49,76 @@ export function normalizeForClient(raw: string): string {
   s = s.replace(/^[^@]+@/, '')          // strip userinfo
   const host = s.split('/')[0]          // drop path
   return host.replace(/:\d+$/, '').replace(/\.$/, '')  // drop port, trailing dot
+}
+
+/* ─── Scan All Confirm Dialog ──────────────────────────────────────────────── */
+
+function ScanAllConfirmDialog({
+  open,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  const [loading, setLoading] = useState(true)
+  const [domainCount, setDomainCount] = useState<number | null>(null)
+  const [serverCount, setServerCount] = useState<number | null>(null)
+  const [loadError, setLoadError] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setLoading(true)
+    setLoadError(false)
+    Promise.all([fetchScanProgress(), fetchDnsServers()])
+      .then(([progress, servers]) => {
+        if (cancelled) return
+        setDomainCount(progress ? progress.total_urls : null)
+        setServerCount(servers.filter(s => s.enabled).length)
+      })
+      .catch(() => { if (!cancelled) setLoadError(true) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [open])
+
+  const nothingToScan = domainCount === 0 || serverCount === 0
+  const countsUnknown = domainCount === null
+  const queries = domainCount !== null && serverCount !== null ? domainCount * serverCount : null
+  const confirmDisabled = loading || loadError || nothingToScan
+
+  let message: string
+  if (loading) {
+    message = 'Calculating…'
+  } else if (loadError) {
+    message = 'Could not load domain/DNS server counts. Try again shortly.'
+  } else if (domainCount === 0) {
+    message = 'No enabled watchlist domains to scan.'
+  } else if (serverCount === 0) {
+    message = 'No enabled DNS servers to scan against.'
+  } else if (countsUnknown) {
+    message = `Scan against ${serverCount!.toLocaleString()} DNS servers. Domain count unavailable (no prior scan on record).`
+  } else {
+    message = `Scan ${domainCount!.toLocaleString()} domains against ${serverCount!.toLocaleString()} DNS servers — ${queries!.toLocaleString()} DNS queries.`
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) onClose() }}>
+      <DialogContent showCloseButton={false} style={{ maxWidth: 440 }}>
+        <DialogHeader>
+          <DialogTitle>Scan All Domains</DialogTitle>
+          <DialogDescription>{message}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <button className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn-primary" disabled={confirmDisabled} onClick={onConfirm}>
+            Confirm
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 /* ─── Scan Selected Dialog ─────────────────────────────────────────────────── */
@@ -283,6 +354,7 @@ function RootLayout() {
   const [refreshSignal, setRefreshSignal] = useState(0)
   const [progress, setProgress] = useState<ScanProgressResponse | null>(null)
   const [scanSelectedOpen, setScanSelectedOpen] = useState(false)
+  const [scanAllConfirmOpen, setScanAllConfirmOpen] = useState(false)
   const wasScanningRef = useRef(false)
 
   const refreshAuth = useCallback(async () => {
@@ -410,7 +482,7 @@ function RootLayout() {
                   icon={Zap}
                   label="Scan All"
                   disabled={scanning}
-                  onClick={handleScanClick}
+                  onClick={() => setScanAllConfirmOpen(true)}
                   className="bg-transparent hover:bg-primary hover:text-white"
                 />
                 <IconBarItem
@@ -426,6 +498,12 @@ function RootLayout() {
               <LogoutButton />
             </>
           }
+        />
+
+        <ScanAllConfirmDialog
+          open={scanAllConfirmOpen}
+          onClose={() => setScanAllConfirmOpen(false)}
+          onConfirm={() => { setScanAllConfirmOpen(false); handleScanClick() }}
         />
 
         <ScanSelectedDialog
