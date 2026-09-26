@@ -54,7 +54,7 @@ export function GlassNavbar({ actions }: GlassNavbarProps) {
         initial={{ y: -48, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 220, damping: 26 }}
-        className="relative isolate mx-auto flex max-w-[70.4rem] items-center gap-1 rounded-full px-2 py-1.5
+        className="relative isolate mx-auto flex max-w-[66.88rem] items-center gap-1 rounded-full px-2 py-1.5
                    bg-white/25 border border-black/[0.10] shadow-[0_4px_28px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,1)]
                    dark:bg-white/[0.02] dark:border-white/[0.01] dark:shadow-[0_8px_32px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.10)]"
         style={{
