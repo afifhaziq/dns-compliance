@@ -17,6 +17,9 @@ type URLStore interface {
 	GetURLByID(ctx context.Context, id uint) (*URL, error)            // nil, nil if id is unknown
 
 	ListDepartmentURLs(ctx context.Context, departmentID uint) ([]URLEntry, error)
+	// ListURLEntriesPage is the Domain view's server-side paged variant;
+	// p.DepartmentID nil = every department's watchlist (admin).
+	ListURLEntriesPage(ctx context.Context, p URLListParams) ([]URLEntry, int, error)
 	AddURLToWatchlist(ctx context.Context, departmentID uint, rawURL string) (URL, error)
 	// EnsureURLOnDepartmentList makes sure urlID has a DepartmentURL row for
 	// departmentID, creating one with Enabled: false if none exists yet —

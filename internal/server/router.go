@@ -50,6 +50,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Post("/auth/change-password", ah.ChangePassword)
 
 			r.Get("/urls", h.ListURLs)
+			r.Get("/urls/page", h.ListURLsPage)
 			r.Post("/urls", h.AddToWatchlist)
 			r.Delete("/urls/{id}", h.RemoveFromWatchlist)
 			r.Patch("/urls/{id}", h.ToggleURL)

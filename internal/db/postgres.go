@@ -553,7 +553,27 @@ func (s *postgresStore) DeleteExpiredSessions(ctx context.Context) (int64, error
 
 func (s *postgresStore) ListDepartmentURLs(ctx context.Context, departmentID uint) ([]URLEntry, error) {
 	var entries []URLEntry
-	err := s.db.WithContext(ctx).
+	if err := s.urlEntryQuery(ctx, &departmentID).Order("urls.created_at asc").Scan(&entries).Error; err != nil {
+		return nil, err
+	}
+	return s.attachURLEntryExtras(ctx, entries)
+}
+
+// urlEntryQuery is the URLEntry row query behind ListDepartmentURLs and
+// ListURLEntriesPage. departmentID nil = every department's watchlist
+// (admin): one row per url watched by any department, Enabled = enabled by
+// any department, and the case fields come from the url's newest case of any
+// department — admin has no watchlist of its own, so "latest across
+// everyone" is the only single value that makes sense.
+func (s *postgresStore) urlEntryQuery(ctx context.Context, departmentID *uint) *gorm.DB {
+	// deptCond scopes the per-row case subqueries; empty for admin.
+	deptCond, deptArgs := "", []any{}
+	duJoin, duArgs := "JOIN (SELECT url_id, MAX(CASE WHEN enabled THEN 1 ELSE 0 END) = 1 AS enabled FROM department_urls GROUP BY url_id) du ON du.url_id = urls.id", []any{}
+	if departmentID != nil {
+		deptCond, deptArgs = " AND c.department_id = ?", []any{*departmentID}
+		duJoin, duArgs = "JOIN department_urls du ON du.url_id = urls.id AND du.department_id = ?", []any{*departmentID}
+	}
+	return s.db.WithContext(ctx).
 		Table("urls").
 		Select(`urls.id, urls.url, urls.created_at, du.enabled,
 			latest_case.id as case_id,
@@ -564,30 +584,93 @@ func (s *postgresStore) ListDepartmentURLs(ctx context.Context, departmentID uin
 			(SELECT cl.reference_number_external FROM case_letters cl
 			 JOIN cases c ON c.id = cl.case_id
 			 JOIN case_urls cu ON cu.case_id = c.id
-			 WHERE cu.url_id = urls.id AND cl.type IN ('Notice', 'Notice (Uplift)')
-			 ORDER BY (cl.type = 'Notice') DESC, cl.letter_date DESC LIMIT 1) AS current_reference_number`).
-		Joins("JOIN department_urls du ON du.url_id = urls.id AND du.department_id = ?", departmentID).
-		// latest_case is this url's most-recently-created Case — the source
-		// of the case-metadata fields URLEntry exposes under the same JSON
-		// names these used to carry directly on urls (see URL/URLEntry's
-		// doc comments in models.go). A url with zero cases leaves these
-		// null via the LEFT JOIN.
+			 WHERE cu.url_id = urls.id`+deptCond+` AND cl.type IN ('Notice', 'Notice (Uplift)')
+			 ORDER BY (cl.type = 'Notice') DESC, cl.letter_date DESC LIMIT 1) AS current_reference_number`, deptArgs...).
+		Joins(duJoin, duArgs...).
+		// latest_case is this url's most-recently-created Case *owned by the
+		// viewing department* (department_id = ?) — deliberately not shared
+		// across departments: another department's case on the same url is
+		// a separate, independently-owned record (its own status/due-date/
+		// agency/reference-number), not this department's business. A url
+		// with no case of this department's own leaves these null via the
+		// LEFT JOIN, which the frontend renders as "—" (urls.tsx).
+		// RequestingDepartments/Offences (below) remain cross-department --
+		// those are multi-valued "who else is on this" signals, not a
+		// single value that can be silently overridden by someone else's
+		// case.
 		Joins(`LEFT JOIN cases latest_case ON latest_case.id = (
 			SELECT c.id FROM cases c
 			JOIN case_urls cu ON cu.case_id = c.id
-			WHERE cu.url_id = urls.id
-			ORDER BY c.created_at DESC LIMIT 1)`).
+			WHERE cu.url_id = urls.id`+deptCond+`
+			ORDER BY c.created_at DESC LIMIT 1)`, deptArgs...).
 		// latest_case_url is the CaseURL row for this url and latest_case —
 		// agency_id moved from Case to CaseURL (2026-09-15), so we get it from
 		// there now.
 		Joins(`LEFT JOIN case_urls latest_case_url ON latest_case_url.case_id = latest_case.id AND latest_case_url.url_id = urls.id`).
-		Joins("LEFT JOIN agencies ON agencies.id = latest_case_url.agency_id").
-		Order("urls.created_at asc").
-		Scan(&entries).Error
-	if err != nil {
-		return nil, err
-	}
+		Joins("LEFT JOIN agencies ON agencies.id = latest_case_url.agency_id")
+}
 
+// URLListParams drives ListURLEntriesPage (the Domain view). Zero values mean
+// "no filter"; filters mirror CaseListParams.
+type URLListParams struct {
+	DepartmentID   *uint // RBAC scope; nil = every department (admin)
+	Page, PageSize int
+	Query          string // case-insensitive: domain or current reference number
+	Status         string
+	AgencyID       *uint
+	RequestingDept *uint // some case of this department covers the url
+	Created, Due   DateFilter
+	SortBy         string // "url" | "created_at" | "due_date"; default oldest-added first
+	SortDesc       bool
+}
+
+// ListURLEntriesPage is the Domain view's server-side paged/filtered/sorted
+// watchlist. Returns the page's rows and the total matching the filters.
+func (s *postgresStore) ListURLEntriesPage(ctx context.Context, p URLListParams) ([]URLEntry, int, error) {
+	q := s.db.WithContext(ctx).Table("(?) AS e", s.urlEntryQuery(ctx, p.DepartmentID))
+	if qs := strings.ToLower(strings.TrimSpace(p.Query)); qs != "" {
+		like := "%" + qs + "%"
+		q = q.Where("LOWER(e.url) LIKE ? OR LOWER(e.current_reference_number) LIKE ?", like, like)
+	}
+	if p.Status != "" {
+		q = q.Where("e.status = ?", p.Status)
+	}
+	if p.AgencyID != nil {
+		q = q.Where("e.agency_id = ?", *p.AgencyID)
+	}
+	if p.RequestingDept != nil {
+		q = q.Where("EXISTS (SELECT 1 FROM case_urls cu JOIN cases c ON c.id = cu.case_id WHERE cu.url_id = e.id AND c.department_id = ?)", *p.RequestingDept)
+	}
+	q = applyDateFilter(q, "e.created_at", p.Created)
+	q = applyDateFilter(q, "e.due_date", p.Due)
+
+	var total int64
+	if err := q.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	dir := "asc"
+	if p.SortDesc {
+		dir = "desc"
+	}
+	switch p.SortBy {
+	case "url":
+		q = q.Order("e.url " + dir)
+	case "due_date":
+		q = q.Order("e.due_date IS NULL").Order("e.due_date " + dir).Order("e.id") // empty dates always last
+	default:
+		q = q.Order("e.created_at " + dir).Order("e.id " + dir)
+	}
+	var entries []URLEntry
+	if err := q.Limit(p.PageSize).Offset((p.Page - 1) * p.PageSize).Scan(&entries).Error; err != nil {
+		return nil, 0, err
+	}
+	out, err := s.attachURLEntryExtras(ctx, entries)
+	return out, int(total), err
+}
+
+// attachURLEntryExtras fills the multi-valued RequestingDepartments and
+// Offences.
+func (s *postgresStore) attachURLEntryExtras(ctx context.Context, entries []URLEntry) ([]URLEntry, error) {
 	// RequestingDepartments can't be a scalar subquery (it's genuinely
 	// multi-valued) — fetch separately and merge in Go rather than a
 	// database-specific array_agg, keeping this portable across Postgres

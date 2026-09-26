@@ -107,6 +107,63 @@ func (h *Handlers) ListURLs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, urls)
 }
 
+// ListURLsPage is the Domain view's data source (GET /api/urls/page): one
+// page of watchlist rows plus the total matching the filters. Query params
+// mirror ListCaseSummaries (page, page_size, q, status, agency_id, dept_id,
+// created_*/due_*, sort=url|created_at|due_date, dir). Admin sees every
+// department's watchlist (deduplicated per url, see db.urlEntryQuery);
+// everyone else only their own department's.
+func (h *Handlers) ListURLsPage(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	qs := r.URL.Query()
+	p := db.URLListParams{
+		Page:     1,
+		PageSize: defaultDomainSummaryPageSize,
+		Query:    qs.Get("q"),
+		Status:   qs.Get("status"),
+		Created:  db.DateFilter{Op: qs.Get("created_op"), From: qs.Get("created_from"), To: qs.Get("created_to")},
+		Due:      db.DateFilter{Op: qs.Get("due_op"), From: qs.Get("due_from"), To: qs.Get("due_to")},
+		SortDesc: qs.Get("dir") == "desc",
+	}
+	if n, err := strconv.Atoi(qs.Get("page")); err == nil && n > 0 {
+		p.Page = n
+	}
+	if n, err := strconv.Atoi(qs.Get("page_size")); err == nil && n > 0 && n <= maxDomainSummaryPageSize {
+		p.PageSize = n
+	}
+	if n, err := strconv.ParseUint(qs.Get("agency_id"), 10, 64); err == nil {
+		id := uint(n)
+		p.AgencyID = &id
+	}
+	if n, err := strconv.ParseUint(qs.Get("dept_id"), 10, 64); err == nil {
+		id := uint(n)
+		p.RequestingDept = &id
+	}
+	if sort := qs.Get("sort"); sort == "url" || sort == "created_at" || sort == "due_date" {
+		p.SortBy = sort
+	}
+	if !user.IsAdmin {
+		if user.DepartmentID == nil {
+			writeError(w, http.StatusForbidden, "user has no department")
+			return
+		}
+		p.DepartmentID = user.DepartmentID
+	}
+	urls, total, err := h.store.ListURLEntriesPage(r.Context(), p)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	if urls == nil {
+		urls = []db.URLEntry{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"urls": urls, "total": total})
+}
+
 // AddToWatchlist gets-or-creates the URL by normalized value and links it to
 // the caller's department watchlist (admin's own "Admin" department included).
 func (h *Handlers) AddToWatchlist(w http.ResponseWriter, r *http.Request) {

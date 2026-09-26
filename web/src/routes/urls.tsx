@@ -7,8 +7,6 @@ import {
   type VisibilityState,
   type ExpandedState,
   getCoreRowModel,
-  getSortedRowModel,
-  getPaginationRowModel,
   getExpandedRowModel,
   useReactTable,
 } from '@tanstack/react-table'
@@ -20,8 +18,8 @@ import { SquarePenIcon } from '@/components/ui/square-pen'
 import { DownloadIcon } from '@/components/animate-ui/icons/download'
 import { DataGridTableRowExpand } from '@/components/reui/data-grid/data-grid-table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
-import { fetchUrls, createUrl, deleteUrl, setUrlEnabled } from '../api/urls'
-import { normalizeForClient } from './__root'
+import { fetchUrlsPage, fetchUrlCount, createUrl, deleteUrl, setUrlEnabled } from '../api/urls'
+import { normalizeForClient, useAuth } from './__root'
 import { createCase, addCaseLetter, addUrlToCase, updateCase, updateCaseURLStatus, updateCaseURLAgency, removeUrlFromCase, updateCaseLetter, fetchCaseSummariesPage, exportCaseSummaries } from '../api/cases'
 import { downloadBlob } from '@/lib/download'
 import { fetchAgencies } from '../api/agencies'
@@ -1192,6 +1190,34 @@ function joinedCell(values: (string | undefined)[]) {
   )
 }
 
+// Case-row rollups: a case's own domain subrows each carry their own
+// agency/status/offences/scan result, so the case row summarizes across
+// them rather than showing '—' — first distinct value + "+N" for the rest.
+function firstPlusN(values: (string | undefined)[]): string {
+  const distinct = Array.from(new Set(values.filter((v): v is string => !!v)))
+  if (distinct.length === 0) return '—'
+  return distinct.length === 1 ? distinct[0] : `${distinct[0]} +${distinct.length - 1}`
+}
+
+function caseStatusSummary(domains: CaseSummaryDomain[]): string {
+  const statuses = domains.map(d => d.status).filter(Boolean)
+  if (statuses.length === 0) return '—'
+  const counts = new Map<string, number>()
+  for (const s of statuses) counts.set(s, (counts.get(s) ?? 0) + 1)
+  const labelFor = (v: string) => STATUS_OPTIONS.find(o => o.value === v)?.label ?? v
+  const [topStatus, topCount] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]
+  return counts.size === 1
+    ? `${statuses.length}/${statuses.length} ${labelFor(topStatus)}`
+    : `${topCount}/${statuses.length} ${labelFor(topStatus)} · mixed`
+}
+
+function caseScanSummary(domains: CaseSummaryDomain[]): string {
+  const scanned = domains.filter(d => (d.scan_total ?? 0) > 0)
+  if (scanned.length === 0) return 'Not scanned'
+  const violating = scanned.filter(d => (d.scan_compliant ?? 0) < (d.scan_total ?? 0)).length
+  return `${violating} violating / ${scanned.length}`
+}
+
 const PAGE_SIZE = 25
 
 const IS_ONLY = [{ value: 'is', label: 'is' }]
@@ -1206,7 +1232,7 @@ const DATE_OPERATORS = [
 // `bare` skips DatePicker's own bordered/rounded shell (built for standalone
 // form fields) — the customRenderer slot's ButtonGroupText wrapper already
 // supplies that chrome, so without `bare` the two nest into a double box.
-// values hold plain 'yyyy-MM-dd' strings (see matchesDateFilter) — parseISO
+// values hold plain 'yyyy-MM-dd' strings (compared date-only server-side) — parseISO
 // (not `new Date()`) so a date-only string parses as local midnight, not UTC.
 function DateFilterRenderer({ values, onChange, operator }: CustomRendererProps<string>) {
   const [from, to] = values
@@ -1226,25 +1252,6 @@ function DateFilterRenderer({ values, onChange, operator }: CustomRendererProps<
     )
   }
   return <DatePicker value={from ? parseISO(from) : null} onChange={set(0)} clearable bare calendarProps={{ size: 'sm' }} />
-}
-
-// due_date/created_at are full ISO timestamps; filter values are date-only —
-// compare on the date portion so "on 10 Aug" matches any time that day.
-function matchesDateFilter(value: string | null | undefined, filter: Filter<string> | undefined): boolean {
-  if (!filter) return true
-  const [from, to] = filter.values
-  // Chip added but no date picked yet — pass through, same as an unset
-  // select filter, rather than hiding every row until a date is chosen.
-  if (!from && !to) return true
-  if (!value) return false
-  const day = value.slice(0, 10)
-  switch (filter.operator) {
-    case 'on': return day === from
-    case 'before': return day < from
-    case 'after': return day > from
-    case 'between': return (!from || day >= from) && (!to || day <= to)
-    default: return true
-  }
 }
 
 type DomainSubRow = { kind: 'domain'; caseId: number; status: string; domain: CaseSummaryDomain }
@@ -1280,7 +1287,17 @@ function URLsPage() {
     }
   )
 
+  // Domain view is paged/filtered/sorted on the server like Cases; `urls`
+  // is the current page only and `urlsNonce` re-runs the fetch after a change.
   const [urls, setUrls] = useState<URLEntry[]>([])
+  const [urlsTotal, setUrlsTotal] = useState(0)
+  const [urlsLoading, setUrlsLoading] = useState(true)
+  const [urlsNonce, setUrlsNonce] = useState(0)
+  const [monitoredCount, setMonitoredCount] = useState(0)
+  // Admin sees every department's watchlist, but toggle/remove act on the
+  // caller's own department's watchlist row, so they're hidden for admin.
+  const { me } = useAuth()
+  const isAdmin = !!me?.is_admin
   const [agencies, setAgencies] = useState<Agency[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [duePresets, setDuePresets] = useState<DueDatePreset[]>([])
@@ -1315,9 +1332,9 @@ function URLsPage() {
     try {
       setError(null)
       const [u, a, d, p, rc, rq] = await Promise.all([
-        fetchUrls(), fetchAgencies(), fetchDepartmentsOpen(), fetchDueDatePresets(), fetchRecipients(), fetchRequestors(),
+        fetchUrlCount(), fetchAgencies(), fetchDepartmentsOpen(), fetchDueDatePresets(), fetchRecipients(), fetchRequestors(),
       ])
-      setUrls(u)
+      setMonitoredCount(u)
       setAgencies(a)
       setDepartments(d)
       setDuePresets(p)
@@ -1360,6 +1377,7 @@ function URLsPage() {
     await deleteUrl(deleteTarget.id)
     setDeleteTarget(null)
     load()
+    setUrlsNonce(n => n + 1)
   }
 
   const filterFields = useMemo<FilterFieldConfig<string>[]>(() => [
@@ -1372,22 +1390,10 @@ function URLsPage() {
 
   const statusFilter = filters.find(f => f.field === 'status')?.values[0]
   const deptFilter = filters.find(f => f.field === 'requesting_dept')?.values[0]
-  const deptFilterName = deptFilter ? departments.find(d => String(d.id) === deptFilter)?.name : undefined
   const agencyFilter = filters.find(f => f.field === 'agency')?.values[0]
   const createdAtFilter = filters.find(f => f.field === 'created_at')
   const dueDateFilter = filters.find(f => f.field === 'due_date')
 
-  const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase()
-    return urls.filter(u =>
-      (!query || u.url.toLowerCase().includes(query) || (u.current_reference_number ?? '').toLowerCase().includes(query)) &&
-      (!statusFilter || u.status === statusFilter) &&
-      (!deptFilterName || (u.requesting_departments ?? []).includes(deptFilterName)) &&
-      (!agencyFilter || String(u.agency_id ?? '') === agencyFilter) &&
-      matchesDateFilter(u.created_at, createdAtFilter) &&
-      matchesDateFilter(u.due_date, dueDateFilter)
-    )
-  }, [urls, search, statusFilter, deptFilterName, agencyFilter, createdAtFilter, dueDateFilter])
 
   // Debounced so typing in the search box doesn't fire a request per keystroke.
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -1427,10 +1433,37 @@ function URLsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [casesPagination.pageIndex, casesPagination.pageSize, debouncedSearch, statusFilter, agencyFilter, deptFilter, createdKey, dueKey, casesSortKey, casesSortDesc, casesNonce, casesGridPrefReady])
 
+  const URL_SORT_KEYS = { domain: 'url', created_at: 'created_at', due_date: 'due_date' } as const
+  const urlsSortKey = URL_SORT_KEYS[sorting[0]?.id as keyof typeof URL_SORT_KEYS]
+  const urlsSortDesc = sorting[0]?.desc
+  useEffect(() => {
+    if (!gridPrefReady) return
+    let stale = false
+    setUrlsLoading(true)
+    const dateQuery = (f: Filter<string> | undefined) => (f ? { op: f.operator, from: f.values[0], to: f.values[1] } : undefined)
+    fetchUrlsPage({
+      page: pagination.pageIndex + 1,
+      pageSize: pagination.pageSize,
+      q: debouncedSearch,
+      status: statusFilter,
+      agencyId: agencyFilter,
+      deptId: deptFilter,
+      created: dateQuery(createdAtFilter),
+      due: dateQuery(dueDateFilter),
+      sort: urlsSortKey,
+      desc: urlsSortDesc,
+    })
+      .then(r => { if (!stale) { setUrls(r.urls); setUrlsTotal(r.total); setError(null) } })
+      .catch(err => { if (!stale) setError(err instanceof Error ? err.message : 'Failed to load domains') })
+      .finally(() => { if (!stale) setUrlsLoading(false) })
+    return () => { stale = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- same JSON-key deps as the cases fetch above
+  }, [pagination.pageIndex, pagination.pageSize, debouncedSearch, statusFilter, agencyFilter, deptFilter, createdKey, dueKey, urlsSortKey, urlsSortDesc, urlsNonce, gridPrefReady])
+
   useEffect(() => {
     setPagination(p => ({ ...p, pageIndex: 0 }))
     setCasesPagination(p => ({ ...p, pageIndex: 0 }))
-  }, [search, statusFilter, deptFilter, agencyFilter, createdAtFilter, dueDateFilter, casesSortKey, casesSortDesc])
+  }, [search, statusFilter, deptFilter, agencyFilter, createdAtFilter, dueDateFilter, casesSortKey, casesSortDesc, urlsSortKey, urlsSortDesc])
 
   const columns = useMemo<ColumnDef<URLEntry>[]>(() => [
     {
@@ -1577,11 +1610,13 @@ function URLsPage() {
         const u = row.original
         return (
           <div className="flex items-center justify-center gap-3">
-            <Switch
-              checked={u.enabled}
-              onCheckedChange={checked => handleToggle(u.id, checked)}
-              aria-label={`${u.enabled ? 'Disable' : 'Enable'} ${u.url} in scan`}
-            />
+            {!isAdmin && (
+              <Switch
+                checked={u.enabled}
+                onCheckedChange={checked => handleToggle(u.id, checked)}
+                aria-label={`${u.enabled ? 'Disable' : 'Enable'} ${u.url} in scan`}
+              />
+            )}
             <div className="flex items-center gap-1">
               <Link
                 to="/domain/$url"
@@ -1602,39 +1637,42 @@ function URLsPage() {
               >
                 <FileText size={16} />
               </button>
-              <button
-                type="button"
-                className="screenshot-icon-btn"
-                onClick={() => setDeleteTarget(u)}
-                aria-label={`Delete ${u.url}`}
-                title="Delete"
-              >
-                <XIcon size={16} />
-              </button>
+              {!isAdmin && (
+                <button
+                  type="button"
+                  className="screenshot-icon-btn"
+                  onClick={() => setDeleteTarget(u)}
+                  aria-label={`Delete ${u.url}`}
+                  title="Delete"
+                >
+                  <XIcon size={16} />
+                </button>
+              )}
             </div>
           </div>
         )
       },
     },
-  ], [handleToggle, handleStatusChange])
+  ], [handleToggle, handleStatusChange, isAdmin])
 
   const table = useReactTable({
-    data: filtered,
+    data: urls,
     columns,
     initialState: { columnPinning: { left: ['domain'], right: ['action'] } },
     state: { sorting, pagination, columnVisibility },
+    manualPagination: true,
+    manualSorting: true,
+    rowCount: urlsTotal,
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
     onColumnVisibilityChange: setColumnVisibility,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
   })
 
   // Holds the grid in its loading state until the saved column
   // visibility/sort/page-size layout has been applied, so it renders once
   // already in its final shape instead of flashing plain defaults first.
-  const gridLoading = loading || !gridPrefReady
+  const gridLoading = loading || urlsLoading || !gridPrefReady
 
   const caseTreeData = useMemo<CaseRow[]>(() => caseSummaries.map(summary => ({
     kind: 'case',
@@ -1707,15 +1745,14 @@ function URLsPage() {
       id: 'agency',
       header: 'Agency',
       // Agency is per-domain (CaseURL.AgencyID, moved off Case 2026-09-15) —
-      // a case row has no single agency of its own (its domains can each be
-      // requested by a different one), so it's left blank here and only
-      // shown/edited on domain subrows, same convention as Status above.
+      // a case row has no single agency of its own, so it rolls up the
+      // distinct agency names across its domains (first + "+N").
       accessorFn: r => r.kind === 'domain' ? (r.domain.agency_name ?? '') : '',
       meta: { headerTitle: 'Agency', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
       cell: ({ row }) => {
         const original = row.original
         if (original.kind === 'case') {
-          return <span className="dns-name">—</span>
+          return <span className="dns-name">{firstPlusN(original.summary.domains.map(d => d.agency_name))}</span>
         }
         return <span className="dns-name">{original.domain.agency_name ?? '—'}</span>
       },
@@ -1723,15 +1760,15 @@ function URLsPage() {
     {
       id: 'status',
       header: 'Status',
-      // Status is per-domain — a case row has no single status of its own
-      // (its domains can each carry a different one), so it's left blank
-      // here and only shown/edited on domain subrows.
+      // Status is per-domain — a case row has no single status of its own,
+      // so it rolls up into a count summary (e.g. "5/5 Blocked" or a
+      // most-common-status + "mixed" when its domains disagree).
       accessorFn: r => r.kind === 'domain' ? r.status : '',
       meta: { headerTitle: 'Status', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
       cell: ({ row }) => {
         const original = row.original
         if (original.kind === 'case') {
-          return <span className="dns-name">—</span>
+          return <span className="dns-name">{caseStatusSummary(original.summary.domains)}</span>
         }
         return <span className="dns-name">{STATUS_OPTIONS.find(o => o.value === original.status)?.label ?? original.status}</span>
       },
@@ -1740,12 +1777,13 @@ function URLsPage() {
       id: 'scan_status',
       header: 'Latest Scan',
       // Per-domain, like Status above: the latest scan run's outcome across every DNS server checked.
-      // Not the case's workflow Status — this is what the scan actually observed.
+      // Not the case's workflow Status — this is what the scan actually observed. The case row rolls
+      // this up into how many of its scanned domains are currently violating.
       accessorFn: r => r.kind === 'domain' ? (r.domain.scan_total ?? 0) : 0,
       meta: { headerTitle: 'Latest Scan', headerClassName: 'col-status', cellClassName: 'col-status text-center' },
       cell: ({ row }) => {
         const original = row.original
-        if (original.kind === 'case') return <span className="dns-name">—</span>
+        if (original.kind === 'case') return <span className="dns-name">{caseScanSummary(original.summary.domains)}</span>
         const { scan_total: total = 0, scan_compliant: compliant = 0, scanned_at } = original.domain
         if (total === 0) return <span className="dns-name">Not scanned</span>
         const all = compliant === total
@@ -1761,12 +1799,15 @@ function URLsPage() {
       id: 'offence_citation',
       header: 'Offence Details',
       // Same reasoning as status above — offences are per-domain, so a case
-      // row (whose domains can each carry different ones) is left blank.
+      // row rolls up into the distinct offence categories across its domains.
       accessorFn: r => r.kind === 'domain' ? (r.domain.offences ?? []).map(citationLabel).join('; ') : '',
       meta: { headerTitle: 'Offence Details', headerClassName: 'col-status', cellClassName: 'col-status' },
       cell: ({ row }) => {
         const original = row.original
-        return original.kind === 'case' ? <span className="dns-name">—</span> : joinedCell((original.domain.offences ?? []).map(citationLabel))
+        if (original.kind === 'case') {
+          return <span className="dns-name">{firstPlusN(original.summary.domains.flatMap(d => (d.offences ?? []).map(o => o.category)))}</span>
+        }
+        return joinedCell((original.domain.offences ?? []).map(citationLabel))
       },
     },
     {
@@ -1916,8 +1957,8 @@ function URLsPage() {
   return (
     <div className="mx-20 mt-10 mb-10">
       <div className="page-header">
-        <h1 className="page-title mb-4">Domains</h1>
-        <p className="page-subtitle">{!loading && `${urls.length} monitored`}</p>
+        <h1 className="page-title mb-4">Watchlist</h1>
+        <p className="page-subtitle">{!loading && `${monitoredCount} monitored`}</p>
         <ToggleGroup
           type="single"
           value={view}
@@ -1941,7 +1982,7 @@ function URLsPage() {
             <p className="error-message">{error}</p>
             <button className="btn-primary" onClick={load}>Retry</button>
           </div>
-        ) : !gridLoading && urls.length === 0 ? (
+        ) : !gridLoading && monitoredCount === 0 ? (
           <div className="empty-state">
             <EmptyIcon />
             <p className="empty-heading">No domains yet</p>
@@ -1966,14 +2007,14 @@ function URLsPage() {
             </div>
 
             <div className="results-wrap w-full">
-              {!gridLoading && filtered.length === 0 ? (
+              {!gridLoading && urls.length === 0 ? (
                 <div className="empty-state" style={{ padding: '3rem 0' }}>
                   <p className="empty-heading">No domains match the current filters</p>
                 </div>
               ) : (
                 <DataGrid
                   table={table}
-                  recordCount={filtered.length}
+                  recordCount={urlsTotal}
                   isLoading={gridLoading}
                   tableClassNames={{ base: 'results-table results-table--pinned' }}
                   tableLayout={{ columnsPinnable: true }}
@@ -2048,7 +2089,7 @@ function URLsPage() {
       <AddUrlDialog
         open={addOpen || editingCase !== null}
         onClose={() => { setAddOpen(false); setEditingCase(null) }}
-        onAdded={() => { load(); setCasesNonce(n => n + 1) }}
+        onAdded={() => { load(); setCasesNonce(n => n + 1); setUrlsNonce(n => n + 1) }}
         agencies={agencies}
         duePresets={duePresets}
         recipients={recipients}

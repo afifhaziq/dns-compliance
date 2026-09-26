@@ -785,6 +785,48 @@ func TestListDepartmentURLsReturnsEnabled(t *testing.T) {
 	}
 }
 
+func TestListURLEntriesPageAdminSeesAllDepartmentsDeduped(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	d1, _ := s.CreateDepartment(ctx, "PD1")
+	d2, _ := s.CreateDepartment(ctx, "PD2")
+	shared, _ := s.AddURLToWatchlist(ctx, d1.ID, "shared.com")
+	_, _ = s.AddURLToWatchlist(ctx, d2.ID, "shared.com")
+	_, _ = s.SetURLEnabled(ctx, d1.ID, shared.ID, false) // still enabled by d2
+	only2, _ := s.AddURLToWatchlist(ctx, d2.ID, "only2.com")
+	_, _ = s.SetURLEnabled(ctx, d2.ID, only2.ID, false)
+
+	all, total, err := s.ListURLEntriesPage(ctx, db.URLListParams{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("ListURLEntriesPage: %v", err)
+	}
+	if total != 2 || len(all) != 2 {
+		t.Fatalf("admin: want 2 deduped rows, got total=%d len=%d", total, len(all))
+	}
+	for _, e := range all {
+		if e.URL == "shared.com" && !e.Enabled {
+			t.Error("shared.com is enabled by PD2, want enabled")
+		}
+		if e.URL == "only2.com" && e.Enabled {
+			t.Error("only2.com is disabled everywhere, want disabled")
+		}
+	}
+
+	scoped, total, err := s.ListURLEntriesPage(ctx, db.URLListParams{DepartmentID: &d1.ID, Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("ListURLEntriesPage(d1): %v", err)
+	}
+	if total != 1 || len(scoped) != 1 || scoped[0].URL != "shared.com" || scoped[0].Enabled {
+		t.Fatalf("d1: want only disabled shared.com, got total=%d %+v", total, scoped)
+	}
+
+	page2, total, _ := s.ListURLEntriesPage(ctx, db.URLListParams{Page: 2, PageSize: 1, Query: "COM", SortBy: "url"})
+	if total != 2 || len(page2) != 1 || page2[0].URL != "shared.com" {
+		t.Fatalf("paging/search/sort: want shared.com on page 2 of 2, got total=%d %+v", total, page2)
+	}
+}
+
 func TestListWatchedURLsDeduplicatesAcrossDepartments(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -912,12 +954,16 @@ func TestCreateCase_AgencyAndStatusVisibleOnWatchlist(t *testing.T) {
 	}
 }
 
-// TestListDepartmentURLs_CaseFieldsVisibleToOtherWatchingDepartment proves
-// case metadata is visible to every department watching the URL, not just
-// the one that owns the case: department A creates a case; department B,
-// which independently watches the same URL but owns no case of its own,
-// must see A's case status via the derived latest-case fields.
-func TestListDepartmentURLs_CaseFieldsVisibleToOtherWatchingDepartment(t *testing.T) {
+// TestListDepartmentURLs_CaseFieldsAreDepartmentOwnedNotShared proves case
+// metadata (status/due-date/agency/reference-number) is scoped to the
+// viewing department's own case, not shared with every department watching
+// the URL: department A creates a case; department B, which independently
+// watches the same URL but owns no case of its own, sees blank case fields
+// for it -- never A's status -- since that status describes A's case, not
+// B's relationship to the domain. B still learns A is involved via
+// RequestingDepartments (multi-valued, not a single value someone else's
+// case can silently override).
+func TestListDepartmentURLs_CaseFieldsAreDepartmentOwnedNotShared(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
@@ -936,8 +982,19 @@ func TestListDepartmentURLs_CaseFieldsVisibleToOtherWatchingDepartment(t *testin
 	if err != nil {
 		t.Fatalf("ListDepartmentURLs(deptB): %v", err)
 	}
-	if len(entriesB) != 1 || entriesB[0].Status != "uplift" {
-		t.Fatalf("expected deptB to see deptA's case status, got %+v", entriesB)
+	if len(entriesB) != 1 || entriesB[0].Status != "" || entriesB[0].CaseID != nil {
+		t.Fatalf("expected deptB to see no case of its own (blank status, nil case_id), got %+v", entriesB)
+	}
+	if got := entriesB[0].RequestingDepartments; len(got) != 1 || got[0] != "DeptA" {
+		t.Fatalf("expected deptB to still see DeptA in RequestingDepartments, got %v", got)
+	}
+
+	entriesA, err := s.ListDepartmentURLs(ctx, deptA.ID)
+	if err != nil {
+		t.Fatalf("ListDepartmentURLs(deptA): %v", err)
+	}
+	if len(entriesA) != 1 || entriesA[0].Status != "uplift" {
+		t.Fatalf("expected deptA to see its own case status, got %+v", entriesA)
 	}
 }
 

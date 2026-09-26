@@ -1607,6 +1607,27 @@ func (m *fullMockStore) ListCases(_ context.Context) ([]db.CaseSummary, error) {
 	return m.listCaseSummaries(nil), nil
 }
 
+func (m *fullMockStore) ListURLEntriesPage(ctx context.Context, p db.URLListParams) ([]db.URLEntry, int, error) {
+	var all []db.URLEntry
+	if p.DepartmentID != nil {
+		all, _ = m.ListDepartmentURLs(ctx, *p.DepartmentID)
+	} else {
+		seen := map[uint]bool{}
+		for _, du := range m.departmentURLs {
+			entries, _ := m.ListDepartmentURLs(ctx, du.DepartmentID)
+			for _, e := range entries {
+				if !seen[e.ID] {
+					seen[e.ID] = true
+					all = append(all, e)
+				}
+			}
+		}
+	}
+	lo := min((p.Page-1)*p.PageSize, len(all))
+	hi := min(lo+p.PageSize, len(all))
+	return all[lo:hi], len(all), nil
+}
+
 func (m *fullMockStore) ListCaseSummariesPage(_ context.Context, p db.CaseListParams) ([]db.CaseSummary, int, error) {
 	all := m.listCaseSummaries(p.DepartmentID)
 	lo := (p.Page - 1) * p.PageSize
