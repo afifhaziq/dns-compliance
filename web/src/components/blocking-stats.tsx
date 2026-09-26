@@ -5,7 +5,6 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { BarChart } from '@/components/charts/bar-chart'
 import { Bar } from '@/components/charts/bar'
 import { BarXAxis } from '@/components/charts/bar-x-axis'
-import { BarYAxis } from '@/components/charts/bar-y-axis'
 import { LineChart } from '@/components/charts/line-chart'
 import { Line } from '@/components/charts/line'
 import { Background } from '@/components/charts/background'
@@ -112,24 +111,6 @@ function Kpi({ label, value }: { label: string; value: string }) {
 // Charts keep a minimum width and scroll inside their card on narrow screens.
 function ChartScroll({ children }: { children: React.ReactNode }) {
   return <div className="overflow-x-auto"><div className="min-w-[520px]">{children}</div></div>
-}
-
-// Horizontal bars, one per label, sorted by value.
-function HBar({ items, left = 160, max = 8, wide }: { items: { label: string; value: number }[]; left?: number; max?: number; wide?: boolean }) {
-  const data = topN(items, max - 1).map(i => ({ name: i.label, value: i.value }))
-  return (
-    <ChartScroll><BarChart
-      data={data}
-      orientation="horizontal"
-      aspectRatio={`${wide ? 1300 : 640} / ${data.length * 34 + 30}`}
-      margin={{ top: 10, right: 30, bottom: 20, left }}
-    >
-      <Grid horizontal={false} vertical />
-      <Bar dataKey="value" fill={SHADES[0]} />
-      <BarYAxis maxLabels={data.length} />
-      <ChartTooltip />
-    </BarChart></ChartScroll>
-  )
 }
 
 // Donut with a swatch legend beside it.
@@ -579,7 +560,6 @@ function TabB({ lines, years }: { lines: Line[]; years: number[] }) {
       </div>
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 mb-10">
         <Card title="Share of blocks" className="col-span-full"><AgencySunburst rows={other} label="Blocks" /></Card>
-        <Card title="By agency" className="col-span-full"><HBar items={agencyItems} wide /></Card>
         <AgencyOffenceStack lines={lines.filter(l => l.agency !== MCMC)} years={years} />
       </div>
     </>
