@@ -878,6 +878,12 @@ th.th-left {
   @apply text-stone-muted cursor-not-allowed hover:bg-transparent;
 }
 
+/* Delete icon buttons: muted by default, danger color only on hover/focus so
+   it doesn't compete visually with the adjacent edit action. */
+.screenshot-icon-btn-danger {
+  @apply text-stone-muted hover:text-danger focus-visible:text-danger;
+}
+
 .screenshot-icon {
   @apply w-4 h-4;
 }

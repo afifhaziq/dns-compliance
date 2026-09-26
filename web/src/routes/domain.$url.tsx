@@ -583,11 +583,11 @@ function URLHistoryPage() {
         </h1>
         
         <div className="flex flex-row justify-between min-w-full">
-        <div className="page-subtitle">{url} · Last 7 days </div>
+        <div className="page-subtitle">{url}</div>
         <div>
         {!dnsRecordsLoading && dnsRecords?.resolver_ip && (
           <p className="dns-records-resolver ml-auto">
-            Looked up via host DNS resolver {dnsRecords.resolver_ip}
+            Looked up via system resolver
           </p>
         )}
         </div>

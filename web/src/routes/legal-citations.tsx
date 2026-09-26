@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ElementType, type ReactNode } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { Landmark, BookText, Tag, ListTree, FileText, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { Landmark, BookText, Tag, ListTree, FileText, ChevronLeftIcon, ChevronRightIcon, Trash2 } from 'lucide-react'
 import { Files, FolderItem, FolderTrigger, FolderContent, FileItem, SubFiles } from '@/components/animate-ui/components/radix/files'
 import {
   fetchInstruments, createInstrument, updateInstrument, deleteInstrument,
@@ -22,7 +22,6 @@ import { BrailleLoader } from '@/components/ui/braille-loader'
 import { EmptyIcon } from '@/components/results-table-parts'
 import { SquarePenIcon } from '@/components/ui/square-pen'
 import { SquarePlusIcon } from '@/components/animate-ui/icons/square-plus'
-import { SquareXIcon } from '@/components/animate-ui/icons/square-x'
 import { useAuth } from './__root'
 
 export const Route = createFileRoute('/legal-citations')({ component: LegalCitationsPage })
@@ -209,26 +208,40 @@ function ConfidenceBadge({ confidence }: { confidence: 'OK' | 'NEEDS_REVIEW' }) 
   )
 }
 
+// JS mirror of parseInstrumentText's number/year extraction in
+// internal/blockimport/legalcatalog.go — keep the two regexes in sync.
+function parseInstrumentTitle(raw: string) {
+  let title = raw.trim()
+  let number = ''
+  const n = title.match(/\s*[(\[]Akta (\d+)[)\]]\s*$/)
+  if (n) { number = n[1]; title = title.slice(0, n.index).trim() }
+  const y = title.match(/\b(\d{4})\s*$/)
+  return { title, number, year: y ? Number(y[1]) : undefined }
+}
+
 function InstrumentFormDialog({
   open, onClose, onSaved, editing,
 }: { open: boolean; onClose: () => void; onSaved: () => void; editing: Instrument | null }) {
   const [type, setType] = useState<string>('ACT')
   const [jurisdiction, setJurisdiction] = useState('FEDERAL')
-  const [number, setNumber] = useState('')
-  const [year, setYear] = useState('')
   const [shortTitle, setShortTitle] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   const reset = () => {
-    setType('ACT'); setJurisdiction('FEDERAL'); setNumber(''); setYear(''); setShortTitle(''); setError(null)
+    setType('ACT'); setJurisdiction('FEDERAL'); setShortTitle(''); setError(null)
   }
+
+  // Number/year come from the title; when it has none (e.g. an edited row whose
+  // number was stripped at import), keep what's already stored.
+  const parsed = parseInstrumentTitle(shortTitle)
+  const number = parsed.number || editing?.number || ''
+  const year = parsed.year ?? editing?.year ?? undefined
 
   useEffect(() => {
     if (!open) return
     if (editing) {
       setType(editing.type); setJurisdiction(editing.jurisdiction)
-      setNumber(editing.number); setYear(editing.year != null ? String(editing.year) : '')
       setShortTitle(editing.short_title); setError(null)
     } else {
       reset()
@@ -239,14 +252,12 @@ function InstrumentFormDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!shortTitle.trim()) { setError('Short title is required'); return }
+    if (!parsed.title) { setError('Short title is required'); return }
     setLoading(true)
     setError(null)
     try {
       const payload = {
-        type, jurisdiction, number: number.trim(),
-        year: year.trim() ? Number(year) : undefined,
-        short_title: shortTitle.trim(),
+        type, jurisdiction, number, year, short_title: parsed.title,
       }
       if (editing) {
         await updateInstrument(editing.id, payload)
@@ -274,6 +285,24 @@ function InstrumentFormDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="form-field">
+            <label className="form-label" htmlFor="instrument-title-input">Short Title</label>
+            <input
+              id="instrument-title-input"
+              className="form-input"
+              type="text"
+              placeholder='e.g. Akta Komunikasi dan Multimedia 1998 (Akta 588)'
+              value={shortTitle}
+              onChange={e => setShortTitle(e.target.value)}
+              autoFocus
+              disabled={loading}
+            />
+            <p style={{ color: 'var(--stone-muted)', fontSize: 12, marginTop: 4 }}>
+              {number || year
+                ? `Detected: ${[number && `Akta ${number}`, year].filter(Boolean).join(' · ')}`
+                : 'Year and Act number are read from the title — add a trailing year and "(Akta 588)" or "[Akta 588]" if it has them.'}
+            </p>
+          </div>
+          <div className="form-field">
             <label className="form-label" id="instrument-type-label">Type</label>
             <Select value={type} onValueChange={setType} disabled={loading}>
               <SelectTrigger aria-labelledby="instrument-type-label" className="w-full" />
@@ -294,49 +323,6 @@ function InstrumentFormDialog({
                 ))}
               </SelectContent>
             </Select>
-          </div>
-          <div className="form-field">
-            <label className="form-label" htmlFor="instrument-number-input">
-              Number <span style={{ color: 'var(--stone-muted)', fontWeight: 400 }}>
-                (optional — the Act's own official number, e.g. "588" for Akta 588; not a Seksyen number, which belongs to a Citation instead. Leave blank if this instrument doesn't have one — common for older Acts and most Enactments, e.g. Akta Rumah Judi Terbuka 1953)
-              </span>
-            </label>
-            <input
-              id="instrument-number-input"
-              className="form-input"
-              type="text"
-              placeholder="e.g. 588 (leave blank if unknown/none)"
-              value={number}
-              onChange={e => setNumber(e.target.value)}
-              autoFocus
-              disabled={loading}
-            />
-          </div>
-          <div className="form-field">
-            <label className="form-label" htmlFor="instrument-year-input">
-              Year <span style={{ color: 'var(--stone-muted)', fontWeight: 400 }}>(optional)</span>
-            </label>
-            <input
-              id="instrument-year-input"
-              className="form-input"
-              type="number"
-              placeholder="e.g. 1998"
-              value={year}
-              onChange={e => setYear(e.target.value)}
-              disabled={loading}
-            />
-          </div>
-          <div className="form-field">
-            <label className="form-label" htmlFor="instrument-title-input">Short Title</label>
-            <input
-              id="instrument-title-input"
-              className="form-input"
-              type="text"
-              placeholder="e.g. Akta Komunikasi dan Multimedia 1998"
-              value={shortTitle}
-              onChange={e => setShortTitle(e.target.value)}
-              disabled={loading}
-            />
           </div>
           {error && <p className="form-error">{error}</p>}
           <DialogFooter>
@@ -816,8 +802,8 @@ function LegalCitationsPage() {
         <button type="button" className="screenshot-icon-btn" onClick={() => editRow(r)} aria-label={`Edit ${r.label}`} title="Edit">
           <SquarePenIcon size={16} />
         </button>
-        <button type="button" className="screenshot-icon-btn" onClick={() => setDeleteTarget({ kind: r.kind, id: r.refId, label: r.label })} aria-label={`Delete ${r.label}`} title="Delete">
-          <SquareXIcon size={16} animateOnHover animation="path-loop" />
+        <button type="button" className="screenshot-icon-btn screenshot-icon-btn-danger ml-2" onClick={() => setDeleteTarget({ kind: r.kind, id: r.refId, label: r.label })} aria-label={`Delete ${r.label}`} title="Delete">
+          <Trash2 size={16} />
         </button>
       </>
     )

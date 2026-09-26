@@ -4,7 +4,7 @@ import { fetchDnsServers, createDnsServer, updateDnsServer, deleteDnsServer, fet
 import { fetchISPLogos, upsertISPLogo, deleteISPLogo } from '../api/isp-logos'
 import type { DNSServer, ISPLogo } from '../api/types'
 import { SquarePenIcon } from '@/components/ui/square-pen'
-import { XIcon } from '@/components/ui/x'
+import { Trash2 } from 'lucide-react'
 import { ISPLogoChip } from '@/components/isp-logo-chip'
 import { TrendSparkline, type TrendPoint } from '@/components/trend-sparkline'
 import { Switch } from '@/components/ui/r-switch'
@@ -561,12 +561,12 @@ function DNSServersPage() {
                             </button>
                             <button
                               type="button"
-                              className="screenshot-icon-btn"
+                              className="screenshot-icon-btn screenshot-icon-btn-danger ml-2"
                               onClick={() => setDeleteTarget(s)}
                               aria-label={`Delete ${serverLabel(s)}`}
-                              title="Delete"
+                              title="Delete DNS server"
                             >
-                              <XIcon size={16} />
+                              <Trash2 size={16} />
                             </button>
                           </div>
                         </div>
