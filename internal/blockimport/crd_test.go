@@ -401,3 +401,21 @@ func TestCollapseCRDRows_NoticeDateIsEarliestInGroup(t *testing.T) {
 		t.Fatalf("got %+v, want the earliest date %v", got, d2)
 	}
 }
+
+func TestParseCRDRows_PromotesOrphanSubElementToElement(t *testing.T) {
+	path := writeTestXLSX(t, "2011-2026", [][]string{
+		{"No. Rujukan NMD", "No. Rujukan NMSMD", "Alamat Laman Web", "Status", "Kategori", "Elemen", "Sub-Elemen", "Butiran Kesalahan", "Agensi", "Tahun"},
+		{"REF-3", "", "http://a.example.com", "Blocked", "Jelik", "", "Ngeri / Grafik keterlaluan", "", "", "2017"},
+		{"REF-4", "", "http://b.example.com", "Blocked", "Jelik", "Dewasa", "Sub X", "", "", "2017"},
+	})
+	rows, err := ParseCRDRows(path)
+	if err != nil {
+		t.Fatalf("ParseCRDRows: %v", err)
+	}
+	if rows[0].Element != "Ngeri / Grafik keterlaluan" || rows[0].SubElement != "" {
+		t.Fatalf("orphan sub-element: got Element=%q SubElement=%q", rows[0].Element, rows[0].SubElement)
+	}
+	if rows[1].Element != "Dewasa" || rows[1].SubElement != "Sub X" {
+		t.Fatalf("normal row changed: got Element=%q SubElement=%q", rows[1].Element, rows[1].SubElement)
+	}
+}

@@ -264,6 +264,14 @@ func ParseCRDRows(path string) ([]CRDRow, error) {
 			category, element = element, ""
 		}
 
+		subElement := cellAt(r, subElementCol)
+		// 11 rows (Jelik, "Ngeri / Grafik keterlaluan") have a Sub-Elemen but
+		// no Elemen; a sub-element can't exist without a parent element, so
+		// the value is treated as the element (stakeholder decision).
+		if element == "" && subElement != "" {
+			element, subElement = subElement, ""
+		}
+
 		year, _ := strconv.Atoi(cellAt(r, yearCol))
 
 		// 3 rows have a blank NMD but a populated NMSMD -- rather than lose
@@ -284,7 +292,7 @@ func ParseCRDRows(path string) ([]CRDRow, error) {
 			Status:          cellAt(r, statusCol),
 			Category:        category,
 			Element:         element,
-			SubElement:      cellAt(r, subElementCol),
+			SubElement:      subElement,
 			CitationText:    cellAt(r, citationCol),
 			Agency:          cellAt(r, agencyCol),
 			Year:            year,

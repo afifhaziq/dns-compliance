@@ -581,3 +581,24 @@ func TestDeleteInstrument_CascadesThroughSubElement(t *testing.T) {
 		t.Fatalf("expected sub-elements to cascade-delete through the whole chain, got %d", len(subElements))
 	}
 }
+
+func TestGetOrCreateInstrument_UnnumberedSameYearDistinctByTitle(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	poisons, err := s.GetOrCreateInstrument(ctx, db.Instrument{
+		Type: "ACT", Jurisdiction: "FEDERAL", Year: intPtr(1952), ShortTitle: "Akta Racun 1952",
+	})
+	if err != nil {
+		t.Fatalf("GetOrCreateInstrument: %v", err)
+	}
+	drugs, err := s.GetOrCreateInstrument(ctx, db.Instrument{
+		Type: "ACT", Jurisdiction: "FEDERAL", Year: intPtr(1952), ShortTitle: "Akta Dadah Berbahaya 1952",
+	})
+	if err != nil {
+		t.Fatalf("GetOrCreateInstrument: %v", err)
+	}
+	if poisons.ID == drugs.ID {
+		t.Fatalf("different unnumbered Acts of the same year merged into instrument %d", poisons.ID)
+	}
+}

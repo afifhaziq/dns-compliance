@@ -13,7 +13,7 @@ func (s *postgresStore) ListInstruments(ctx context.Context) ([]Instrument, erro
 }
 
 // GetOrCreateInstrument finds an existing row by (type, jurisdiction,
-// number, year) or creates one. Year is handled via an explicit IS NULL
+// number, year — plus short_title when number is empty) or creates one. Year is handled via an explicit IS NULL
 // branch when nil, since SQL NULL never equals NULL in a plain WHERE.
 func (s *postgresStore) GetOrCreateInstrument(ctx context.Context, in Instrument) (Instrument, error) {
 	q := s.db.WithContext(ctx).Where("type = ? AND jurisdiction = ? AND number = ?", in.Type, in.Jurisdiction, in.Number)
@@ -21,6 +21,12 @@ func (s *postgresStore) GetOrCreateInstrument(ctx context.Context, in Instrument
 		q = q.Where("year = ?", *in.Year)
 	} else {
 		q = q.Where("year IS NULL")
+	}
+	// ponytail: unnumbered Acts sharing a year (Poisons vs Dangerous Drugs,
+	// 1952) would otherwise collapse onto whichever was created first, so
+	// fall back to title when there's no number to tell them apart.
+	if in.Number == "" {
+		q = q.Where("short_title = ?", in.ShortTitle)
 	}
 	var existing Instrument
 	err := q.Attrs(in).FirstOrCreate(&existing).Error

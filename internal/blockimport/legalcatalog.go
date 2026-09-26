@@ -158,6 +158,12 @@ func getOrCreateInstrument(ctx context.Context, tx *gorm.DB, in db.Instrument) (
 	} else {
 		q = q.Where("year IS NULL")
 	}
+	// ponytail: unnumbered Acts sharing a year (Poisons vs Dangerous Drugs,
+	// 1952) would otherwise collapse onto whichever was created first, so
+	// fall back to title when there's no number to tell them apart.
+	if in.Number == "" {
+		q = q.Where("short_title = ?", in.ShortTitle)
+	}
 	var existing db.Instrument
 	err := q.Attrs(in).FirstOrCreate(&existing).Error
 	return existing, err
