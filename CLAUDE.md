@@ -11,7 +11,7 @@ Frontend, server/auth, and database details live in `web/CLAUDE.md`, `internal/s
 Both binaries are self-documenting — `go run ./cmd/crawler/ --help` / `go run ./cmd/server/ --help` list every flag with its default and description. Only cross-file gotchas are called out below.
 
 ```bash
-./dev.sh    # full-stack dev: Postgres via Docker, server :8080, Vite :5173; Ctrl+C shuts all down
+./dev.sh    # full-stack dev: Postgres via Docker, server :8090, Vite :5173; Ctrl+C shuts all down
 
 go build -o server  ./cmd/server/
 go build -o crawler ./cmd/crawler/
@@ -21,7 +21,7 @@ go build -o crawler ./cmd/crawler/
 
 go run ./cmd/crawler/ --sites sites.txt
 go run ./cmd/crawler/ "https://example.com" "https://example2.com"  # quote URLs with ? or & in zsh
-go run ./cmd/server/ --http-addr :8080 --grpc-addr :50051  # requires Postgres + MinIO, see Docker below
+go run ./cmd/server/ --http-addr :8090 --grpc-addr :50051  # requires Postgres + MinIO, see Docker below
 
 go mod tidy
 go test ./...                                  # internal/dns/ hits real network (8.8.8.8), fails offline

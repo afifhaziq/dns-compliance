@@ -7,13 +7,13 @@ Frontend-specific guidance for `web/`. See the repo-root `CLAUDE.md` for archite
 ```bash
 cd web && npm install    # first time or after package.json changes
 
-npm run dev        # dev server, hot reload, proxies /api to localhost:8080 — serves on :5173
+npm run dev        # dev server, hot reload, proxies /api to localhost:8090 — serves on :5173
 npm run build       # production build → web/dist/
 npm run lint        # ESLint only; type-check runs as part of build (tsc --noEmit)
 npm run preview     # serve production build locally
 ```
 
-For full-stack dev, run the Go server (`go run ./cmd/server/ ...`) alongside `npm run dev` — Vite proxies all `/api` requests to `localhost:8080`, so both must be running.
+For full-stack dev, run the Go server (`go run ./cmd/server/ ...`) alongside `npm run dev` — Vite proxies all `/api` requests to `localhost:8090`, so both must be running.
 
 ## Stack
 

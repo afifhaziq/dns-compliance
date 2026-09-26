@@ -65,10 +65,10 @@ echo "==> Starting crawler control service on :50052..."
 ./crawler --listen-addr :50052 --grpc-addr localhost:50051 --auth-token "$CRAWLER_TOKEN" > >(sed -u 's/^/[crawler] /') 2>&1 &
 CRAWLER_PID=$!
 
-echo "==> Starting server on :8080..."
+echo "==> Starting server on :8090..."
 go run ./cmd/server/ \
   --db-url "$DB_URL" \
-  --http-addr :8080 \
+  --http-addr :8090 \
   --grpc-addr :50051 \
   --crawler-addr localhost:50052 \
   --crawler-token "$CRAWLER_TOKEN" \
@@ -87,7 +87,7 @@ VITE_PID=$!
 echo ""
 echo "Dev stack running:"
 echo "  Frontend  http://localhost:5173"
-echo "  API       http://localhost:8080"
+echo "  API       http://localhost:8090"
 echo ""
 echo "Press Ctrl+C to stop."
 
