@@ -11,7 +11,7 @@ import { Grid } from '@/components/charts/grid'
 import { XAxis } from '@/components/charts/x-axis'
 import { ChartTooltip } from '@/components/charts/tooltip'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/motion/tabs'
-import { BlockingStatsTab } from '@/components/blocking-stats'
+import { BlockingRegister } from '@/components/blocking-stats'
 import { getISPNames, ISPBentoGrid, ISPBentoSkeleton } from '@/components/isp-bento-grid'
 
 export const Route = createFileRoute('/')({ component: DashboardPage })
@@ -81,9 +81,6 @@ function DashboardPage() {
     <div className="mx-20 mt-10">
       <div className="page-header">
         <h1 className="page-title">Overview</h1>
-        {subtitleParts.length > 0 && (
-          <p className="page-subtitle">{subtitleParts.join(' · ')}</p>
-        )}
       </div>
 
       {scanning && (
@@ -92,14 +89,16 @@ function DashboardPage() {
         </div>
       )}
 
-      <Tabs defaultValue="mcmc" variant="underline">
+      <Tabs defaultValue="register" variant="underline">
         <TabsList>
-          <TabsTrigger value="isp">ISP</TabsTrigger>
-          <TabsTrigger value="mcmc">MCMC</TabsTrigger>
-          <TabsTrigger value="agencies">Other agencies</TabsTrigger>
-          <TabsTrigger value="compare">Comparison</TabsTrigger>
+          <TabsTrigger value="isp">ISP compliance</TabsTrigger>
+          <TabsTrigger value="register">Blocking register</TabsTrigger>
         </TabsList>
         <TabsContent value="isp">
+        {/* Scan metadata only describes this tab, not the blocking register. */}
+        {subtitleParts.length > 0 && (
+          <p className="page-subtitle mt-6">{subtitleParts.join(' · ')}</p>
+        )}
         {error ? (
           <div className="dash-section">
             <div className="error-state">
@@ -177,9 +176,7 @@ function DashboardPage() {
           </div>
         )}
         </TabsContent>
-        <TabsContent value="mcmc"><BlockingStatsTab part="a" /></TabsContent>
-        <TabsContent value="agencies"><BlockingStatsTab part="b" /></TabsContent>
-        <TabsContent value="compare"><BlockingStatsTab part="c" /></TabsContent>
+        <TabsContent value="register"><BlockingRegister /></TabsContent>
       </Tabs>
     </div>
   )

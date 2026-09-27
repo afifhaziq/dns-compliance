@@ -2,9 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { curveCatmullRom } from '@visx/curve'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
-import { BarChart } from '@/components/charts/bar-chart'
-import { Bar } from '@/components/charts/bar'
-import { BarXAxis } from '@/components/charts/bar-x-axis'
 import { LineChart } from '@/components/charts/line-chart'
 import { Line } from '@/components/charts/line'
 import { Background } from '@/components/charts/background'
@@ -18,11 +15,15 @@ import { SunburstLabels } from '@/components/charts/sunburst-labels'
 import { buildArcs, type ArcDatum } from '@/components/charts/sunburst'
 import type { SunburstNode } from '@/components/charts/sunburst-data'
 import { Legend, LegendItem, LegendMarker, LegendLabel, LegendValue, type LegendItemData } from '@/components/charts/legend'
-import { Grid } from '@/components/charts/grid'
 import { Filters } from '@/components/reui/filters/filters'
-import { createFilterQuery, createFilterRule, type FilterQuery } from '@/components/reui/filters/filters-query'
-import type { FilterField } from '@/components/reui/filters/filters-types'
+import { createFilterQuery, createFilterRule } from '@/components/reui/filters/filters-query'
+import type { FilterField, FilterQuery, FilterRule } from '@/components/reui/filters/filters-types'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { Tabs, TabsList, TabsTrigger } from '@/components/motion/tabs'
+import { Button } from '@/components/ui/button'
+import { ButtonGroup, ButtonGroupText } from '@/components/ui/button-group'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { ChevronDownIcon } from 'lucide-react'
 import { ChartTooltip, TooltipBox, TooltipContent } from '@/components/charts/tooltip'
 import { fetchBlockingStats, type BlockingStatRow } from '../api/blocking-stats'
 
@@ -35,35 +36,6 @@ const MCMC_CATEGORIES = ['Lucah', 'Sumbang', 'Palsu', 'Jelik', 'Mengancam']
 const isMcmcCategory = (offence: string) => MCMC_CATEGORIES.some(c => c.toLowerCase() === offence.toLowerCase())
 const fmt = (n: number) => n.toLocaleString()
 const pct = (n: number, total: number) => (total ? `${((n / total) * 100).toFixed(2)}%` : '—')
-
-type Line = { agency: string; offence: string; byYear: Record<number, number>; total: number }
-
-// Sum rows into one line per (agency, offence), each with per-year counts.
-function toLines(rows: BlockingStatRow[]): Line[] {
-  const m = new Map<string, Line>()
-  for (const r of rows) {
-    const k = `${r.agency}\u0000${r.offence}`
-    const l = m.get(k) ?? { agency: r.agency, offence: r.offence, byYear: {}, total: 0 }
-    l.byYear[r.year] = (l.byYear[r.year] ?? 0) + r.count
-    l.total += r.count
-    m.set(k, l)
-  }
-  return [...m.values()].sort((a, b) => a.agency.localeCompare(b.agency) || b.total - a.total)
-}
-
-// Count + inline proportional bar, as two fixed-width cells so every table lines up.
-function BarCells({ value, max }: { value: number; max: number }) {
-  return (
-    <>
-      <TableCell className="text-right tabular-nums">{fmt(value)}</TableCell>
-      <TableCell>
-        <div className="h-2 rounded-sm" style={{ background: 'color-mix(in srgb, var(--ink) 12%, transparent)' }}>
-          <div className="h-full rounded-sm" style={{ background: SHADES[1], width: `${max ? (value / max) * 100 : 0}%` }} />
-        </div>
-      </TableCell>
-    </>
-  )
-}
 
 // Single-hue --ink-scale-N ramp (index.css) — follows light/dark via the variables.
 const SHADES = [1, 2, 3, 4, 5, 6].map(n => `var(--ink-scale-${n})`)
@@ -97,20 +69,6 @@ function Card({ title, children, className = '', action }: { title: string; chil
       {children}
     </div>
   )
-}
-
-function Kpi({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="server-count" style={{ color: 'var(--ink)' }}>{value}</p>
-      <p className="dash-label">{label}</p>
-    </div>
-  )
-}
-
-// Charts keep a minimum width and scroll inside their card on narrow screens.
-function ChartScroll({ children }: { children: React.ReactNode }) {
-  return <div className="overflow-x-auto"><div className="min-w-[520px]">{children}</div></div>
 }
 
 // Donut with a swatch legend beside it.
@@ -227,7 +185,7 @@ function AgencySunburst({ rows, label }: { rows: { agency: string; offence: stri
       >
         <SunburstChart data={data} size={260} enterTransition={SUNBURST_ENTER} enterStaggerScale={0.4} focusId={focusId} onFocusChange={setFocusId} hoveredIndex={hoveredIndex} onHoverChange={setHoveredIndex}>
           {arcs.map(arc => <SunburstSegment index={arc.arcIndex} key={arc.id} />)}
-          <SunburstLabels onlyDepth={1} minArcLength={12} fontSize={10} fill="light-dark(#000, #fff)" strokeWidth={0} />
+          <SunburstLabels onlyDepth={1} minArcLength={12} fontSize={10} fill="var(--background)" strokeWidth={0} />
           <SunburstCenter />
         </SunburstChart>
         {hoveredArc && pointer && (
@@ -274,37 +232,6 @@ function AgencySunburst({ rows, label }: { rows: { agency: string; offence: stri
         )}
       </AnimatePresence>
     </div>
-  )
-}
-
-// Vertical bars per year, one series per key (stacked or grouped).
-// showShare appends each series' percentage of that bar's total to its tooltip row.
-function YearBars({ data, series, stacked, wide, showShare }: { data: Record<string, unknown>[]; series: { key: string; label: string }[]; stacked?: boolean; wide?: boolean; showShare?: boolean }) {
-  const rows = showShare
-    ? (point: Record<string, unknown>) => {
-        const total = series.reduce((s, x) => s + (Number(point[x.key]) || 0), 0)
-        return series.map((s, i) => {
-          const value = Number(point[s.key]) || 0
-          return { color: shade(i), label: s.label, value: `${fmt(value)} · ${pct(value, total)}` }
-        })
-      }
-    : undefined
-  return (
-    <>
-      <ChartScroll><BarChart data={data} stacked={stacked} stackGap={1} aspectRatio={wide ? '4.5 / 1' : '2.2 / 1'} margin={{ top: 8, right: 16, bottom: 30, left: 16 }}>
-        <Grid horizontal vertical={false} />
-        {series.map((s, i) => <Bar key={s.key} dataKey={s.key} fill={shade(i)} />)}
-        <BarXAxis />
-        <ChartTooltip rows={rows} />
-      </BarChart></ChartScroll>
-      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2">
-        {series.map((s, i) => (
-          <li key={s.key} className="flex items-center gap-1.5">
-            <span className="inline-block size-2.5 rounded-sm" style={{ background: shade(i) }} />{s.label}
-          </li>
-        ))}
-      </ul>
-    </>
   )
 }
 
@@ -376,360 +303,242 @@ function useRowLimit<T>(rows: T[], limit = PREVIEW_ROWS) {
   return { shown, toggle }
 }
 
-function OffenceTable({ title, lines, showAgency, hideOffence }: { title: string; lines: { agency: string; offence: string; total: number }[]; showAgency?: boolean; hideOffence?: boolean }) {
-  const total = lines.reduce((s, l) => s + l.total, 0)
-  const max = Math.max(0, ...lines.map(l => l.total))
-  const sorted = [...lines].sort((a, b) => b.total - a.total)
-  const { shown, toggle } = useRowLimit(sorted)
-  const lead = (showAgency ? 1 : 0) + (hideOffence ? 0 : 1)
-  return (
-    <section className="mb-10">
-      <h2 className="text-base font-semibold mb-3">{title}</h2>
-      <Table className="table-fixed min-w-[680px]">
-        <TableHeader>
-          <TableRow>
-            {showAgency && <TableHead className="w-28">Agency</TableHead>}
-            {!hideOffence && <TableHead>Offence</TableHead>}
-            <TableHead className="w-24 text-right">Blocked</TableHead>
-            <TableHead className="w-[30%]"><span className="sr-only">Proportion</span></TableHead>
-            <TableHead className="w-24 text-right">Share</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {shown.map(l => (
-            <TableRow key={l.agency + l.offence}>
-              {showAgency && <TableCell>{l.agency}</TableCell>}
-              {!hideOffence && <TableCell className="truncate">{l.offence}</TableCell>}
-              <BarCells value={l.total} max={max} />
-              <TableCell className="text-right tabular-nums">{pct(l.total, total)}</TableCell>
-            </TableRow>
-          ))}
-          <TableRow className="font-semibold">
-            <TableCell colSpan={lead}>Total</TableCell>
-            <TableCell className="text-right tabular-nums">{fmt(total)}</TableCell>
-            <TableCell />
-            <TableCell className="text-right">100%</TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-      {toggle}
-    </section>
-  )
+type Rule = FilterRule<unknown>
+type GroupBy = 'offence' | 'agency' | 'jurisdiction'
+
+// Blank/partial values match everything, so a half-built chip doesn't empty the view.
+function passes(rule: Rule, v: string | number): boolean {
+  const val = rule.value as unknown
+  const blank = (x: unknown) => x == null || x === ''
+  let ok = true
+  switch (rule.operator) {
+    case 'in': ok = !Array.isArray(val) || !val.length || val.includes(v); break
+    case 'nin': ok = !Array.isArray(val) || !val.includes(v); break
+    case 'eq': ok = blank(val) || Number(val) === v; break
+    case 'neq': ok = blank(val) || Number(val) !== v; break
+    case 'between':
+    case 'not_between': {
+      const [a, b] = Array.isArray(val) ? val.map(x => (blank(x) ? NaN : Number(x))) : [NaN, NaN]
+      const lo = isNaN(a) ? -Infinity : isNaN(b) ? a : Math.min(a, b)
+      const hi = isNaN(b) ? Infinity : isNaN(a) ? b : Math.max(a, b)
+      const inside = Number(v) >= lo && Number(v) <= hi
+      ok = rule.operator === 'between' ? inside : !inside
+    }
+  }
+  return rule.negated ? !ok : ok
 }
 
-function TabA({ lines, years }: { lines: Line[]; years: number[] }) {
-  const mcmcAll = useMemo(() => lines.filter(l => l.agency === MCMC), [lines])
-  // Every offence recorded on an MCMC-owned case, not just the five workbook categories;
-  // the filter starts on those five (the stray ones are opt-in) and clearing it shows all.
-  const allOffences = useMemo(() => [...new Set(mcmcAll.map(l => l.offence))].sort((a, b) => a.localeCompare(b)), [mcmcAll])
-  const [query, setQuery] = useState<FilterQuery>(() => createFilterQuery<unknown>([
-    createFilterRule<unknown>({ id: 'offence-default', path: ['offence'], operator: 'in', value: allOffences.filter(isMcmcCategory) }),
-  ]))
-  const offenceField = useMemo<FilterField[]>(() => [{
-    id: 'offence',
-    label: 'Offence',
-    type: 'multiselect',
-    operators: [
-      { value: 'in', label: 'is any of', arity: 'many', inverse: 'nin' },
-      { value: 'nin', label: 'is none of', arity: 'many', inverse: 'in' },
+// Workbook C's jurisdiction split: an MCMC-owned case outside the five workbook
+// categories counts under "Other agencies", same as before the explorer.
+const jurisdiction = (r: BlockingStatRow) => (r.agency === MCMC && isMcmcCategory(r.offence) ? MCMC : 'Other agencies')
+const groupKey: Record<GroupBy, (r: BlockingStatRow) => string> = {
+  offence: r => r.offence,
+  agency: r => r.agency,
+  jurisdiction,
+}
+const GROUP_LABEL: Record<GroupBy, string> = { offence: 'Offence', agency: 'Agency', jurisdiction: 'Jurisdiction' }
+
+type Preset = { id: string; label: string; groupBy: GroupBy; rules: (offences: string[]) => Rule[] }
+// Each preset is the filter + grouping that reproduces one sheet of the source workbook.
+const PRESETS: Preset[] = [
+  {
+    id: 'a', label: 'A · MCMC', groupBy: 'offence',
+    rules: offences => [
+      createFilterRule<unknown>({ id: 'agency', path: ['agency'], operator: 'in', value: [MCMC] }),
+      createFilterRule<unknown>({ id: 'offence', path: ['offence'], operator: 'in', value: offences.filter(isMcmcCategory) }),
     ],
-    defaultOperator: 'in',
-    options: allOffences.map(o => ({ value: o, label: o })),
-  }], [allOffences])
-  const rule = query.rules.find((r): r is Extract<typeof r, { type: 'rule' }> => r.type === 'rule' && r.path[0] === 'offence')
-  const picked = Array.isArray(rule?.value) ? (rule.value as string[]) : []
-  const keep = (o: string) => (rule?.operator === 'in' && picked.length ? picked.includes(o) : rule?.operator === 'nin' && picked.length ? !picked.includes(o) : true)
-  const mcmc = mcmcAll.filter(l => keep(l.offence))
-  const latest = years[years.length - 1]
-  const overall = mcmc.map(l => ({ ...l, total: sumYears(l, years) })).filter(l => l.total)
-  const thisYear = mcmc.map(l => ({ ...l, total: l.byYear[latest] ?? 0 })).filter(l => l.total)
-  const total = overall.reduce((s, l) => s + l.total, 0)
-  const top = topN(overall.map(l => ({ label: l.offence, value: l.total })), 4).map(t => t.label).filter(l => l !== 'Other')
-  const stackedSeries = top.length < overall.length
-    ? [...top.map(t => ({ key: t, label: t })), { key: 'Other', label: 'Other' }]
-    : top.map(t => ({ key: t, label: t }))
+  },
+  {
+    id: 'b', label: 'B · Other agencies', groupBy: 'agency',
+    rules: () => [createFilterRule<unknown>({ id: 'agency', path: ['agency'], operator: 'nin', value: [MCMC] })],
+  },
+  { id: 'c', label: 'C · Comparison', groupBy: 'jurisdiction', rules: () => [] },
+]
+
+const multiselect = (id: string, label: string, values: string[]): FilterField => ({
+  id,
+  label,
+  type: 'multiselect',
+  operators: [
+    { value: 'in', label: 'is any of', arity: 'many', inverse: 'nin' },
+    { value: 'nin', label: 'is none of', arity: 'many', inverse: 'in' },
+  ],
+  defaultOperator: 'in',
+  options: values.map(v => ({ value: v, label: v })),
+})
+
+function Explorer({ rows, allYears }: { rows: BlockingStatRow[]; allYears: number[] }) {
+  const agencies = useMemo(() => [...new Set(rows.map(r => r.agency))].sort((a, b) => a.localeCompare(b)), [rows])
+  const offences = useMemo(() => [...new Set(rows.map(r => r.offence))].sort((a, b) => a.localeCompare(b)), [rows])
+  const fields = useMemo<FilterField[]>(() => [
+    multiselect('agency', 'Agency', agencies),
+    multiselect('offence', 'Offence', offences),
+    {
+      id: 'year',
+      label: 'Year',
+      type: 'number',
+      operators: [
+        { value: 'eq', label: 'is', inverse: 'neq' },
+        { value: 'between', label: 'is between', arity: 'range', inverse: 'not_between' },
+      ],
+      defaultOperator: 'eq',
+      placeholder: String(allYears[allYears.length - 1]),
+    },
+  ], [agencies, offences, allYears])
+
+  const [preset, setPreset] = useState<string | null>('a')
+  const [groupBy, setGroupBy] = useState<GroupBy>(PRESETS[0].groupBy)
+  const [query, setQuery] = useState<FilterQuery>(() => createFilterQuery<unknown>(PRESETS[0].rules(offences)))
+  const applyPreset = (id: string) => {
+    const p = PRESETS.find(x => x.id === id)
+    if (!p) return
+    setPreset(id)
+    setGroupBy(p.groupBy)
+    setQuery(createFilterQuery<unknown>(p.rules(offences)))
+  }
+
+  const rules = query.rules.filter((r): r is Rule => r.type === 'rule')
+  const keep = (r: BlockingStatRow) => rules.every(rule => {
+    const f = rule.path[0] as 'agency' | 'offence' | 'year'
+    return f in r ? passes(rule, r[f]) : true
+  })
+  const filtered = rows.filter(keep)
+  const yearRule = rules.filter(r => r.path[0] === 'year')
+  const years = allYears.filter(y => yearRule.every(r => passes(r, y)))
+
+  // One line per group with per-year counts, largest first.
+  const key = groupKey[groupBy]
+  const groups = new Map<string, Record<number, number>>()
+  for (const r of filtered) {
+    const g = groups.get(key(r)) ?? {}
+    g[r.year] = (g[r.year] ?? 0) + r.count
+    groups.set(key(r), g)
+  }
+  const lines = [...groups]
+    .map(([label, byYear]) => ({ label, byYear, total: years.reduce((s, y) => s + (byYear[y] ?? 0), 0) }))
+    .filter(l => l.total)
+    .sort((a, b) => b.total - a.total)
+  const total = lines.reduce((s, l) => s + l.total, 0)
+  const yearTotals = years.map(y => lines.reduce((s, l) => s + (l.byYear[y] ?? 0), 0))
+
+  const top = topN(lines.map(l => ({ label: l.label, value: l.total })), 4).map(t => t.label).filter(l => l !== 'Other')
+  const series = [...top.map(t => ({ key: t, label: t })), ...(top.length < lines.length ? [{ key: 'Other', label: 'Other' }] : [])]
   const perYear = yearRows(years, y => {
     const r: Record<string, number> = { Other: 0 }
-    for (const l of mcmc) r[top.includes(l.offence) ? l.offence : 'Other'] = (r[top.includes(l.offence) ? l.offence : 'Other'] ?? 0) + (l.byYear[y] ?? 0)
+    for (const l of lines) {
+      const k = top.includes(l.label) ? l.label : 'Other'
+      r[k] = (r[k] ?? 0) + (l.byYear[y] ?? 0)
+    }
     return r
   })
+  const { shown, toggle } = useRowLimit(lines, 12)
+  const noun = GROUP_LABEL[groupBy].toLowerCase()
+
   return (
     <>
-      <div className="mb-4">
+      <Tabs value={preset ?? ''} onValueChange={applyPreset} variant="segment" className="mb-3">
+        <TabsList>
+          {PRESETS.map(p => <TabsTrigger key={p.id} value={p.id} indicatorClassName="">{p.label}</TabsTrigger>)}
+        </TabsList>
+      </Tabs>
+      {/* Filters decide what is counted, Group by how it's split: one sentence-like row, Clear last. */}
+      <div className="flex flex-wrap items-center gap-1.5 mb-8">
         <TooltipProvider>
-          <Filters fields={offenceField} query={query} onQueryChange={setQuery} showClear size="sm" />
+          <Filters fields={fields} query={query} onQueryChange={q => { setQuery(q); setPreset(null) }} size="sm" className="w-auto" />
         </TooltipProvider>
+        <ButtonGroup>
+          <ButtonGroupText className="bg-background dark:bg-input/30 text-muted-foreground">Group by</ButtonGroupText>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="bg-background dark:bg-input/30">
+                {GROUP_LABEL[groupBy]}<ChevronDownIcon className="opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuRadioGroup value={groupBy} onValueChange={v => { setGroupBy(v as GroupBy); setPreset(null) }}>
+                {(Object.keys(GROUP_LABEL) as GroupBy[]).map(g => <DropdownMenuRadioItem key={g} value={g}>{GROUP_LABEL[g]}</DropdownMenuRadioItem>)}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </ButtonGroup>
+        {query.rules.length > 0 && (
+          <Button variant="outline" size="sm" onClick={() => { setQuery(createFilterQuery<unknown>([])); setPreset(null) }}>Clear</Button>
+        )}
       </div>
-      <div className="flex flex-wrap gap-8 mb-6">
-        <Kpi label={`MCMC blocks ${years[0]}–${latest}`} value={fmt(total)} />
-        <Kpi label={`MCMC blocks ${latest}`} value={fmt(thisYear.reduce((s, l) => s + l.total, 0))} />
-        <Kpi label="Offence types" value={String(overall.length)} />
-      </div>
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-[3fr_7fr] mb-10">
-        <Card title="Share of blocks"><Donut items={overall.map(l => ({ label: l.offence, value: l.total }))} label="Blocks" /></Card>
-        <Card title="By year and offence"><YearLines data={perYear} series={stackedSeries} /></Card>
-      </div>
-    </>
-  )
-}
 
-// Vertical stacked bars: one bar per agency, one stack segment per offence,
-// filtered to a single year or a from–to range.
-function AgencyOffenceStack({ lines, years }: { lines: Line[]; years: number[] }) {
-  const [query, setQuery] = useState<FilterQuery>(() => createFilterQuery<unknown>([]))
-  const yearField = useMemo<FilterField[]>(() => [{
-    id: 'year',
-    label: 'Year',
-    type: 'number',
-    // is = one year, between = inclusive range; no rule = every year.
-    operators: [
-      { value: 'eq', label: 'is', inverse: 'neq' },
-      { value: 'between', label: 'is between', arity: 'range', inverse: 'not_between' },
-    ],
-    defaultOperator: 'eq',
-    placeholder: String(years[years.length - 1]),
-  }], [years])
-  const rule = query.rules.find((r): r is Extract<typeof r, { type: 'rule' }> => r.type === 'rule' && r.path[0] === 'year')
-  const [lo, hi] = (() => {
-    const v = rule?.value
-    if (rule?.operator === 'eq' && v != null && v !== '') return [Number(v), Number(v)]
-    if (rule?.operator === 'between' && Array.isArray(v)) {
-      const [a, b] = v.map(x => (x == null || x === '' ? NaN : Number(x)))
-      return [Math.min(...[a, b].filter(n => !isNaN(n)), Infinity), Math.max(...[a, b].filter(n => !isNaN(n)), -Infinity)]
-    }
-    return [-Infinity, Infinity]
-  })()
-  const selected = years.filter(y => y >= lo && y <= hi)
-
-  const { data, series } = useMemo(() => {
-    const byAgency = new Map<string, Map<string, number>>()
-    const byOffence = new Map<string, number>()
-    for (const l of lines) {
-      const t = sumYears(l, selected)
-      if (!t) continue
-      const m = byAgency.get(l.agency) ?? new Map<string, number>()
-      m.set(l.offence, (m.get(l.offence) ?? 0) + t)
-      byAgency.set(l.agency, m)
-      byOffence.set(l.offence, (byOffence.get(l.offence) ?? 0) + t)
-    }
-    const offences = [...byOffence].sort((a, b) => b[1] - a[1]).map(([o]) => o)
-    const agencies = [...byAgency]
-      .map(([name, m]) => ({ name, m, total: [...m.values()].reduce((a, b) => a + b, 0) }))
-      .sort((a, b) => b.total - a.total)
-    return {
-      series: offences.map(o => ({ key: o, label: o })),
-      // The shared BarChart's value scale is hardcoded linear, so log the plotted
-      // height instead: each bar's total becomes log1p(total), split into segments
-      // in their real proportions. Real counts ride along in `raw` for the tooltip.
-      // Plotted units are arbitrary (there's no axis), so rescale until the tallest
-      // bar is 90% of the plot — the chart's own [0, max*1.1] nice() domain then
-      // lands on exactly 100 and the plot fills its box instead of leaving a gap.
-      data: agencies.map(a => {
-        const raw = Object.fromEntries(offences.map(o => [o, a.m.get(o) ?? 0]))
-        const k = (Math.log1p(a.total) / a.total) * (90 / Math.log1p(agencies[0].total))
-        return { name: a.name, raw, ...Object.fromEntries(offences.map(o => [o, raw[o] * k])) }
-      }),
-    }
-  }, [lines, selected.join(",")])
-
-  const tooltipRows = (point: Record<string, unknown>) => {
-    const raw = point.raw as Record<string, number>
-    const total = series.reduce((s, x) => s + (raw[x.key] || 0), 0)
-    return series
-      .map((x, i) => ({ color: ramp(i, series.length), label: x.label, v: raw[x.key] || 0 }))
-      .filter(r => r.v)
-      .map(r => ({ color: r.color, label: r.label, value: `${fmt(r.v)} · ${pct(r.v, total)}` }))
-  }
-  const filters = (
-    <TooltipProvider>
-      <Filters fields={yearField} query={query} onQueryChange={setQuery} showClear size="sm" className="justify-end" />
-    </TooltipProvider>
-  )
-  return (
-    <Card title="Agency and offence" className="col-span-full" action={filters}>
-      {data.length === 0 ? <p className="text-sm opacity-60">No blocks in this period.</p> : (
+      {total === 0 ? <p className="text-sm opacity-60 mb-10">No blocks match these filters.</p> : (
         <>
-          {/* No scroll wrapper: the hover tooltip lives inside the chart box, and an
-              overflow-x-auto parent turned a tooltip poking past the edge into a scrollbar. */}
-          <BarChart data={data} stacked stackGap={1} aspectRatio="2.4 / 1" margin={{ top: 8, right: 0, bottom: 30, left: 0 }}>
-            <Grid horizontal vertical={false} />
-            {series.map((s, i) => <Bar key={s.key} dataKey={s.key} fill={ramp(i, series.length)} />)}
-            <BarXAxis showAllLabels />
-            <ChartTooltip rows={tooltipRows} />
-          </BarChart>
-          <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2">
-            {series.map((s, i) => (
-              <li key={s.key} className="flex items-center gap-1.5">
-                <span className="inline-block size-2.5 rounded-sm" style={{ background: ramp(i, series.length) }} />{s.label}
-              </li>
-            ))}
-          </ul>
+          <div className="grid gap-4 grid-cols-1 lg:grid-cols-[3fr_7fr] mb-8">
+            <Card title="Share of blocks" className={years.length < 2 ? 'lg:col-span-2' : ''}>
+              {groupBy === 'agency'
+                ? <AgencySunburst rows={filtered.filter(r => years.includes(r.year)).map(r => ({ agency: r.agency, offence: r.offence, total: r.count }))} label="Blocks" />
+                : <Donut items={lines.map(l => ({ label: l.label, value: l.total }))} label="Blocks" />}
+            </Card>
+            {years.length > 1 && <Card title={`By year and ${noun}`}><YearLines data={perYear} series={series} /></Card>}
+            {/* Full grid: dash-table-wrap draws the rounded outer frame, cells draw the inner lines. */}
+            <div className="lg:col-span-2">
+              <div className="dash-table-wrap">
+                <Table className="table-fixed min-w-[760px]" aria-label={`Blocks by ${noun} and year`}>
+                  <TableHeader>
+                    <TableRow className="bg-stone-panel">
+                      <TableHead scope="col" className={`w-56 ${TH}`}>{GROUP_LABEL[groupBy]}</TableHead>
+                      {years.map(y => <TableHead scope="col" key={y} className={`${TH} ${CELL_EDGE} text-right`}>{y}</TableHead>)}
+                      <TableHead scope="col" className={`${TH} ${CELL_EDGE} text-right`}>Total</TableHead>
+                      <TableHead scope="col" className={`${TH} ${CELL_EDGE} text-right`}>Share</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {shown.map(l => (
+                      <TableRow key={l.label} className="border-t border-stone-border transition-colors duration-150 hover:bg-stone-panel">
+                        <TableCell className={`${TD} truncate font-medium`} title={l.label}>{l.label}</TableCell>
+                        {years.map(y => <TableCell key={y} className={`${TD} ${CELL_EDGE} text-right tabular-nums`}>{zero(l.byYear[y] ?? 0)}</TableCell>)}
+                        <TableCell className={`${TD} ${CELL_EDGE} text-right tabular-nums font-medium`}>{fmt(l.total)}</TableCell>
+                        <TableCell className={`${TD} ${CELL_EDGE} text-right tabular-nums text-stone-muted`}>{pct(l.total, total)}</TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow className="border-t border-stone-border bg-stone-panel font-semibold">
+                      <TableCell className={TD}>Total</TableCell>
+                      {yearTotals.map((v, i) => <TableCell key={years[i]} className={`${TD} ${CELL_EDGE} text-right tabular-nums`}>{fmt(v)}</TableCell>)}
+                      <TableCell className={`${TD} ${CELL_EDGE} text-right tabular-nums`}>{fmt(total)}</TableCell>
+                      <TableCell className={`${TD} ${CELL_EDGE} text-right tabular-nums`}>100%</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+              {toggle}
+            </div>
+          </div>
         </>
       )}
-    </Card>
-  )
-}
-
-function TabB({ lines, years }: { lines: Line[]; years: number[] }) {
-  const other = lines
-    .filter(l => l.agency !== MCMC)
-    .map(l => ({ ...l, total: sumYears(l, years) }))
-    .filter(l => l.total)
-  const byAgency = new Map<string, number>()
-  for (const l of other) byAgency.set(l.agency, (byAgency.get(l.agency) ?? 0) + l.total)
-  const agencyItems = [...byAgency].map(([label, value]) => ({ label, value }))
-  return (
-    <>
-      <div className="flex flex-wrap gap-8 mb-6">
-        <Kpi label="Blocks by other agencies" value={fmt(agencyItems.reduce((s, a) => s + a.value, 0))} />
-        <Kpi label="Agencies" value={String(agencyItems.length)} />
-      </div>
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 mb-10">
-        <Card title="Share of blocks" className="col-span-full"><AgencySunburst rows={other} label="Blocks" /></Card>
-        <AgencyOffenceStack lines={lines.filter(l => l.agency !== MCMC)} years={years} />
-      </div>
     </>
   )
 }
 
-const sumYears = (l: Line, years: number[]) => years.reduce((s, y) => s + (l.byYear[y] ?? 0), 0)
+// Header/cell classes for the breakdown table; matches .results-table's header type.
+const TH = 'h-10 px-4 text-[11px] font-semibold tracking-[0.06em] uppercase text-stone-muted'
+const TD = 'px-4 py-2.5'
+const CELL_EDGE = 'border-l border-stone-border'
 
 const zero = (n: number) => (n ? fmt(n) : <span className="opacity-30">–</span>)
 
-// Year/total/share column widths shared by both TabC tables so they align.
-function NumHeads({ years }: { years: number[] }) {
-  return (
-    <>
-      {years.map(y => <TableHead key={y} className="w-20 text-right">{y}</TableHead>)}
-      <TableHead className="w-24 text-right">Total</TableHead>
-      <TableHead className="w-24 text-right">Share</TableHead>
-    </>
-  )
-}
-
-function TabC({ lines, years }: { lines: Line[]; years: number[] }) {
-  const yearTotals = (pred: (l: Line) => boolean) => years.map(y => lines.filter(pred).reduce((s, l) => s + (l.byYear[y] ?? 0), 0))
-  const mcmc = yearTotals(l => l.agency === MCMC && isMcmcCategory(l.offence))
-  const other = yearTotals(l => l.agency !== MCMC || !isMcmcCategory(l.offence))
-  const all = years.map((_, i) => mcmc[i] + other[i])
-  const grand = all.reduce((s, n) => s + n, 0)
-  const maxYear = Math.max(0, ...all)
-  const rows = [
-    { label: MCMC, vals: mcmc },
-    { label: 'Other agencies', vals: other },
-  ]
-  const byOffenceYear = new Map<string, Record<number, number>>()
-  for (const l of lines) {
-    const label = `${l.agency} · ${l.offence}`
-    const rec = byOffenceYear.get(label) ?? {}
-    for (const y of years) rec[y] = (rec[y] ?? 0) + (l.byYear[y] ?? 0)
-    byOffenceYear.set(label, rec)
-  }
-  const topOffences = [...byOffenceYear.entries()]
-    .map(([k, r]) => [k, Object.values(r).reduce((s, n) => s + n, 0)] as const)
-    .sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k]) => k)
-  const detail = lines.filter(l => sumYears(l, years)).sort((a, b) => sumYears(b, years) - sumYears(a, years))
-  const { shown, toggle } = useRowLimit(detail, 12)
-  return (
-    <>
-      <section className="mb-10">
-        <h2 className="text-base font-semibold mb-3">Blocks by jurisdiction and year</h2>
-        <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 mb-6">
-          <Card title="Blocks per year: MCMC vs other agencies">
-            <YearBars
-              data={yearRows(years, y => ({ mcmc: mcmc[years.indexOf(y)], other: other[years.indexOf(y)] }))}
-              series={[{ key: 'mcmc', label: MCMC }, { key: 'other', label: 'Other agencies' }]}
-              stacked
-            />
-          </Card>
-          <Card title="Jurisdiction share"><Donut items={rows.map(r => ({ label: r.label, value: r.vals.reduce((s, n) => s + n, 0) }))} label="Blocks" /></Card>
-          <Card title="Top offences per year" className="col-span-full">
-            <YearBars
-              data={yearRows(years, y => Object.fromEntries(topOffences.map(t => [t, byOffenceYear.get(t)?.[y] ?? 0])))}
-              series={topOffences.map(t => ({ key: t, label: t }))}
-              wide
-            />
-          </Card>
-        </div>
-        <Table className="table-fixed min-w-[900px]">
-          <TableHeader>
-            <TableRow>
-              <TableHead colSpan={2}>Jurisdiction</TableHead>
-              <NumHeads years={years} />
-            </TableRow>
-</TableHeader>
-          <TableBody>
-            {rows.map(r => {
-              const t = r.vals.reduce((s, n) => s + n, 0)
-              return (
-                <TableRow key={r.label}>
-                  <TableCell colSpan={2}>{r.label}</TableCell>
-                  {r.vals.map((v, i) => <TableCell key={years[i]} className="text-right tabular-nums">{fmt(v)}</TableCell>)}
-                  <TableCell className="text-right tabular-nums">{fmt(t)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{pct(t, grand)}</TableCell>
-                </TableRow>
-              )
-            })}
-            <TableRow className="font-semibold">
-              <TableCell colSpan={2}>Total</TableCell>
-              {all.map((v, i) => <TableCell key={years[i]} className="text-right tabular-nums">{fmt(v)}</TableCell>)}
-              <TableCell className="text-right tabular-nums">{fmt(grand)}</TableCell>
-              <TableCell className="text-right">100%</TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
-      </section>
-
-      <section className="mb-10">
-        <h2 className="text-base font-semibold mb-3">Blocks by agency, offence and year</h2>
-        <Table className="table-fixed min-w-[900px]">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-28">Agency</TableHead>
-              <TableHead>Offence</TableHead>
-              <NumHeads years={years} />
-            </TableRow>
-</TableHeader>
-          <TableBody>
-            {shown.map(l => (
-              <TableRow key={l.agency + l.offence}>
-                <TableCell>{l.agency}</TableCell>
-                <TableCell className="truncate">{l.offence}</TableCell>
-                {years.map(y => <TableCell key={y} className="text-right tabular-nums">{zero(l.byYear[y] ?? 0)}</TableCell>)}
-                <TableCell className="text-right tabular-nums">{fmt(sumYears(l, years))}</TableCell>
-                <TableCell className="text-right tabular-nums">{pct(sumYears(l, years), grand)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {toggle}
-      </section>
-    </>
-  )
-}
-
-export type StatsPart = 'a' | 'b' | 'c'
-
-// One Statistics view (A: MCMC, B: other agencies, C: comparison); fetches on mount.
-export function BlockingStatsTab({ part }: { part: StatsPart }) {
+// The blocking register: one explorer over every (year, agency, offence) count,
+// with presets that reproduce each sheet of the source workbook.
+export function BlockingRegister() {
   const [rows, setRows] = useState<BlockingStatRow[] | null>(null)
   const [error, setError] = useState('')
   useEffect(() => {
     fetchBlockingStats().then(setRows, e => setError(e instanceof Error ? e.message : 'Failed to load'))
   }, [])
 
-  const lines = useMemo(() => toLines((rows ?? []).filter(r => r.year >= FIRST_YEAR)), [rows])
-  const years = useMemo(() => [...new Set(lines.flatMap(l => Object.keys(l.byYear).map(Number)))].sort(), [lines])
+  const scoped = useMemo(() => (rows ?? []).filter(r => r.year >= FIRST_YEAR), [rows])
+  const years = useMemo(() => [...new Set(scoped.map(r => r.year))].sort(), [scoped])
 
   if (error) return <p className="text-sm mt-4">{error}</p>
   if (!rows) return null
   if (years.length === 0) return <p className="text-sm mt-4">No blocked domains with a dated Notice letter yet.</p>
   return (
-    <div className="mt-4">
-      <p className="page-subtitle mb-4">Domains blocked since {FIRST_YEAR}, by Notice-letter year. A domain with several offences counts under each.</p>
-      {part === 'a' && <TabA lines={lines} years={years} />}
-      {part === 'b' && <TabB lines={lines} years={years} />}
-      {part === 'c' && <TabC lines={lines} years={years} />}
+    <div className="mt-6 mb-10">
+      <Explorer rows={scoped} allYears={years} />
     </div>
   )
 }

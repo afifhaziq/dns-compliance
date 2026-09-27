@@ -179,19 +179,14 @@ export function TabsContent({ value, children, className }: { value: string; chi
   const active = current === value;
   // Inactive panels stay mounted but hidden, so their content (e.g. source
   // code) is present in the server-rendered HTML for crawlers and assistive
-  // tech, instead of being dropped from the DOM.
-  if (!active) {
-    return (
-      <div hidden className={className}>
-        {children}
-      </div>
-    );
-  }
+  // tech. Same element either way: swapping a plain div for a motion.div on
+  // activation made React remount the whole panel, rebuilding every chart and
+  // dropping its state on each tab switch.
   return (
     <motion.div
-      key={value}
-      initial={{ opacity: 0, y: reduce ? 0 : 4 }}
-      animate={{ opacity: 1, y: 0 }}
+      hidden={!active}
+      initial={false}
+      animate={active ? { opacity: 1, y: 0 } : { opacity: 0, y: reduce ? 0 : 4 }}
       transition={{ duration: 0.18, ease: EASE_OUT }}
       className={cn("mt-4", className)}
     >
