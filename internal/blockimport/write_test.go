@@ -133,8 +133,8 @@ func TestWriteCRDCases_SkipsEmptyDomain(t *testing.T) {
 	}
 }
 
-// TestWriteCRDCases_RetainsUnnormalizableURLViaFallback guards item 13
-// (docs/blocking-list-open-questions.md): a row too garbled for
+// TestWriteCRDCases_RetainsUnnormalizableURLViaFallback guards the unrecoverable-URL rule
+// (docs/blocking-list-migration-clarifications.md §4): a row too garbled for
 // urlnorm.Normalize to extract any hostname from (e.g. invalid port syntax)
 // must not be silently dropped -- it falls back to a raw storage key so the
 // case/citation record and the exact cited text (OriginalURL) both survive.

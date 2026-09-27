@@ -1,259 +1,97 @@
-# Blocking Full List_1.xlsx migration — open questions for sign-off
+# CRD blocking-list import (`Blocking Full List_1.xlsx`)
 
-Source: test migration analysis of `Blocking Full List_1.xlsx`, sheet "2011-2026" (38,156 data rows, 2011–2026). Read-only analysis, nothing imported yet. Full findings summary is in the conversation that produced this doc; this file is just the questions that need a decision from the business/product side before any real import is written.
+Source: sheet "2011-2026" (38,156 rows, 2011–2026), gitignored in repo root. Importer: `go run ./cmd/import-crd --file "Blocking Full List_1.xlsx" --db-url "$DB_URL" --dry-run=false` (`internal/blockimport/`). Legal classification lookup: `docs/blocking-list-citation-classification.csv` (only `status=confirmed` rows are used).
 
-DNS server/ISP list is **not** in scope — it isn't in the spreadsheet and the existing `dns_servers` table is retained as-is.
+This file records the import rules in force and what is still open. Section numbers are cited from code — keep them stable.
 
----
+## Open items
+
+1. **Verify the Akta numbers added 2026-09-27.** The `(Akta NNN)` suffixes on 29 Acts in the classification CSV (e.g. AKM 1998 → 588, Kanun Keseksaan → 574) were filled from memory because the `mylaw-my` MCP was down. Spot-check against the official list.
+2. **Catalog review beyond AKM 1998.** Only Akta Komunikasi dan Multimedia 1998 has been walked through (§3). The other 48 instruments still need the same check (also the "Legal citation mapping correctness" TODO in `CLAUDE.md`).
+3. **Seksyen 211 inherits Seksyen 233's classification.** All Seksyen 211 offences come from splitting "Seksyen 211 dan 233" cells (§3), so 211 carries whatever category the row had — including Palsu › Kepentingan Negara (23). Confirm that's acceptable.
+4. **Workbook sheet B is above the dashboard** (§6; ~1.5% for 2024–25, 3–4% for 2022–23): the workbook counts spreadsheet rows, the import collapses byte-identical duplicates (§5) and different paths on one hostname. Decide whether to accept the gap or count per row.
+5. **2022–2024 sheet A category differences** (2024 Jelik 11 vs 10; 2022 Palsu 16 vs 12, Jelik 1 vs 5; 2023 Jelik 24 vs 25): the source sheet gives the dashboard's numbers, the workbook was compiled from an earlier version. Confirm which is authoritative.
+6. **`case_letters` has no foreign key to `cases`** (`CaseLetter.CaseID`, `internal/db/models.go`), so deleting a case leaves its letters behind — the re-migrate procedure below has to delete them explicitly.
+7. **`case_urls.original_url` isn't exposed** in the API/UI yet; the exact cited URL (e.g. a `t.me/<channel>` path) is stored but not visible.
+8. **Selangor Syariah Enactment spelling:** the catalog uses `Enakmen Jenayah Syariah (Negeri Selangor) 1995`; the stakeholder once wrote it without "Negeri". Flag if that form should be canonical.
+
+## Re-migrating
+
+Re-runs skip cases that already exist and never update catalog rows, so rule changes only take effect on a clean import. Any environment imported before 2026-09-27 needs this:
+
+```sql
+BEGIN;
+DELETE FROM case_letters;   -- no FK to cases (open item 6)
+DELETE FROM cases;          -- cascades case_urls + url_offences
+DELETE FROM instruments;    -- cascades citations → categories → elements → sub_elements
+COMMIT;
+```
+
+This also removes any legal citations or offences entered by hand. `urls` and scan history are untouched. Last local import (2026-09-27): 15,644 cases, 37,410 case_urls, 39,097 url_offences.
 
 ## 1. Status mapping
 
-**Correction:** this section's original framing is stale. It checked spreadsheet values against `URL.Status`, but case metadata has since moved off `URL` onto `Case`/`CaseURL` (case_urls.status — "this url's own status within the case"). The app already has a UI setting for exactly this, the case Status field (`urls.tsx`'s `STATUS_OPTIONS`), and the live allowed set has grown since this doc was first written: `{"", "requested", "uplift", "suspended", "internal"}` (`internal/server/handlers.go:244`, `urlStatusAllowed`) — **4 real values now, not 3.**
-
-97.2% of rows (37,082 / 38,156) have a `Status` value with no direct match in that set. Actual spreadsheet values:
-
-| Value | Rows |
-|---|---|
-| `Blocked` | 37,082 |
-| `Uplift` | 771 |
-| `Not Blocked` | 268 |
-| `Suspended` | 9 |
-| `Not blocked` | 4 |
-| `blocked` (lowercase) | 1 |
-| *(empty)* | 21 |
-
-**Resolved:** `Blocked`/`Not Blocked` are not a live compliance check — they're the manual record of what the ISP told CRD when the takedown request was actioned (or not), so neither should be skipped or derived from the app's live `Compliant` field. `Suspended`/`Uplift` are direct case-insensitive matches to the app's existing `suspended`/`uplift` values.
-
-**Resolved by stakeholder, 2026-09-13:** `case_urls.status`'s vocabulary is now `requested | blocked | uplift | suspended | not_blocked | internal` — two new values added rather than folding `Blocked`/`Not Blocked` into an existing one. Decided flow: `internal → requested → {blocked, uplift, suspended, not_blocked}`.
-- `Blocked` (37,082 rows, 97%) → **`blocked`** (new value — not folded into `requested` as this doc originally proposed).
-- `Uplift` → `uplift`, `Suspended` → `suspended` (case-insensitive, direct, unchanged).
-- `Not Blocked`/`Not blocked` (272 rows) → **`not_blocked`** (new value — not `internal`, which keeps its separate, unrelated meaning).
-- Empty `Status` cells (21 rows) → `requested` (unchanged fallback).
-
-Applied: `urlStatusAllowed` (`internal/server/handlers.go`), `CASE_STATUS_OPTIONS` (`web/src/lib/case-options.ts`), `STATUS_OPTIONS` (`web/src/routes/urls.tsx`), and `mapCRDStatus` (`internal/blockimport/write.go`, previously a `ponytail:`-flagged placeholder mapping both `Blocked` and `Not Blocked` to `requested` pending exactly this sign-off) all updated; `go test ./internal/blockimport/... ./internal/server/...` and `tsc --noEmit` both pass.
-
----
-
-## 2. One row per domain (schema) vs. one row per event (spreadsheet)
-
-`URL.URL` has a unique index — the schema holds exactly one row per domain. The spreadsheet has one row per blocking *event*, and domains repeat across years.
-
-- 2,890 domains (8.4% of ~34,300 distinct domains) appear in more than one row — 6,758 rows total.
-- `t.me` alone has 92 rows across 2022–2023; `youtu.be` has 37; several gambling/piracy domains recur 6–14 times across 2019–2026.
-
-**Do the repeats carry the same case details, or different ones?** Checked directly — of the 2,890 repeated domains:
-
-| | Groups | % |
-|---|---|---|
-| Identical citation + category + element + sub-element + agency across every repeat | 2,151 | 74.4% |
-| At least one of those fields differs across repeats | 739 | 25.6% |
-
-Breaking down *which* field differs, per repeated-domain group (a group can vary on more than one):
-
-| Field | Groups that vary |
-|---|---|
-| Year | 1,191 / 2,890 (expected — same domain blocked again in a later year) |
-| Citation (`Butiran Kesalahan`) text | 645 / 2,890 |
-| Element (`Elemen`) | 179 / 2,890 |
-| Agency (`Agensi`) | 79 / 2,890 |
-| Status | 48 / 2,890 |
-| Category (`Kategori`) | 34 / 2,890 |
-
-Category is nearly always stable (98.8% of repeat groups keep the same category) — most of the "citation differs" cases are the same law cited two different ways (e.g. `"Seksyen 211 dan 233 Akta Komunikasi dan Multimedia 1998"` on the first block vs. the abbreviated `"Seksyen 233 Akta Komunikasi dan Multimedia 1998"` or `"Seksyen 233 AKM 1998"` on a later one — same underlying provision, different citation string). But 48 groups show a genuine status change over time (e.g. blocked, later uplifted, blocked again), which is real case history, not noise.
-
-**Resolved:** per-event history must be preserved and queryable — no collapsing to "current status + latest citation."
-
-**Correction:** this is not just a design proposal — the `cases`/`case_letters`/`case_urls` schema already shipped (`docs/db-schema.dbml`, `docs/db-schema-proposed.dbml` is now historical, marked "SHIPPED" at its own file header) and is live in the app today (`urls.tsx`'s Cases view, `docs.tsx`'s Documents view). `urls` stays one row per domain; `case_urls` is the many-to-many join carrying its own `status` per (case, url) pair; `case_letters` carries per-letter `reference_number_external`/`reference_number_internal`, dates, subject, remarks. A repeated domain just gets one additional `case_urls` row per event, all pointing at the same `urls` row — there's no "duplicate domain" collision to resolve, since uniqueness lives on `urls.url`, not on how many cases reference it. Per-event category/element/sub-element differences go on `url_offences` (recorded_at-stamped, already supports multiple rows per url over time).
-
-The one open wrinkle this reintroduces: `cases` is meant to be "one row per real-world request," but `No. Rujukan NMD` can't be trusted to group rows into a case — one blanket reference value (`"JK KPN(PR) 168/6"`) alone is reused across 9,206 unrelated PDRM rows spanning 2021–2026. Default plan: import each CRD spreadsheet row as its **own** `case` (1 case_urls + 1 case_letters + 1 url_offences row per row), rather than trying to group rows by matching NMD into a shared case — safe under the blanket-reference risk, and doesn't lose anything since case-level grouping wasn't reliable to begin with. Worth a stakeholder confirm, but this is the safe default absent a better grouping signal.
-
-This still doesn't decide §5's exact-duplicate rows (474 groups, byte-identical including year) — under this model they'd just become two cases for what looks like one event. That's still worth asking about separately: collapse those before import, or let them become two cases as data-entry noise it's not worth cleaning?
-
----
-
-## 3. Category (`Kategori`) data doesn't match the spreadsheet's own legend
-
-The workbook's own "Directory" sheet lists 4 canonical categories (Lucah, Kepentingan Negara, Jelik, Palsu). Actual data has 54 distinct values. Most of the extra 50 are legitimate categories the legend simply never documented (Judi 13,178 rows, Penyalahgunaan Hakcipta 5,278 rows, Penjualan Tanpa Kebenaran 3,262 rows, etc.) — not a data problem, just confirms the Directory sheet can't be used as the seed list for the `Category` table.
-
-**Resolved:** ignore the Directory sheet — it's stale. The `Category` seed list is extracted straight from the main sheet's actual data instead, and (per the wrinkle below) each value is mapped under its own `Instrument`/`Citation`, not treated as a flat global list. Casing duplicates within the 50 (e.g. `"Tidak berdaftar"` vs `"Tidak Berdaftar"`) still need a human pass during that classification — not auto-collapsed.
-
-Two things in this column are real problems:
-
-- **8 distinct values (71 rows) are comma-joined compounds** — e.g. `"Jelik, Palsu, Lucah"`, `"Jelik, Palsu"` — a single cell describing multiple categories at once.
-- **12 rows have a column-shift data-entry bug**: `Kepentingan Negara` (a valid category name) appears in the `Elemen` column instead of `Kategori`, with `Kategori` left blank on those rows. As-is this would violate the catalog's parent-must-exist ordering (`Element` needs a `Category` to attach to).
-
-**Resolved:**
-- Compound rows: `URLOffence` already supports multiple rows per `URL` (surrogate-PK join, no uniqueness constraint blocking it — same mechanism the `MultiOffencePicker` UI already exercises), so each compound cell splits into one `URLOffence` per listed category rather than picking a primary. 34 of the 71 rows also carry an `Elemen`/`Sub-Elemen` value (e.g. `"Jelik, Palsu"` + Elemen `"Kepentingan Negara"`) — since `Element` is scoped to one specific `Category` and names aren't shared across categories (`"Politik"` under `Jelik` and `"Politik"` under `Palsu` are two distinct rows, not one Element with two parents), the row asserts N *independent* facts, not one ambiguous one: the same Elemen/Sub-Elemen value attaches under **every** split category as its own `URLOffence`. Row 7027 (`Jelik, Palsu` + Elemen `Kepentingan Negara` + Sub-Elemen `Politik`) becomes two rows — `(Jelik, Kepentingan Negara, Politik)` and `(Palsu, Kepentingan Negara, Politik)` — both real, no case-by-case lookup needed. Mechanical, fully applied in the extract below. One side-effect worth a heads-up, not a blocker: this introduces 5 (Category, Element, Sub-Element) combinations that never occur on their own anywhere else in the sheet (e.g. `(Lucah, Politik)`, `(Palsu, Kepentingan Negara, Politik)`) — new catalog rows, not typos.
-- Column-shift rows: confirmed, correct by moving the `Elemen` value into `Kategori` (already applied in the extract below).
-
-**New wrinkle, not previously documented:** `Category` isn't a flat/global table in the shipped catalog — it's scoped to a `Citation`, which is scoped to an `Instrument` (five-level catalog: Instrument → Citation → Category → Element → SubElement; see the `legal-citation-catalog` skill). The same category name under two different citations is deliberately two separate rows. That means before any `Kategori` value can be imported at all, every row's `Butiran Kesalahan` (citation) text first needs to resolve to one canonical `Instrument`+`Citation` pair.
-
-Checked how bad this is against the real data — better than feared:
-- Only **184 distinct raw citation strings** across all 38,156 rows (not 38k) — small enough to hand-classify once, not something that needs per-row heuristics.
-- Running the existing `internal/legalcite.Parse` (already built for exactly this Malay-citation-shorthand problem) against all 184: **110 parse cleanly, 74 need manual review** (joined/ambiguous text, same as its documented behavior for strings like "Seksyen 211 dan 233 Akta...").
-- `legalcite.Parse` only extracts the *provision* (section number), not which *Act* it belongs to — and provision numbers collide across unrelated Acts in this data (e.g. "Seksyen 5" appears under 11 different raw strings spanning at least 3 unrelated Acts: Akta Industri Pelancongan 1992, Akta Pemberi Pinjam Wang 1951, Akta Peranti Perubatan 2012). So Instrument identification can't be automated from provision number alone — matching each citation to the right `Instrument` needs either a manual pass over the 184 strings or a separate Act-name extraction step.
-
-**Resolved:** treat this as a one-time manual pre-import task — hand-classify the 184 distinct citation strings into canonical `Instrument`/`Citation` rows first (collapsing obvious variants like `"AKM1998"`/`"AKM 1998"`/`"Akta Komunikasi dan Multimedia 1998"` into one Citation), then attach each spreadsheet row's `Category`/`Element`/`Sub-Element` under that citation — rather than auto-creating a new `Citation` per unique raw string, which would fragment the same real category across near-duplicate citations.
-
-The extraction itself (citation × its observed `Category`/`Element`/`Sub-Element` combinations + row counts, plus `legalcite.Parse`'s confidence/provision-number for each citation) is done: `docs/blocking-list-citation-category-extract.csv`, 184 citation groups / 316 combo rows. Column-shift and compound-category corrections above are already applied and expanded — every compound cell is already split into its per-category rows, no remaining review flag. This is the input for the manual classification pass, not the classification itself — `Instrument`/`Citation` assignment per row still needs a human.
-
-**In progress:** the manual classification pass is being worked through batch-by-batch (grep the raw text for a shared marker — e.g. a year — then confirm which grouped hits are really the same `Instrument`), tracked in `docs/blocking-list-citation-classification.csv`. First batch done: the 8 distinct citation strings containing "1998" (13,469 rows, ~35% of the sheet) — 5 confirmed as `Akta Komunikasi dan Multimedia 1998` (AKM 1998 / Communication and Multimedia Act 1998 / CMA 1998, all one Instrument) differing only by provision (`Seksyen 233`, `Seksyen 211 dan 233`, `Seksyen 263`) or Act-name spelling; 3 confirmed as unrelated Acts that just happen to say "1998" (Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan), Akta Kemudahan dan Perkhidmatan Jagaan Kesihatan Swasta 1998 / Akta 586). Two things surfaced that still need an answer before those rows can be finalized: whether `Seksyen 263` is real or a typo for `Seksyen 233`, and how a citation that names two provisions at once (`"Seksyen 211 dan 233"`, `"Seksyen 7 dan Seksyen 8"`) should attach — one compound `Citation` row, or split like the compound-`Kategori` case above.
-
-Second batch done: the 3 distinct citations containing "Hakcipta" (5,282 rows) — `Seksyen 41 Akta Hakcipta 1987` (5,230 rows) and `Seksyen 41 1(C) Akta Hakcipta 1987` (47 rows) confirmed as the same Instrument (`Akta Hakcipta 1987`, Copyright Act 1987), kept as **two separate `Citation` rows** rather than merged — the bare `Seksyen 41` is a legitimately less-specific cite of the same section, not an error, while `Seksyen 41 1(C)` narrows to the `(1)(c)` subsection/paragraph. `Seksyen 100 Akta Cap Dagangan Hakcipta 2019` (5 rows) confirmed as a genuinely different Act, name as written accepted as correct (not a mis-transcription).
-
-Third batch done: the 11 distinct citations containing "Dadah"/"Kosmetik" (2,348 rows) split into two unrelated Instruments. 6 confirmed as `Peraturan Kawalan Dadah dan Kosmetik 1984` (Control of Drugs and Cosmetics Regulations 1984, 2,336 rows) — canonical name uses the `"dan"` spelling (not `"&"`/`"Peraturan-peraturan"` prefix), two real Citations (`Peraturan 7(1)(a)`, `Peraturan 18A(14)`). 4 confirmed as `Akta Dadah Berbahaya 1952` (Dangerous Drugs Act 1952, 8 rows) — including `Peraturan 5(1)(a) Peraturan Dadah Merbahaya 1952` (4 rows), confirmed as a double typo (wrong label `Peraturan`→`Akta`, wrong spelling `Merbahaya`→`Berbahaya`) that corrects to the same Citation as `Seksyen 5(1)(a) Akta Dadah Berbahaya 1952` below it.
-
-Fourth batch done: `Akta Racun 1952` (Poisons Act 1952, 2 spacing variants, 799 rows, trivial merge); `Kanun Keseksaan` (Penal Code — no year, per convention — 10 variants, 1,155 rows) confirmed as one Instrument across its real distinct provisions (§292, §298A, §372, §372A, §372B, §372(1)(e), §420, §500), including a typo (`Seskyen`→`Seksyen`) and a casing variant folded in; `Akta Pasaran Modal dan Perkhidmatan 2007` (Capital Markets and Services Act 2007, 12 variants, 740 rows) confirmed as one Instrument — canonical name **drops** the `"Undang Undang"` prefix some rows carry, `Perkhidmation` confirmed as a typo for `Perkhidmatan`, and the one row citing **2012** instead of 2007 confirmed as the same Instrument, not a separate Act/amendment. Two more two-provisions-in-one-cell rows surfaced (`"Seksyen 292 & Seksyen 372 Kanun Keseksaan"`, `"Seksyen 212 dan 58 Akta Pasaran Modal dan Perkhidmatan 2007"`) — flagged `needs_decision`, same open question as the earlier compound-citation rows, not re-asked.
-
-Fifth batch done: `Akta Makanan 1983` (Food Act 1983, 6 variants, 433 rows) confirmed as one Instrument across §17(2)/§17(1)(b)/§17(1)(d) (one singleton, `"Seksyen 17 (d)"`, kept as its own Citation rather than assumed identical to §17(1)(d) — missing the `(1)`, not enough evidence to merge); `Akta Ubat (Iklan dan Penjualan) 1956` (Medicines Advertisements and Sale Act 1956, 12 variants, 116 rows) confirmed as one Instrument, canonical name uses **`"dan Penjualan"`** (the `"Iklan & Jualan"` rows normalize to it, not merely a punctuation swap); `Akta Industri Pelancongan 1992` (Tourism Industry Act 1992, 4 variants, 94 rows) confirmed as one Instrument — `"Seksyen 5(2)(a) & (b)"` noted as covering two paragraphs of the same subsection (kept as one Citation, unlike the cross-section compound rows elsewhere). One more Act-spanning compound-citation row surfaced inside the Ubat batch (`Seksyen 4B Akta Ubat...1956` + `Peraturan 7(1)(a)` Dadah/Kosmetik Regs in one cell) — flagged `needs_decision`, same shape as the others.
-
-(Note: two rows in the tracker CSV were briefly malformed — an unquoted comma inside the raw citation text split into extra columns — caught and fixed by re-quoting; flagging in case anyone diffs the CSV history.)
-
-Sixth batch done: worked through the remaining 79 untouched citations (the "clusters A–K" this doc's handoff left unconfirmed). 43 more confirmed as unambiguous singletons or mechanical variants (Akta Pemberi Pinjam Wang 1951, Enakmen Jenayah Syariah (Negeri Selangor) 1995, Akta Perlindungan Data Peribadi 2010, Akta Perihal Dagangan 2011, Akta Akauntan 1967, Peraturan-peraturan Kawalan Hasil Tembakau 2004, Akta Peranti Perubatan 2012, Enakmen Kesalahan Jenayah Syariah Negeri Sabah 1995, Akta Kesalahan-Kesalahan Seksual Terhadap Kanak-Kanak 2017, Akta Pendaftaran Perniagaan 1956, Kaedah-Kaedah Pendaftaran Perniagaan 1957, Akta Hasutan 1948, Akta Syarikat 1965/2016, Akta Optik 1991, Akta Kastam 1967, Akta Suruhanjaya Syarikat Malaysia 2001, Akta Koperasi 1993, Akta Universiti dan Kolej Universiti 1971, Akta Perniagaan Perkhidmatan Wang 2011, Akta Suruhanjaya Pencegahan Rasuah Malaysia 2009, Akta Jenayah Komputer 1997, Akta Pemuliharaan Hidupan Liar 2010, Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997, Ordinan Kesalahan Jenayah Syariah Sarawak 2001, Enakmen Kesalahan Syariah Negeri Melaka 1991 — plus 2 double-space/`&`-spelling variants of `Akta Ubat (Iklan dan Penjualan) 1956` folded into that already-confirmed Instrument from batch 5, caught by re-deriving the working data fresh and finding the exact-string match had missed them).
-
-32 more recorded as `needs_decision` (tracked in the CSV, not yet counted as classified) — almost all are the **compound-citation problem** (two or more provisions, or two different Acts, cited in one cell) this doc already flagged as needing one general rule rather than case-by-case answers; this batch made that pile much bigger (adds ~20 more compound rows, including several multi-Act lettered `a)/b)/c)...` cells spanning up to 10 clauses and several different state Syariah enactments at once). The rest are **new year-ambiguity questions** in the same shape as the gambling-house one below, each flagged rather than guessed:
-- `Enakmen Jenayah Syariah (Negeri Selangor)` cited as 1995 (confirmed) but also 1996 and 1997 (1 row each) — typos, or genuine separate years? Also `(Selangor)` without "Negeri" (3 rows) — same Act, or different?
-- `Akta Hasutan` (Sedition Act) cited as 1948 (confirmed) but also 1984 (5 rows) and with no year at all (1 row) — the real Act is 1948; is 1984 a typo or genuine?
-- `Akta Rahsia Rasmi` (Official Secrets Act) cited as 1957 (2 rows) and 1972 (1 row) — which year is real?
-- `Akta Eksais` (Excise Act) cited as 1976 (1 row, also compound) and 1977 (1 row, also compound) — real Act is 1976; typo or genuine?
-- `Akta Kawalan Produk Merokok Demi Kesihatan Awam` (Control of Smoking Products for Health Act) cited with no year (10 rows) and with 2024 (9 rows) — same recent Act, or different?
-- `Akta Kesalahan Jenayah Syariah (Wilayah-wilayah Persekutuan)` compound-cited as 1997 and 1999 (1 row each)
-
-Two more are on **hold pending `mylaw-my` MCP verification** (now attached to this project's local scope but not yet connected — needs a session restart): `Akta Cap Dagangan 2019` (37 rows, `Seksyen 99`/`Seksyen 100`) vs. the already-confirmed `Akta Cap Dagangan Hakcipta 2019` (5 rows) — same Act, extra word an error? And `Seksyen 22(1) Akta Perbadanan Kemajuan Filem Nasional Malaysia` cited as 1981 (133 rows) and 1982 (2 rows) — year typo or genuine?
-
-**109 of 184 citations now classified** (102 confirmed + a few carried-forward needs_decision from earlier batches now folded into the running total — see the CSV for the authoritative count); 40 flagged `needs_decision` (compound citations + the year-ambiguity questions above); 38 gambling-house citations flagged pending the stakeholder answer below; 4 on hold pending mylaw verification (0 fully untouched — every citation has at least a first pass now).
-
-**Seventh batch done — the compound-citation general rule is resolved.** Answer: split into independent Citation rows, one per provision (or per Act, for cells citing multiple Acts at once) — same mechanism as the already-resolved compound-`Kategori` rule, same `Category`/`Element` data repeated under each split. Applied retroactively to every `needs_decision` row that was blocked purely on this shape question (including the original AKM 1998 "Seksyen 211 dan 233" row, Kanun Keseksaan "292 & 372", Pasaran Modal "212 dan 58", the Melaka/Johor/Pemberi Pinjam Wang two-provision cells, the numbered-list fragments, the range citation "Seksyen 4-10", and the 10-clause multi-Act lettered compound) — that alone cleared most of the backlog with zero new legal-fact guesses.
-
-While applying it, two more were confirmed directly by the user: `Enakmen Jenayah Syariah (Selangor) 1995` (missing "Negeri") is the same Instrument as `Enakmen Jenayah Syariah (Negeri Selangor) 1995`; `Akta Hasutan 1984` and the bare `Akta Hasutan` are typos for the confirmed 1948 Sedition Act.
-
-Everything else that was still `needs_decision` — the year-ambiguity questions (WP Syariah Act 1997/1998/1999, Selangor Syariah 1995/1996/1997, Rahsia Rasmi 1957/1972, Eksais 1976/1977, Kawalan Produk Merokok Demi Kesihatan Awam bare/2024), `Seksyen 263 AKM 1998` (real or typo for §233), the bare `Seksyen 4 Akta Ubat (Iklan & Jualan) 1956`, and two compound-cell clauses citing `Enakmen (Kesalahan) Jenayah Syariah 1997` with no state named anywhere in the cell — was explicitly deferred by the user to check with their own stakeholder, not resolved here. **17 rows remain `needs_decision`** for exactly these reasons; **193 of 210 CSV rows are `confirmed`** (210 counts individual split Citations, not distinct raw strings — 142 distinct raw citation strings have been touched in total, same as the sixth-batch count, since this batch only resolved shape/ambiguity on already-touched rows).
-
-**Question, awaiting a stakeholder answer:** the next (and largest) batch is the gambling-house citations — 38 distinct raw strings, **13,180 rows (~35% of the sheet)** — almost certainly all `Akta Rumah Judi Terbuka 1953` (Common Gaming Houses Act 1953), varying by provision (`Seksyen 4`, `4(1)`, `4(1)(c)`, `4(1)(g)`, `4B(a)`, `8(1)`, `41(c)`, `4A(a)`…), Act-name spelling (`Judi` vs `Perjudian`), and — the part that needs an answer — **Act year**. Two year variants are too large to be a casual typo: `Akta Rumah Judi Terbuka 1958` (943 rows) and `...1972` (419 rows), plus thirteen singleton years scattered from 1959–1971.
-
-Checked two theories for the year variants, neither holds up:
-- Not "the row's own blocking year (`Tahun` column) got typed into the citation" — the `1958`/`1972`-citation rows' actual `Tahun` values are mostly 2021/2022, unrelated.
-- Not an Excel autofill-drag artifact — the `1958`/`1972` rows are scattered non-consecutively across thousands of spreadsheet rows, not clustered together the way a drag error would be.
-
-So `1958`/`1972` could be genuine citations to a real amendment Act (Malaysian law does have "Common Gaming Houses (Amendment) Act" citations by amendment year), not typos for 1953 — this needs someone with domain/legal knowledge, not something resolvable from the spreadsheet. **Question for the stakeholder:** are `Akta Rumah Judi Terbuka 1958`/`1972`/(the 13 other singleton years 1959–1971) the same Instrument as `Akta Rumah Judi Terbuka 1953`, or genuine separate Acts/amendments?
-
-**Eighth batch done — Part 1 of `docs/blocking-list-open-questions.md` answered by the stakeholder (2026-09-13), all 11 items applied.** All confirmed as standardizations onto the dominant/legally-correct Act+year, no genuine separate Acts found:
-
-- **Gambling-house Act** (38 raw citations, ~13,180 rows) — all standardised to `Akta Rumah Judi Terbuka 1953 (Akta 289)`, including the 1958/943-row and 1972/419-row variants this doc flagged as too large to be casual typos, the 13 singleton years 1959–1971, and the `Perjudian`-spelling variant. Added as new CSV rows (previously untouched, tracked only in prose/the category-extract).
-- **Wilayah Persekutuan Syariah Act** — 1998/1999 year variants standardised to the already-confirmed `Akta Kesalahan Jenayah Syariah (Wilayah-Wilayah Persekutuan) 1997`; compound provision lists split per the general rule.
-- **Selangor Syariah Enactment** — 1996/1997 year variants standardised to the already-confirmed `Enakmen Jenayah Syariah (Negeri Selangor) 1995`. (Stakeholder's reply spelled it `(Selangor)` without "Negeri" — kept the existing catalog spelling instead of renaming ~15 already-confirmed rows, since the question was about the year, not the spelling, and the two spellings were already confirmed as the same Instrument in the sixth batch. Flag if the "Negeri"-less form should actually become canonical.)
-- **Official Secrets Act** — standardised to `Akta Rahsia Rasmi 1972 (Akta 88)`; the 1957 rows were the typo.
-- **Excise Act** — standardised to `Akta Eksais 1976 (Akta 176)`; the 1977 row was the typo. Both rows were also compound citations, split per the general rule.
-- **Control of Smoking Products for Health Act** — bare-year rows confirmed as the same `Akta Kawalan Produk Merokok Demi Kesihatan Awam 2024 (Akta 852)`.
-- **Communications and Multimedia Act 1998, Section 263** — confirmed a typo for Section 233; merged into that Citation.
-- **Medicines (Advertisement and Sale) Act 1956, bare Section 4** — kept as its own Citation, not assumed to be a truncated 4A/4B, per explicit stakeholder instruction not to guess.
-- **`Enakmen (Kesalahan) Jenayah Syariah 1997` (no state named)** — both unnamed-state compound clauses resolved to Johor, matching the already-confirmed `Enakmen Kesalahan Jenayah Syariah Negeri Johor 1997` (the bare citations already carried the 1997 year, narrowing it to that instrument rather than the catalog's other Johor Act, the 2003 one).
-- **Trademarks Act 2019 vs. Trademarks and Copyright Act 2019** — stakeholder confirmed these are the same Act, `Akta Cap Dagangan 2019 (Akta 815)`. This **reverses** the second batch's earlier call that `Akta Cap Dagangan Hakcipta 2019` was "genuinely different... not a mis-transcription" — that CSV row's Instrument was corrected accordingly. (In hindsight, both cited the identical `Seksyen 100`, which should have been a red flag against treating them as separate Acts.) This also resolves the `Akta Cap Dagangan 2019` / `Akta Perbadanan Kemajuan Filem Nasional Malaysia` pair that was on hold pending `mylaw-my` verification — the MCP server never reconnected, but stakeholder sign-off supersedes it anyway.
-- **National Film Development Corporation Malaysia Act** — 1982 standardised to the dominant `Akta Perbadanan Kemajuan Filem Nasional Malaysia 1981 (Akta 244)`.
-
-Two of these Acts (`Akta Cap Dagangan 2019`, `Akta Perbadanan Kemajuan Filem Nasional Malaysia 1981`) had never been added to the classification CSV as individual rows — added now as new confirmed rows, sourced from `blocking-list-citation-category-extract.csv`.
-
-**0 rows remain `needs_decision` — every citation in the sheet is now `confirmed`.** Part 2 of `docs/blocking-list-open-questions.md` (status mapping, unrecoverable-hostname rows, shortener/platform domains, exact-duplicate rows — the same items as §1, §4, and §5 below) is still awaiting an answer.
-
-**Wired into the importer, 2026-09-15.** `WriteCRDCases` (`internal/blockimport/write.go`) now takes the classification CSV as a `citationMap` parameter (`blockimport.LoadCitationClassification`, filtered to `status=="confirmed"` rows) and creates `Instrument`/`Citation`/`Category`/`Element`/`SubElement`/`URLOffence` rows per case instead of only counting categories for visibility — closing the gap where the plan's original "Does NOT create Category/Citation/URLOffence rows" scope note had never been revisited after sign-off landed. `Instrument.Type`/`Jurisdiction`/`Number`/`Year` are derived mechanically from the classification CSV's free-text `instrument` column (`parseInstrumentText`, `internal/blockimport/legalcatalog.go`) — leading Malay word for `Type`, a trailing `(Akta N)` suffix for `Number`, a trailing 4-digit year, and a substring match against the app's fixed 13-state jurisdiction list, defaulting to `FEDERAL` (covers `Wilayah Persekutuan` enactments too, since that's not one of the 13) — nothing looked up externally, consistent with the "don't guess" rule item 13 already established. A compound citation cell (`raw_citation` appearing more than once in the CSV, one row per split provision — see the "Seventh batch" note above) attaches an offence under every resolved Citation, crossed with every split `Kategori` value, per the same "every combination is an independent fact" reasoning already applied to compound categories. `CRDRow`/`CollapsedCase` also gained a `SubElement` field (parses a `Sub-Elemen` column the sheet has but the importer never captured) so the five-level catalog can be populated all the way down when the source row has one. A case whose `CitationText` has no confirmed classification entry still gets its `Case`/`CaseURL` rows — it just carries no offence data (`ImportSummary.OffencesSkippedNoCitation` counts these). `--citation-csv` on `cmd/import-crd` defaults to `docs/blocking-list-citation-classification.csv`; passing `""` disables offence attachment entirely. Tests: `TestParseInstrumentText`, `TestLoadCitationClassification` (`internal/blockimport/legalcatalog_test.go`), `TestWriteCRDCases_AttachesOffencesViaCitationMap`, `TestWriteCRDCases_SharesInstrumentAndCategoryAcrossCases`, `TestWriteCRDCases_SkipsOffencesWhenCitationUnclassified` (`internal/blockimport/write_test.go`).
-
-**Agency, corrected 2026-09-15.** Originally wired as a case-level `Case.AgencyID` (get-or-created from `CollapsedCase.Agency`, itself a `mostCommon` collapse across the group). Re-investigated after the real import surfaced 8 internal references — including 4 (`SKMM(T)09-NMD/800/2014 (023)`/`(024)`/`(026)`, `SKMM(T)09-NMD/800/2015 (001)`) with an exact 100/100 split across 800 domains between PDRM (`Seksyen 4 Akta Rumah Perjudian Terbuka 1953`, gambling) and MCMC (`Seksyen 211 dan 233 Akta Komunikasi dan Multimedia 1998`, obscenity) — proving these are genuinely two separate real-world cases sharing one MCMC tracking number, not noisy data. `db.Case.AgencyID` moved to `db.CaseURL.AgencyID` (per-domain, mirroring `CaseURL.Status`); `CollapsedCase.Agency` moved to `CollapsedDomain.Agency` (per-domain, no longer `mostCommon`-collapsed); `WriteCRDCases` get-or-creates each domain's own agency independently. Category/CitationText/Element/SubElement are still case-wide `mostCommon` collapses — a smaller, separately-flagged inconsistency (9/16/4 groups respectively, vs Agency's 8) left as a known follow-up since `db.URLOffence` is already per-URL and could support the same per-domain fix without further schema change, but that wasn't part of this migration's scope.
-
-### Note on the 74 NEEDS_REVIEW citations (2,585 / 38,156 rows, 6.8%)
-
-Superseded by `docs/blocking-list-citation-category-extract.csv` (`parse_confidence` column) — that has all 184 citations, not just these 74, plus their category/element/subelement combos. Full per-citation row-count table dropped from here; two things from it are worth keeping as prose:
-- Most of the 74 are mechanical (stray spacing, `&` vs `dan`, a typo) rather than genuinely ambiguous — a normalization pass would likely clear most before anyone needs to read all 74 by hand.
-- Two deserve individual attention: `Akta Rumah Judi Terbuka 1953` vs `Akta Rumah Perjudian Terbuka 1953` is the same law under two different Act names, not a formatting variant; and the handful of lettered multi-clause citations (`a) ... b) ... c) ...`) each cite several unrelated Acts in one cell.
-
----
-
-## 4. URL normalization problems (revised — see below, was reported as "26 fail outright")
-
-**Correction:** the original pass only checked for hard parse errors from `internal/urlnorm.Normalize`, which found 26. A second pass also checked for rows that *parse without error but produce garbage* (a bare scheme fragment, a lone TLD, an empty label before the TLD) — `Normalize` doesn't error on these, it just silently returns the wrong host. That found 4 more rows of the same mechanical-typo class below, plus 6 rows that are a genuinely new, unfixable-by-regex pattern. Total needing attention: **36 rows**, of which **31 are auto-fixable/resolved** and **5 need a human decision**.
-
-**Auto-fixable / resolved (31 rows)**:
-- 22 rows: stray space somewhere in the hostname (after the scheme, after `www.`, after a `m.` mobile prefix, or mid-hostname) — e.g. `http:// www.foo.com`, `https://www. escort33.com`, `m. starbook88.com`.
-- 5 rows: scheme-separator typo — missing `//` (`http:linktr.ee/lalagroup`), missing `:` (`https//malaysiandrama.com/`), single `/` (`https:/jizzberry.com/`), or `;` instead of `:` (`https;//fcc-asia.com`).
-- 1 row: leading numbered-list artifact (`"19. http://www.japanfuck.net"`).
-- 1 row: `kkggr.com:7852ZPtx.html` → `kkggr.com` — confirmed against a clean `kkggr.com` row elsewhere in the same sheet; `:7852ZPtx.html` is garbage appended after the real hostname (not a valid port), not a typo in the domain. Strip everything from `:` onward when what follows isn't a valid all-digit port.
-- 2 rows, confirmed against the original source: `http://my/idkuatong2` → `hi.jomwasap.my` (full link `https://hi.jomwasap.my/idkuatong2`, matching a sibling row in the same reference batch: `"http://rebrand.ly/12BNKFBW redirect to https://hi.jomwasap.my/12BNKFBW"`) and `https://.me/OHO24HRCHANNELCUCI` → `t.me` (full link `https://t.me/OHO24HRCHANNELCUCI`, matching several other `t.me/<code>` rows in that same batch).
-
-**Note on what actually gets stored:** `db.URL` (`internal/db/models.go`) has a single `URL string` column, and `CreateURL`/`AddToWatchlist` (`internal/db/postgres.go`) always run the input through `urlnorm.Normalize` first, which strips scheme/path/query/port down to a bare lowercase hostname before storing — so only `hi.jomwasap.my` / `t.me` land in the database either way; the `/idkuatong2` and `/OHO24HRCHANNELCUCI` path segments are discarded regardless of whether the full link is known.
-
-**New issue surfaced by this, bigger than these 2 rows — shortener/platform domains aren't blockable at the granularity the spreadsheet implies.** This app's whole compliance model is DNS-resolution-based (`Compliant` is strictly A-record-based — see "Domain semantics" in the root `CLAUDE.md`), and DNS resolution has zero visibility into the HTTP path: a resolver answering a query for `t.me` only ever sees the hostname, never `/OHO24HRCHANNELCUCI`. So an ISP **cannot** DNS-block one Telegram channel or one WhatsApp/shortlink target — the only DNS-level lever available is blocking the *entire* shared domain (all of Telegram, all of `bit.ly`, all of `wa.me`, etc.), which is a far more disruptive action than a single "Blocked" row in the spreadsheet plausibly represents, and something a telco is unlikely to have actually done for a one-off case.
-
-Checked how big this is: **117 rows** (0.3% of the sheet) normalize to a known link-shortener or messaging-platform domain — `t.me` alone accounts for 92 of those (matches the 92-row `t.me` count already noted in §2), plus `bit.ly` (5), `hi.my`/`hi.jom.my`/`hi.jomwasap.my` (6 combined), `prelink.co`/`prilink.co` (5), `linktr.ee` (4), `cutt.ly` (2), `rebrand.ly` (2), `wa.me`/`wa.link` (2). This is a lower bound — only a hand-picked list of known shorteners was checked; there are likely more not on that list.
-
-**Question:** does "Blocked" on one of these rows mean the telco actually DNS-blocked the whole shared domain (some jurisdictions have done exactly that to `t.me`), or was the takedown actioned a different way — e.g. a platform-level report to Telegram/Meta to remove the specific channel, not an ISP DNS block? This matters for import because:
-- If these were never actually DNS-blocked, importing them as monitored `urls` means this app shows a **permanent, unresolvable violation** on every scan (`t.me` will never stop resolving) — misleading noise, not a real actionable DNS gap.
-- If they belong in the record for audit-trail purposes but shouldn't be live-monitored, they may need to stay in `cases`/`case_letters` (the paper trail) without a corresponding DNS-scanned `urls`/`case_urls` row, or some other explicit "not DNS-blockable" marker — worth a product decision before deciding how (or whether) to import all 117+ of these rows, not just the 2 resolved above.
-
-**Correction on the 117, and two decisions resolved 2026-09-13:** a live re-check of the actual `.xlsx` (not just the earlier prose estimate) found the 117 aren't mostly duplicates of a handful of domains — e.g. the 92 `t.me` rows are **90 distinct full URLs** (2 exact-duplicate pairs), each a different channel/invite path (`t.me/+pZ5yjiniNpFlMGVl`, `t.me/c/1510641244/151`, `t.me/zonpedas`, …). Full exact-row breakdown by domain (sheet "2011-2026", header row 14): `t.me` row 20545, 23030–23113, 26143, 27437–27442 (92); `bit.ly` 15940, 20966, 21864, 21865, 26013 (5); `hi.my` 21437, 22257, 22258 (3); `hi.jom.my` 22255, 22256 (2); `prelink.co` 22848–22850, 24966 (4); `prilink.co` 22852 (1); `linktr.ee` 22531–22533, 26077 (4); `cutt.ly` 21959, 21960 (2); `rebrand.ly` 21489, 34414 (2 — row 21489 is the `hi.jomwasap.my`-redirect row above); `wa.me` 21513 (1); `wa.link` 23262 (1). 117 total, confirming the earlier count.
-
-That distinctness is exactly why "import at the domain level" would lose real information, so:
-- **Live-monitor at the domain level, but retain the exact cited URL.** `urls`/`case_urls` scan by bare hostname (unchanged — DNS resolution can't see a path anyway, see above), but `DepartmentURL.Enabled` already exists and does exactly what's needed to keep a shortener domain on the watchlist without live-scanning it (`PATCH /api/urls/{id}/enabled` → `setUrlEnabled`) — no new feature required there, just a decision to default these rows to `enabled: false` on import rather than `true`.
-- **The specific cited URL (with path) is no longer discarded.** Added `CaseURL.OriginalURL` (`internal/db/models.go`) — the exact text from the sheet's "Alamat Laman Web" cell, stored per (case, url) link alongside `Status`, independent of `URL.URL` (which stays the bare hostname `urlnorm.Normalize` always produces, required for DNS-scan identity/dedup — that invariant is unchanged). Both `WriteCRDCases` and `WriteCMODCases` (`internal/blockimport/write.go`, `write_cmod.go`) now populate it from the raw sheet string. AutoMigrate handles the new column additively, same as every other field added to this schema so far. Not yet surfaced anywhere in the API/UI (`CaseSummaryDomain` et al. don't expose it yet) — a follow-up if the record needs to be *visible*, not just retained; `go test ./internal/blockimport/... ./internal/db/...` covers the write path, including a dedicated test that a t.me channel path survives on `OriginalURL` while `URL.URL` still normalizes to the bare `t.me`.
-
-**Still needs a human decision (5 rows)** — checked each against the rest of the sheet for corroborating evidence:
-
-- **2 rows, same batch, no link recovered yet:** `http://my/MarioLink168` and `https://.my/OneAsia88kasihONG222` — same reference (`SKMM(T)09-NMD/800/2022 (113)`) and almost certainly the same shortener-domain/campaign-code shape as `idkuatong2`/`OHO24HRCHANNELCUCI` above, but no sibling row in the batch points at a specific domain for either code the way `hi.jomwasap.my`/`t.me` did. Worth the same source-record check that resolved those two.
-- **1 row, corroborated but still unresolved:** `https://freestreams-live` (truncated, no TLD) — the same agency/citation (`KPDNKK`, `Seksyen 41 Akta Hakcipta 1987`) has several sibling rows for what's clearly the same pirate streaming site rotating TLDs to dodge blocks: `freestreams-live1.com`, `freestreams-live.mp`, `freestreams-live.fi`, `freestreams-live1.md`, `freestreams-live1a.pk`. That confirms the *site* but not *which* TLD this particular truncated row intended — the rotation means guessing wrong is likely. No safe auto-fix.
-- **1 row, no corroboration found:** `https://solar123movies.cB33:B69om/` — checked every other `123movies`-family domain in the sheet (80+ variants); none is `solar123movies.<anything>`, so there's nothing to confirm a guess against. `solar123movies.com` (i.e. `com` → `cB33:B69om`) is the obvious visual read, but unconfirmed.
-- **1 row, no corroboration found:** `mvbet88my1` — no dot at all, no `mvbet88.*` variant found elsewhere in the sheet. `mvbet88.my` is a plausible guess (gambling-site naming pattern, `Judi` category) but unconfirmed.
-
-**Question:** for these 5 — are the correct URLs recoverable from records elsewhere (the `SKMM(T)09-NMD/800/2022 (113)` source record is worth the same lookup that resolved the other two in that batch), or should they just be dropped from the import?
-
-**Lesson for the real importer:** validate with "does `Normalize` return a plausible host (contains a dot, reasonable length)?", not just "did it return an error?" — a try/catch alone misses the silent-garbage cases above.
-
-**Item 13 resolution, 2026-09-15: don't guess, don't drop.** No source-record lookup was done for these 5 — the stakeholder decision was to not spend effort guessing at a corrected hostname (same "don't guess" instruction as the bare-Section-4 call in §1) and, per the `CaseURL.OriginalURL` field added for item 14, not to drop the row either. `createURL`/`getOrCreateURL` (`internal/blockimport/write.go`/`write_cmod.go`) now fall back through `normalizeOrFallback`: when `urlnorm.Normalize` errors outright (the `solar123movies` row above — invalid port syntax), it falls back to a lowercased, trimmed copy of the raw cited text as the `urls.url` storage key rather than skipping the row. The 4 rows that *don't* hard-error (`my`, `.my`, `freestreams-live`, `mvbet88my1` — Normalize happily returns these as "valid" hosts, exactly the silent-garbage class the lesson above warns about) already got a URL row before this fix and now, like every other row, keep the verbatim cited text on `CaseURL.OriginalURL` regardless of how implausible the resulting `urls.url` key is. None of these 5 keys are real hostnames, but that's fine — nothing in the importer adds a `DepartmentURL` watchlist row, so nothing gets DNS-scanned on import either way; a department would have to deliberately add one from the UI before any scanning happens. See `TestWriteCRDCases_RetainsUnnormalizableURLViaFallback` (`internal/blockimport/write_test.go`).
-
----
-
-## 5. Exact full-row duplicates (not previously documented)
-
-474 groups (980 rows total) are byte-for-byte identical across every column **including year** — e.g. rows 17922/17923 are both `https://www.weclub88.co/`, 2021, same citation, same status. This is distinct from the legitimate "same domain blocked again in a later year" case in section 2 — these are same-year copies, i.e. straightforward copy-paste data-entry duplicates.
-
-**Question:** collapse each duplicate group to a single row before import (keeping one), or is there a reason a spreadsheet row might legitimately need to repeat identically (e.g. two separate manual actions logged the same day)?
-
-**Item 15 resolution, 2026-09-15: already handled, no new code.** A byte-for-byte duplicate row shares its reference number (that's one of the "every column identical" columns), and `CollapseCRDRows` (`internal/blockimport/crd.go`) already groups by reference number and dedupes repeated `(reference, domain)` pairs within a group down to one `CollapsedDomain` (last-write-wins on `Status`, see `TestCollapseCRDRows_LastWriteWinsOnRepeatedDomainStatus`) before `WriteCRDCases` ever runs. So the 474 groups collapse to one case/domain each automatically — there was never a second CaseURL row to create in the first place, and no "is this a legitimate repeat" ambiguity to resolve, since a genuine same-day double-action would need to differ in at least one column (the row wouldn't be byte-for-byte identical) to matter.
-
----
-
-## 6. Post-import spot-check of the legal citation mapping (2026-09-26)
-
-Every sheet row was compared against `url_offences → category → citation → instrument` in the DB (39,714 expected offence tuples), plus a 60-row eyeball sample. The classification itself held up; three things came out of it.
-
-**Same-year unnumbered Acts merged into one Instrument (fixed).** `getOrCreateInstrument` keyed on `(type, jurisdiction, number, year)` and ignored the title, so unnumbered Acts sharing a year collapsed onto whichever was imported first: Dangerous Drugs 1952 under Poisons, Customs 1967 under Accountants, Business Registration 1956 under Medicines (Advertisement and Sale), Wildlife Conservation 2010 under Personal Data Protection, Money Services Business 2011 under Trade Descriptions, Computer Crimes 1997 under the WP Syariah Criminal Offences Act. 8 citations / ~19 offence rows. The lookup now also matches `short_title` when `number` is empty (`internal/blockimport/legalcatalog.go`, `internal/db/legalcite.go`; `TestGetOrCreateInstrument_UnnumberedSameYearDistinctByTitle`). Because `import-crd` skips cases that already exist, a re-run does not repair an already-populated DB — the local dev DB was repaired in place by creating the 6 missing Instruments and re-pointing the 8 citations; any other environment populated by the earlier import needs the same repair.
-
-**11 orphan sub-elements (decision: treat as Element).** Excel rows 4381, 4490, 4491, 4513, 4886, 5041, 5098, 5144, 5193, 5367, 5891 (Jelik, s233 AKM) have `Sub-Elemen` = "Ngeri / Grafik keterlaluan" but a blank `Elemen`. A sub-element needs a parent element, so the importer used to drop it silently. Per stakeholder decision the value is now promoted to the Element (`ParseCRDRows`, `TestParseCRDRows_PromotesOrphanSubElementToElement`); the dev DB got one new Element under Jelik for these 11 offences.
-
-**19 "extra" offences are the known unrecoverable URLs (§4), not mapping errors.** They sit on `urls.url` values stored as raw text (`https://www. escort33.com`, `m. webook88.com`, `http://www.apostatesof islam.com`, ...) that can't be matched back to a normalised sheet host, so a host-keyed comparison reports them as extras. Their citations/categories are correct.
-
-After these, the comparison shows 0 missing and only the 19 raw-text-URL extras.
-
-## 7. Akta Komunikasi dan Multimedia 1998 catalog review (2026-09-27)
-
-Stakeholder walkthrough of the imported AKM 1998 tree. Applied in the importer (takes effect on the next re-import):
-
-- **Act numbers.** The `instrument` column of `docs/blocking-list-citation-classification.csv` now carries `(Akta NNN)` for every Act that lacked it (29 Acts incl. AKM → Akta 588, Kanun Keseksaan → Akta 574), so `Instrument.Number` is populated. Enactments/Ordinan/Peraturan/Kaedah have no Akta number and stay blank.
-- **Label spacing** (`normalizeLabel`): no spaces around `-`, one space each side of `/` — merges `Kanak - kanak`/`Kanak-kanak` and `Keganasan/ Militan`/`Keganasan / Militan`.
-- **Compound Kategori** (`splitCategories`): also split on `/` and ` dan ` — `Mengancam/ Palsu`, `Lucah dan Palsu`.
-- **Confirmed misspellings** (`labelAliases`): Aktivit Perakaunan → Aktiviti Perakaunan, Aktiviti Pasaran Model → Aktiviti Pasaran Modal, Iklan & Penjualan Ubat → Iklan dan Penjualan Ubat, Dadah Merbahaya → Dadah Berbahaya.
-- **Jelik › Keganasan / Grafik Melampau** merged into **Ngeri / Grafik Keterlaluan** (same concept).
-- **Compound Elemen** (`compoundElements`): `Dewasa / Kanak-kanak` imports as two offences, Lucah › Dewasa and Lucah › Kanak-kanak.
-
-Deliberately kept as recorded:
-- Standalone categories Phishing, Palsu (Phishing), Fitnah, Politik, Jelik Melampau under s233 — not folded into Palsu/Jelik.
-- Politik both as an element (Jelik/Palsu › Politik) and as a sub-element (› Kepentingan Negara › Politik, Palsu › Fitnah › Politik).
-- Unusual pairings Lucah › Hina Agama, Lucah › Kepentingan Negara, Jelik › Dewasa — what the officer entered.
-
-## 8. Reconciling the dashboard with the MCMC stats workbook (2026-09-27)
-
-Cross-checked the Blocking Statistics page against `data/14 Jumlah Sekatan Laman Sesawang 01092026.xlsx` (sheets A/B/C) for 2022–2025. Changes:
-
-- **Re-blocks under a blanket reference are separate events.** `groupingKey` now keys non-internal references on (reference, domain, notice date), and `WriteCRDCases`'s rerun check matches `letter_date` too. Before, a domain PDRM blocked in 2023 and again in 2025 under `JK KPN(PR) 168/6` folded into one 2023 case, contradicting §2 — ~100 blocks/year went missing from later years. Re-import: 14,339 → 15,644 cases.
-- **Phishing → Palsu › Phishing.** `Phishing` (12 rows, 2021) and `Palsu (Phishing)` (13 rows, 2025) import as category Palsu, element Phishing (overrides §7's keep-as-is for these two). The workbook counts them under Palsu.
-- **`BlockingStats` counts `blocked` only** (the workbook excludes uplifted/suspended) and counts each (case, domain) once per category, not once per offence row — compound 211+233 citations and split elements had been double-counting 1,649 domains.
-- **Attribution by offence, not handler** (`attribute()` in `blocking-stats.tsx`, display only — `case_urls.agency_id` still records who handled it): the 5 MCMC categories count as MCMC whatever the Agensi (e.g. 2023 has 15 PDRM-handled Jelik/Palsu rows), and MCMC-handled Judi is shown under PDRM, as every workbook sheet does.
-
-Result (dashboard / workbook): A 2025 736/736, 2024 891/890, 2023 1153/1156, 2022 1615/1618. B 2025 2597/2633, 2024 2687/2726. The remaining B gap (~1.5%) is rows the import deliberately collapses: byte-identical duplicates (§5) and different URLs on the same host (`urls` is one row per hostname). The workbook counts spreadsheet rows. 2022–23 per-category differences in A (e.g. 2022 Palsu 16 vs 12, Jelik 1 vs 5) reflect the source sheet having been reclassified since the workbook was compiled — the raw sheet itself gives the dashboard's numbers.
+`mapCRDStatus` (`internal/blockimport/write.go`), case-insensitive: `Blocked` → `blocked`, `Uplift` → `uplift`, `Suspended` → `suspended`, `Not Blocked` → `not_blocked`, empty → `requested`. These record what the ISP reported, not a live DNS check.
+
+## 2. Case grouping
+
+- Per-event history is kept: `urls` is one row per hostname, and each block event is its own `case_urls` row.
+- **Internal reference** (`MCMC`/`SKMM` prefix) = one case covering all its domains.
+- **Anything else** (e.g. PDRM's blanket `JK KPN(PR) 168/6`, reused on 9,206 unrelated rows) or a blank reference = one case per (reference, normalized domain, notice date), so a later re-block is a separate case with its own year. The re-run check matches the same key.
+- A domain repeated within one group: status and agency are last-write-wins.
+- **Agency is per domain** (`case_urls.agency_id`), not per case: some internal references cover PDRM gambling and MCMC obscenity domains 100/100. Agensi = who handled it, not whose law applies.
+- **Offences are per domain, per row** (`url_offences.case_id`), so a citation is never paired with another row's category.
+- Blank NMD with an NMSMD → the NMSMD becomes the reference (3 rows). An uplift date becomes a `Notice (Uplift)` letter.
+
+## 3. Legal catalog
+
+Five levels: Instrument → Citation → Category → Element → SubElement (see the `legal-citation-catalog` skill). Categories are scoped per citation.
+
+- **Citations** come from the hand classification CSV (184 raw strings, all confirmed). Variant spellings and years are standardized onto one Instrument, e.g. every gambling-house year variant (1958, 1972, …) → `Akta Rumah Judi Terbuka 1953 (Akta 289)`, and `Seksyen 263 AKM` → Seksyen 233.
+- **A compound citation** ("Seksyen 211 dan 233", multi-Act lettered cells) splits into independent Citations. Each split gets the row's full category/element data.
+- **Instrument fields** are parsed from the CSV text: type from the leading word, number from `(Akta N)`, trailing year, and state from the 13-state list (else `FEDERAL`). Unnumbered Acts are also matched by title, so same-year Acts don't merge.
+- **Labels** (`crd.go`):
+  - Spacing is normalized: no spaces around `-`, one space each side of `/`.
+  - Category casing is unified.
+  - Confirmed misspellings are fixed (`labelAliases`).
+  - `Keganasan / Grafik Melampau` → `Ngeri / Grafik Keterlaluan`.
+- **Compounds**:
+  - A Kategori splits on `,`, `/` and ` dan `, one offence per category.
+  - The `Dewasa / Kanak-kanak` element splits into two offences.
+- **Row fixes**:
+  - A category entered in the Elemen column (12 rows) moves to Kategori.
+  - A Sub-Elemen with no Elemen (11 rows) becomes the element.
+  - `Phishing` and `Palsu (Phishing)` become Palsu › Phishing.
+- **Kept as recorded (stakeholder, 2026-09-27)**:
+  - The standalone s233 categories Fitnah, Politik and Jelik Melampau.
+  - Politik both as an element and as a sub-element under Kepentingan Negara / Fitnah.
+  - The pairings Lucah › Hina Agama, Lucah › Kepentingan Negara and Jelik › Dewasa.
+  - Bare `Seksyen 4 Akta Ubat` stays its own Citation (don't guess 4A/4B).
+
+## 4. URLs
+
+- `urls.url` is the bare hostname (`urlnorm.Normalize`). The exact cited text is kept on `case_urls.original_url`.
+- 31 malformed URLs (stray spaces, scheme typos, list prefixes) are auto-fixed.
+- 5 URLs are unrecoverable (`http://my/MarioLink168`, `https://.my/OneAsia88kasihONG222`, `https://freestreams-live`, `https://solar123movies.cB33:B69om/`, `mvbet88my1`). They are stored under their raw text, not guessed and not dropped.
+- 117 rows point at shortener/platform domains (`t.me` 92, `bit.ly`, `wa.me`, …), which DNS can't block per path. The importer creates no watchlist rows, so nothing is scanned until a department adds a domain deliberately.
+
+## 5. Duplicate rows
+
+474 groups (980 rows) are byte-identical, including the year. They collapse to one case/domain via the §2 grouping.
+
+## 6. Dashboard vs the MCMC stats workbook
+
+Reference: `data/14 Jumlah Sekatan Laman Sesawang 01092026.xlsx`. The Blocking Statistics page (`BlockingStats` in `internal/db/cases.go`, `blocking-stats.tsx`) mirrors it:
+
+- Counts status `blocked` only, by the earliest Notice letter's year.
+- Counts each (case, domain) once per category.
+- Attributes by offence (display only): the 5 MCMC categories (Lucah, Sumbang, Palsu, Jelik, Mengancam) go to sheet A whatever the Agensi, and MCMC-handled Judi shows under PDRM.
+
+Result (dashboard / workbook):
+
+| Sheet | 2025 | 2024 | 2023 | 2022 |
+|---|---|---|---|---|
+| A · MCMC | 736 / 736 | 891 / 890 | 1153 / 1156 | 1615 / 1618 |
+| B · Other agencies | 2597 / 2633 | 2687 / 2726 | 2457 / 2568 | 2858 / 2954 |
+
+Remaining gaps: open items 4 and 5.

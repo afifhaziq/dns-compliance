@@ -267,7 +267,7 @@ func TestParseCRDRows_FallsBackToNMSMDWhenNMDBlank(t *testing.T) {
 	}
 }
 
-// Also covers item 15 (docs/blocking-list-open-questions.md): the 474
+// Also covers docs/blocking-list-migration-clarifications.md §5: the 474
 // exact-duplicate rows share both reference number and domain, so they
 // collapse to a single CollapsedDomain here without any dedicated dedup
 // step -- no separate handling needed for that item.
@@ -286,7 +286,7 @@ func TestCollapseCRDRows_LastWriteWinsOnRepeatedDomainStatus(t *testing.T) {
 // TestCollapseCRDRows_AgencyIsPerDomainNotCollapsed guards the real-world
 // case this package exists to model correctly: a single internal reference
 // can legitimately cover domains requested by two different agencies (see
-// docs/blocking-list-migration-clarifications.md's Agency section) — each
+// docs/blocking-list-migration-clarifications.md §2) — each
 // domain must keep its own row's Agency, not a case-wide "most common"
 // winner that would silently overwrite the minority domains' true agency.
 func TestCollapseCRDRows_AgencyIsPerDomainNotCollapsed(t *testing.T) {

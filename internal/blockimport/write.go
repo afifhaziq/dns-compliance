@@ -32,7 +32,7 @@ type ImportSummary struct {
 // mapCRDStatus maps the spreadsheet's Status values onto case_urls.status's
 // vocabulary (requested | blocked | uplift | suspended | not_blocked |
 // internal) — resolved per stakeholder sign-off, 2026-09-13, see
-// docs/blocking-list-migration-clarifications.md Question 1. Only the empty
+// docs/blocking-list-migration-clarifications.md §1. Only the empty
 // cell (21 rows) falls through to "requested", the model's default start
 // state.
 func mapCRDStatus(raw string) string {
@@ -52,8 +52,8 @@ func mapCRDStatus(raw string) string {
 
 // normalizeOrFallback wraps urlnorm.Normalize with a last-resort fallback for
 // the handful of historical import rows too garbled for it to extract any
-// hostname at all (e.g. invalid port syntax) -- see item 13,
-// docs/blocking-list-open-questions.md. Rather than dropping the case/
+// hostname at all (e.g. invalid port syntax) -- see
+// docs/blocking-list-migration-clarifications.md §4. Rather than dropping the case/
 // citation record entirely, these fall back to a lowercased, trimmed copy of
 // the raw cited text as the URL row's storage key -- unscannable, but no
 // data is lost either way since CaseURL.OriginalURL always keeps the raw
