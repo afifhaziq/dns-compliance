@@ -591,9 +591,12 @@ type BlockingStatRow struct {
 	Count   int    `json:"count"`
 }
 
-// BlockingStats counts (case, domain) blocks — status blocked/uplift/suspended,
-// i.e. ever blocked — by Notice-letter year, agency and offence category.
-// A domain carrying several offences on one case counts once under each.
+// BlockingStats counts (case, domain) blocks currently in status blocked —
+// matching the MCMC stats workbook, which leaves uplifted/suspended blocks
+// out — by Notice-letter year, agency and offence category. A domain
+// carrying several offences on one case counts once under each distinct
+// category (not once per offence row: a compound "Seksyen 211 dan 233"
+// citation or a split element gives the same category several rows).
 // `categories` has multiple rows for what's really the same offence but
 // differently cased (e.g. "Tidak Berdaftar" vs "Tidak berdaftar") — the SQL
 // groups by the raw name (so it stays untouched by the offence-casing fix),
@@ -604,13 +607,13 @@ func (s *postgresStore) BlockingStats(ctx context.Context, departmentID *uint) (
 		WHERE cl.case_id = cu.case_id AND cl.type = 'Notice'))::int, 0) AS year,
 	  COALESCE(a.name, 'Unassigned') AS agency,
 	  COALESCE(cat.name, 'Unclassified') AS offence,
-	  COUNT(*) AS count
+	  COUNT(DISTINCT (cu.case_id, cu.url_id)) AS count
 	FROM case_urls cu
 	JOIN cases c ON c.id = cu.case_id
 	LEFT JOIN agencies a ON a.id = cu.agency_id
 	LEFT JOIN url_offences o ON o.case_id = cu.case_id AND o.url_id = cu.url_id
 	LEFT JOIN categories cat ON cat.id = o.category_id
-	WHERE cu.status IN ('blocked','uplift','suspended')`
+	WHERE cu.status = 'blocked'`
 	args := []any{}
 	if departmentID != nil {
 		q += " AND c.department_id = ?"

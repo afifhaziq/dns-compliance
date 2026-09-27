@@ -73,11 +73,20 @@ func isInternalReference(ref string) bool {
 // them as two distinct groups, but the idempotency check would find the
 // first one's URL row already existing and skip the second as "already
 // imported" without ever writing its data.
+//
+// The notice date is part of the non-internal key too: the same domain
+// blocked again later under the same blanket reference is a separate event
+// (per-event history, docs/blocking-list-migration-clarifications.md §2),
+// not a repeat to fold into the first block's case and year.
 func groupingKey(row CRDRow) string {
 	if isInternalReference(row.ReferenceNumber) {
 		return row.ReferenceNumber
 	}
-	return row.ReferenceNumber + "\x00" + normalizeOrFallback(row.Domain)
+	date := ""
+	if row.NoticeDate != nil {
+		date = row.NoticeDate.Format("2006-01-02")
+	}
+	return row.ReferenceNumber + "\x00" + normalizeOrFallback(row.Domain) + "\x00" + date
 }
 
 // CollapsedDomain is one (url, status, agency) tuple under a CollapsedCase.
@@ -166,7 +175,18 @@ func parseNoticeDate(raw string) *time.Time {
 
 var (
 	numberedListPrefixRe = regexp.MustCompile(`^\d+\.\s*`)
-	strayScheseSpaceRe   = regexp.MustCompile(`^(https?://)\s+`)
+	// labelHyphenRe/labelSlashRe canonicalize the sheet's inconsistent
+	// spacing inside Kategori/Elemen/Sub-Elemen labels ("Kanak - kanak" vs
+	// "Kanak-kanak", "Keganasan/ Militan" vs "Keganasan / Militan"), which
+	// the importer's LOWER(name) get-or-create would otherwise store as
+	// separate rows.
+	labelHyphenRe = regexp.MustCompile(`\s*-\s*`)
+	labelSlashRe  = regexp.MustCompile(`\s*/\s*`)
+	// categorySepRe splits compound Kategori cells. The sheet joins
+	// categories with "," mostly, but also "/" ("Mengancam/ Palsu") and
+	// " dan " ("Lucah dan Palsu").
+	categorySepRe      = regexp.MustCompile(`\s*(?:,|/|\bdan\b)\s*`)
+	strayScheseSpaceRe = regexp.MustCompile(`^(https?://)\s+`)
 )
 
 // findHeaderRow returns the index of the first row containing anchorCol
@@ -258,19 +278,27 @@ func ParseCRDRows(path string) ([]CRDRow, error) {
 
 	var out []CRDRow
 	for _, r := range rows[headerRow+1:] {
-		category := cellAt(r, categoryCol)
-		element := cellAt(r, elementCol)
+		category := normalizeLabel(cellAt(r, categoryCol))
+		element := normalizeLabel(cellAt(r, elementCol))
 		// 12 column-shift rows: Kategori blank, Elemen holds a category name.
 		if category == "" && element != "" {
 			category, element = element, ""
 		}
 
-		subElement := cellAt(r, subElementCol)
+		subElement := normalizeLabel(cellAt(r, subElementCol))
 		// 11 rows (Jelik, "Ngeri / Grafik keterlaluan") have a Sub-Elemen but
 		// no Elemen; a sub-element can't exist without a parent element, so
 		// the value is treated as the element (stakeholder decision).
 		if element == "" && subElement != "" {
 			element, subElement = subElement, ""
+		}
+
+		// "Phishing" (12 rows) and "Palsu (Phishing)" (13) are the same
+		// offence as Palsu › Phishing (1 row) -- all MCMC, s233 AKM -- and
+		// the MCMC stats workbook counts them under Palsu (stakeholder
+		// decision).
+		if l := strings.ToLower(category); (l == "phishing" || l == "palsu (phishing)") && element == "" {
+			category, element = "Palsu", "Phishing"
 		}
 
 		year, _ := strconv.Atoi(cellAt(r, yearCol))
@@ -440,14 +468,57 @@ func mostCommon(counts map[string]int) string {
 	return best
 }
 
-// splitCategories splits an 8-known compound "Kategori" value ("Jelik,
-// Palsu, Lucah") into its parts, trimming whitespace. A non-compound value
-// returns a single-element slice; an empty value returns nil.
+// labelAliases maps stakeholder-confirmed misspellings (keyed lowercase)
+// onto the canonical label.
+var labelAliases = map[string]string{
+	"aktivit perakaunan":     "Aktiviti Perakaunan",
+	"aktiviti pasaran model": "Aktiviti Pasaran Modal",
+	"iklan & penjualan ubat": "Iklan dan Penjualan Ubat",
+	"dadah merbahaya":        "Dadah Berbahaya",
+	// Same concept under Jelik (stakeholder decision); also fixes the
+	// sheet's mixed "keterlaluan"/"Keterlaluan" casing.
+	"keganasan / grafik melampau": "Ngeri / Grafik Keterlaluan",
+	"ngeri / grafik keterlaluan":  "Ngeri / Grafik Keterlaluan",
+}
+
+// compoundElements lists Elemen values that name two elements at once; each
+// is imported as one offence per part, like a compound Kategori. Not a
+// generic "/" split -- "Keganasan / Militan" is a single element.
+var compoundElements = map[string][]string{
+	"Dewasa / Kanak-kanak": {"Dewasa", "Kanak-kanak"},
+}
+
+// splitElement returns the element(s) a (normalized) Elemen value stands
+// for; "" stays a single "" so callers still emit the element-less offence.
+func splitElement(el string) []string {
+	if parts, ok := compoundElements[el]; ok {
+		return parts
+	}
+	return []string{el}
+}
+
+// normalizeLabel collapses whitespace, canonicalizes spacing around "-"
+// (none: "Kanak-kanak") and "/" (one each side: "Keganasan / Militan"), and
+// folds labelAliases.
+func normalizeLabel(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	s = labelHyphenRe.ReplaceAllString(s, "-")
+	s = labelSlashRe.ReplaceAllString(s, " / ")
+	if c, ok := labelAliases[strings.ToLower(s)]; ok {
+		return c
+	}
+	return s
+}
+
+// splitCategories splits a compound "Kategori" value ("Jelik, Palsu,
+// Lucah", "Mengancam/ Palsu", "Lucah dan Palsu") into its parts, trimming
+// whitespace. A non-compound value returns a single-element slice; an empty
+// value returns nil.
 func splitCategories(raw string) []string {
 	if raw == "" {
 		return nil
 	}
-	parts := strings.Split(raw, ",")
+	parts := categorySepRe.Split(raw, -1)
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
 		if t := strings.TrimSpace(p); t != "" {

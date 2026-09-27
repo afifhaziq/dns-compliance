@@ -231,10 +231,11 @@ func getOrCreateSubElement(ctx context.Context, tx *gorm.DB, elementID uint, nam
 	return existing, err
 }
 
-// attachOffences creates one URLOffence per (citation target x category)
-// combination for every url in urlIDs -- both axes can be plural (a
-// compound citation cell splits into several targets; a compound Kategori
-// cell splits into several categories), and per the compound rule in
+// attachOffences creates one URLOffence per (citation target x category x
+// element) combination for every url in urlIDs -- all three axes can be
+// plural (a compound citation cell splits into several targets; a compound
+// Kategori cell into several categories; a compound Elemen into several
+// elements, see splitElement), and per the compound rule in
 // docs/blocking-list-migration-clarifications.md §3, every combination is
 // an independent real fact, not an ambiguous one to pick among.
 func attachOffences(ctx context.Context, tx *gorm.DB, caseID uint, urlIDs []uint, targets []citationTarget, categories []string, element, subElement string) (int, error) {
@@ -253,27 +254,29 @@ func attachOffences(ctx context.Context, tx *gorm.DB, caseID uint, urlIDs []uint
 			if err != nil {
 				return created, err
 			}
-			var elementID, subElementID *uint
-			if element != "" {
-				el, err := getOrCreateElement(ctx, tx, category.ID, element)
-				if err != nil {
-					return created, err
-				}
-				elementID = &el.ID
-				if subElement != "" {
-					se, err := getOrCreateSubElement(ctx, tx, el.ID, subElement)
+			for _, elName := range splitElement(element) {
+				var elementID, subElementID *uint
+				if elName != "" {
+					el, err := getOrCreateElement(ctx, tx, category.ID, elName)
 					if err != nil {
 						return created, err
 					}
-					subElementID = &se.ID
+					elementID = &el.ID
+					if subElement != "" {
+						se, err := getOrCreateSubElement(ctx, tx, el.ID, subElement)
+						if err != nil {
+							return created, err
+						}
+						subElementID = &se.ID
+					}
 				}
-			}
-			for _, urlID := range urlIDs {
-				offence := db.URLOffence{URLID: urlID, CaseID: &caseID, CategoryID: category.ID, ElementID: elementID, SubElementID: subElementID, RecordedAt: time.Now()}
-				if err := tx.WithContext(ctx).Create(&offence).Error; err != nil {
-					return created, err
+				for _, urlID := range urlIDs {
+					offence := db.URLOffence{URLID: urlID, CaseID: &caseID, CategoryID: category.ID, ElementID: elementID, SubElementID: subElementID, RecordedAt: time.Now()}
+					if err := tx.WithContext(ctx).Create(&offence).Error; err != nil {
+						return created, err
+					}
+					created++
 				}
-				created++
 			}
 		}
 	}

@@ -166,13 +166,20 @@ func WriteCRDCases(ctx context.Context, gdb *gorm.DB, crdDeptID uint, cases []Co
 				// external row's lookup (matching on the same empty
 				// external text + shared domain) would find that unrelated
 				// internal case's letter and wrongly skip creating its own.
-				err = tx.WithContext(ctx).
+				q := tx.WithContext(ctx).
 					Joins("JOIN cases ON cases.id = case_letters.case_id").
 					Joins("JOIN case_urls ON case_urls.case_id = cases.id").
 					Joins("JOIN urls ON urls.id = case_urls.url_id").
 					Where("case_letters.reference_number_external = ? AND case_letters.reference_number_internal = '' AND case_letters.type = ? AND cases.department_id = ? AND urls.url = ?",
-						cc.ReferenceNumber, "Notice", crdDeptID, normalizedDomain).
-					First(&existing).Error
+						cc.ReferenceNumber, "Notice", crdDeptID, normalizedDomain)
+				// Same key as groupingKey: a later re-block of this domain
+				// under the same reference is its own case.
+				if cc.NoticeDate != nil {
+					q = q.Where("case_letters.letter_date = ?", *cc.NoticeDate)
+				} else {
+					q = q.Where("case_letters.letter_date IS NULL")
+				}
+				err = q.First(&existing).Error
 			}
 			if err == nil {
 				summary.CasesSkippedExist++

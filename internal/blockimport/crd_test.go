@@ -2,6 +2,7 @@ package blockimport
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/xuri/excelize/v2"
@@ -412,7 +413,7 @@ func TestParseCRDRows_PromotesOrphanSubElementToElement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseCRDRows: %v", err)
 	}
-	if rows[0].Element != "Ngeri / Grafik keterlaluan" || rows[0].SubElement != "" {
+	if rows[0].Element != "Ngeri / Grafik Keterlaluan" || rows[0].SubElement != "" {
 		t.Fatalf("orphan sub-element: got Element=%q SubElement=%q", rows[0].Element, rows[0].SubElement)
 	}
 	if rows[1].Element != "Dewasa" || rows[1].SubElement != "Sub X" {
@@ -435,6 +436,84 @@ func TestParseCRDRows_CanonicalizesCategoryCasingToTitleCase(t *testing.T) {
 	for i, want := range []string{"Tidak Berdaftar", "Tidak Berdaftar", "Tidak Berdaftar", "Jelik,Tidak Berdaftar"} {
 		if rows[i].Category != want {
 			t.Errorf("row %d: got %q, want %q", i, rows[i].Category, want)
+		}
+	}
+}
+
+func TestNormalizeLabel(t *testing.T) {
+	for in, want := range map[string]string{
+		"Kanak - kanak":              "Kanak-kanak",
+		"Kanak-kanak":                "Kanak-kanak",
+		"Keganasan/ Militan":         "Keganasan / Militan",
+		"Keganasan / Militan":        "Keganasan / Militan",
+		"  Dewasa  /Kanak - kanak ":  "Dewasa / Kanak-kanak",
+		"Aktivit Perakaunan":         "Aktiviti Perakaunan",
+		"Aktiviti Pasaran Model":     "Aktiviti Pasaran Modal",
+		"Iklan & Penjualan Ubat":     "Iklan dan Penjualan Ubat",
+		"Dadah Merbahaya":            "Dadah Berbahaya",
+		"Keganasan/ Grafik Melampau": "Ngeri / Grafik Keterlaluan",
+		"Ngeri / Grafik keterlaluan": "Ngeri / Grafik Keterlaluan",
+	} {
+		if got := normalizeLabel(in); got != want {
+			t.Errorf("normalizeLabel(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestSplitCategories_SlashAndDan(t *testing.T) {
+	for in, want := range map[string]string{
+		"Mengancam/ Palsu": "Mengancam|Palsu",
+		"Lucah dan Palsu":  "Lucah|Palsu",
+		"Jelik, Palsu":     "Jelik|Palsu",
+		"Pendidikan":       "Pendidikan",
+		"Palsu (Phishing)": "Palsu (Phishing)",
+	} {
+		if got := strings.Join(splitCategories(in), "|"); got != want {
+			t.Errorf("splitCategories(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestSplitElement(t *testing.T) {
+	for in, want := range map[string]string{
+		"Dewasa / Kanak-kanak": "Dewasa|Kanak-kanak",
+		"Keganasan / Militan":  "Keganasan / Militan",
+		"":                     "",
+	} {
+		if got := strings.Join(splitElement(in), "|"); got != want {
+			t.Errorf("splitElement(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// A domain re-blocked later under the same blanket external reference is a
+// separate event (its own case and year), while a same-date repeat still
+// collapses.
+func TestCollapseCRDRows_SplitsExternalReblockByNoticeDate(t *testing.T) {
+	d23, d25 := parseNoticeDate("5-Mar-23"), parseNoticeDate("9-Jan-25")
+	rows := []CRDRow{
+		{ReferenceNumber: "JK KPN(PR) 168/6", Domain: "a.com", Status: "Blocked", NoticeDate: d23},
+		{ReferenceNumber: "JK KPN(PR) 168/6", Domain: "a.com", Status: "Blocked", NoticeDate: d25},
+		{ReferenceNumber: "JK KPN(PR) 168/6", Domain: "a.com", Status: "Blocked", NoticeDate: d25},
+	}
+	if got := len(CollapseCRDRows(rows)); got != 2 {
+		t.Fatalf("got %d cases, want 2", got)
+	}
+}
+
+func TestParseCRDRows_FoldsPhishingIntoPalsu(t *testing.T) {
+	path := writeTestXLSX(t, "2011-2026", [][]string{
+		{"No. Rujukan NMD", "No. Rujukan NMSMD", "Alamat Laman Web", "Status", "Kategori", "Elemen", "Butiran Kesalahan", "Agensi", "Tahun"},
+		{"R1", "", "http://a.example.com", "Blocked", "Palsu (Phishing)", "", "", "MCMC", "2025"},
+		{"R2", "", "http://b.example.com", "Blocked", "Phishing", "", "", "MCMC", "2021"},
+	})
+	rows, err := ParseCRDRows(path)
+	if err != nil {
+		t.Fatalf("ParseCRDRows: %v", err)
+	}
+	for i, r := range rows {
+		if r.Category != "Palsu" || r.Element != "Phishing" {
+			t.Errorf("row %d: got %q › %q, want Palsu › Phishing", i, r.Category, r.Element)
 		}
 	}
 }

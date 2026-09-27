@@ -230,3 +230,30 @@ Every sheet row was compared against `url_offences → category → citation →
 **19 "extra" offences are the known unrecoverable URLs (§4), not mapping errors.** They sit on `urls.url` values stored as raw text (`https://www. escort33.com`, `m. webook88.com`, `http://www.apostatesof islam.com`, ...) that can't be matched back to a normalised sheet host, so a host-keyed comparison reports them as extras. Their citations/categories are correct.
 
 After these, the comparison shows 0 missing and only the 19 raw-text-URL extras.
+
+## 7. Akta Komunikasi dan Multimedia 1998 catalog review (2026-09-27)
+
+Stakeholder walkthrough of the imported AKM 1998 tree. Applied in the importer (takes effect on the next re-import):
+
+- **Act numbers.** The `instrument` column of `docs/blocking-list-citation-classification.csv` now carries `(Akta NNN)` for every Act that lacked it (29 Acts incl. AKM → Akta 588, Kanun Keseksaan → Akta 574), so `Instrument.Number` is populated. Enactments/Ordinan/Peraturan/Kaedah have no Akta number and stay blank.
+- **Label spacing** (`normalizeLabel`): no spaces around `-`, one space each side of `/` — merges `Kanak - kanak`/`Kanak-kanak` and `Keganasan/ Militan`/`Keganasan / Militan`.
+- **Compound Kategori** (`splitCategories`): also split on `/` and ` dan ` — `Mengancam/ Palsu`, `Lucah dan Palsu`.
+- **Confirmed misspellings** (`labelAliases`): Aktivit Perakaunan → Aktiviti Perakaunan, Aktiviti Pasaran Model → Aktiviti Pasaran Modal, Iklan & Penjualan Ubat → Iklan dan Penjualan Ubat, Dadah Merbahaya → Dadah Berbahaya.
+- **Jelik › Keganasan / Grafik Melampau** merged into **Ngeri / Grafik Keterlaluan** (same concept).
+- **Compound Elemen** (`compoundElements`): `Dewasa / Kanak-kanak` imports as two offences, Lucah › Dewasa and Lucah › Kanak-kanak.
+
+Deliberately kept as recorded:
+- Standalone categories Phishing, Palsu (Phishing), Fitnah, Politik, Jelik Melampau under s233 — not folded into Palsu/Jelik.
+- Politik both as an element (Jelik/Palsu › Politik) and as a sub-element (› Kepentingan Negara › Politik, Palsu › Fitnah › Politik).
+- Unusual pairings Lucah › Hina Agama, Lucah › Kepentingan Negara, Jelik › Dewasa — what the officer entered.
+
+## 8. Reconciling the dashboard with the MCMC stats workbook (2026-09-27)
+
+Cross-checked the Blocking Statistics page against `data/14 Jumlah Sekatan Laman Sesawang 01092026.xlsx` (sheets A/B/C) for 2022–2025. Changes:
+
+- **Re-blocks under a blanket reference are separate events.** `groupingKey` now keys non-internal references on (reference, domain, notice date), and `WriteCRDCases`'s rerun check matches `letter_date` too. Before, a domain PDRM blocked in 2023 and again in 2025 under `JK KPN(PR) 168/6` folded into one 2023 case, contradicting §2 — ~100 blocks/year went missing from later years. Re-import: 14,339 → 15,644 cases.
+- **Phishing → Palsu › Phishing.** `Phishing` (12 rows, 2021) and `Palsu (Phishing)` (13 rows, 2025) import as category Palsu, element Phishing (overrides §7's keep-as-is for these two). The workbook counts them under Palsu.
+- **`BlockingStats` counts `blocked` only** (the workbook excludes uplifted/suspended) and counts each (case, domain) once per category, not once per offence row — compound 211+233 citations and split elements had been double-counting 1,649 domains.
+- **Attribution by offence, not handler** (`attribute()` in `blocking-stats.tsx`, display only — `case_urls.agency_id` still records who handled it): the 5 MCMC categories count as MCMC whatever the Agensi (e.g. 2023 has 15 PDRM-handled Jelik/Palsu rows), and MCMC-handled Judi is shown under PDRM, as every workbook sheet does.
+
+Result (dashboard / workbook): A 2025 736/736, 2024 891/890, 2023 1153/1156, 2022 1615/1618. B 2025 2597/2633, 2024 2687/2726. The remaining B gap (~1.5%) is rows the import deliberately collapses: byte-identical duplicates (§5) and different URLs on the same host (`urls` is one row per hostname). The workbook counts spreadsheet rows. 2022–23 per-category differences in A (e.g. 2022 Palsu 16 vs 12, Jelik 1 vs 5) reflect the source sheet having been reclassified since the workbook was compiled — the raw sheet itself gives the dashboard's numbers.

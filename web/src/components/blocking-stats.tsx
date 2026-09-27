@@ -34,6 +34,16 @@ const MCMC = 'MCMC'
 // anything else on an MCMC-owned case is stray/legacy data, not a sixth category.
 const MCMC_CATEGORIES = ['Lucah', 'Sumbang', 'Palsu', 'Jelik', 'Mengancam']
 const isMcmcCategory = (offence: string) => MCMC_CATEGORIES.some(c => c.toLowerCase() === offence.toLowerCase())
+// The workbook credits a block to the agency whose law the offence falls under,
+// not the one that handled it: MCMC's five categories are MCMC's whatever the
+// Agensi, and gambling MCMC handled is listed under PDRM. Applied once on load
+// so every preset and filter sees the same attribution.
+const OFFENCE_OWNER: Record<string, string> = { judi: 'PDRM' }
+const attribute = (r: BlockingStatRow): BlockingStatRow => {
+  if (isMcmcCategory(r.offence)) return { ...r, agency: MCMC }
+  const owner = r.agency === MCMC ? OFFENCE_OWNER[r.offence.toLowerCase()] : undefined
+  return owner ? { ...r, agency: owner } : r
+}
 const fmt = (n: number) => n.toLocaleString()
 const pct = (n: number, total: number) => (total ? `${((n / total) * 100).toFixed(2)}%` : '—')
 
@@ -328,7 +338,7 @@ function passes(rule: Rule, v: string | number): boolean {
   return rule.negated ? !ok : ok
 }
 
-// Workbook C1's split: "Agensi Lain" is every agency except MCMC, whatever the offence.
+// Workbook C1's split: "Agensi Lain" is every agency except MCMC (after attribute()).
 const jurisdiction = (r: BlockingStatRow) => (r.agency === MCMC ? MCMC : 'Other agencies')
 // Agency + offence keys join with a separator no name contains; the table splits it back into two columns.
 const SEP = '\u0000'
@@ -590,7 +600,7 @@ export function BlockingRegister() {
     fetchBlockingStats().then(setRows, e => setError(e instanceof Error ? e.message : 'Failed to load'))
   }, [])
 
-  const scoped = useMemo(() => (rows ?? []).filter(r => r.year >= FIRST_YEAR), [rows])
+  const scoped = useMemo(() => (rows ?? []).filter(r => r.year >= FIRST_YEAR).map(attribute), [rows])
   const years = useMemo(() => [...new Set(scoped.map(r => r.year))].sort(), [scoped])
 
   if (error) return <p className="text-sm mt-4">{error}</p>
