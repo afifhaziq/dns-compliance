@@ -1294,8 +1294,9 @@ function URLsPage() {
   const [urlsLoading, setUrlsLoading] = useState(true)
   const [urlsNonce, setUrlsNonce] = useState(0)
   const [monitoredCount, setMonitoredCount] = useState(0)
-  // Admin sees every department's watchlist, but toggle/remove act on the
-  // caller's own department's watchlist row, so they're hidden for admin.
+  // Admin sees every department's watchlist; toggle acts on the caller's own
+  // department's row so it's hidden for admin, while remove (server-side)
+  // unlinks the url from every department's watchlist.
   const { me } = useAuth()
   const isAdmin = !!me?.is_admin
   const [agencies, setAgencies] = useState<Agency[]>([])
@@ -1637,17 +1638,15 @@ function URLsPage() {
               >
                 <FileText size={16} />
               </button>
-              {!isAdmin && (
-                <button
-                  type="button"
-                  className="screenshot-icon-btn"
-                  onClick={() => setDeleteTarget(u)}
-                  aria-label={`Delete ${u.url}`}
-                  title="Delete"
-                >
-                  <XIcon size={16} />
-                </button>
-              )}
+              <button
+                type="button"
+                className="screenshot-icon-btn"
+                onClick={() => setDeleteTarget(u)}
+                aria-label={`Delete ${u.url}`}
+                title="Delete"
+              >
+                <XIcon size={16} />
+              </button>
             </div>
           </div>
         )
@@ -2100,7 +2099,9 @@ function URLsPage() {
       <DeleteConfirmDialog
         open={deleteTarget !== null}
         itemLabel={deleteTarget?.url ?? ''}
-        description="This will remove it from your department's watchlist. The domain and its scan history are kept if any other department still watches it."
+        description={isAdmin
+          ? "This will remove it from every department's watchlist. The domain and its scan history are kept."
+          : "This will remove it from your department's watchlist. The domain and its scan history are kept if any other department still watches it."}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />

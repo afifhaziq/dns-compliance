@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { login } from '../api/auth'
 import { useAuth } from './__root'
-import { AuroraBars } from '@/components/unlumen-ui/primitives/effects/aurora-bars'
+import { AuthShell } from '@/components/auth-shell'
+import { DiaText } from '@/components/ui/dia-text'
 
 export const Route = createFileRoute('/login')({ component: LoginPage })
 
@@ -28,20 +29,10 @@ function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden">
-      <AuroraBars className="fixed inset-0 -z-10" gap={0} blur={3.142} />
-
-      <div
-        className="rounded-2xl shadow-2xl backdrop-blur-md"
-        style={{ width: 360, padding: 32, background: 'var(--auth-card-bg)' }}
-      >
-        <div className="page-header mb-4" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4, padding: 0 }}>
-          <h1 className="page-title" style={{ color: 'var(--auth-card-fg)' }}>Citadel</h1>
-          <p className="page-subtitle" style={{ color: 'var(--auth-card-fg-muted)' }}>Sign in to continue</p>
-        </div>
+    <AuthShell title={<DiaText text="Citadel" textColor="var(--foreground)" colors={['var(--pal-dawn-pine)', 'var(--pal-dawn-love)']} />} subtitle="Sign in to continue" footer="Accounts are issued by your department administrator.">
         <form onSubmit={handleSubmit}>
           <div className="form-field">
-            <label className="form-label" htmlFor="login-username" style={{ color: 'var(--auth-card-label)' }}>Username</label>
+            <label className="form-label" htmlFor="login-username">Username</label>
             <input
               id="login-username"
               className="form-input"
@@ -54,7 +45,7 @@ function LoginPage() {
             />
           </div>
           <div className="form-field">
-            <label className="form-label" htmlFor="login-password" style={{ color: 'var(--auth-card-label)' }}>Password</label>
+            <label className="form-label" htmlFor="login-password">Password</label>
             <input
               id="login-password"
               className="form-input"
@@ -65,12 +56,11 @@ function LoginPage() {
               autoComplete="current-password"
             />
           </div>
-          {error && <p className="form-error">{error}</p>}
-          <button type="submit" className="btn-primary" style={{ width: '100%' }} disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign In'}
+          {error && <p className="form-error" role="alert">{error}</p>}
+          <button type="submit" className="btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '10px 14px' }} disabled={loading}>
+            {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-      </div>
-    </div>
+    </AuthShell>
   )
 }

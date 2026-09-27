@@ -1893,6 +1893,34 @@ func TestRemoveFromWatchlist_NotOnWatchlistReturns404(t *testing.T) {
 	}
 }
 
+func TestRemoveFromWatchlist_AdminRemovesFromAllDepartments(t *testing.T) {
+	store := &fullMockStore{
+		urls: []db.URL{{ID: 1, URL: "example.com"}, {ID: 2, URL: "other.com"}},
+		departmentURLs: []db.DepartmentURL{
+			{DepartmentID: 1, URLID: 1, Enabled: true},
+			{DepartmentID: 2, URLID: 1, Enabled: true},
+			{DepartmentID: 1, URLID: 2, Enabled: true},
+		},
+	}
+	cookie := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/urls/1", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(store.departmentURLs) != 1 || store.departmentURLs[0].URLID != 2 {
+		t.Fatalf("expected only url 2's watchlist row to remain, got %v", store.departmentURLs)
+	}
+	if len(store.urls) != 2 {
+		t.Fatalf("expected url rows to survive, got %v", store.urls)
+	}
+}
+
 func TestPurgeURL_AdminOnly(t *testing.T) {
 	store := &fullMockStore{urls: []db.URL{{ID: 1, URL: "example.com"}}}
 	nonAdmin := deptCookie(store, 1)

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { changePassword } from '../api/auth'
-import { AuroraBars } from '@/components/unlumen-ui/primitives/effects/aurora-bars'
+import { AuthShell } from '@/components/auth-shell'
 
 // Blocks the entire app until a temporary password (set by an admin's
 // reset) is replaced — see the must_change_password gate in __root.tsx.
@@ -30,22 +30,10 @@ export function ForceChangePasswordScreen({ onChanged }: { onChanged: () => Prom
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden">
-      <AuroraBars className="fixed inset-0 -z-10" gap={0} blur={3.142} />
-
-      <div
-        className="rounded-2xl shadow-2xl backdrop-blur-md"
-        style={{ width: 380, padding: 32, background: 'var(--auth-card-bg)' }}
-      >
-        <div className="page-header mb-4" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4, padding: 0 }}>
-          <h1 className="page-title" style={{ color: 'var(--auth-card-fg)' }}>Set a New Password</h1>
-          <p className="page-subtitle" style={{ color: 'var(--auth-card-fg-muted)' }}>
-            Your password was reset by an admin. Set your own before continuing.
-          </p>
-        </div>
+    <AuthShell title="Set a new password" subtitle="Your password was reset by an admin. Set your own before continuing.">
         <form onSubmit={handleSubmit}>
           <div className="form-field">
-            <label className="form-label" htmlFor="fcp-current" style={{ color: 'var(--auth-card-label)' }}>Temporary Password</label>
+            <label className="form-label" htmlFor="fcp-current">Temporary password</label>
             <input
               id="fcp-current"
               className="form-input"
@@ -58,7 +46,7 @@ export function ForceChangePasswordScreen({ onChanged }: { onChanged: () => Prom
             />
           </div>
           <div className="form-field">
-            <label className="form-label" htmlFor="fcp-new" style={{ color: 'var(--auth-card-label)' }}>New Password</label>
+            <label className="form-label" htmlFor="fcp-new">New password</label>
             <input
               id="fcp-new"
               className="form-input"
@@ -70,7 +58,7 @@ export function ForceChangePasswordScreen({ onChanged }: { onChanged: () => Prom
             />
           </div>
           <div className="form-field">
-            <label className="form-label" htmlFor="fcp-confirm" style={{ color: 'var(--auth-card-label)' }}>Confirm New Password</label>
+            <label className="form-label" htmlFor="fcp-confirm">Confirm new password</label>
             <input
               id="fcp-confirm"
               className="form-input"
@@ -81,12 +69,11 @@ export function ForceChangePasswordScreen({ onChanged }: { onChanged: () => Prom
               autoComplete="new-password"
             />
           </div>
-          {error && <p className="form-error">{error}</p>}
-          <button type="submit" className="btn-primary" style={{ width: '100%' }} disabled={loading}>
-            {loading ? 'Saving…' : 'Set Password'}
+          {error && <p className="form-error" role="alert">{error}</p>}
+          <button type="submit" className="btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '10px 14px' }} disabled={loading}>
+            {loading ? 'Saving…' : 'Set password'}
           </button>
         </form>
-      </div>
-    </div>
+    </AuthShell>
   )
 }

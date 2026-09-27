@@ -27,16 +27,19 @@
   --ink-subtle: color-mix(in srgb, var(--pal-dawn-love) 10%, var(--pal-dawn-base) 90%);
   --ink-text: var(--pal-dawn-surface);
 
-  /* Single-hue sequential ramp for multi-series charts (offence/agency breakdowns) —
-     steps toward --ink-hover, not toward transparent: at --ink's own lightness,
-     fading to transparent over a near-white page washes out to illegible pastel
-     within 2-3 steps (see blocking-stats.tsx history). */
+  /* Sequential ramp for multi-series charts (offence/agency breakdowns): rose to
+     Dawn's cool gray ("subtle", #797593), mixed in oklab so chroma fades out
+     instead of the hue swinging through purple. Ends at a real gray, not
+     near-black: a black tail reads as a different palette next to the cream
+     surface. Rose and this gray sit at similar lightness, so steps differ
+     mainly by chroma and hue. (See blocking-stats.tsx history for the earlier
+     fade-to-transparent wash-out.) */
   --ink-scale-1: var(--ink);
-  --ink-scale-2: #9e576b;
-  --ink-scale-3: #894b5d;
-  --ink-scale-4: #73404e;
-  --ink-scale-5: #5e3440;
-  --ink-scale-6: #482831;
+  --ink-scale-2: color-mix(in oklab, #797593 20%, var(--ink));
+  --ink-scale-3: color-mix(in oklab, #797593 40%, var(--ink));
+  --ink-scale-4: color-mix(in oklab, #797593 60%, var(--ink));
+  --ink-scale-5: color-mix(in oklab, #797593 80%, var(--ink));
+  --ink-scale-6: #797593;
 
   /* Destructive red — violation status only (sole non-gray in the system) */
   --violation: oklch(0.577 0.245 27.325);
@@ -116,21 +119,25 @@
   --sidebar-border: var(--stone-border);
   --sidebar-ring: var(--ink);
   --chart-background: var(--pal-dawn-surface);
-  --chart-foreground: oklch(0.145 0.004 285);
-  --chart-foreground-muted: oklch(0.55 0.014 260);
+  /* Light chart neutrals — derived from Dawn (base/text) like the stone ramp above.
+     Tooltip tokens are shared with the dark theme (near-black either way). The
+     background is nearly opaque: at 0.8 alpha over the cream page it washed out to
+     mid-gray and the muted row labels lost contrast. */
+  --chart-foreground: var(--pal-dawn-text);
+  --chart-foreground-muted: var(--stone-muted);
   --chart-line-primary: var(--chart-1);
   --chart-line-secondary: var(--chart-2);
-  --chart-crosshair: oklch(0.4 0.1828 274.34);
-  --chart-grid: oklch(0.9 0 0);
+  --chart-crosshair: var(--stone-muted);
+  --chart-grid: color-mix(in srgb, var(--pal-dawn-base) 86%, var(--pal-dawn-text) 14%);
   --chart-brush-border: var(--chart-grid);
-  --chart-tooltip-background: oklch(0.21 0.006 285 / 0.8);
+  --chart-tooltip-background: oklch(0.24 0.02 290 / 0.94);
   --chart-tooltip-foreground: oklch(0.985 0 0);
-  --chart-tooltip-muted: oklch(0.65 0.01 260);
-  --chart-marker-background: oklch(0.97 0.005 260);
-  --chart-marker-border: oklch(0.85 0.01 260);
-  --chart-marker-foreground: oklch(0.3 0.01 260);
-  --chart-ring-background: oklch(0.9 0.005 260 / 0.25);
-  --chart-label: oklch(0.45 0.01 260);
+  --chart-tooltip-muted: oklch(0.84 0.015 290);
+  --chart-marker-background: var(--pal-dawn-surface);
+  --chart-marker-border: var(--stone-border);
+  --chart-marker-foreground: var(--pal-dawn-text);
+  --chart-ring-background: color-mix(in srgb, var(--pal-dawn-text) 12%, transparent);
+  --chart-label: var(--stone-muted);
   --destructive-foreground: var(--color-red-800);
   --success: var(--color-emerald-500);
   --success-foreground: var(--color-emerald-900);

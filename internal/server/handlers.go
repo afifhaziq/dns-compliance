@@ -259,15 +259,15 @@ func fetchAndStoreSubdomains(store db.EnrichmentStore, fetch subfinder.Fetcher, 
 }
 
 // RemoveFromWatchlist unlinks a URL from the caller's department watchlist
-// only — URL row and its scan history are untouched. 404s if the URL wasn't
-// actually on that department's watchlist.
+// only (admin: every department's watchlist) — URL row and its scan history
+// are untouched. 404s if the URL wasn't actually on a watchlist.
 func (h *Handlers) RemoveFromWatchlist(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "not authenticated")
 		return
 	}
-	if user.DepartmentID == nil {
+	if !user.IsAdmin && user.DepartmentID == nil {
 		writeError(w, http.StatusForbidden, "user has no department")
 		return
 	}
@@ -278,19 +278,41 @@ func (h *Handlers) RemoveFromWatchlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	removed, err := h.store.RemoveURLFromWatchlist(r.Context(), *user.DepartmentID, uint(id))
-	if err != nil {
-		writeInternalError(w, err)
-		return
+	// Admin's Domain view shows one row per url merged across departments,
+	// so admin removal unlinks it from every department watching it.
+	var deptIDs []uint
+	if user.IsAdmin {
+		deptIDs, err = h.store.DepartmentIDsWatchingURL(r.Context(), uint(id))
+		if err != nil {
+			writeInternalError(w, err)
+			return
+		}
+	} else {
+		deptIDs = []uint{*user.DepartmentID}
 	}
-	if !removed {
+
+	// ponytail: one delete per department, not one transaction — a mid-loop
+	// failure leaves a partial removal, and retrying finishes the rest.
+	removedAny := false
+	for _, deptID := range deptIDs {
+		removed, err := h.store.RemoveURLFromWatchlist(r.Context(), deptID, uint(id))
+		if err != nil {
+			writeInternalError(w, err)
+			return
+		}
+		if !removed {
+			continue
+		}
+		removedAny = true
+		if h.notify != nil {
+			if err := h.notify.RescheduleDueDate(deptID, uint(id), nil); err != nil {
+				log.Printf("notify: cancel due-date task for department=%d url=%d: %v", deptID, id, err)
+			}
+		}
+	}
+	if !removedAny {
 		writeError(w, http.StatusNotFound, "url not on this department's watchlist")
 		return
-	}
-	if h.notify != nil {
-		if err := h.notify.RescheduleDueDate(*user.DepartmentID, uint(id), nil); err != nil {
-			log.Printf("notify: cancel due-date task for department=%d url=%d: %v", *user.DepartmentID, id, err)
-		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

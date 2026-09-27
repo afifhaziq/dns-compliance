@@ -20,7 +20,7 @@ import type { SunburstNode } from '@/components/charts/sunburst-data'
 import { Legend, LegendItem, LegendMarker, LegendLabel, LegendValue, type LegendItemData } from '@/components/charts/legend'
 import { Grid } from '@/components/charts/grid'
 import { Filters } from '@/components/reui/filters/filters'
-import { createFilterQuery, type FilterQuery } from '@/components/reui/filters/filters-query'
+import { createFilterQuery, createFilterRule, type FilterQuery } from '@/components/reui/filters/filters-query'
 import type { FilterField } from '@/components/reui/filters/filters-types'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { ChartTooltip, TooltipBox, TooltipContent } from '@/components/charts/tooltip'
@@ -418,7 +418,28 @@ function OffenceTable({ title, lines, showAgency, hideOffence }: { title: string
 }
 
 function TabA({ lines, years }: { lines: Line[]; years: number[] }) {
-  const mcmc = lines.filter(l => l.agency === MCMC && isMcmcCategory(l.offence))
+  const mcmcAll = useMemo(() => lines.filter(l => l.agency === MCMC), [lines])
+  // Every offence recorded on an MCMC-owned case, not just the five workbook categories;
+  // the filter starts on those five (the stray ones are opt-in) and clearing it shows all.
+  const allOffences = useMemo(() => [...new Set(mcmcAll.map(l => l.offence))].sort((a, b) => a.localeCompare(b)), [mcmcAll])
+  const [query, setQuery] = useState<FilterQuery>(() => createFilterQuery<unknown>([
+    createFilterRule<unknown>({ id: 'offence-default', path: ['offence'], operator: 'in', value: allOffences.filter(isMcmcCategory) }),
+  ]))
+  const offenceField = useMemo<FilterField[]>(() => [{
+    id: 'offence',
+    label: 'Offence',
+    type: 'multiselect',
+    operators: [
+      { value: 'in', label: 'is any of', arity: 'many', inverse: 'nin' },
+      { value: 'nin', label: 'is none of', arity: 'many', inverse: 'in' },
+    ],
+    defaultOperator: 'in',
+    options: allOffences.map(o => ({ value: o, label: o })),
+  }], [allOffences])
+  const rule = query.rules.find((r): r is Extract<typeof r, { type: 'rule' }> => r.type === 'rule' && r.path[0] === 'offence')
+  const picked = Array.isArray(rule?.value) ? (rule.value as string[]) : []
+  const keep = (o: string) => (rule?.operator === 'in' && picked.length ? picked.includes(o) : rule?.operator === 'nin' && picked.length ? !picked.includes(o) : true)
+  const mcmc = mcmcAll.filter(l => keep(l.offence))
   const latest = years[years.length - 1]
   const overall = mcmc.map(l => ({ ...l, total: sumYears(l, years) })).filter(l => l.total)
   const thisYear = mcmc.map(l => ({ ...l, total: l.byYear[latest] ?? 0 })).filter(l => l.total)
@@ -434,6 +455,11 @@ function TabA({ lines, years }: { lines: Line[]; years: number[] }) {
   })
   return (
     <>
+      <div className="mb-4">
+        <TooltipProvider>
+          <Filters fields={offenceField} query={query} onQueryChange={setQuery} showClear size="sm" />
+        </TooltipProvider>
+      </div>
       <div className="flex flex-wrap gap-8 mb-6">
         <Kpi label={`MCMC blocks ${years[0]}–${latest}`} value={fmt(total)} />
         <Kpi label={`MCMC blocks ${latest}`} value={fmt(thisYear.reduce((s, l) => s + l.total, 0))} />

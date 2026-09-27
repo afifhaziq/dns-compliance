@@ -9,7 +9,7 @@ import {
   getPaginationRowModel,
   useReactTable,
 } from '@tanstack/react-table'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/motion/tabs'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { DataGrid, DataGridContainer } from '@/components/reui/data-grid/data-grid'
 import { DataGridTable } from '@/components/reui/data-grid/data-grid-table'
 import { DataGridPagination } from '@/components/reui/data-grid/data-grid-pagination'
@@ -46,7 +46,6 @@ import {
 } from '@/components/animate-ui/components/radix/dialog'
 import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog'
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select'
-import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/r-switch'
 import { Slider } from '@/components/ui/slider'
 import { Input } from '@/components/ui/input'
@@ -55,14 +54,14 @@ import { XIcon } from '@/components/ui/x'
 import { KeyRoundIcon } from 'lucide-react'
 import { useAuth } from './__root'
 
-const ADMIN_TABS = ['departments', 'users', 'ip', 'agencies', 'recipients', 'requestors', 'due-dates', 'scan-settings'] as const
+const ADMIN_TABS = ['departments', 'users', 'ip', 'agencies', 'recipients', 'requestors', 'due-dates', 'scan-settings', 'configs'] as const
 type AdminTab = typeof ADMIN_TABS[number]
 
 // Departments/Agencies/Recipients/Requestors/Users are the tabbed CRUD
-// section at the top of the page; Compliant IPs/Time to Block/Scan Settings
-// stay as plain stacked sections below (see admin.tsx's route bullet in
-// web/CLAUDE.md).
-const CRUD_TABS = ['departments', 'agencies', 'recipients', 'requestors', 'users'] as const
+// section; Compliant IPs/Time to Block/Scan Settings are stacked sections
+// inside the last "Configs" tab. ?tab=ip|due-dates|scan-settings deep links
+// open Configs and scroll to that section.
+const CRUD_TABS = ['departments', 'agencies', 'recipients', 'requestors', 'users', 'configs'] as const
 type CrudTab = typeof CRUD_TABS[number]
 
 // Sections gated to is_admin server-side (see `load` below) — a department
@@ -1801,8 +1800,8 @@ function AdminPage() {
   const { tab: deepLinkTab } = Route.useSearch()
   const navigate = useNavigate()
 
-  // Compliant IPs / Time to Block / Scan Settings — plain stacked sections
-  // below the CRUD tabs; sectionRefs only backs the deep-link scroll below.
+  // Compliant IPs / Time to Block / Scan Settings — stacked sections inside
+  // the Configs tab; sectionRefs only backs the deep-link scroll below.
   const sectionRefs = useRef<Partial<Record<AdminTab, HTMLDivElement | null>>>({})
   const didDeepLinkScroll = useRef(false)
 
@@ -1812,7 +1811,9 @@ function AdminPage() {
     [me],
   )
   const [crudTab, setCrudTab] = useState<CrudTab>(
-    deepLinkTab && (CRUD_TABS as readonly string[]).includes(deepLinkTab) ? (deepLinkTab as CrudTab) : (visibleCrudTabs[0] ?? 'users'),
+    deepLinkTab && (CRUD_TABS as readonly string[]).includes(deepLinkTab) ? (deepLinkTab as CrudTab)
+      : deepLinkTab ? 'configs'
+      : (visibleCrudTabs[0] ?? 'users'),
   )
 
   const [departments, setDepartments] = useState<Department[]>([])
@@ -1884,9 +1885,8 @@ function AdminPage() {
     if (me?.is_admin || me?.is_dept_admin) load()
   }, [me, load])
 
-  // Deep link (?tab=) jumps to a section once, on landing — the CRUD tabs
-  // (Departments/Agencies/Users) don't need this, since Tabs already opens
-  // on the right value from crudTab's initial state above.
+  // Deep link (?tab=) to a Configs section scrolls to it once, on landing —
+  // crudTab's initial state above has already opened the Configs tab.
   useEffect(() => {
     if (!deepLinkTab || (CRUD_TABS as readonly string[]).includes(deepLinkTab) || loading || didDeepLinkScroll.current) return
     didDeepLinkScroll.current = true
@@ -1970,13 +1970,14 @@ function AdminPage() {
         </div>
       )}
 
-      <Tabs value={crudTab} onValueChange={handleCrudTabChange} variant="underline">
-        <TabsList>
+      <Tabs value={crudTab} onValueChange={handleCrudTabChange} orientation="vertical" className="gap-5">
+        <TabsList variant="line" className="w-40 shrink-0">
           {visibleCrudTabs.includes('departments') && <TabsTrigger value="departments">Departments</TabsTrigger>}
           <TabsTrigger value="agencies">Agencies</TabsTrigger>
           <TabsTrigger value="recipients">Recipients</TabsTrigger>
           <TabsTrigger value="requestors">Requestors</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="configs">Configs</TabsTrigger>
         </TabsList>
 
         {visibleCrudTabs.includes('departments') && (
@@ -2030,92 +2031,87 @@ function AdminPage() {
             onResetRequest={setResetPasswordTarget}
           />
         </TabsContent>
-      </Tabs>
 
-      <div className="relative my-10">
-        <Separator />
-        <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-xs text-stone-muted">
-          Configs
-        </span>
-      </div>
-
-      <div className="flex flex-col gap-10 mb-10">
-        {me?.is_admin && (
-          <div id="ip" ref={el => { sectionRefs.current.ip = el }} data-section="ip" className="scroll-mt-24">
-            <div className="page-header" style={{ marginBottom: 12 }}>
-              <h2 className="section-title">Compliant IPs</h2>
-              <p className="page-subtitle" style={{ marginLeft: 8 }}>DNS resolutions to these IPs are classified as compliant</p>
-              <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddIPOpen(true)}>
-                + Add IP
-              </button>
-            </div>
-            <div className="border border-stone-border rounded-lg overflow-hidden">
-              {compliantIPs.map(ip => (
-                <div key={ip.id} className="admin-row py-[9px] px-4 flex items-center gap-4">
-                  <span className="ip-value flex-1">{ip.address}</span>
-                  <span className="text-stone-muted text-sm">{ip.note || '—'}</span>
-                  <span className="dns-name">{DATE_FMT.format(new Date(ip.created_at))}</span>
-                  <button
-                    type="button"
-                    className="screenshot-icon-btn"
-                    onClick={() => setDeleteIPTarget(ip)}
-                    aria-label={`Delete ${ip.address}`}
-                    title="Delete"
-                  >
-                    <XIcon size={16} />
+        <TabsContent value="configs" className="min-w-0">
+          <div className="flex flex-col gap-10 mb-10">
+            {me?.is_admin && (
+              <div id="ip" ref={el => { sectionRefs.current.ip = el }} data-section="ip" className="scroll-mt-24">
+                <div className="page-header" style={{ marginBottom: 12 }}>
+                  <h2 className="section-title">Compliant IPs</h2>
+                  <p className="page-subtitle" style={{ marginLeft: 8 }}>DNS resolutions to these IPs are classified as compliant</p>
+                  <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddIPOpen(true)}>
+                    + Add IP
                   </button>
                 </div>
-              ))}
-              {compliantIPs.length === 0 && !loading && (
-                <p className="text-center text-stone-muted py-4">No compliant IPs configured</p>
-              )}
-            </div>
-          </div>
-        )}
-
-        <div className="flex flex-row gap-10">
-          {me?.is_admin && scanSchedule !== null && (
-            <div id="scan-settings" ref={el => { sectionRefs.current['scan-settings'] = el }} data-section="scan-settings" className="scroll-mt-24 flex-1 min-w-0">
-              <ScanSettingsSection value={scanSchedule} onSaved={setScanSchedule} />
-            </div>
-          )}
-
-          <div id="due-dates" ref={el => { sectionRefs.current['due-dates'] = el }} data-section="due-dates" className="scroll-mt-24 flex-1 min-w-0">
-            <div className="page-header" style={{ marginBottom: 4 }}>
-              <h2 className="section-title">Time to Block</h2>
-              <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddPresetOpen(true)}>
-                + Add Duration
-              </button>
-            </div>
-            <p className="page-subtitle" style={{ marginBottom: 12 }}>Duration options offered in the "Time to Block" picker when setting a domain's due date on the Watchlist</p>
-            <div className="border border-stone-border rounded-lg overflow-hidden">
-              {duePresets.map(p => (
-                <div key={p.id} className="admin-row py-[9px] px-4 flex items-center gap-4">
-                  <span className="flex-1 font-medium truncate">{p.label}</span>
-                  <div className="server-bar-wrap" style={{ width: 240 }}>
-                    <div className="server-bar" role="presentation">
-                      <div className="server-bar-fill" style={{ width: `${presetBarPct(p.minutes, maxPresetMinutes)}%` }} />
+                <div className="border border-stone-border rounded-lg overflow-hidden">
+                  {compliantIPs.map(ip => (
+                    <div key={ip.id} className="admin-row py-[9px] px-4 flex items-center gap-4">
+                      <span className="ip-value flex-1">{ip.address}</span>
+                      <span className="text-stone-muted text-sm">{ip.note || '—'}</span>
+                      <span className="dns-name">{DATE_FMT.format(new Date(ip.created_at))}</span>
+                      <button
+                        type="button"
+                        className="screenshot-icon-btn"
+                        onClick={() => setDeleteIPTarget(ip)}
+                        aria-label={`Delete ${ip.address}`}
+                        title="Delete"
+                      >
+                        <XIcon size={16} />
+                      </button>
                     </div>
-                    <span className="server-count">{formatDuration(p.minutes)}</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="screenshot-icon-btn"
-                    onClick={() => setDeletePresetTarget(p)}
-                    aria-label={`Delete duration ${p.label}`}
-                    title="Delete"
-                  >
-                    <XIcon size={16} />
+                  ))}
+                  {compliantIPs.length === 0 && !loading && (
+                    <p className="text-center text-stone-muted py-4">No compliant IPs configured</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-row gap-10">
+              {me?.is_admin && scanSchedule !== null && (
+                <div id="scan-settings" ref={el => { sectionRefs.current['scan-settings'] = el }} data-section="scan-settings" className="scroll-mt-24 flex-1 min-w-0">
+                  <ScanSettingsSection value={scanSchedule} onSaved={setScanSchedule} />
+                </div>
+              )}
+
+              <div id="due-dates" ref={el => { sectionRefs.current['due-dates'] = el }} data-section="due-dates" className="scroll-mt-24 flex-1 min-w-0">
+                <div className="page-header" style={{ marginBottom: 4 }}>
+                  <h2 className="section-title">Time to Block</h2>
+                  <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setAddPresetOpen(true)}>
+                    + Add Duration
                   </button>
                 </div>
-              ))}
-              {duePresets.length === 0 && !loading && (
-                <p className="text-center text-stone-muted py-4">No durations configured</p>
-              )}
+                <p className="page-subtitle" style={{ marginBottom: 12 }}>Duration options offered in the "Time to Block" picker when setting a domain's due date on the Watchlist</p>
+                <div className="border border-stone-border rounded-lg overflow-hidden">
+                  {duePresets.map(p => (
+                    <div key={p.id} className="admin-row py-[9px] px-4 flex items-center gap-4">
+                      <span className="flex-1 font-medium truncate">{p.label}</span>
+                      <div className="server-bar-wrap" style={{ width: 240 }}>
+                        <div className="server-bar" role="presentation">
+                          <div className="server-bar-fill" style={{ width: `${presetBarPct(p.minutes, maxPresetMinutes)}%` }} />
+                        </div>
+                        <span className="server-count">{formatDuration(p.minutes)}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="screenshot-icon-btn"
+                        onClick={() => setDeletePresetTarget(p)}
+                        aria-label={`Delete duration ${p.label}`}
+                        title="Delete"
+                      >
+                        <XIcon size={16} />
+                      </button>
+                    </div>
+                  ))}
+                  {duePresets.length === 0 && !loading && (
+                    <p className="text-center text-stone-muted py-4">No durations configured</p>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
+        </TabsContent>
+      </Tabs>
 
       <AddDepartmentDialog open={addDeptOpen} onClose={() => setAddDeptOpen(false)} onAdded={load} />
       <EditDepartmentDialog department={editDeptTarget} onClose={() => setEditDeptTarget(null)} onSaved={load} />
