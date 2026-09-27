@@ -304,7 +304,7 @@ function useRowLimit<T>(rows: T[], limit = PREVIEW_ROWS) {
 }
 
 type Rule = FilterRule<unknown>
-type GroupBy = 'offence' | 'agency' | 'jurisdiction'
+type GroupBy = 'offence' | 'agency' | 'agencyOffence' | 'jurisdiction'
 
 // Blank/partial values match everything, so a half-built chip doesn't empty the view.
 function passes(rule: Rule, v: string | number): boolean {
@@ -328,15 +328,35 @@ function passes(rule: Rule, v: string | number): boolean {
   return rule.negated ? !ok : ok
 }
 
-// Workbook C's jurisdiction split: an MCMC-owned case outside the five workbook
-// categories counts under "Other agencies", same as before the explorer.
-const jurisdiction = (r: BlockingStatRow) => (r.agency === MCMC && isMcmcCategory(r.offence) ? MCMC : 'Other agencies')
+// Workbook C1's split: "Agensi Lain" is every agency except MCMC, whatever the offence.
+const jurisdiction = (r: BlockingStatRow) => (r.agency === MCMC ? MCMC : 'Other agencies')
+// Agency + offence keys join with a separator no name contains; the table splits it back into two columns.
+const SEP = '\u0000'
 const groupKey: Record<GroupBy, (r: BlockingStatRow) => string> = {
   offence: r => r.offence,
   agency: r => r.agency,
+  agencyOffence: r => `${r.agency}${SEP}${r.offence}`,
   jurisdiction,
 }
-const GROUP_LABEL: Record<GroupBy, string> = { offence: 'Offence', agency: 'Agency', jurisdiction: 'Jurisdiction' }
+const GROUP_LABEL: Record<GroupBy, string> = { offence: 'Offence', agency: 'Agency', agencyOffence: 'Agency + offence', jurisdiction: 'Jurisdiction' }
+const display = (label: string) => label.replace(SEP, ' · ')
+
+type GroupLine = { label: string; byYear: Record<number, number>; total: number }
+
+// One line per group with per-year counts, largest first.
+function aggregate(rows: BlockingStatRow[], years: number[], groupBy: GroupBy): GroupLine[] {
+  const key = groupKey[groupBy]
+  const groups = new Map<string, Record<number, number>>()
+  for (const r of rows) {
+    const g = groups.get(key(r)) ?? {}
+    g[r.year] = (g[r.year] ?? 0) + r.count
+    groups.set(key(r), g)
+  }
+  return [...groups]
+    .map(([label, byYear]) => ({ label, byYear, total: years.reduce((s, y) => s + (byYear[y] ?? 0), 0) }))
+    .filter(l => l.total)
+    .sort((a, b) => b.total - a.total)
+}
 
 type Preset = { id: string; label: string; groupBy: GroupBy; rules: (offences: string[]) => Rule[] }
 // Each preset is the filter + grouping that reproduces one sheet of the source workbook.
@@ -352,6 +372,7 @@ const PRESETS: Preset[] = [
     id: 'b', label: 'B · Other agencies', groupBy: 'agency',
     rules: () => [createFilterRule<unknown>({ id: 'agency', path: ['agency'], operator: 'nin', value: [MCMC] })],
   },
+  // C1 is the jurisdiction split; grouping by jurisdiction also renders C2 (agency + offence) below it.
   { id: 'c', label: 'C · Comparison', groupBy: 'jurisdiction', rules: () => [] },
 ]
 
@@ -406,23 +427,11 @@ function Explorer({ rows, allYears }: { rows: BlockingStatRow[]; allYears: numbe
   const yearRule = rules.filter(r => r.path[0] === 'year')
   const years = allYears.filter(y => yearRule.every(r => passes(r, y)))
 
-  // One line per group with per-year counts, largest first.
-  const key = groupKey[groupBy]
-  const groups = new Map<string, Record<number, number>>()
-  for (const r of filtered) {
-    const g = groups.get(key(r)) ?? {}
-    g[r.year] = (g[r.year] ?? 0) + r.count
-    groups.set(key(r), g)
-  }
-  const lines = [...groups]
-    .map(([label, byYear]) => ({ label, byYear, total: years.reduce((s, y) => s + (byYear[y] ?? 0), 0) }))
-    .filter(l => l.total)
-    .sort((a, b) => b.total - a.total)
+  const lines = aggregate(filtered, years, groupBy)
   const total = lines.reduce((s, l) => s + l.total, 0)
-  const yearTotals = years.map(y => lines.reduce((s, l) => s + (l.byYear[y] ?? 0), 0))
 
   const top = topN(lines.map(l => ({ label: l.label, value: l.total })), 4).map(t => t.label).filter(l => l !== 'Other')
-  const series = [...top.map(t => ({ key: t, label: t })), ...(top.length < lines.length ? [{ key: 'Other', label: 'Other' }] : [])]
+  const series = [...top.map(t => ({ key: t, label: display(t) })), ...(top.length < lines.length ? [{ key: 'Other', label: 'Other' }] : [])]
   const perYear = yearRows(years, y => {
     const r: Record<string, number> = { Other: 0 }
     for (const l of lines) {
@@ -431,7 +440,6 @@ function Explorer({ rows, allYears }: { rows: BlockingStatRow[]; allYears: numbe
     }
     return r
   })
-  const { shown, toggle } = useRowLimit(lines, 12)
   const noun = GROUP_LABEL[groupBy].toLowerCase()
 
   return (
@@ -470,43 +478,15 @@ function Explorer({ rows, allYears }: { rows: BlockingStatRow[]; allYears: numbe
         <>
           <div className="grid gap-4 grid-cols-1 lg:grid-cols-[3fr_7fr] mb-8">
             <Card title="Share of blocks" className={years.length < 2 ? 'lg:col-span-2' : ''}>
-              {groupBy === 'agency'
+              {groupBy === 'agency' || groupBy === 'agencyOffence'
                 ? <AgencySunburst rows={filtered.filter(r => years.includes(r.year)).map(r => ({ agency: r.agency, offence: r.offence, total: r.count }))} label="Blocks" />
-                : <Donut items={lines.map(l => ({ label: l.label, value: l.total }))} label="Blocks" />}
+                : <Donut items={lines.map(l => ({ label: display(l.label), value: l.total }))} label="Blocks" />}
             </Card>
             {years.length > 1 && <Card title={`By year and ${noun}`}><YearLines data={perYear} series={series} /></Card>}
-            {/* Full grid: dash-table-wrap draws the rounded outer frame, cells draw the inner lines. */}
-            <div className="lg:col-span-2">
-              <div className="dash-table-wrap">
-                <Table className="table-fixed min-w-[760px]" aria-label={`Blocks by ${noun} and year`}>
-                  <TableHeader>
-                    <TableRow className="bg-stone-panel">
-                      <TableHead scope="col" className={`w-56 ${TH}`}>{GROUP_LABEL[groupBy]}</TableHead>
-                      {years.map(y => <TableHead scope="col" key={y} className={`${TH} ${CELL_EDGE} text-right`}>{y}</TableHead>)}
-                      <TableHead scope="col" className={`${TH} ${CELL_EDGE} text-right`}>Total</TableHead>
-                      <TableHead scope="col" className={`${TH} ${CELL_EDGE} text-right`}>Share</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {shown.map(l => (
-                      <TableRow key={l.label} className="border-t border-stone-border transition-colors duration-150 hover:bg-stone-panel">
-                        <TableCell className={`${TD} truncate font-medium`} title={l.label}>{l.label}</TableCell>
-                        {years.map(y => <TableCell key={y} className={`${TD} ${CELL_EDGE} text-right tabular-nums`}>{zero(l.byYear[y] ?? 0)}</TableCell>)}
-                        <TableCell className={`${TD} ${CELL_EDGE} text-right tabular-nums font-medium`}>{fmt(l.total)}</TableCell>
-                        <TableCell className={`${TD} ${CELL_EDGE} text-right tabular-nums text-stone-muted`}>{pct(l.total, total)}</TableCell>
-                      </TableRow>
-                    ))}
-                    <TableRow className="border-t border-stone-border bg-stone-panel font-semibold">
-                      <TableCell className={TD}>Total</TableCell>
-                      {yearTotals.map((v, i) => <TableCell key={years[i]} className={`${TD} ${CELL_EDGE} text-right tabular-nums`}>{fmt(v)}</TableCell>)}
-                      <TableCell className={`${TD} ${CELL_EDGE} text-right tabular-nums`}>{fmt(total)}</TableCell>
-                      <TableCell className={`${TD} ${CELL_EDGE} text-right tabular-nums`}>100%</TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </div>
-              {toggle}
-            </div>
+            <BreakdownTable lines={lines} years={years} groupBy={groupBy} />
+            {groupBy === 'jurisdiction' && (
+              <BreakdownTable lines={aggregate(filtered, years, 'agencyOffence')} years={years} groupBy="agencyOffence" />
+            )}
           </div>
         </>
       )}
@@ -518,6 +498,86 @@ function Explorer({ rows, allYears }: { rows: BlockingStatRow[]; allYears: numbe
 const TH = 'h-10 px-4 text-[11px] font-semibold tracking-[0.06em] uppercase text-stone-muted'
 const TD = 'px-4 py-2.5'
 const CELL_EDGE = 'border-l border-stone-border'
+
+// Agency + offence rows as contiguous agency blocks: MCMC first, then agencies
+// by their total, and each agency's offences by count.
+function byAgencyBlocks(lines: GroupLine[]): GroupLine[] {
+  const agencyTotal = new Map<string, number>()
+  for (const l of lines) {
+    const a = l.label.split(SEP)[0]
+    agencyTotal.set(a, (agencyTotal.get(a) ?? 0) + l.total)
+  }
+  const rank = (a: string) => (a === MCMC ? Infinity : agencyTotal.get(a) ?? 0)
+  return [...lines].sort((x, y) => {
+    const ax = x.label.split(SEP)[0], ay = y.label.split(SEP)[0]
+    return rank(ay) - rank(ax) || ax.localeCompare(ay) || y.total - x.total
+  })
+}
+
+// Group × year table with Total/Share; agency + offence gets two label columns.
+// Full grid: dash-table-wrap draws the rounded outer frame, cells draw the inner lines.
+function BreakdownTable({ lines, years, groupBy }: { lines: GroupLine[]; years: number[]; groupBy: GroupBy }) {
+  const pair = groupBy === 'agencyOffence'
+  const rows = pair ? byAgencyBlocks(lines) : lines
+  // Agency blocks are only readable whole, and MCMC alone outruns a 12-row preview.
+  const { shown, toggle } = useRowLimit(rows, pair ? Infinity : 12)
+  const total = lines.reduce((s, l) => s + l.total, 0)
+  const yearTotals = years.map(y => lines.reduce((s, l) => s + (l.byYear[y] ?? 0), 0))
+  // Agency cell spans its run of rows within the visible slice.
+  const agencyOf = (l: GroupLine) => l.label.split(SEP)[0]
+  const span = (i: number) => {
+    let n = 1
+    while (i + n < shown.length && agencyOf(shown[i + n]) === agencyOf(shown[i])) n++
+    return n
+  }
+  return (
+    <div className="lg:col-span-2">
+      <div className="dash-table-wrap">
+        <Table className="table-fixed min-w-[760px]" aria-label={`Blocks by ${GROUP_LABEL[groupBy].toLowerCase()} and year`}>
+          <TableHeader>
+            <TableRow className="bg-stone-panel">
+              {pair ? (
+                <>
+                  <TableHead scope="col" className={`w-28 ${TH}`}>Agency</TableHead>
+                  <TableHead scope="col" className={`w-72 ${TH} ${CELL_EDGE}`}>Offence</TableHead>
+                </>
+              ) : <TableHead scope="col" className={`w-56 ${TH}`}>{GROUP_LABEL[groupBy]}</TableHead>}
+              {years.map(y => <TableHead scope="col" key={y} className={`${TH} ${CELL_EDGE} text-right`}>{y}</TableHead>)}
+              <TableHead scope="col" className={`${TH} ${CELL_EDGE} text-right`}>Total</TableHead>
+              <TableHead scope="col" className={`${TH} ${CELL_EDGE} text-right`}>Share</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {shown.map((l, i) => {
+              const [agency, offence] = l.label.split(SEP)
+              const first = i === 0 || agencyOf(shown[i - 1]) !== agency
+              return (
+                <TableRow key={l.label} className="border-t border-stone-border transition-colors duration-150 hover:bg-stone-panel">
+                  {pair ? (
+                    <>
+                      {first && <TableCell rowSpan={span(i)} className={`${TD} align-top font-medium bg-background`}>{agency}</TableCell>}
+                      <TableCell className={`${TD} ${CELL_EDGE} truncate`} title={offence}>{offence}</TableCell>
+                    </>
+                  ) : <TableCell className={`${TD} truncate font-medium`} title={l.label}>{l.label}</TableCell>}
+                  {years.map(y => <TableCell key={y} className={`${TD} ${CELL_EDGE} text-right tabular-nums`}>{zero(l.byYear[y] ?? 0)}</TableCell>)}
+                  <TableCell className={`${TD} ${CELL_EDGE} text-right tabular-nums font-medium`}>{fmt(l.total)}</TableCell>
+                  <TableCell className={`${TD} ${CELL_EDGE} text-right tabular-nums text-stone-muted`}>{pct(l.total, total)}</TableCell>
+                </TableRow>
+              )
+            })}
+            <TableRow className="border-t border-stone-border bg-stone-panel font-semibold">
+              <TableCell className={TD} colSpan={pair ? 2 : 1}>Total</TableCell>
+              {yearTotals.map((v, i) => <TableCell key={years[i]} className={`${TD} ${CELL_EDGE} text-right tabular-nums`}>{fmt(v)}</TableCell>)}
+              <TableCell className={`${TD} ${CELL_EDGE} text-right tabular-nums`}>{fmt(total)}</TableCell>
+              <TableCell className={`${TD} ${CELL_EDGE} text-right tabular-nums`}>100%</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </div>
+      {toggle}
+    </div>
+  )
+}
 
 const zero = (n: number) => (n ? fmt(n) : <span className="opacity-30">–</span>)
 
