@@ -1,0 +1,9 @@
+# Extends gitleaks' default rules. tools.sum holds Go module checksums (same
+# format as go.sum, which the defaults already allowlist); its base64 hashes
+# trip generic-api-key.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Go module checksum files"
+paths = ['''(^|/)tools\.sum$''']
