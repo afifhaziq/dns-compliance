@@ -1552,12 +1552,6 @@ export function FiltersAdvancedPanel<V, O>({
     [query, actions]
   )
 
-  /** Every issue, keyed by node: what the tree IS, drawn or not. */
-  const issueMap = React.useMemo(
-    () => new Map(issues.map((issue) => [issue.nodeId, issue])),
-    [issues]
-  )
-
   /** The issues a row may DRAW: the ones on a value committed once. */
   const visibleIssueMap = React.useMemo(() => {
     const visible = new Map<string, FilterIssue>()
@@ -1586,25 +1580,6 @@ export function FiltersAdvancedPanel<V, O>({
     if (visibleIssueMap.size <= before.count) return
     actions.announce(actions.labels.issueSummary(visibleIssueMap.size))
   }, [visibleIssueMap, announcementSeq, actions])
-
-  /** Sends focus to the first thing that needs it. Walked and not selected
-   * by id: a node id is consumer-supplied, and `CSS.escape` is not
-   * optional in a hand-built selector. */
-  const focusFirstIssue = React.useCallback(() => {
-    const first = issues[0]
-    const body = bodyRef.current
-    if (!first || !body) return
-    const row = Array.from(
-      body.querySelectorAll<HTMLElement>(ROW_SELECTOR)
-    ).find((candidate) => candidate.dataset.nodeId === first.nodeId)
-    if (!row) return
-    // A group's issue is drawn on the add button that resolves it.
-    const column = first.column === "group" ? "add" : first.column
-    const target = ownCells(row).find(
-      (cell) => cell.getAttribute(CELL_ATTRIBUTE) === column
-    )
-    target?.focus()
-  }, [issues])
 
   /* ---------------------------- focus recovery ---------------------------- */
 

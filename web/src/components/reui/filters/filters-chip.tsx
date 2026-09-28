@@ -546,7 +546,6 @@ export function FilterOperatorPopover<V, O>({
    *  unmount. Clearing it in `release` would break that twin only. */
   const handoff = React.useRef(false)
   const operators = actions.resolveOperators(field)
-  const operator = getFilterOperator(operators, rule.operator)
 
   // Memoized because the array IS the menu's identity: the cascader rebuilds
   // its index per `items` identity, so a fresh array rebuilds it per keystroke.

@@ -715,11 +715,6 @@ function AddUrlDialog({
 
                 <div className="form-field">
                   <label className="form-label" id="add-due-date-label">Time to Block</label>
-                  {editing && (
-                    <p className="text-xs text-stone-muted" style={{ marginTop: 0, marginBottom: 4 }}>
-                      Current deadline: {editing.due_date ? DUE_DATE_FMT.format(new Date(editing.due_date)) : '—'} — pick a duration below to replace it
-                    </p>
-                  )}
                   <Select value={dueDurationMinutes} onValueChange={setDueDurationMinutes} disabled={loading}>
                     <SelectTrigger aria-labelledby="add-due-date-label" placeholder="—" className="w-full" />
                     <SelectContent>
