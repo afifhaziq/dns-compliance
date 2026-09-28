@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -1199,6 +1200,31 @@ func (m *fullMockStore) ListStaleDomains(_ context.Context, olderThan time.Time,
 		out = append(out, u)
 		if limit > 0 && len(out) >= limit {
 			break
+		}
+	}
+	return out, nil
+}
+
+func (m *fullMockStore) ListIPInfo(_ context.Context, ips []string) ([]db.IPInfo, error) {
+	var out []db.IPInfo
+	for _, info := range m.ipInfo {
+		if slices.Contains(ips, info.IP) {
+			out = append(out, info)
+		}
+	}
+	return out, nil
+}
+
+func (m *fullMockStore) InsertResults(_ context.Context, rs []db.ScanResult) error {
+	m.results = append(m.results, rs...)
+	return nil
+}
+
+func (m *fullMockStore) URLsByValues(_ context.Context, values []string) ([]db.URL, error) {
+	var out []db.URL
+	for _, u := range m.urls {
+		if slices.Contains(values, u.URL) {
+			out = append(out, u)
 		}
 	}
 	return out, nil

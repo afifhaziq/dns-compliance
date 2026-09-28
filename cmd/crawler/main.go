@@ -201,24 +201,44 @@ func runSweep(
 	total := len(urls) * len(servers)
 	log.Printf("Starting sweep — %d sites × %d DNS server(s) = %d checks", len(urls), len(servers), total)
 
-	// Phase 1: DNS-only pass for each server (no-op Capture).
+	// Phase 1: DNS-only pass, all servers concurrently (no-op Capture).
 	var allResults []pipeline.SiteResult
+	var mu sync.Mutex // guards completed, allResults, and log ordering across servers
 	completed := 0
 	noop := func(_ context.Context, _ string) ([]byte, error) { return nil, nil }
 
+	// Stream DNS-only results so the server's scan progress (GET
+	// /api/scan/progress) advances live, but in batches: each Submit reloads
+	// the whole watchlist server-side, so one-result-per-RPC was O(n²) and
+	// throttled every DNS worker behind it. Skipped when screenshots are
+	// enabled: that path attaches screenshot bytes to the same result after
+	// this phase, so it stays a single batched send below to avoid inserting
+	// the DNS-only row twice.
+	var sendCh chan pipeline.SiteResult
+	sendDone := make(chan struct{})
+	if conn != nil && !takeScreenshots {
+		sendCh = make(chan pipeline.SiteResult, streamBatchSize)
+		go func() {
+			defer close(sendDone)
+			streamResults(ctx, conn, token, sendCh)
+		}()
+	} else {
+		close(sendDone)
+	}
+
+	var wg sync.WaitGroup
 	for _, srv := range servers {
+		serverLabel := srv.name
+		if serverLabel == "" {
+			serverLabel = "system"
+		}
 		cfg := baseCfg
 		cfg.Resolve = srv.resolve
 		cfg.Capture = noop
 		cfg.OnResult = func(r pipeline.SiteResult) {
-			completed++
 			status := "compliant"
 			if !r.Compliant {
 				status = "non-compliant"
-			}
-			serverLabel := srv.name
-			if serverLabel == "" {
-				serverLabel = "system"
 			}
 			detail := " dns=" + serverLabel
 			if r.ResolvedIP != "" {
@@ -227,34 +247,38 @@ func runSweep(
 			if r.Error != "" {
 				detail += " err=" + r.Error
 			}
+			mu.Lock()
+			completed++
 			log.Printf("[%d/%d] %s — %s%s", completed, total, r.URL, status, detail)
+			mu.Unlock()
 
-			// Stream each DNS-only result as it completes so the server's scan
-			// progress (GET /api/scan/progress) advances live instead of
-			// jumping from 0 to total once the whole sweep finishes. Skipped
-			// when screenshots are enabled: that path attaches screenshot
-			// bytes to the same result after this loop, so it stays a single
-			// batched send below to avoid inserting the DNS-only row twice.
-			if conn != nil && !takeScreenshots {
+			if sendCh != nil {
 				r.DNSServer = serverLabel
-				sendCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-				if err := sender.Send(sendCtx, conn, token, buildReport([]pipeline.SiteResult{r})); err != nil {
-					log.Printf("gRPC stream send failed for %s (%s): %v", r.URL, serverLabel, err)
-				}
-				cancel()
+				sendCh <- r
 			}
 		}
 
-		results, err := pipeline.Run(ctx, urls, cfg)
-		if err != nil {
-			log.Printf("sweep error (server %s): %v", srv.name, err)
-			continue
-		}
-		for i := range results {
-			results[i].DNSServer = srv.name
-		}
-		allResults = append(allResults, results...)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results, err := pipeline.Run(ctx, urls, cfg)
+			if err != nil {
+				log.Printf("sweep error (server %s): %v", srv.name, err)
+				return
+			}
+			for i := range results {
+				results[i].DNSServer = srv.name
+			}
+			mu.Lock()
+			allResults = append(allResults, results...)
+			mu.Unlock()
+		}()
 	}
+	wg.Wait()
+	if sendCh != nil {
+		close(sendCh)
+	}
+	<-sendDone
 
 	// Phase 2: Screenshot each unique (URL, IP) pair (only when --screenshots is set).
 	var screenshots map[string][]byte
@@ -300,6 +324,47 @@ func runSweep(
 		}
 	}
 	printTable(allResults, paths)
+}
+
+// streamBatchSize caps results per streamed Submit; streamFlushInterval
+// bounds how stale the server's live progress can get between batches.
+const (
+	streamBatchSize     = 500
+	streamFlushInterval = time.Second
+)
+
+// streamResults drains ch, sending results to the server in batches of up to
+// streamBatchSize or every streamFlushInterval, whichever comes first.
+func streamResults(ctx context.Context, conn *grpc.ClientConn, token string, ch <-chan pipeline.SiteResult) {
+	batch := make([]pipeline.SiteResult, 0, streamBatchSize)
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		sendCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		if err := sender.Send(sendCtx, conn, token, buildReport(batch)); err != nil {
+			log.Printf("gRPC stream send failed for batch of %d: %v", len(batch), err)
+		}
+		cancel()
+		batch = batch[:0]
+	}
+	ticker := time.NewTicker(streamFlushInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case r, ok := <-ch:
+			if !ok {
+				flush()
+				return
+			}
+			batch = append(batch, r)
+			if len(batch) >= streamBatchSize {
+				flush()
+			}
+		case <-ticker.C:
+			flush()
+		}
+	}
 }
 
 // shotKey returns the map key for a (url, resolvedIP) screenshot pair.

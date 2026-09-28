@@ -4,10 +4,13 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"golang.org/x/net/dns/dnsmessage"
@@ -34,16 +37,22 @@ func Resolve(ctx context.Context, host string) (string, int64, error) {
 func NewResolver(server string) func(context.Context, string) (string, int64, error) {
 	return func(ctx context.Context, host string) (string, int64, error) {
 		start := time.Now()
-		conn, err := (&net.Dialer{}).DialContext(ctx, "udp", server)
+		conn, err := getUDPConn(ctx, server)
 		if err != nil {
 			return "", 0, err
 		}
-		defer conn.Close()
+		// Returned to the pool even after a timeout: a late reply to this
+		// query is skipped by the ID check below on the socket's next use.
+		defer putUDPConn(server, conn)
 
 		query, err := buildQuery(host, dnsmessage.TypeA)
 		if err != nil {
 			return "", 0, err
 		}
+		// Random ID per query (buildQuery's fixed ID is fine for one-shot
+		// DoT/DoH connections, not for a reused socket).
+		id := uint16(rand.Uint32()) // #nosec G404 -- matching key, not a secret; stale-reply filter only
+		binary.BigEndian.PutUint16(query, id)
 
 		body, err := exchangeWithRetry(ctx, func(deadline time.Time) ([]byte, error) {
 			//nolint:errcheck
@@ -52,11 +61,16 @@ func NewResolver(server string) func(context.Context, string) (string, int64, er
 				return nil, err
 			}
 			buf := make([]byte, 4096)
-			n, err := conn.Read(buf)
-			if err != nil {
-				return nil, err
+			for {
+				n, err := conn.Read(buf)
+				if err != nil {
+					return nil, err
+				}
+				if n >= 2 && binary.BigEndian.Uint16(buf) == id {
+					return buf[:n], nil
+				}
+				// Stale reply to an earlier query on this socket — skip it.
 			}
-			return buf[:n], nil
 		})
 		if err != nil {
 			return "", 0, err
@@ -67,6 +81,39 @@ func NewResolver(server string) func(context.Context, string) (string, int64, er
 			return "", 0, err
 		}
 		return ip, time.Since(start).Milliseconds(), nil
+	}
+}
+
+// udpPools holds idle connected UDP sockets per server address, shared across
+// sweeps. Reusing sockets instead of dialing one per query matters: each new
+// socket is a new NAT/conntrack flow, and on WSL2 new flows are capped at
+// ~100/s host-wide — a full 34k-domain sweep went from ~9% timeouts to ~0.05%
+// and ~5x throughput with reuse.
+var udpPools sync.Map // server address → chan net.Conn
+
+// udpPoolSize caps idle sockets kept per server; a socket beyond it is closed
+// on return. Sized above any sane --dns-workers value.
+const udpPoolSize = 256
+
+func udpPool(server string) chan net.Conn {
+	p, _ := udpPools.LoadOrStore(server, make(chan net.Conn, udpPoolSize))
+	return p.(chan net.Conn)
+}
+
+func getUDPConn(ctx context.Context, server string) (net.Conn, error) {
+	select {
+	case c := <-udpPool(server):
+		return c, nil
+	default:
+		return (&net.Dialer{}).DialContext(ctx, "udp", server)
+	}
+}
+
+func putUDPConn(server string, c net.Conn) {
+	select {
+	case udpPool(server) <- c:
+	default:
+		c.Close() // #nosec G104 -- pool full; close error on a UDP socket is not actionable
 	}
 }
 

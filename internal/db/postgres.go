@@ -216,6 +216,13 @@ func (s *postgresStore) InsertResult(ctx context.Context, r ScanResult) error {
 	return s.db.WithContext(ctx).Create(&r).Error
 }
 
+func (s *postgresStore) InsertResults(ctx context.Context, rs []ScanResult) error {
+	if len(rs) == 0 {
+		return nil
+	}
+	return s.db.WithContext(ctx).CreateInBatches(&rs, 500).Error
+}
+
 func (s *postgresStore) UpdateScreenshot(ctx context.Context, resultID uint, screenshotURL string) error {
 	return s.db.WithContext(ctx).Model(&ScanResult{}).Where("id = ?", resultID).
 		Update("screenshot_url", screenshotURL).Error
@@ -843,6 +850,14 @@ func (s *postgresStore) DepartmentIDsWatchingURL(ctx context.Context, urlID uint
 // ListWatchedURLs returns every URL enabled by at least one department —
 // the set the scheduled/manual scan sweep should actually scan. A URL
 // disabled by all watching departments is excluded.
+func (s *postgresStore) URLsByValues(ctx context.Context, values []string) ([]URL, error) {
+	var out []URL
+	if len(values) == 0 {
+		return out, nil
+	}
+	return out, s.db.WithContext(ctx).Where("url IN ?", values).Find(&out).Error
+}
+
 func (s *postgresStore) ListWatchedURLs(ctx context.Context) ([]URL, error) {
 	var urls []URL
 	err := s.db.WithContext(ctx).
@@ -1846,6 +1861,16 @@ func (s *postgresStore) GetIPInfo(ctx context.Context, ip string) (*IPInfo, erro
 		return nil, err
 	}
 	return &info, nil
+}
+
+// ponytail: single IN query, Postgres caps binds at 65535 — chunk if a
+// report ever carries more distinct values than that.
+func (s *postgresStore) ListIPInfo(ctx context.Context, ips []string) ([]IPInfo, error) {
+	var out []IPInfo
+	if len(ips) == 0 {
+		return out, nil
+	}
+	return out, s.db.WithContext(ctx).Where("ip IN ?", ips).Find(&out).Error
 }
 
 // UpsertIPInfo inserts or replaces the cached row for an IP — there's only

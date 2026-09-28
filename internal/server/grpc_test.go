@@ -3,6 +3,7 @@ package server_test
 import (
 	"context"
 	"net"
+	"slices"
 	"sort"
 	"testing"
 	"time"
@@ -37,6 +38,33 @@ func (m *mockStore) InsertResult(_ context.Context, r db.ScanResult) error {
 	m.insertedResults = append(m.insertedResults, r)
 	return nil
 }
+func (m *mockStore) InsertResults(ctx context.Context, rs []db.ScanResult) error {
+	for _, r := range rs {
+		_ = m.InsertResult(ctx, r)
+	}
+	return nil
+}
+func (m *mockStore) URLsByValues(_ context.Context, values []string) ([]db.URL, error) {
+	var out []db.URL
+	for _, u := range append(append([]db.URL{}, m.watchedURLs...), m.createdURLs...) {
+		if slices.Contains(values, u.URL) {
+			out = append(out, u)
+		}
+	}
+	return out, nil
+}
+func (m *mockStore) ListIPInfo(_ context.Context, ips []string) ([]db.IPInfo, error) {
+	if m.ipInfo == nil {
+		return nil, nil
+	}
+	var out []db.IPInfo
+	for _, ip := range ips {
+		info := *m.ipInfo
+		info.IP = ip
+		out = append(out, info)
+	}
+	return out, nil
+}
 func (m *mockStore) ActiveScanRun(_ context.Context) (*db.ScanRun, error) {
 	return m.activeScanRun, nil
 }
@@ -70,6 +98,7 @@ func (m *mockStore) CreateURL(_ context.Context, rawURL string) (db.URL, error) 
 	m.createdURLs = append(m.createdURLs, u)
 	return u, nil
 }
+
 // ResultsByURL mirrors postgresStore's exact `url_value = ?` match (no
 // normalization) and "scanned_at desc" ordering — Submit relies on
 // results[0] being the most-recently-inserted row for the given url_value.

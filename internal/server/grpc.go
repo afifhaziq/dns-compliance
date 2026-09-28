@@ -43,11 +43,35 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 		serverByName[srv.Name] = srv.ID
 	}
 
-	urls, _ := s.store.ListWatchedURLs(ctx)
+	// Resolve every URL and cached IP in the report with one query each,
+	// rather than a round trip per result — a full sweep streams ~170k rows.
+	var values, ips []string
+	for _, r := range report.Results {
+		if norm, err := urlnorm.Normalize(r.Url); err == nil {
+			values = append(values, norm)
+		} else {
+			values = append(values, r.Url)
+		}
+		if r.ResolvedIp != "" {
+			ips = append(ips, r.ResolvedIp)
+		} else if r.ResolvedIpv6 != "" {
+			ips = append(ips, r.ResolvedIpv6)
+		}
+	}
+	urls, _ := s.store.URLsByValues(ctx, values)
 	urlIDByValue := make(map[string]uint, len(urls))
 	for _, u := range urls {
 		urlIDByValue[u.URL] = u.ID
 	}
+	infos, _ := s.store.ListIPInfo(ctx, ips)
+	ipInfoByIP := make(map[string]*db.IPInfo, len(infos))
+	for i := range infos {
+		ipInfoByIP[infos[i].IP] = &infos[i]
+	}
+
+	// Screenshot-bearing rows are still inserted one by one below, since
+	// UpdateScreenshot needs the inserted row; everything else goes in batch.
+	var batch []db.ScanResult
 
 	for _, r := range report.Results {
 		// urls.url is stored normalized, and scan_results.url_value is the
@@ -80,9 +104,12 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 		var asn uint
 		var org, netname, abuseEmail string
 		if lookupIP != "" {
-			if cached, _ := s.store.GetIPInfo(ctx, lookupIP); cached != nil {
+			if cached, ok := ipInfoByIP[lookupIP]; ok {
 				asn, org, netname, abuseEmail = cached.ASN, cached.Org, cached.NetName, cached.AbuseEmail
 			} else if s.ipFetch != nil {
+				// Mark fetched so repeats of this IP in the same report
+				// don't each spawn their own lookup.
+				ipInfoByIP[lookupIP] = &db.IPInfo{}
 				// Cache miss — fetch is detached from this request so a
 				// slow/unreachable ipinfo.io/RDAP never delays result
 				// ingestion. This scan's row is inserted with a blank
@@ -120,12 +147,17 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 			ScannedAt:          time.Unix(r.Timestamp, 0),
 		}
 
+		if len(r.Screenshot) == 0 {
+			batch = append(batch, result)
+			continue
+		}
+
 		if err := s.store.InsertResult(ctx, result); err != nil {
 			log.Printf("grpc: insert result for %s: %v", r.Url, err)
 			continue
 		}
 
-		if len(r.Screenshot) > 0 && s.storage != nil {
+		if s.storage != nil {
 			screenshotURL, err := s.storage.Upload(ctx, r.Screenshot)
 			if err != nil {
 				log.Printf("grpc: upload screenshot for %s: %v", r.Url, err)
@@ -155,6 +187,10 @@ func (s *grpcServer) Submit(ctx context.Context, report *pb.ComplianceReport) (*
 				}
 			}
 		}
+	}
+
+	if err := s.store.InsertResults(ctx, batch); err != nil {
+		log.Printf("grpc: insert %d results: %v", len(batch), err)
 	}
 
 	if s.broadcaster != nil {

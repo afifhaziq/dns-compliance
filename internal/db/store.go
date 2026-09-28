@@ -30,6 +30,7 @@ type URLStore interface {
 	EnsureURLOnDepartmentList(ctx context.Context, departmentID, urlID uint) error
 	RemoveURLFromWatchlist(ctx context.Context, departmentID, urlID uint) (bool, error)      // false if no row was deleted (not on that watchlist)
 	SetURLEnabled(ctx context.Context, departmentID, urlID uint, enabled bool) (bool, error) // false if the URL is not on that watchlist
+	URLsByValues(ctx context.Context, values []string) ([]URL, error) // exact match on normalized urls.url; one query for gRPC Submit's batch
 	ListWatchedURLs(ctx context.Context) ([]URL, error)                                      // urls with >=1 enabled DepartmentURL row — used by the scan sweep
 	ListUnassignedURLs(ctx context.Context) ([]URL, error)                                   // admin view: urls with 0 DepartmentURL rows
 	URLOwnedByDepartment(ctx context.Context, departmentID uint, urlValue string) (bool, error)
@@ -76,6 +77,7 @@ type ResultStore interface {
 	ResultsByURL(ctx context.Context, urlValue string, since, until time.Time) ([]ScanResult, error)
 	DailyComplianceByURL(ctx context.Context, urlValue string, since, until time.Time) ([]DailyComplianceStat, error)
 	InsertResult(ctx context.Context, r ScanResult) error
+	InsertResults(ctx context.Context, rs []ScanResult) error // multi-row insert; all-or-nothing per chunk
 	UpdateScreenshot(ctx context.Context, resultID uint, screenshotURL string) error
 
 	// ListDomainSummaries/ForDepartment back GET /api/domains — a paginated,
@@ -234,6 +236,7 @@ type EnrichmentStore interface {
 	ListStaleDomains(ctx context.Context, olderThan time.Time, limit int) ([]URL, error) // watched URLs with no DomainWhois row or LastFetchedAt < olderThan
 
 	GetIPInfo(ctx context.Context, ip string) (*IPInfo, error) // nil, nil if never fetched
+	ListIPInfo(ctx context.Context, ips []string) ([]IPInfo, error) // cached rows only; misses are simply absent
 	UpsertIPInfo(ctx context.Context, info IPInfo) error
 
 	GetFavicon(ctx context.Context, domain string) (*Favicon, error) // nil, nil if never fetched
