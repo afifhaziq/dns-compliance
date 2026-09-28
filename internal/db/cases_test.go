@@ -983,11 +983,17 @@ func TestListCaseSummariesPage_LatestScanOutcomePerDomain(t *testing.T) {
 	s2, _ := store.CreateDNSServer(ctx, db.DNSServer{Name: "B", Address: "8.8.8.8:53", Protocol: "udp"})
 	old, _ := store.CreateScanRun(ctx, "manual")
 	// The older run says everything is compliant; only the latest run should count.
-	store.InsertResult(ctx, db.ScanResult{ScanRunID: old.ID, URLID: scanned.ID, URLValue: scanned.URL, DNSServerID: s1.ID, Compliant: true, ScannedAt: time.Now().Add(-48 * time.Hour)})
+	if err := store.InsertResult(ctx, db.ScanResult{ScanRunID: old.ID, URLID: scanned.ID, URLValue: scanned.URL, DNSServerID: s1.ID, Compliant: true, ScannedAt: time.Now().Add(-48 * time.Hour)}); err != nil {
+		t.Fatalf("InsertResult: %v", err)
+	}
 	time.Sleep(10 * time.Millisecond)
 	run, _ := store.CreateScanRun(ctx, "manual")
-	store.InsertResult(ctx, db.ScanResult{ScanRunID: run.ID, URLID: scanned.ID, URLValue: scanned.URL, DNSServerID: s1.ID, Compliant: true, ScannedAt: time.Now()})
-	store.InsertResult(ctx, db.ScanResult{ScanRunID: run.ID, URLID: scanned.ID, URLValue: scanned.URL, DNSServerID: s2.ID, Compliant: false, ScannedAt: time.Now()})
+	if err := store.InsertResult(ctx, db.ScanResult{ScanRunID: run.ID, URLID: scanned.ID, URLValue: scanned.URL, DNSServerID: s1.ID, Compliant: true, ScannedAt: time.Now()}); err != nil {
+		t.Fatalf("InsertResult: %v", err)
+	}
+	if err := store.InsertResult(ctx, db.ScanResult{ScanRunID: run.ID, URLID: scanned.ID, URLValue: scanned.URL, DNSServerID: s2.ID, Compliant: false, ScannedAt: time.Now()}); err != nil {
+		t.Fatalf("InsertResult: %v", err)
+	}
 
 	got, _, err := store.ListCaseSummariesPage(ctx, db.CaseListParams{Page: 1, PageSize: 10})
 	if err != nil || len(got) != 1 {

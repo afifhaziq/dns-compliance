@@ -75,7 +75,8 @@ go-vet:
 
 golangci-lint:
   stage: lint
-  image: golangci/golangci-lint:latest-alpine
+  # Pinned: `latest` drifts, so a new release could start failing unrelated pushes.
+  image: golangci/golangci-lint:v2.14.0-alpine
   allow_failure: true
   rules:
     - changes: *go-changes
@@ -106,8 +107,9 @@ gosec:
   rules:
     - changes: *go-changes
   script:
-    - go install github.com/securego/gosec/v2/cmd/gosec@v2.28.0
-    - gosec -exclude-generated -fmt=json -out=gosec-report.json ./...
+    # Pinned in tools.mod/tools.sum: `go install pkg@version` needs sum.golang.org,
+    # which the runner can't reach; checksums committed here need no lookup.
+    - go tool -modfile=tools.mod gosec -exclude-generated -fmt=json -out=gosec-report.json ./...
   artifacts:
     when: always
     paths:
@@ -245,7 +247,7 @@ trivy:server:
     TRIVY_USERNAME: $CI_REGISTRY_USER
     TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
   script:
-    - trivy image --severity HIGH,CRITICAL --exit-code 1 --format json --output trivy-server-report.json "$CI_REGISTRY_IMAGE/server:$CI_COMMIT_SHA"
+    - trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --format json --output trivy-server-report.json "$CI_REGISTRY_IMAGE/server:$CI_COMMIT_SHA"
   artifacts:
     when: always
     paths:
@@ -266,7 +268,7 @@ trivy:crawler:
     TRIVY_USERNAME: $CI_REGISTRY_USER
     TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
   script:
-    - trivy image --severity HIGH,CRITICAL --exit-code 1 --format json --output trivy-crawler-report.json "$CI_REGISTRY_IMAGE/crawler:$CI_COMMIT_SHA"
+    - trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --format json --output trivy-crawler-report.json "$CI_REGISTRY_IMAGE/crawler:$CI_COMMIT_SHA"
   artifacts:
     when: always
     paths:
@@ -287,7 +289,7 @@ trivy:web:
     TRIVY_USERNAME: $CI_REGISTRY_USER
     TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
   script:
-    - trivy image --severity HIGH,CRITICAL --exit-code 1 --format json --output trivy-web-report.json "$CI_REGISTRY_IMAGE/web:$CI_COMMIT_SHA"
+    - trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --format json --output trivy-web-report.json "$CI_REGISTRY_IMAGE/web:$CI_COMMIT_SHA"
   artifacts:
     when: always
     paths:

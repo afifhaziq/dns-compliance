@@ -51,7 +51,7 @@ func NewResolver(server string) func(context.Context, string) (string, int64, er
 		}
 		// Random ID per query (buildQuery's fixed ID is fine for one-shot
 		// DoT/DoH connections, not for a reused socket).
-		id := uint16(rand.Uint32()) // #nosec G404 -- matching key, not a secret; stale-reply filter only
+		id := uint16(rand.Uint32()) // #nosec G404 G115 -- matching key, not a secret; stale-reply filter only; truncation to 16 bits is the point
 		binary.BigEndian.PutUint16(query, id)
 
 		body, err := exchangeWithRetry(ctx, func(deadline time.Time) ([]byte, error) {
@@ -293,7 +293,7 @@ func NewDoHResolver(endpoint string) func(context.Context, string) (string, int6
 		if err := reply.Unpack(body); err != nil {
 			return "", 0, fmt.Errorf("parsing DoH response: %w", err)
 		}
-		if reply.Header.RCode == dnsmessage.RCodeNameError {
+		if reply.RCode == dnsmessage.RCodeNameError {
 			return "", 0, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
 		}
 		for _, ans := range reply.Answers {
@@ -301,7 +301,7 @@ func NewDoHResolver(endpoint string) func(context.Context, string) (string, int6
 				return fmt.Sprintf("%d.%d.%d.%d", a.A[0], a.A[1], a.A[2], a.A[3]), time.Since(start).Milliseconds(), nil
 			}
 		}
-		return "", 0, &RCodeError{RCode: reply.Header.RCode, Host: host}
+		return "", 0, &RCodeError{RCode: reply.RCode, Host: host}
 	}
 }
 
@@ -348,7 +348,7 @@ func NewDoHResolverIPv6(endpoint string) func(context.Context, string) (string, 
 		if err := reply.Unpack(body); err != nil {
 			return "", fmt.Errorf("parsing DoH response: %w", err)
 		}
-		if reply.Header.RCode == dnsmessage.RCodeNameError {
+		if reply.RCode == dnsmessage.RCodeNameError {
 			return "", &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
 		}
 		for _, ans := range reply.Answers {
@@ -392,7 +392,7 @@ func firstA(body []byte, host string) (string, error) {
 	if err := reply.Unpack(body); err != nil {
 		return "", fmt.Errorf("parsing DNS response: %w", err)
 	}
-	if reply.Header.RCode == dnsmessage.RCodeNameError {
+	if reply.RCode == dnsmessage.RCodeNameError {
 		return "", &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
 	}
 	for _, ans := range reply.Answers {
@@ -400,7 +400,7 @@ func firstA(body []byte, host string) (string, error) {
 			return fmt.Sprintf("%d.%d.%d.%d", a.A[0], a.A[1], a.A[2], a.A[3]), nil
 		}
 	}
-	return "", &RCodeError{RCode: reply.Header.RCode, Host: host}
+	return "", &RCodeError{RCode: reply.RCode, Host: host}
 }
 
 // writeTCPMessage writes msg to conn with the 2-byte length prefix DNS-over-TCP

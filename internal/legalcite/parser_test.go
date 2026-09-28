@@ -206,7 +206,7 @@ func TestSortKey_OrdersSuffixCorrectly(t *testing.T) {
 	k4 := legalcite.SortKey(iptr(4), "")
 	k4A := legalcite.SortKey(iptr(4), "A")
 	k40 := legalcite.SortKey(iptr(40), "")
-	if !(k4 < k4A && k4A < k40) {
+	if k4 >= k4A || k4A >= k40 {
 		t.Fatalf("expected k4 < k4A < k40, got %q < %q < %q", k4, k4A, k40)
 	}
 	if legalcite.SortKey(nil, "") != "" {

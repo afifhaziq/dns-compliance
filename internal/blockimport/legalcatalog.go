@@ -33,7 +33,7 @@ type citationTarget struct {
 // guessing. A raw_citation can appear more than once (one row per split
 // provision for a compound cell), so the value is a slice.
 func LoadCitationClassification(path string) (map[string][]citationTarget, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- operator-supplied path from import-crd's own flag
 	if err != nil {
 		return nil, err
 	}

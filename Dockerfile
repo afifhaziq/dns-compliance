@@ -23,7 +23,8 @@ RUN npm run build
 
 # Stage 2a: server runtime — no Chrome, needs subfinder
 FROM debian:bookworm-slim AS server
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# upgrade: base-image tags lag Debian security fixes, which trivy flags.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -42,7 +43,8 @@ ENTRYPOINT ["/app/server", "--seed-dns", "/app/dns-server.yaml"]
 # (no full browser UI/sandbox extras), far smaller than apt's chromium
 # package; chromedp auto-detects it by name on PATH (see allocate.go).
 FROM chromedp/headless-shell:latest AS crawler
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# upgrade: base-image tags lag Debian security fixes, which trivy flags.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -54,6 +56,7 @@ ENTRYPOINT ["/app/crawler"]
 
 # Stage 2c: web runtime — static frontend only, no Go/Node in the final image
 FROM nginx:alpine AS web
+RUN apk upgrade --no-cache
 COPY web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=web-builder /src/web/dist /usr/share/nginx/html
 EXPOSE 80

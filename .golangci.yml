@@ -1,0 +1,22 @@
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      # Close/Fprint errors here aren't actionable: read-side closes, sockets
+      # being discarded, and tabwriter output to stdout.
+      exclude-functions:
+        - (io.Closer).Close
+        - (net.Conn).Close
+        - (*os.File).Close
+        - (*google.golang.org/grpc.ClientConn).Close
+        - (*github.com/xuri/excelize/v2.File).Close
+        - fmt.Fprintf
+        - fmt.Fprintln
+  exclusions:
+    paths:
+      - web/ # web/node_modules ships a stray Go package
+    rules:
+      # Test setup/teardown writes and closes; a real failure there fails the test anyway.
+      - path: _test\.go
+        linters: [errcheck]

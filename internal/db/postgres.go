@@ -449,7 +449,7 @@ func (s *postgresStore) ScanProgress(ctx context.Context, runID uint) ([]Progres
 	}
 	entries := make([]ProgressEntry, len(rows))
 	for i, r := range rows {
-		entries[i] = ProgressEntry{DNSServerID: r.DNSServerID, Name: r.Name, Completed: r.Completed}
+		entries[i] = ProgressEntry(r)
 	}
 	return entries, nil
 }
