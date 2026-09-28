@@ -24,8 +24,9 @@ import { Button } from '@/components/ui/button'
 import { ButtonGroup, ButtonGroupText } from '@/components/ui/button-group'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ChevronDownIcon } from 'lucide-react'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import { ChartTooltip, TooltipBox, TooltipContent } from '@/components/charts/tooltip'
-import { fetchBlockingStats, type BlockingStatRow } from '../api/blocking-stats'
+import { fetchBlockingStats, REGISTER_FILTER_KEYS, type BlockingStatRow, type RegisterFilterKey } from '../api/blocking-stats'
 
 // Mirrors the source workbook's scope (2022 onward, MCMC vs everyone else).
 const FIRST_YEAR = 2022
@@ -386,6 +387,61 @@ const PRESETS: Preset[] = [
   { id: 'c', label: 'C · Comparison', groupBy: 'jurisdiction', rules: () => [] },
 ]
 
+// URL <-> rules. Multiselect values are comma-joined (no agency/category name contains a comma);
+// year is `2024` or `2022-2024`. One rule per field survives the round trip — the last one wins.
+type RegisterField = 'agency' | 'offence' | 'year'
+const NEGATIVE: Record<string, boolean> = { nin: true, neq: true, not_between: true }
+const blankValue = (x: unknown) => x == null || x === ''
+
+function rulesToParams(rules: Rule[]): Partial<Record<RegisterFilterKey, string>> {
+  const out: Partial<Record<RegisterFilterKey, string>> = {}
+  for (const r of rules) {
+    const field = r.path[0] as RegisterField
+    const v = r.value as unknown
+    let body: string
+    if (Array.isArray(v) && (r.operator === 'between' || r.operator === 'not_between')) {
+      if (v.every(blankValue)) continue
+      body = `${blankValue(v[0]) ? '' : v[0]}-${blankValue(v[1]) ? '' : v[1]}`
+    } else if (Array.isArray(v)) {
+      if (!v.length) continue
+      body = v.join(',')
+    } else {
+      if (blankValue(v)) continue
+      body = String(v)
+    }
+    const negative = !!NEGATIVE[r.operator] !== !!r.negated
+    for (const k of [field, `${field}_not`] as RegisterFilterKey[]) delete out[k]
+    out[(negative ? `${field}_not` : field) as RegisterFilterKey] = body
+  }
+  return out
+}
+
+function paramsToRules(search: Partial<Record<RegisterFilterKey, string>>): Rule[] {
+  const rules: Rule[] = []
+  for (const field of ['agency', 'offence', 'year'] as RegisterField[]) {
+    const negative = search[`${field}_not`] !== undefined
+    const body = search[negative ? `${field}_not` as const : field]
+    if (body === undefined) continue
+    let operator: string
+    let value: unknown
+    if (field !== 'year') {
+      operator = negative ? 'nin' : 'in'
+      value = body.split(',').filter(Boolean)
+    } else if (body.includes('-')) {
+      operator = negative ? 'not_between' : 'between'
+      value = body.split('-').map(x => (x === '' ? undefined : Number(x)))
+    } else {
+      operator = negative ? 'neq' : 'eq'
+      value = Number(body)
+    }
+    rules.push(createFilterRule<unknown>({ id: field, path: [field], operator, value }))
+  }
+  return rules
+}
+
+const sameParams = (a: Record<string, string | undefined>, b: Record<string, string | undefined>) =>
+  REGISTER_FILTER_KEYS.every(k => a[k] === b[k])
+
 const multiselect = (id: string, label: string, values: string[]): FilterField => ({
   id,
   label,
@@ -417,15 +473,51 @@ function Explorer({ rows, allYears }: { rows: BlockingStatRow[]; allYears: numbe
     },
   ], [agencies, offences, allYears])
 
-  const [preset, setPreset] = useState<string | null>('a')
-  const [groupBy, setGroupBy] = useState<GroupBy>(PRESETS[0].groupBy)
-  const [query, setQuery] = useState<FilterQuery>(() => createFilterQuery<unknown>(PRESETS[0].rules(offences)))
+  // Mirrored into the URL (?preset=b, or ?group=agency&offence=Lucah,Palsu) so a view can be
+  // shared/bookmarked. Local state stays the source of truth: half-built chips never hit the URL.
+  const search = useSearch({ from: '/' })
+  const navigate = useNavigate({ from: '/' })
+  const [initial] = useState(() => {
+    const custom = search.group !== undefined || REGISTER_FILTER_KEYS.some(k => search[k] !== undefined)
+    const p = custom ? undefined : PRESETS.find(x => x.id === search.preset) ?? PRESETS[0]
+    return {
+      preset: p?.id ?? null,
+      groupBy: p?.groupBy ?? (search.group && search.group in GROUP_LABEL ? search.group as GroupBy : 'offence'),
+      query: createFilterQuery<unknown>(p ? p.rules(offences) : paramsToRules(search)),
+    }
+  })
+  const [preset, setPreset] = useState<string | null>(initial.preset)
+  const [groupBy, setGroupBy] = useState<GroupBy>(initial.groupBy)
+  const [query, setQuery] = useState<FilterQuery>(initial.query)
+  // Writes the canonical URL for a view and returns the preset it matches, if any.
+  // Rebuilding from the validated search also drops params it doesn't know (e.g. a stale `filters=`).
+  const syncURL = (group: GroupBy, q: FilterQuery) => {
+    const params = rulesToParams(q.rules.filter((r): r is Rule => r.type === 'rule'))
+    // A custom view that lands exactly on a preset reads as that preset.
+    const match = PRESETS.find(p => p.groupBy === group && sameParams(rulesToParams(p.rules(offences)), params))
+    navigate({
+      search: ({ tab }) => match ? { tab, preset: match.id } : { tab, group, ...params },
+      replace: true,
+    })
+    return match
+  }
+  useEffect(() => {
+    syncURL(initial.groupBy, initial.query)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once on mount, to tidy a hand-edited/old URL
+  }, [])
   const applyPreset = (id: string) => {
     const p = PRESETS.find(x => x.id === id)
     if (!p) return
+    const q = createFilterQuery<unknown>(p.rules(offences))
     setPreset(id)
     setGroupBy(p.groupBy)
-    setQuery(createFilterQuery<unknown>(p.rules(offences)))
+    setQuery(q)
+    syncURL(p.groupBy, q)
+  }
+  const setCustom = (group: GroupBy, q: FilterQuery) => {
+    setGroupBy(group)
+    setQuery(q)
+    setPreset(syncURL(group, q)?.id ?? null)
   }
 
   const rules = query.rules.filter((r): r is Rule => r.type === 'rule')
@@ -462,7 +554,7 @@ function Explorer({ rows, allYears }: { rows: BlockingStatRow[]; allYears: numbe
       {/* Filters decide what is counted, Group by how it's split: one sentence-like row, Clear last. */}
       <div className="flex flex-wrap items-center gap-1.5 mb-8">
         <TooltipProvider>
-          <Filters fields={fields} query={query} onQueryChange={q => { setQuery(q); setPreset(null) }} size="sm" className="w-auto" />
+          <Filters fields={fields} query={query} onQueryChange={q => setCustom(groupBy, q)} size="sm" className="w-auto" />
         </TooltipProvider>
         <ButtonGroup>
           <ButtonGroupText className="bg-background dark:bg-input/30 text-muted-foreground">Group by</ButtonGroupText>
@@ -473,14 +565,14 @@ function Explorer({ rows, allYears }: { rows: BlockingStatRow[]; allYears: numbe
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
-              <DropdownMenuRadioGroup value={groupBy} onValueChange={v => { setGroupBy(v as GroupBy); setPreset(null) }}>
+              <DropdownMenuRadioGroup value={groupBy} onValueChange={v => setCustom(v as GroupBy, query)}>
                 {(Object.keys(GROUP_LABEL) as GroupBy[]).map(g => <DropdownMenuRadioItem key={g} value={g}>{GROUP_LABEL[g]}</DropdownMenuRadioItem>)}
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
         </ButtonGroup>
         {query.rules.length > 0 && (
-          <Button variant="outline" size="sm" onClick={() => { setQuery(createFilterQuery<unknown>([])); setPreset(null) }}>Clear</Button>
+          <Button variant="outline" size="sm" onClick={() => setCustom(groupBy, createFilterQuery<unknown>([]))}>Clear</Button>
         )}
       </div>
 

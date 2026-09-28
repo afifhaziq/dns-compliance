@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { fetchNationalTrend, fetchResults, fetchResurfacedDomains, groupResults, lastScanTime } from '../api/results'
 import { fetchUrlCount, fetchUrlsRequestedThisMonth } from '../api/urls'
 import type { ISPTrendStat, ResurfacedDomain, ScanResult } from '../api/types'
@@ -12,14 +12,33 @@ import { XAxis } from '@/components/charts/x-axis'
 import { ChartTooltip } from '@/components/charts/tooltip'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/motion/tabs'
 import { BlockingRegister } from '@/components/blocking-stats'
+import { REGISTER_FILTER_KEYS, type RegisterFilterKey } from '@/api/blocking-stats'
 import { getISPNames, ISPBentoGrid, ISPBentoSkeleton } from '@/components/isp-bento-grid'
 
-export const Route = createFileRoute('/')({ component: DashboardPage })
+export type OverviewSearch = {
+  tab?: 'isp' | 'register'
+  // Blocking register explorer: a preset id, or a custom group + filters.
+  preset?: string
+  group?: string
+} & Partial<Record<RegisterFilterKey, string>>
+
+export const Route = createFileRoute('/')({
+  component: DashboardPage,
+  validateSearch: (search: Record<string, unknown>): OverviewSearch => ({
+    tab: search.tab === 'isp' || search.tab === 'register' ? search.tab : undefined,
+    preset: typeof search.preset === 'string' ? search.preset : undefined,
+    group: typeof search.group === 'string' ? search.group : undefined,
+    // String(): the router JSON-parses values, so `year=2024` arrives as a number.
+    ...Object.fromEntries(REGISTER_FILTER_KEYS.filter(k => search[k] != null && search[k] !== '').map(k => [k, String(search[k])])),
+  }),
+})
 
 /* ─── Dashboard Page ─────────────────────────────────────────────────────── */
 
 function DashboardPage() {
   const { scanning, refreshSignal } = useScan()
+  const { tab = 'register' } = Route.useSearch()
+  const navigate = useNavigate({ from: '/' })
 
   const [results, setResults] = useState<ScanResult[]>([])
   const [urlCount, setUrlCount] = useState<number | null>(null)
@@ -89,7 +108,7 @@ function DashboardPage() {
         </div>
       )}
 
-      <Tabs defaultValue="register" variant="underline">
+      <Tabs value={tab} onValueChange={v => navigate({ search: prev => ({ ...prev, tab: v as OverviewSearch['tab'] }), replace: true })} variant="underline">
         <TabsList>
           <TabsTrigger value="isp">ISP compliance</TabsTrigger>
           <TabsTrigger value="register">Blocking register</TabsTrigger>

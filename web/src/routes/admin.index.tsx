@@ -1955,7 +1955,7 @@ function AdminPage() {
   const maxPresetMinutes = Math.max(1, ...duePresets.map(p => p.minutes))
 
   return (
-    <div className="mx-20 mt-10">
+    <div className="mx-20 mt-10 mb-10">
       <div className="page-header">
         <h1 className="page-title">Admin</h1>
         <p className="page-subtitle">
@@ -2033,7 +2033,7 @@ function AdminPage() {
         </TabsContent>
 
         <TabsContent value="configs" className="min-w-0">
-          <div className="flex flex-col gap-10 mb-10">
+          <div className="flex flex-col gap-10">
             {me?.is_admin && (
               <div id="ip" ref={el => { sectionRefs.current.ip = el }} data-section="ip" className="scroll-mt-24">
                 <div className="page-header" style={{ marginBottom: 12 }}>
