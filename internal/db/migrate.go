@@ -41,7 +41,7 @@ func NormalizeAndDedupeURLs(ctx context.Context, database *gorm.DB) error {
 			canonicalNorm[u.ID] = norm
 		}
 
-		// Reassign scan results / watchlist links and delete duplicate rows
+		// Reassign everything linked to a duplicate and delete duplicate rows
 		// *before* renaming canonical rows — a duplicate may already hold the
 		// exact normalized string the canonical row is about to be renamed to,
 		// which would otherwise collide with URL's unique index.
@@ -71,6 +71,43 @@ func NormalizeAndDedupeURLs(ctx context.Context, database *gorm.DB) error {
 			}
 			if err := tx.Where("url_id = ?", dupID).Delete(&DepartmentURL{}).Error; err != nil {
 				return fmt.Errorf("cleaning leftover department_urls for url id=%d: %w", dupID, err)
+			}
+
+			// Everything else FK'd to urls cascades on delete, so it must move
+			// too. case_urls is keyed (case_id, url_id): a case already linked
+			// to the canonical row keeps that link and drops the duplicate's.
+			if err := tx.Model(&CaseURL{}).
+				Where("url_id = ? AND case_id NOT IN (?)", dupID,
+					tx.Model(&CaseURL{}).Select("case_id").Where("url_id = ?", canonID)).
+				Update("url_id", canonID).Error; err != nil {
+				return fmt.Errorf("merging case_urls from %d to %d: %w", dupID, canonID, err)
+			}
+			// Keep the dropped links' cited text on the surviving link.
+			var leftover []CaseURL
+			if err := tx.Where("url_id = ?", dupID).Find(&leftover).Error; err != nil {
+				return fmt.Errorf("loading leftover case_urls for url id=%d: %w", dupID, err)
+			}
+			for _, cu := range leftover {
+				var keep CaseURL
+				if err := tx.Where("case_id = ? AND url_id = ?", cu.CaseID, canonID).First(&keep).Error; err != nil {
+					return fmt.Errorf("loading case_url (%d,%d): %w", cu.CaseID, canonID, err)
+				}
+				if merged := AppendOriginalURL(keep.OriginalURL, cu.OriginalURL); merged != keep.OriginalURL {
+					if err := tx.Model(&CaseURL{}).Where("case_id = ? AND url_id = ?", cu.CaseID, canonID).
+						Update("original_url", merged).Error; err != nil {
+						return fmt.Errorf("merging original_url into case_url (%d,%d): %w", cu.CaseID, canonID, err)
+					}
+				}
+			}
+			if err := tx.Where("url_id = ?", dupID).Delete(&CaseURL{}).Error; err != nil {
+				return fmt.Errorf("cleaning leftover case_urls for url id=%d: %w", dupID, err)
+			}
+			if err := tx.Model(&URLOffence{}).Where("url_id = ?", dupID).Update("url_id", canonID).Error; err != nil {
+				return fmt.Errorf("reassigning url_offences from url id=%d to %d: %w", dupID, canonID, err)
+			}
+			if err := tx.Model(&Notification{}).Where("url_id = ?", dupID).
+				Updates(map[string]any{"url_id": canonID, "url_value": canonicalNorm[canonID]}).Error; err != nil {
+				return fmt.Errorf("reassigning notifications from url id=%d to %d: %w", dupID, canonID, err)
 			}
 			if err := tx.Delete(&URL{}, dupID).Error; err != nil {
 				return fmt.Errorf("deleting duplicate url id=%d: %w", dupID, err)

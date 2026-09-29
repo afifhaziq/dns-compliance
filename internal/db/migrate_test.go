@@ -92,6 +92,68 @@ func TestNormalizeAndDedupeURLs_MergesDuplicatesAndReassignsResults(t *testing.T
 	}
 }
 
+// A duplicate's case links, offences and notifications must move to the
+// canonical row -- deleting the duplicate would otherwise cascade them away.
+func TestNormalizeAndDedupeURLs_ReassignsCaseLinksOffencesNotifications(t *testing.T) {
+	gormDB, s := rawConnect(t)
+	ctx := context.Background()
+
+	canon := db.URL{URL: "www.example.com"}
+	dup := db.URL{URL: "https://www. example.com;"}
+	for _, u := range []*db.URL{&canon, &dup} {
+		if err := gormDB.Create(u).Error; err != nil {
+			t.Fatalf("seed url: %v", err)
+		}
+	}
+	crd, _ := s.CreateDepartment(ctx, "CRD")
+	onlyDup := db.Case{DepartmentID: crd.ID}
+	shared := db.Case{DepartmentID: crd.ID}
+	for _, c := range []*db.Case{&onlyDup, &shared} {
+		if err := gormDB.Create(c).Error; err != nil {
+			t.Fatalf("seed case: %v", err)
+		}
+	}
+	for _, cu := range []db.CaseURL{
+		{CaseID: onlyDup.ID, URLID: dup.ID},
+		{CaseID: shared.ID, URLID: dup.ID, OriginalURL: "https://www. example.com;/b"},
+		{CaseID: shared.ID, URLID: canon.ID, OriginalURL: "https://www.example.com/a"},
+	} {
+		if err := gormDB.Create(&cu).Error; err != nil {
+			t.Fatalf("seed case_url: %v", err)
+		}
+	}
+	_, _, category, _ := seedCMA233(t, s, ctx)
+	if err := gormDB.Create(&db.URLOffence{URLID: dup.ID, CaseID: &onlyDup.ID, CategoryID: category.ID, RecordedAt: time.Now()}).Error; err != nil {
+		t.Fatalf("seed offence: %v", err)
+	}
+	if err := gormDB.Create(&db.Notification{DepartmentID: crd.ID, URLID: dup.ID, URLValue: dup.URL, Type: "resurfaced"}).Error; err != nil {
+		t.Fatalf("seed notification: %v", err)
+	}
+
+	if err := db.NormalizeAndDedupeURLs(ctx, gormDB); err != nil {
+		t.Fatalf("NormalizeAndDedupeURLs: %v", err)
+	}
+
+	var caseURLs []db.CaseURL
+	gormDB.Order("case_id").Find(&caseURLs)
+	if len(caseURLs) != 2 || caseURLs[0].URLID != canon.ID || caseURLs[1].URLID != canon.ID {
+		t.Fatalf("expected both cases linked once to the canonical url, got %+v", caseURLs)
+	}
+	if got, want := caseURLs[1].OriginalURL, "https://www.example.com/a, https://www. example.com;/b"; got != want {
+		t.Fatalf("expected the dropped link's cited text kept, got %q, want %q", got, want)
+	}
+	var offences []db.URLOffence
+	gormDB.Find(&offences)
+	if len(offences) != 1 || offences[0].URLID != canon.ID {
+		t.Fatalf("expected the offence moved to the canonical url, got %+v", offences)
+	}
+	var notes []db.Notification
+	gormDB.Find(&notes)
+	if len(notes) != 1 || notes[0].URLID != canon.ID || notes[0].URLValue != "www.example.com" {
+		t.Fatalf("expected the notification moved to the canonical url, got %+v", notes)
+	}
+}
+
 func TestNormalizeAndDedupeURLs_Idempotent(t *testing.T) {
 	gormDB, s := rawConnect(t)
 	ctx := context.Background()

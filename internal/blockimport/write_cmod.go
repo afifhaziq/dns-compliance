@@ -147,14 +147,24 @@ func WriteCMODCases(ctx context.Context, gormDB *gorm.DB, cmodDeptID uint, cases
 			}
 
 			phase := mapCMODPhase(c.Letters)
+			// Several cited paths on one host share one case_urls row.
+			caseURLByID := make(map[uint]*db.CaseURL)
+			var order []uint
 			for _, raw := range c.URLs {
 				u, err := getOrCreateURL(tx, raw)
 				if err != nil {
 					summary.URLsSkippedBadURL++
 					continue
 				}
-				cu := db.CaseURL{CaseID: newCase.ID, URLID: u.ID, Status: phase, OriginalURL: raw}
-				if err := tx.Create(&cu).Error; err != nil {
+				if cu, ok := caseURLByID[u.ID]; ok {
+					cu.OriginalURL = db.AppendOriginalURL(cu.OriginalURL, raw)
+					continue
+				}
+				caseURLByID[u.ID] = &db.CaseURL{CaseID: newCase.ID, URLID: u.ID, Status: phase, OriginalURL: raw}
+				order = append(order, u.ID)
+			}
+			for _, id := range order {
+				if err := tx.Create(caseURLByID[id]).Error; err != nil {
 					return err
 				}
 			}

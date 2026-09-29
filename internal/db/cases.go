@@ -686,3 +686,23 @@ func MergeOffenceCasing(rows []BlockingStatRow) []BlockingStatRow {
 	}
 	return out
 }
+
+// AppendOriginalURL adds one more cited text to a CaseURL.OriginalURL. A case
+// links a normalized host only once, so when it cites several paths on the
+// same host ("linktr.ee/a", "linktr.ee/b") they share one row and every
+// distinct text is kept, ", "-joined, for the paper trail.
+func AppendOriginalURL(existing, add string) string {
+	add = strings.TrimSpace(add)
+	if add == "" {
+		return existing
+	}
+	if existing == "" {
+		return add
+	}
+	for _, s := range strings.Split(existing, ", ") {
+		if s == add {
+			return existing
+		}
+	}
+	return existing + ", " + add
+}

@@ -50,6 +50,12 @@ func mapCRDStatus(raw string) string {
 	}
 }
 
+// domainCorrections maps a lowercased raw cell too garbled for urlnorm to the
+// domain a human confirmed it means. The raw text stays in CaseURL.OriginalURL.
+var domainCorrections = map[string]string{
+	"https://solar123movies.cb33:b69om/": "solar123movies.com", // confirmed 2026-09-29
+}
+
 // normalizeOrFallback wraps urlnorm.Normalize with a last-resort fallback for
 // the handful of historical import rows too garbled for it to extract any
 // hostname at all (e.g. invalid port syntax) -- see
@@ -60,6 +66,9 @@ func mapCRDStatus(raw string) string {
 // text verbatim regardless of which path produced the key. Only a
 // genuinely-empty raw string (after trimming) returns "".
 func normalizeOrFallback(raw string) string {
+	if fixed, ok := domainCorrections[strings.ToLower(strings.TrimSpace(raw))]; ok {
+		return fixed
+	}
 	if normalized, err := urlnorm.Normalize(raw); err == nil {
 		return normalized
 	}
@@ -258,7 +267,7 @@ func WriteCRDCases(ctx context.Context, gdb *gorm.DB, crdDeptID uint, cases []Co
 				}
 				if existing, dup := caseURLByID[u.ID]; dup {
 					existing.Status = mapCRDStatus(d.Status)
-					existing.OriginalURL = d.RawDomain
+					existing.OriginalURL = db.AppendOriginalURL(existing.OriginalURL, d.RawDomain)
 					existing.AgencyID = agencyID
 					continue
 				}
