@@ -104,6 +104,19 @@ gosec:
   stage: security
   image: golang:1.26-bookworm
   allow_failure: true
+  # Reuse go-test's module cache (read-only): the runner's egress is flaky, and a
+  # module that fails to download makes gosec report type errors, not findings.
+  variables:
+    GOPATH: $CI_PROJECT_DIR/.go
+    GOCACHE: $CI_PROJECT_DIR/.gocache
+  cache:
+    key:
+      files:
+        - go.sum
+    paths:
+      - .go/pkg/mod/
+      - .gocache/
+    policy: pull
   rules:
     - changes: *go-changes
   script:
