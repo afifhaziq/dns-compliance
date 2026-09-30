@@ -15,7 +15,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:8090',
+      '/api': process.env.API_PROXY ?? 'http://localhost:8090',
     },
   },
 })
