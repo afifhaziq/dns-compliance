@@ -139,6 +139,7 @@ type URLEntry struct {
 	AgencyID               *uint      `json:"agency_id,omitempty"`
 	AgencyName             string     `json:"agency_name,omitempty"`
 	Status                 string     `json:"status,omitempty"`
+	WorkflowStatus         string     `json:"workflow_status,omitempty"` // latest case's Notice workflow status (CMOD only)
 	// CaseID is the id of latest_case (see ListDepartmentURLs) — the target
 	// for a status edit via PATCH /api/cases/{id}, since Status itself is
 	// read-only/derived. Nil for a url with zero cases.
@@ -755,6 +756,8 @@ type CaseLetterEntry struct {
 // ListDepartmentURLs) and every domain it covers. Not a persisted table.
 type CaseSummary struct {
 	ID                             uint                `json:"id"`
+	DepartmentID                   uint                `json:"department_id"`
+	DepartmentName                 string              `json:"department_name"`
 	DueDate                        *time.Time          `json:"due_date,omitempty"`
 	RequestedAt                    *time.Time          `json:"requested_at,omitempty"`
 	CreatedAt                      time.Time           `json:"created_at"`

@@ -588,6 +588,9 @@ func (s *postgresStore) urlEntryQuery(ctx context.Context, departmentID *uint) *
 			(SELECT cu2.status FROM case_urls cu2
 			 WHERE cu2.case_id = latest_case.id AND cu2.url_id = urls.id) as status,
 			latest_case.requested_at,
+			(SELECT cl.workflow_status FROM case_letters cl
+			 WHERE cl.case_id = latest_case.id AND cl.type IN ('Notice', 'Notice (Uplift)')
+			 ORDER BY (cl.type = 'Notice') DESC, cl.letter_date DESC LIMIT 1) as workflow_status,
 			(SELECT cl.reference_number_external FROM case_letters cl
 			 JOIN cases c ON c.id = cl.case_id
 			 JOIN case_urls cu ON cu.case_id = c.id
@@ -624,6 +627,7 @@ type URLListParams struct {
 	Page, PageSize int
 	Query          string // case-insensitive: domain or current reference number
 	Status         string
+	WorkflowStatus string // some letter of the latest case has this workflow status (CMOD)
 	AgencyID       *uint
 	RequestingDept *uint // some case of this department covers the url
 	Created, Due   DateFilter
@@ -641,6 +645,9 @@ func (s *postgresStore) ListURLEntriesPage(ctx context.Context, p URLListParams)
 	}
 	if p.Status != "" {
 		q = q.Where("e.status = ?", p.Status)
+	}
+	if p.WorkflowStatus != "" {
+		q = q.Where("EXISTS (SELECT 1 FROM case_letters cl WHERE cl.case_id = e.case_id AND cl.workflow_status = ?)", p.WorkflowStatus)
 	}
 	if p.AgencyID != nil {
 		q = q.Where("e.agency_id = ?", *p.AgencyID)

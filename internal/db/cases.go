@@ -14,13 +14,25 @@ import (
 // case's only one.
 var ErrLastCaseURL = errors.New("cannot remove a case's last domain")
 
+// CreateCaseURL inserts cu keeping an empty Status empty — GORM substitutes
+// the column's 'requested' default for a zero value on insert, but a CMOD
+// domain has no block status at all.
+func CreateCaseURL(tx *gorm.DB, cu *CaseURL) error {
+	status := cu.Status
+	if err := tx.Create(cu).Error; err != nil || status != "" {
+		return err
+	}
+	cu.Status = ""
+	return tx.Model(&CaseURL{}).Where("case_id = ? AND url_id = ?", cu.CaseID, cu.URLID).Update("status", "").Error
+}
+
 func (s *postgresStore) CreateCase(ctx context.Context, departmentID, urlID uint, status string, opts CaseCreateOptions) (Case, error) {
 	c := Case{DepartmentID: departmentID, DueDate: opts.DueDate}
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&c).Error; err != nil {
 			return err
 		}
-		if err := tx.Create(&CaseURL{CaseID: c.ID, URLID: urlID, Status: status, OriginalURL: opts.OriginalURL, AgencyID: opts.AgencyID}).Error; err != nil {
+		if err := CreateCaseURL(tx, &CaseURL{CaseID: c.ID, URLID: urlID, Status: status, OriginalURL: opts.OriginalURL, AgencyID: opts.AgencyID}); err != nil {
 			return err
 		}
 		return ensureDepartmentURL(tx, departmentID, urlID)
@@ -121,7 +133,7 @@ func (s *postgresStore) GetCase(ctx context.Context, id uint) (Case, error) {
 
 func (s *postgresStore) AddURLToCase(ctx context.Context, caseID, urlID uint, status, originalURL string, agencyID *uint) (CaseURL, error) {
 	cu := CaseURL{CaseID: caseID, URLID: urlID, Status: status, OriginalURL: originalURL, AgencyID: agencyID}
-	err := s.db.WithContext(ctx).Create(&cu).Error
+	err := CreateCaseURL(s.db.WithContext(ctx), &cu)
 	return cu, err
 }
 
@@ -278,7 +290,8 @@ func (s *postgresStore) ListCasesForURL(ctx context.Context, urlValue string) ([
 func (s *postgresStore) caseSummaryQuery(ctx context.Context, departmentID *uint) *gorm.DB {
 	q := s.db.WithContext(ctx).
 		Table("cases").
-		Select(`cases.id,
+		Select(`cases.id, cases.department_id,
+			(SELECT d.name FROM departments d WHERE d.id = cases.department_id) as department_name,
 			cases.due_date, cases.requested_at, cases.created_at,
 			notice.id as notice_letter_id, notice.subject as notice_subject,
 			notice.workflow_status as notice_workflow_status,
@@ -326,6 +339,7 @@ type CaseListParams struct {
 	Page, PageSize int
 	Query          string // case-insensitive: case id, notice refs or any domain
 	Status         string // some domain has this status
+	WorkflowStatus string // some letter of the case has this workflow status (CMOD)
 	AgencyID       *uint  // some domain has this agency
 	RequestingDept *uint  // some domain is also covered by a case of this department
 	Created, Due   DateFilter
@@ -392,6 +406,10 @@ func (s *postgresStore) ListCaseSummariesPage(ctx context.Context, p CaseListPar
 	}
 	if p.Status != "" {
 		q = q.Where("EXISTS (SELECT 1 FROM case_urls cu WHERE cu.case_id = cases.id AND cu.status = ?)", p.Status)
+	}
+	if p.WorkflowStatus != "" {
+		// Any letter, not just the Notice: Pending Legal/TSC only occur on Memos.
+		q = q.Where("EXISTS (SELECT 1 FROM case_letters cl WHERE cl.case_id = cases.id AND cl.workflow_status = ?)", p.WorkflowStatus)
 	}
 	if p.AgencyID != nil {
 		q = q.Where("EXISTS (SELECT 1 FROM case_urls cu WHERE cu.case_id = cases.id AND cu.agency_id = ?)", *p.AgencyID)
@@ -613,7 +631,12 @@ func (s *postgresStore) BlockingStats(ctx context.Context, departmentID *uint) (
 	LEFT JOIN agencies a ON a.id = cu.agency_id
 	LEFT JOIN url_offences o ON o.case_id = cu.case_id AND o.url_id = cu.url_id
 	LEFT JOIN categories cat ON cat.id = o.category_id
-	WHERE cu.status = 'blocked'`
+	WHERE (cu.status = 'blocked'
+	  -- CMOD has no domain status: a submitted Notice without a submitted uplift counts as blocked.
+	  OR (cu.status = '' AND EXISTS (SELECT 1 FROM case_letters cl WHERE cl.case_id = cu.case_id
+	        AND cl.type = 'Notice' AND cl.workflow_status = 'Submitted')
+	      AND NOT EXISTS (SELECT 1 FROM case_letters cl WHERE cl.case_id = cu.case_id
+	        AND cl.type = 'Notice (Uplift)' AND cl.workflow_status = 'Submitted')))`
 	args := []any{}
 	if departmentID != nil {
 		q += " AND c.department_id = ?"

@@ -12,7 +12,7 @@ import {
 } from '@tanstack/react-table'
 import { GripIcon } from '@/components/ui/grip'
 import { FileText } from 'lucide-react'
-import { CASE_STATUS_OPTIONS } from '@/lib/case-options'
+import { CASE_STATUS_OPTIONS, usesWorkflowStatus } from '@/lib/case-options'
 import { ChevronRight } from '@/components/ui/chevron-right'
 import { SquarePenIcon } from '@/components/ui/square-pen'
 import { DownloadIcon } from '@/components/animate-ui/icons/download'
@@ -348,8 +348,9 @@ const DOMAIN_ROW_STYLE: React.CSSProperties = {
 
 // Per-domain Agency + Status selects, laid out as two fixed columns so the
 // triggers can't overlap. Used by both existing-domain and new-domain rows.
-function DomainSettings({ agencies, agencyId, status, onChange, disabled, idPrefix }: {
+function DomainSettings({ agencies, agencyId, status, onChange, disabled, idPrefix, showStatus = true }: {
   agencies: Agency[]
+  showStatus?: boolean
   agencyId: number | ''
   status: string
   onChange: (patch: { agencyId?: number | ''; status?: string }) => void
@@ -370,7 +371,7 @@ function DomainSettings({ agencies, agencyId, status, onChange, disabled, idPref
           </SelectContent>
         </Select>
       </div>
-      <div style={{ minWidth: 0 }}>
+      {showStatus && <div style={{ minWidth: 0 }}>
         <label className="form-label" id={`${idPrefix}-status`} style={{ marginBottom: 2 }}>Status</label>
         <Select value={status} onValueChange={v => onChange({ status: v })} disabled={disabled}>
           <SelectTrigger aria-labelledby={`${idPrefix}-status`} placeholder="—" className="w-full" />
@@ -380,7 +381,7 @@ function DomainSettings({ agencies, agencyId, status, onChange, disabled, idPref
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </div>}
     </div>
   )
 }
@@ -404,6 +405,10 @@ function AddUrlDialog({
   requestors: Requestor[]
   editing: CaseSummary | null
 }) {
+  const { me } = useAuth()
+  // CMOD cases have no per-domain status, only the letters' workflow status.
+  const cmod = usesWorkflowStatus(editing ? editing.department_name : me?.department?.name)
+  const domainStatus = (s: string) => cmod ? '' : s
   const [value, setValue] = useState('')
   const [offences, setOffences] = useState<StagedOffence[]>([])
   const [agencyId, setAgencyId] = useState<number | ''>('')
@@ -517,7 +522,7 @@ function AddUrlDialog({
           .filter(r => !existingURLs.has(r.norm))
         const createdDomains = await Promise.all(rowsToAdd.map(r => createUrl(r.norm)))
         await Promise.all(createdDomains.map((u, i) =>
-          addUrlToCase(editing.id, u.url, rowsToAdd[i].status, originalUrlFor(rowsToAdd[i].raw, u.url), rowsToAdd[i].agencyId === '' ? undefined : rowsToAdd[i].agencyId)
+          addUrlToCase(editing.id, u.url, domainStatus(rowsToAdd[i].status), originalUrlFor(rowsToAdd[i].raw, u.url), rowsToAdd[i].agencyId === '' ? undefined : rowsToAdd[i].agencyId)
         ))
 
         // Unconditional (not `|| undefined`) so a field the user blanked out
@@ -595,9 +600,9 @@ function AddUrlDialog({
       // so each raw as-typed line pairs with the URL it normalized to.
       const created = await Promise.all(domains.map(d => createUrl(d)))
       const caseWork = (async () => {
-        const c = await createCase(created[0].url, status, { ...caseOpts, originalUrl: originalUrlFor(domains[0], created[0].url) })
+        const c = await createCase(created[0].url, domainStatus(status), { ...caseOpts, originalUrl: originalUrlFor(domains[0], created[0].url) })
         await Promise.all(created.slice(1).map((u, i) =>
-          addUrlToCase(c.id, u.url, status, originalUrlFor(domains[i + 1], u.url), caseOpts.agencyId)
+          addUrlToCase(c.id, u.url, domainStatus(status), originalUrlFor(domains[i + 1], u.url), caseOpts.agencyId)
         ))
         // External/Internal ref are recorded regardless of the "Create
         // Letter" switch — CRD needs current_reference_number tracked even
@@ -701,7 +706,7 @@ function AddUrlDialog({
                   </Select>
                 </div>
 
-                <div className="form-field">
+                {!cmod && <div className="form-field">
                   <label className="form-label" id="add-case-status-label">Status</label>
                   <Select value={status} onValueChange={setStatus} disabled={loading}>
                     <SelectTrigger aria-labelledby="add-case-status-label" placeholder="—" className="w-full" />
@@ -711,7 +716,7 @@ function AddUrlDialog({
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </div>}
 
                 <div className="form-field">
                   <label className="form-label" id="add-due-date-label">Time to Block</label>
@@ -802,7 +807,7 @@ function AddUrlDialog({
                         </ul>
                       ) : <p className="text-xs text-stone-muted" style={{ margin: '4px 0 0' }}>No offences recorded.</p>}
                     </div>
-                    <DomainSettings agencies={agencies} agencyId={e.agencyId} status={e.status} onChange={setE} disabled={loading} idPrefix={`edit-${d.url_id}`} />
+                    <DomainSettings agencies={agencies} agencyId={e.agencyId} status={e.status} onChange={setE} disabled={loading} idPrefix={`edit-${d.url_id}`} showStatus={!cmod} />
                     <button
                       type="button"
                       className="screenshot-icon-btn"
@@ -832,7 +837,7 @@ function AddUrlDialog({
                       onChange={ev => setRow({ url: ev.target.value })}
                       disabled={loading}
                     />
-                    <DomainSettings agencies={agencies} agencyId={row.agencyId} status={row.status} onChange={setRow} disabled={loading} idPrefix={`new-${i}`} />
+                    <DomainSettings agencies={agencies} agencyId={row.agencyId} status={row.status} onChange={setRow} disabled={loading} idPrefix={`new-${i}`} showStatus={!cmod} />
                     <button
                       type="button"
                       className="screenshot-icon-btn"
@@ -966,7 +971,7 @@ function AddUrlDialog({
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="form-field">
+                {cmod && <div className="form-field">
                   <label className="form-label" id="add-case-letter-workflow-label">Workflow Status</label>
                   <Select value={workflowStatus} onValueChange={setWorkflowStatus} disabled={loading}>
                     <SelectTrigger aria-labelledby="add-case-letter-workflow-label" placeholder="—" className="w-full" />
@@ -977,7 +982,7 @@ function AddUrlDialog({
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </div>}
               </div>
 
               <div className="form-row">
@@ -1294,6 +1299,10 @@ function URLsPage() {
   // unlinks the url from every department's watchlist.
   const { me } = useAuth()
   const isAdmin = !!me?.is_admin
+  // Non-admins only see their own department's cases, so the status kind
+  // that department doesn't use is dropped; admin sees both kinds of case.
+  const cmodUser = !isAdmin && usesWorkflowStatus(me?.department?.name)
+  const hiddenCaseColumn = isAdmin ? '' : cmodUser ? 'status' : 'workflow_status'
   const [agencies, setAgencies] = useState<Agency[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [duePresets, setDuePresets] = useState<DueDatePreset[]>([])
@@ -1377,14 +1386,17 @@ function URLsPage() {
   }
 
   const filterFields = useMemo<FilterFieldConfig<string>[]>(() => [
-    { key: 'status', label: 'Status', type: 'select', operators: IS_ONLY, options: STATUS_OPTIONS.filter(o => o.value).map(o => ({ value: o.value, label: o.label })) },
+    // Each department filters on its own kind of status (see hiddenCaseColumn); admin gets both.
+    ...(cmodUser ? [] : [{ key: 'status', label: 'Status', type: 'select' as const, operators: IS_ONLY, options: STATUS_OPTIONS.filter(o => o.value).map(o => ({ value: o.value, label: o.label })) }]),
+    ...(isAdmin || cmodUser ? [{ key: 'workflow_status', label: 'Workflow Status', type: 'select' as const, operators: IS_ONLY, options: WORKFLOW_STATUS_OPTIONS.map(v => ({ value: v, label: v })) }] : []),
     { key: 'requesting_dept', label: 'Requesting Dept.', type: 'select', operators: IS_ONLY, options: departments.map(d => ({ value: String(d.id), label: d.name })) },
     { key: 'agency', label: 'Agency', type: 'select', operators: IS_ONLY, options: agencies.map(a => ({ value: String(a.id), label: a.name })) },
     { key: 'created_at', label: 'Date Added', type: 'custom', operators: DATE_OPERATORS, defaultOperator: 'on', customRenderer: DateFilterRenderer },
     { key: 'due_date', label: 'Due Date', type: 'custom', operators: DATE_OPERATORS, defaultOperator: 'on', customRenderer: DateFilterRenderer },
-  ], [agencies, departments])
+  ], [agencies, departments, isAdmin, cmodUser])
 
   const statusFilter = filters.find(f => f.field === 'status')?.values[0]
+  const workflowStatusFilter = filters.find(f => f.field === 'workflow_status')?.values[0]
   const deptFilter = filters.find(f => f.field === 'requesting_dept')?.values[0]
   const agencyFilter = filters.find(f => f.field === 'agency')?.values[0]
   const createdAtFilter = filters.find(f => f.field === 'created_at')
@@ -1414,6 +1426,7 @@ function URLsPage() {
       pageSize: casesPagination.pageSize,
       q: debouncedSearch,
       status: statusFilter,
+      workflowStatus: workflowStatusFilter,
       agencyId: agencyFilter,
       deptId: deptFilter,
       created: dateQuery(createdAtFilter),
@@ -1427,7 +1440,7 @@ function URLsPage() {
     return () => { stale = true }
     // createdAtFilter/dueDateFilter are re-created every render; their JSON keys are the stable deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [casesPagination.pageIndex, casesPagination.pageSize, debouncedSearch, statusFilter, agencyFilter, deptFilter, createdKey, dueKey, casesSortKey, casesSortDesc, casesNonce, casesGridPrefReady])
+  }, [casesPagination.pageIndex, casesPagination.pageSize, debouncedSearch, statusFilter, workflowStatusFilter, agencyFilter, deptFilter, createdKey, dueKey, casesSortKey, casesSortDesc, casesNonce, casesGridPrefReady])
 
   const URL_SORT_KEYS = { domain: 'url', created_at: 'created_at', due_date: 'due_date' } as const
   const urlsSortKey = URL_SORT_KEYS[sorting[0]?.id as keyof typeof URL_SORT_KEYS]
@@ -1442,6 +1455,7 @@ function URLsPage() {
       pageSize: pagination.pageSize,
       q: debouncedSearch,
       status: statusFilter,
+      workflowStatus: workflowStatusFilter,
       agencyId: agencyFilter,
       deptId: deptFilter,
       created: dateQuery(createdAtFilter),
@@ -1454,7 +1468,7 @@ function URLsPage() {
       .finally(() => { if (!stale) setUrlsLoading(false) })
     return () => { stale = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- same JSON-key deps as the cases fetch above
-  }, [pagination.pageIndex, pagination.pageSize, debouncedSearch, statusFilter, agencyFilter, deptFilter, createdKey, dueKey, urlsSortKey, urlsSortDesc, urlsNonce, gridPrefReady])
+  }, [pagination.pageIndex, pagination.pageSize, debouncedSearch, statusFilter, workflowStatusFilter, agencyFilter, deptFilter, createdKey, dueKey, urlsSortKey, urlsSortDesc, urlsNonce, gridPrefReady])
 
   useEffect(() => {
     setPagination(p => ({ ...p, pageIndex: 0 }))
@@ -1568,6 +1582,8 @@ function URLsPage() {
       },
       cell: ({ row }) => {
         const u = row.original
+        // A CMOD case has no domain status: show its Notice's workflow status instead.
+        if (cmodUser || (u.case_id && !u.status)) return <span className="dns-name">{u.workflow_status || '—'}</span>
         return (
           <Select value={u.status ?? ''} onValueChange={v => handleStatusChange(u, v)} disabled={!u.case_id}>
             <SelectTrigger aria-label={`Status for ${u.url}`} placeholder="—" className="w-full" />
@@ -1647,7 +1663,7 @@ function URLsPage() {
         )
       },
     },
-  ], [handleToggle, handleStatusChange, isAdmin])
+  ], [handleToggle, handleStatusChange, isAdmin, cmodUser])
 
   const table = useReactTable({
     data: urls,
@@ -1689,7 +1705,7 @@ function URLsPage() {
     }
   }, [])
 
-  const caseColumns = useMemo<ColumnDef<CaseTreeRow>[]>(() => [
+  const caseColumns = useMemo<ColumnDef<CaseTreeRow>[]>(() => ([
     {
       id: 'case',
       accessorFn: r => r.kind === 'case' ? r.summary.id : r.domain.url,
@@ -1921,7 +1937,7 @@ function URLsPage() {
         )
       },
     },
-  ], [])
+  ] as ColumnDef<CaseTreeRow>[]).filter(c => c.id !== hiddenCaseColumn), [hiddenCaseColumn])
 
   const casesTable = useReactTable({
     data: caseTreeData,

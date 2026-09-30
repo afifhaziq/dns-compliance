@@ -122,13 +122,14 @@ func (h *Handlers) ListURLsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	qs := r.URL.Query()
 	p := db.URLListParams{
-		Page:     1,
-		PageSize: defaultDomainSummaryPageSize,
-		Query:    qs.Get("q"),
-		Status:   qs.Get("status"),
-		Created:  db.DateFilter{Op: qs.Get("created_op"), From: qs.Get("created_from"), To: qs.Get("created_to")},
-		Due:      db.DateFilter{Op: qs.Get("due_op"), From: qs.Get("due_from"), To: qs.Get("due_to")},
-		SortDesc: qs.Get("dir") == "desc",
+		Page:           1,
+		PageSize:       defaultDomainSummaryPageSize,
+		Query:          qs.Get("q"),
+		Status:         qs.Get("status"),
+		WorkflowStatus: qs.Get("workflow_status"),
+		Created:        db.DateFilter{Op: qs.Get("created_op"), From: qs.Get("created_from"), To: qs.Get("created_to")},
+		Due:            db.DateFilter{Op: qs.Get("due_op"), From: qs.Get("due_from"), To: qs.Get("due_to")},
+		SortDesc:       qs.Get("dir") == "desc",
 	}
 	if n, err := strconv.Atoi(qs.Get("page")); err == nil && n > 0 {
 		p.Page = n

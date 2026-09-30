@@ -21,6 +21,72 @@ import (
 // domain enforcement data, not shared infrastructure like the legal
 // citation catalog.
 
+// CMOD tracks a case by its letters' workflow status (Draft/Pending
+// Legal/...) and has no per-domain block status; every other department is
+// the reverse. Each department only ever sees and sets its own kind.
+const workflowStatusDepartment = "CMOD"
+
+var workflowStatusAllowed = map[string]bool{"": true, "Draft": true, "Pending Legal": true, "Pending TSC": true, "Submitted": true}
+
+// usesWorkflowStatus reports whether departmentID is CMOD.
+func (h *Handlers) usesWorkflowStatus(ctx context.Context, departmentID uint) (bool, error) {
+	depts, err := h.store.ListDepartments(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, d := range depts {
+		if d.ID == departmentID {
+			return d.Name == workflowStatusDepartment, nil
+		}
+	}
+	return false, nil
+}
+
+// checkCaseURLStatus validates a per-domain status for the case's
+// department: required for a block-status department, forbidden for CMOD.
+// Writes the 400 itself and returns false when invalid.
+func (h *Handlers) checkCaseURLStatus(w http.ResponseWriter, r *http.Request, departmentID uint, status string) bool {
+	workflow, err := h.usesWorkflowStatus(r.Context(), departmentID)
+	if err != nil {
+		writeInternalError(w, err)
+		return false
+	}
+	if workflow {
+		if status != "" {
+			writeError(w, http.StatusBadRequest, "CMOD cases have no domain status; use the letter's workflow_status")
+			return false
+		}
+		return true
+	}
+	if status == "" || !urlStatusAllowed[status] {
+		writeError(w, http.StatusBadRequest, "status is required and must be one of: requested, blocked, uplift, suspended, not_blocked, internal")
+		return false
+	}
+	return true
+}
+
+// checkWorkflowStatus is checkCaseURLStatus's letter-side mirror: only CMOD
+// letters may carry a workflow_status.
+func (h *Handlers) checkWorkflowStatus(w http.ResponseWriter, r *http.Request, departmentID uint, status string) bool {
+	if status == "" {
+		return true
+	}
+	workflow, err := h.usesWorkflowStatus(r.Context(), departmentID)
+	if err != nil {
+		writeInternalError(w, err)
+		return false
+	}
+	if !workflow {
+		writeError(w, http.StatusBadRequest, "workflow_status is CMOD-only")
+		return false
+	}
+	if !workflowStatusAllowed[status] {
+		writeError(w, http.StatusBadRequest, "workflow_status must be one of: Draft, Pending Legal, Pending TSC, Submitted")
+		return false
+	}
+	return true
+}
+
 // oicUserInDepartment reports whether oicUserID refers to a real user
 // belonging to departmentID. AddCaseLetter/UpdateCaseLetter use this to
 // keep a case letter's OIC pinned to the case's own department — without
@@ -87,8 +153,11 @@ func (h *Handlers) CreateCaseForURL(w http.ResponseWriter, r *http.Request) {
 		DueDate     *string `json:"due_date"`
 		OriginalURL string  `json:"original_url"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !urlStatusAllowed[body.Status] || body.Status == "" {
-		writeError(w, http.StatusBadRequest, "status is required and must be one of: requested, blocked, uplift, suspended, not_blocked, internal")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if !h.checkCaseURLStatus(w, r, *user.DepartmentID, body.Status) {
 		return
 	}
 	var opts db.CaseCreateOptions
@@ -265,6 +334,9 @@ func (h *Handlers) AddCaseLetter(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "type is required")
 		return
 	}
+	if !h.checkWorkflowStatus(w, r, c.DepartmentID, body.WorkflowStatus) {
+		return
+	}
 
 	if body.OICUserID != nil && *body.OICUserID != 0 {
 		ok, err := h.oicUserInDepartment(r.Context(), *body.OICUserID, c.DepartmentID)
@@ -340,8 +412,11 @@ func (h *Handlers) AddCaseURL(w http.ResponseWriter, r *http.Request) {
 		OriginalURL string `json:"original_url"`
 		AgencyID    *uint  `json:"agency_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" || !urlStatusAllowed[body.Status] || body.Status == "" {
-		writeError(w, http.StatusBadRequest, "url and status are required, status must be one of: requested, blocked, uplift, suspended, not_blocked, internal")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" {
+		writeError(w, http.StatusBadRequest, "url is required")
+		return
+	}
+	if !h.checkCaseURLStatus(w, r, c.DepartmentID, body.Status) {
 		return
 	}
 	normalized, err := urlnorm.Normalize(body.URL)
@@ -415,8 +490,11 @@ func (h *Handlers) UpdateCaseURLStatus(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Status string `json:"status"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !urlStatusAllowed[body.Status] || body.Status == "" {
-		writeError(w, http.StatusBadRequest, "status is required and must be one of: requested, blocked, uplift, suspended, not_blocked, internal")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if !h.checkCaseURLStatus(w, r, c.DepartmentID, body.Status) {
 		return
 	}
 
@@ -595,13 +673,14 @@ func (h *Handlers) ListCaseSummaries(w http.ResponseWriter, r *http.Request) {
 	}
 	qs := r.URL.Query()
 	p := db.CaseListParams{
-		Page:     1,
-		PageSize: defaultDomainSummaryPageSize,
-		Query:    qs.Get("q"),
-		Status:   qs.Get("status"),
-		Created:  db.DateFilter{Op: qs.Get("created_op"), From: qs.Get("created_from"), To: qs.Get("created_to")},
-		Due:      db.DateFilter{Op: qs.Get("due_op"), From: qs.Get("due_from"), To: qs.Get("due_to")},
-		SortDesc: qs.Get("dir") == "desc",
+		Page:           1,
+		PageSize:       defaultDomainSummaryPageSize,
+		Query:          qs.Get("q"),
+		Status:         qs.Get("status"),
+		WorkflowStatus: qs.Get("workflow_status"),
+		Created:        db.DateFilter{Op: qs.Get("created_op"), From: qs.Get("created_from"), To: qs.Get("created_to")},
+		Due:            db.DateFilter{Op: qs.Get("due_op"), From: qs.Get("due_from"), To: qs.Get("due_to")},
+		SortDesc:       qs.Get("dir") == "desc",
 	}
 	if n, err := strconv.Atoi(qs.Get("page")); err == nil && n > 0 {
 		p.Page = n
@@ -690,6 +769,10 @@ func (h *Handlers) UpdateCaseLetter(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+
+	if body.WorkflowStatus != nil && !h.checkWorkflowStatus(w, r, c.DepartmentID, *body.WorkflowStatus) {
 		return
 	}
 

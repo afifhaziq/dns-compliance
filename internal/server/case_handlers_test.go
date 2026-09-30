@@ -990,3 +990,41 @@ func TestRemoveCaseURL(t *testing.T) {
 		t.Fatalf("unknown url: got %d, want 404", c)
 	}
 }
+
+// CMOD cases carry only letter workflow status; every other department only
+// per-domain status. Each side rejects the other's.
+func TestCaseStatusKindsSplitByDepartment(t *testing.T) {
+	u := db.URL{ID: 1, URL: "example.com"}
+	store := &fullMockStore{
+		urls:        []db.URL{u},
+		departments: []db.Department{{ID: 1, Name: "CRD"}, {ID: 2, Name: "CMOD"}},
+		cases:       []db.Case{{ID: 1, DepartmentID: 1}, {ID: 2, DepartmentID: 2}},
+		caseURLs:    []db.CaseURL{{CaseID: 1, URLID: u.ID, Status: "blocked"}, {CaseID: 2, URLID: u.ID}},
+	}
+	r := setupRouter(store, nil)
+	for _, tc := range []struct {
+		dept         uint
+		method, path string
+		body         map[string]string
+		want         int
+	}{
+		{1, http.MethodPatch, "/api/cases/1/urls/1", map[string]string{"status": "uplift"}, http.StatusNoContent},
+		{1, http.MethodPatch, "/api/cases/1/urls/1", map[string]string{"status": ""}, http.StatusBadRequest},
+		{1, http.MethodPost, "/api/cases/1/letters", map[string]string{"type": "Notice", "workflow_status": "Draft"}, http.StatusBadRequest},
+		{1, http.MethodPost, "/api/cases/1/letters", map[string]string{"type": "Notice"}, http.StatusCreated},
+		{2, http.MethodPatch, "/api/cases/2/urls/1", map[string]string{"status": "blocked"}, http.StatusBadRequest},
+		{2, http.MethodPatch, "/api/cases/2/urls/1", map[string]string{"status": ""}, http.StatusNoContent},
+		{2, http.MethodPost, "/api/cases/2/letters", map[string]string{"type": "Notice", "workflow_status": "Submitted"}, http.StatusCreated},
+		{2, http.MethodPost, "/api/cases/2/letters", map[string]string{"type": "Notice", "workflow_status": "Bogus"}, http.StatusBadRequest},
+	} {
+		body, _ := json.Marshal(tc.body)
+		req := httptest.NewRequest(tc.method, tc.path, bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(deptCookie(store, tc.dept))
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != tc.want {
+			t.Errorf("dept %d %s %s %v: got %d, want %d: %s", tc.dept, tc.method, tc.path, tc.body, w.Code, tc.want, w.Body.String())
+		}
+	}
+}

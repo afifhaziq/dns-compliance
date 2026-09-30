@@ -69,6 +69,7 @@ export type URLEntry = {
   requesting_departments?: string[]
   offences?: OffenceEntry[]
   status?: string
+  workflow_status?: string // latest case's Notice workflow status — CMOD cases only
   // Latest case's id — the target for a status edit via
   // PATCH /api/cases/{case_id}/urls/{id} (updateCaseURLStatus), since
   // `status` itself is a derived, read-only field.
@@ -135,6 +136,8 @@ export type CaseSummaryDomain = { url_id: number; url: string; status: string; o
 
 export type CaseSummary = {
   id: number
+  department_id: number
+  department_name: string
   due_date?: string
   requested_at?: string
   created_at: string

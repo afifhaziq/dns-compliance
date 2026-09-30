@@ -2,6 +2,18 @@
 
 Source: `Masterlist Blocking CMOD.xlsx`, copied into repo root (gitignored, not committed). Read-only analysis, nothing imported yet — same status as the earlier `Blocking Full List_1.xlsx` ("CRD") pass in `docs/blocking-list-migration-clarifications.md`.
 
+## Import rules in force (2026-09-30)
+
+Importer: `go run ./cmd/import-cmod --file "Masterlist Blocking CMOD.xlsx" --db-url "$DB_URL" --oic-password <pw> --dry-run=false` (`internal/blockimport/cmod.go`, `write_cmod.go`). Last local run: 67 cases (50 linked from CRD, 17 new), 294 case_urls, 69 url_offences, 44 OIC accounts. Re-runs skip cases already under CMOD.
+
+1. **Linking to CRD (§7).** A CMOD case whose Memo/Notice ref already sits on a CRD case (CRD stores it in `reference_number_internal`) is not duplicated: that case moves to CMOD, CMOD's letters merge into it by type (the existing Notice keeps its internal ref and gains CMOD's as external), CMOD domains missing from it are added, and CRD's offences are kept. A moved case's domains also leave CRD's watchlist when no other CRD case covers them (only auto-linked, disabled rows; 212 locally). Where the two disagree, CMOD's sheet wins (e.g. case 54's Notice is Draft though CRD recorded it blocked). 55 older CRD cases with `CMOD/BLK/2024|2025` refs aren't in this sheet and stay with CRD (decided 2026-09-30).
+2. **Status (§1).** CMOD has no per-domain status: its `case_urls.status` is `""`, including the 50 moved cases (their CRD `blocked` etc. is dropped). Its status is each letter's `workflow_status` (Draft/Pending Legal/Pending TSC/Submitted), all imported including drafts. The server rejects a domain status on a CMOD case and a workflow status on any other department's letter, and the UI shows each department only its own kind — including the Cases/Domain view filters (`workflow_status` query param, matched against any of the case's letters, since Pending Legal/TSC only occur on Memos). `BlockingStats` counts a CMOD domain as blocked when its case has a Submitted Notice and no Submitted Notice (Uplift).
+3. **Offences (§2).** CMOD records only a category, so the citation is the one CRD used for the same notices: Judi dalam talian → Akta Rumah Judi Terbuka 1953 s4(1) › Judi; Palsu / Lucah / Jelik Melampau → AKM 1998 s233 › same name (`cmodOffences`). The compound `Palsu, Jelik Melampau` becomes two offences. Only domains without an offence on that case get one.
+4. **Agency (§3).** Per domain (`case_urls.agency_id`), from that row's `Agency`, get-or-created.
+5. **OIC (§6).** One CMOD account per distinct OIC name (`Mas Atika` → `mas_atika`), all with the `--oic-password` and a forced change on first login. A letter links its first OIC; a letter covering domains from several OICs keeps the full list in Remarks (`OIC: A; B`).
+
+The sections below are the original EDA; questions they raise are answered above.
+
 ## Workbook shape
 
 4 sheets: `FAKE NEWS`, `BLK`, `EVENT`, `xCRR`. Only **`BLK`** (499 rows, header on row 2) has real data and matches the DNS-blocking domain model. The other three are correspondence-tracking templates for unrelated case types (fake-news takedown letters, misc events, content-removal casework under a different "URLs get removed, not DNS-blocked" concept) — each has only a single seeded row number and a lone example `Reference No`, no actual rows filled in. **Out of scope**, same call as CRD's DNS-server sheet.

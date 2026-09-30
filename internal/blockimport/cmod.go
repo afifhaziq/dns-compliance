@@ -172,20 +172,24 @@ var letterTypeOrder = map[string]int{
 // becomes one Case with (up to 4) CaseLetter rows.
 type CollapsedCMODCase struct {
 	BaseReferenceNumber string
-	Letters             []CMODRow // 1-4 rows, one per Type present for this base ref
-	URLs                []string  // union of every Links entry across all of this case's rows, deduplicated
-	Offence             string    // from whichever row has it set (should agree across the group -- logged if it doesn't, never silently picked)
+	Letters             []CMODRow         // 1-4 rows, one per Type present for this base ref
+	URLs                []string          // union of every Links entry across all of this case's rows, deduplicated
+	Offence             string            // from whichever row has it set (should agree across the group -- logged if it doesn't, never silently picked)
+	AgencyByURL         map[string]string // raw link -> that row's Agency (last non-empty wins)
+	OffenceByURL        map[string]string // raw link -> that row's Offence (last non-empty wins)
 }
 
 // CollapseCMODRows groups rows by baseReferenceNumber. Pure in-memory
 // transform, no I/O.
 func CollapseCMODRows(rows []CMODRow) []CollapsedCMODCase {
 	type group struct {
-		baseRef string
-		byType  map[string][]CMODRow
-		urls    []string
-		seenURL map[string]bool
-		offence string
+		baseRef  string
+		byType   map[string][]CMODRow
+		urls     []string
+		seenURL  map[string]bool
+		offence  string
+		agency   map[string]string
+		offByURL map[string]string
 	}
 	order := []string{}
 	groups := map[string]*group{}
@@ -194,7 +198,7 @@ func CollapseCMODRows(rows []CMODRow) []CollapsedCMODCase {
 		base := baseReferenceNumber(row.ReferenceNumber)
 		g, ok := groups[base]
 		if !ok {
-			g = &group{baseRef: base, byType: map[string][]CMODRow{}, seenURL: map[string]bool{}}
+			g = &group{baseRef: base, byType: map[string][]CMODRow{}, seenURL: map[string]bool{}, agency: map[string]string{}, offByURL: map[string]string{}}
 			groups[base] = g
 			order = append(order, base)
 		}
@@ -203,6 +207,12 @@ func CollapseCMODRows(rows []CMODRow) []CollapsedCMODCase {
 			if !g.seenURL[u] {
 				g.seenURL[u] = true
 				g.urls = append(g.urls, u)
+			}
+			if row.Agency != "" {
+				g.agency[u] = row.Agency
+			}
+			if row.Offence != "" {
+				g.offByURL[u] = row.Offence
 			}
 		}
 		if row.Offence != "" {
@@ -238,6 +248,8 @@ func CollapseCMODRows(rows []CMODRow) []CollapsedCMODCase {
 			Letters:             letters,
 			URLs:                g.urls,
 			Offence:             g.offence,
+			AgencyByURL:         g.agency,
+			OffenceByURL:        g.offByURL,
 		})
 	}
 	return cases

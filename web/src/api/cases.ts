@@ -116,6 +116,7 @@ export type CaseListQuery = {
   pageSize: number
   q?: string
   status?: string
+  workflowStatus?: string
   agencyId?: string
   deptId?: string
   created?: { op: string; from?: string; to?: string }
@@ -129,7 +130,7 @@ export type CaseListQuery = {
 export async function fetchCaseSummariesPage(query: CaseListQuery): Promise<{ cases: CaseSummary[]; total: number }> {
   const p = new URLSearchParams({ page: String(query.page), page_size: String(query.pageSize) })
   const set = (k: string, v?: string) => { if (v) p.set(k, v) }
-  set('q', query.q?.trim()); set('status', query.status); set('agency_id', query.agencyId); set('dept_id', query.deptId)
+  set('q', query.q?.trim()); set('status', query.status); set('workflow_status', query.workflowStatus); set('agency_id', query.agencyId); set('dept_id', query.deptId)
   for (const [key, f] of [['created', query.created], ['due', query.due]] as const) {
     if (!f) continue
     set(`${key}_op`, f.op); set(`${key}_from`, f.from); set(`${key}_to`, f.to)

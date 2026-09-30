@@ -21,12 +21,14 @@ var errDryRunRollback = errors.New("blockimport: dry run rollback")
 type ImportSummary struct {
 	CasesCreated              int
 	CasesSkippedExist         int            // already imported (idempotency)
+	CasesLinked               int            // CMOD cases matched to an existing CRD case by reference number and moved to CMOD
+	UsersCreated              int            // CMOD OIC accounts created
 	LetterDatesBackfilled     int            // existing Notice letters that had no letter_date and got one from the sheet
 	UpliftLettersCreated      int            // Notice (Uplift) letters created from the sheet's uplift date
 	URLsSkippedBadURL         int            // failed urlnorm.Normalize
 	CategoriesObserved        map[string]int // raw Category/Offence value -> row count, for visibility only
-	URLOffencesCreated        int            // URLOffence rows created (CRD only, see WriteCRDCases)
-	OffencesSkippedNoCitation int            // cases whose CitationText has no confirmed entry in the classification CSV
+	URLOffencesCreated        int            // URLOffence rows created
+	OffencesSkippedNoCitation int            // CRD: CitationText not in the classification CSV; CMOD: Offence not in cmodOffences
 }
 
 // mapCRDStatus maps the spreadsheet's Status values onto case_urls.status's

@@ -23,7 +23,7 @@ import { fetchDueDatePresets } from '@/api/due-date-presets'
 import { fetchUsersOpen } from '@/api/users'
 import { useAuth } from './__root'
 import type { CaseLetterEntry, Department, Recipient, Requestor, Agency, DueDatePreset, User } from '@/api/types'
-import { CASE_STATUS_OPTIONS, LETTER_TYPE_OPTIONS as CASE_LETTER_TYPE_OPTIONS } from '@/lib/case-options'
+import { CASE_STATUS_OPTIONS, LETTER_TYPE_OPTIONS as CASE_LETTER_TYPE_OPTIONS, usesWorkflowStatus } from '@/lib/case-options'
 import {
   Dialog,
   DialogContent,
@@ -93,7 +93,7 @@ function dueDateFromDurationMinutes(minutes: number): string {
 // One selectable "existing case" option for AddDocumentDialog's case picker —
 // derived from the already-loaded case-letters list (see DocsPage's
 // `caseOptions`), not a separate fetch.
-type CaseOption = { id: number; label: string }
+type CaseOption = { id: number; label: string; departmentName: string }
 
 /* ─── Add Document Dialog ────────────────────────────────────────────────── */
 
@@ -137,6 +137,10 @@ function AddDocumentDialog({
   const [referenceNumberExternal, setReferenceNumberExternal] = useState('')
   const [recipient, setRecipient] = useState('')
   const { me } = useAuth()
+  // CMOD cases have no per-domain status, only the letters' workflow status.
+  const cmod = usesWorkflowStatus(existingCaseId === ''
+    ? me?.department?.name
+    : caseOptions.find(c => c.id === existingCaseId)?.departmentName)
   const [oicUserId, setOicUserId] = useState<number | ''>('')
   // Two type-segmented subject/internal-ref fields, one per letter this
   // dialog always records (Notice + Memo, matching CaseLetter's real grain
@@ -234,8 +238,8 @@ function AddDocumentDialog({
         const caseOpts: { agencyId?: number; dueDate?: string } = {}
         if (agencyId !== '') caseOpts.agencyId = agencyId
         if (dueDurationMinutes) caseOpts.dueDate = dueDateFromDurationMinutes(Number(dueDurationMinutes))
-        const c = await createCase(created[0].url, status, caseOpts)
-        await Promise.all(created.slice(1).map(u => addUrlToCase(c.id, u.url, status, undefined, caseOpts.agencyId)))
+        const c = await createCase(created[0].url, cmod ? '' : status, caseOpts)
+        await Promise.all(created.slice(1).map(u => addUrlToCase(c.id, u.url, cmod ? '' : status, undefined, caseOpts.agencyId)))
         await Promise.all(letters.map(l => addCaseLetter(c.id, l)))
       }
       reset()
@@ -326,7 +330,7 @@ function AddDocumentDialog({
 
           {existingCaseId === '' && (
             <div className="form-row">
-              <div className="form-field">
+              {!cmod && <div className="form-field">
                 <label className="form-label" id="add-doc-status-label">Case Status</label>
                 <Select value={status} onValueChange={setStatus} disabled={loading}>
                   <SelectTrigger aria-labelledby="add-doc-status-label" placeholder="—" className="w-full" />
@@ -336,7 +340,7 @@ function AddDocumentDialog({
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
+              </div>}
               <div className="form-field">
                 <label className="form-label" id="add-doc-agency-label">Agency</label>
                 <Select value={String(agencyId)} onValueChange={v => setAgencyId(v === '' ? '' : Number(v))} disabled={loading}>
@@ -488,7 +492,7 @@ function AddDocumentDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="form-field">
+            {cmod && <div className="form-field">
               <label className="form-label" id="add-doc-workflow-label">Workflow Status</label>
               <Select value={workflowStatus} onValueChange={setWorkflowStatus} disabled={loading}>
                 <SelectTrigger aria-labelledby="add-doc-workflow-label" placeholder="—" className="w-full" />
@@ -499,7 +503,7 @@ function AddDocumentDialog({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </div>}
           </div>
 
           <div className="form-row">
@@ -557,6 +561,7 @@ function AddDocumentDialog({
 function EditDocumentDialog({
   open, onClose, onSaved, editing, recipients, requestors, users,
 }: { open: boolean; onClose: () => void; onSaved: () => void; editing: CaseGroupRow | null; recipients: Recipient[]; requestors: Requestor[]; users: User[] }) {
+  const cmod = usesWorkflowStatus(editing?.departmentName)
   const notice = editing?.subRows.find(s => s.letter.type === 'Notice')?.letter
   const memo = editing?.subRows.find(s => s.letter.type === 'Memo')?.letter
 
@@ -707,7 +712,7 @@ function EditDocumentDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="form-field">
+            {cmod && <div className="form-field">
               <label className="form-label" id="edit-doc-workflow-label">Workflow Status — shared</label>
               <Select value={workflowStatus} onValueChange={setWorkflowStatus} disabled={loading}>
                 <SelectTrigger aria-labelledby="edit-doc-workflow-label" placeholder="—" className="w-full" />
@@ -718,7 +723,7 @@ function EditDocumentDialog({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </div>}
           </div>
           <div className="form-row">
             <div className="form-field">
@@ -877,13 +882,14 @@ function DocsPage() {
   // fetch. A case with no letters yet never appears here, but it also can't
   // exist without one (createCase always opens with a first letter).
   const caseOptions = useMemo<CaseOption[]>(() => {
-    const byId = new Map<number, string[]>()
+    const byId = new Map<number, CaseLetterEntry>()
     for (const l of letters) {
-      if (!byId.has(l.case_id)) byId.set(l.case_id, l.urls ?? [])
+      if (!byId.has(l.case_id)) byId.set(l.case_id, l)
     }
-    return Array.from(byId.entries()).map(([id, urls]) => ({
+    return Array.from(byId.entries()).map(([id, l]) => ({
       id,
-      label: `Case #${id} — ${urls.length > 0 ? urls.join(', ') : 'no domains'}`,
+      label: `Case #${id} — ${(l.urls ?? []).length > 0 ? l.urls.join(', ') : 'no domains'}`,
+      departmentName: l.department_name,
     }))
   }, [letters])
 
@@ -1028,6 +1034,7 @@ function DocsPage() {
         const original = row.original
         if (original.kind !== 'letter') return null
         const l = original.letter
+        if (!usesWorkflowStatus(l.department_name)) return '—'
         return (
           <Select value={l.workflow_status ?? ''} onValueChange={v => handleWorkflowStatusChange(l, v)}>
             <SelectTrigger aria-label={`Status for ${l.type} on case #${l.case_id}`} placeholder="—" className="w-full" />
