@@ -1,0 +1,794 @@
+\documentclass[10pt]{article}
+% Build with xelatex or lualatex (Verdana via fontspec). Word version: see build_docx.sh.
+\usepackage[a4paper,margin=2cm]{geometry}
+\usepackage{fontspec}
+\setmainfont{Verdana}
+\usepackage{longtable,array,amssymb,newunicodechar,fancyhdr,lastpage}
+\newunicodechar{☐}{$\square$}
+\newunicodechar{■}{$\blacksquare$}
+\newunicodechar{→}{$\rightarrow$}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.25}
+\setlength{\parindent}{0pt}
+\pagestyle{fancy}\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}\renewcommand{\footrulewidth}{0.4pt}
+\cfoot{\small Citadel - DNS Blocking Tracker System: User Acceptance Test \quad | \quad Page \thepage\ of \pageref{LastPage}}
+
+\title{Citadel - DNS Blocking Tracker System: User Acceptance Test}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+\begin{longtable}{p{0.24\linewidth}p{0.71\linewidth}}
+\hline
+Date & 30 September 2026 \\ \hline
+System & Citadel - DNS Blocking Tracker System \\ \hline
+Document & User Acceptance Test (UAT) Script, version 0.1 (planning draft) \\ \hline
+Test cycle & Cycle 1 \\ \hline
+Environment & \\ \hline
+Scope & 50 test scripts across 13 modules: login and account, overview, watchlist, cases, documents, scanning and results, domain lookup, notifications, DNS servers, legal citations and department administration \\ \hline
+Roles in scope & Department Admin, Department User (CRD), Department User (CMOD) \\ \hline
+Prepared by & \\ \hline
+Tested by & \\ \hline
+Reviewed by & \\ \hline
+\end{longtable}
+
+\clearpage
+\tableofcontents
+\clearpage
+
+\section{Introduction}
+This document lists the User Acceptance Test (UAT) scripts for Citadel - DNS Blocking Tracker System. Testers follow each script on screen and record what happened, so the business can confirm the system is ready for use.
+
+\subsection{How to Use This Document}
+\begin{enumerate}
+\item Go to the Test Scripts section. Each test is shown as its own table; pick the tests whose Role matches the role you are testing as.
+\item Follow the Test Steps exactly as written, on screen, using the Test Data given.
+\item Compare what you see with the Expected Result.
+\item Fill in only the Actual Result, Status and Remarks rows.
+\item If a test fails, take a screenshot and write its file name in Remarks.
+\end{enumerate}
+
+\subsection{Example of a Completed Test}
+\begin{longtable}{p{0.24\linewidth}p{0.71\linewidth}}
+\hline
+Actual Result & Overview page opened; menu showed Overview, Results, Watchlist, Docs, DNS Servers, Legal Citations. \\ \hline
+Status & ■ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+Remarks & Login took about 5 seconds. Screenshot: LOG-001.png \\ \hline
+\end{longtable}
+
+\section{Status Definitions}
+\begin{longtable}{p{0.24\linewidth}p{0.71\linewidth}}
+\hline
+\textbf{Status} & \textbf{Meaning} \\ \hline
+\endhead
+Pass & Result matches the Expected Result completely. \\ \hline
+Conditional Pass & Works, but with a minor issue that does not stop the user from completing the task (e.g. wording, layout, slowness). Explain in Remarks. \\ \hline
+Fail & Result does not match, an error appears, or the task cannot be completed. Explain in Remarks. \\ \hline
+\end{longtable}
+
+\section{Roles}
+\begin{longtable}{p{0.24\linewidth}p{0.71\linewidth}}
+\hline
+\textbf{Role} & \textbf{Description} \\ \hline
+\endhead
+
+Department Admin & Manages users of their own department, DNS servers, agencies, recipients, requestors, legal citations and time-to-block durations. \\ \hline
+Department User (CRD) & Normal user in CRD. Manages domains and cases with per-domain status (Requested, Blocked, Uplift, etc.). \\ \hline
+Department User (CMOD) & Normal user in CMOD. Manages cases through Notice/Memo letters with workflow status. \\ \hline
+Department User (any) & Any normal department user (CRD or CMOD). \\ \hline
+All Roles & Test once with each of the roles above. \\ \hline
+\end{longtable}
+
+\section{Tester Details}
+\begin{longtable}{p{0.22\linewidth}p{0.17\linewidth}p{0.22\linewidth}p{0.15\linewidth}p{0.19\linewidth}}
+\hline
+\textbf{Name} & \textbf{Department} & \textbf{Role tested} & \textbf{Date tested} & \textbf{Signature} \\ \hline
+\endhead
+ & & & & \\[1cm] \hline
+ & & & & \\[1cm] \hline
+ & & & & \\[1cm] \hline
+\end{longtable}
+
+\clearpage
+\section{Test Scripts}
+\subsection{Login \& Account}
+\subsubsection*{LOG-001: Log in with a valid username and password}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Login \& Account \\ \hline
+\textbf{Role} & All Roles \\ \hline
+\textbf{Pre-condition} & User account has been created by an administrator. \\ \hline
+\textbf{Test Steps} & 1. Open the system link in the browser. \newline 2. Enter your username. \newline 3. Enter your password. \newline 4. Click 'Sign In'. \\ \hline
+\textbf{Test Data} & Username/password given by admin \\ \hline
+\textbf{Expected Result} & The Overview page opens. Your navigation bar shows Overview, Results, Watchlist, Docs, DNS Servers, Legal Citations (and Admin for admins only). \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{LOG-002: Log in with a wrong password}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Login \& Account \\ \hline
+\textbf{Role} & All Roles \\ \hline
+\textbf{Pre-condition} & User account exists. \\ \hline
+\textbf{Test Steps} & 1. Open the system link. \newline 2. Enter your username. \newline 3. Enter a wrong password. \newline 4. Click 'Sign In'. \\ \hline
+\textbf{Test Data} & Wrong password: Test@123 \\ \hline
+\textbf{Expected Result} & An error message says the login failed. You stay on the login page and cannot see any data. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{LOG-003: Sign out}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Login \& Account \\ \hline
+\textbf{Role} & All Roles \\ \hline
+\textbf{Pre-condition} & Logged in. \\ \hline
+\textbf{Test Steps} & 1. Click 'Sign Out' at the top right. \newline 2. Click the browser Back button. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & You are returned to the login page. Pressing Back does not show any data; you must log in again. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{LOG-004: First login with a temporary password forces a new password}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Login \& Account \\ \hline
+\textbf{Role} & Department User (any) \\ \hline
+\textbf{Pre-condition} & Admin has just created the account, or reset its password, and given you a temporary password. \\ \hline
+\textbf{Test Steps} & 1. Log in with the temporary password. \newline 2. When asked, enter the temporary password as current password. \newline 3. Enter a new password twice. \newline 4. Save. \newline 5. Sign out and log in with the new password. \\ \hline
+\textbf{Test Data} & New password of your choice \\ \hline
+\textbf{Expected Result} & The system does not let you use any page until the password is changed. After changing, you can log in with the new password; the temporary password no longer works. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{LOG-005: Normal users cannot see the Admin area}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Login \& Account \\ \hline
+\textbf{Role} & Department User (any) \\ \hline
+\textbf{Pre-condition} & Logged in as a department user (not admin). \\ \hline
+\textbf{Test Steps} & 1. Look at the navigation bar. \newline 2. Confirm there is no 'Admin' menu. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & 'Admin' is not shown. The user cannot manage users, departments or settings. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsection{Overview}
+\subsubsection*{OVR-001: View the national compliance summary}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Overview \\ \hline
+\textbf{Role} & All Roles \\ \hline
+\textbf{Pre-condition} & At least one scan has been completed. \\ \hline
+\textbf{Test Steps} & 1. Click 'Overview' in the navigation bar. \newline 2. Look at the summary numbers, the trend chart and the ISP tiles. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & The page shows total domains, compliant vs. violation counts, 'Resurfaced' count, a 30-day trend chart (when there are at least 2 days of data) and one tile per ISP, worst-compliance first. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{OVR-002: Open an ISP's detail page}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Overview \\ \hline
+\textbf{Role} & All Roles \\ \hline
+\textbf{Pre-condition} & At least one scan has been completed. \\ \hline
+\textbf{Test Steps} & 1. On Overview, click any ISP tile (e.g. an ISP name). \newline 2. Review the page that opens. \\ \hline
+\textbf{Test Data} & Any ISP \\ \hline
+\textbf{Expected Result} & The ISP page shows each of its DNS servers with compliance numbers, response time, trend, and the slowest-to-block domains. Response time shows '—' where no measurement exists. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{OVR-003: Department user sees only their own department's data}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Overview \\ \hline
+\textbf{Role} & Department User (CRD) \\ \hline
+\textbf{Pre-condition} & Two departments each have different domains in their Watchlist. \\ \hline
+\textbf{Test Steps} & 1. Log in as a CRD user and note the numbers on Overview. \newline 2. Log out, log in as a CMOD user and note the numbers. \newline 3. Compare. \\ \hline
+\textbf{Test Data} & One CRD account, one CMOD account \\ \hline
+\textbf{Expected Result} & Each user sees counts only for their own department's domains. Neither sees the other's domains. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsection{Watchlist}
+\subsubsection*{WL-001: Add a new domain with case details}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Watchlist \\ \hline
+\textbf{Role} & Department User (CRD) \\ \hline
+\textbf{Pre-condition} & Logged in as CRD user. \\ \hline
+\textbf{Test Steps} & 1. Click 'Watchlist'. \newline 2. Click 'Create Case'. \newline 3. Type the domain name. \newline 4. Fill in Agency, Status, Time to Block, and reference number. \newline 5. Choose an offence (Citation, Category, Element) and click '+ Add offence'. \newline 6. Click Save. \\ \hline
+\textbf{Test Data} & Domain: uat-test-01.com \newline Status: Requested \newline Time to Block: 24 hours \\ \hline
+\textbf{Expected Result} & The domain appears in the Watchlist with the details entered. The Due Date is 24 hours from now. The offence is shown on the domain. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{WL-002: Add several domains in one case}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Watchlist \\ \hline
+\textbf{Role} & Department User (CRD) \\ \hline
+\textbf{Pre-condition} & Logged in as CRD user. \\ \hline
+\textbf{Test Steps} & 1. Click 'Create Case'. \newline 2. Add 3 domain rows. \newline 3. Fill in the case details and one offence. \newline 4. Save. \newline 5. Switch the view toggle to 'Cases'. \\ \hline
+\textbf{Test Data} & uat-test-02.com, uat-test-03.com, uat-test-04.com \\ \hline
+\textbf{Expected Result} & All 3 domains are added. In Cases view they appear under one case, each with the same offence and case details. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{WL-003: Domain entered in different formats is treated as one domain}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Watchlist \\ \hline
+\textbf{Role} & Department User (CRD) \\ \hline
+\textbf{Pre-condition} & uat-test-01.com already in Watchlist. \\ \hline
+\textbf{Test Steps} & 1. Click 'Create Case'. \newline 2. Enter the domain as 'https://WWW.UAT-TEST-01.com/page'. \newline 3. Save. \newline 4. Search the Watchlist for 'uat-test-01'. \\ \hline
+\textbf{Test Data} & https://WWW.UAT-TEST-01.com/page \\ \hline
+\textbf{Expected Result} & The system recognises it as the same domain. No duplicate domain row is created; its scan history is kept. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{WL-004: Search and filter the Watchlist}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Watchlist \\ \hline
+\textbf{Role} & Department User (CRD) \\ \hline
+\textbf{Pre-condition} & Watchlist has several domains. \\ \hline
+\textbf{Test Steps} & 1. Type part of a domain name in the search box. \newline 2. Clear it, then use the filters (e.g. Status, Agency). \\ \hline
+\textbf{Test Data} & Search: uat-test \\ \hline
+\textbf{Expected Result} & Only matching domains are listed. Clearing the search/filters shows all domains again. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{WL-005: Change a domain's status}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Watchlist \\ \hline
+\textbf{Role} & Department User (CRD) \\ \hline
+\textbf{Pre-condition} & Domain uat-test-01.com in Watchlist. \\ \hline
+\textbf{Test Steps} & 1. Find uat-test-01.com. \newline 2. Click its Status dropdown and choose 'Blocked'. \newline 3. Refresh the page. \\ \hline
+\textbf{Test Data} & Status: Blocked \\ \hline
+\textbf{Expected Result} & The status changes to 'Blocked' and stays that way after refresh. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{WL-006: Edit a domain's offences}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Watchlist \\ \hline
+\textbf{Role} & Department User (CRD) \\ \hline
+\textbf{Pre-condition} & Domain uat-test-01.com in Watchlist. \\ \hline
+\textbf{Test Steps} & 1. Click the Edit (pencil) icon on the domain. \newline 2. Add a second offence. \newline 3. Remove the first offence. \newline 4. Close the dialog. \newline 5. Refresh. \\ \hline
+\textbf{Test Data} & Any offence from the list \\ \hline
+\textbf{Expected Result} & Only the new offence is shown on the domain after refresh. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{WL-007: Pause and resume monitoring of a domain}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Watchlist \\ \hline
+\textbf{Role} & Department User (CRD) \\ \hline
+\textbf{Pre-condition} & Domain in Watchlist. \\ \hline
+\textbf{Test Steps} & 1. Switch the domain's on/off toggle to off. \newline 2. Run 'Scan All' (see Scanning). \newline 3. Switch it back on. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & While off, the domain is not included in scans. When back on, it is scanned again. Previous history is kept. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{WL-008: Remove a domain from the Watchlist}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Watchlist \\ \hline
+\textbf{Role} & Department User (CRD) \\ \hline
+\textbf{Pre-condition} & Domain uat-test-04.com in Watchlist. \\ \hline
+\textbf{Test Steps} & 1. Click the Delete (bin) icon on uat-test-04.com. \newline 2. Confirm. \\ \hline
+\textbf{Test Data} & uat-test-04.com \\ \hline
+\textbf{Expected Result} & The domain disappears from your department's Watchlist. Other departments watching the same domain are not affected. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsection{Cases}
+\subsubsection*{CAS-001: View cases and their domains}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Cases \\ \hline
+\textbf{Role} & Department User (CRD) \\ \hline
+\textbf{Pre-condition} & At least one case with several domains exists. \\ \hline
+\textbf{Test Steps} & 1. On Watchlist, switch the toggle to 'Cases'. \newline 2. Click a case row. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & The case row expands and lists every domain in that case with its own status. Clicking again collapses it. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{CAS-002: Edit a case}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Cases \\ \hline
+\textbf{Role} & Department User (CRD) \\ \hline
+\textbf{Pre-condition} & A case exists. \\ \hline
+\textbf{Test Steps} & 1. In Cases view, click the Edit icon on a case. \newline 2. Change the Agency and add one more domain. \newline 3. Save. \\ \hline
+\textbf{Test Data} & New domain: uat-test-05.com \\ \hline
+\textbf{Expected Result} & The case shows the new Agency and now includes uat-test-05.com. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{CAS-003: Export the case list to Excel}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Cases \\ \hline
+\textbf{Role} & Department User (CRD) \\ \hline
+\textbf{Pre-condition} & Cases exist. \\ \hline
+\textbf{Test Steps} & 1. In Cases view, click the Export icon. \newline 2. Open the downloaded Excel file. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & An Excel file downloads. It lists your department's cases in the same layout as the old 'Blocking Full List' spreadsheet. It does not contain other departments' cases. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsection{Docs}
+\subsubsection*{DOC-001: Add a document (Notice + Memo) for a new case}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Docs \\ \hline
+\textbf{Role} & Department User (CMOD) \\ \hline
+\textbf{Pre-condition} & Logged in as CMOD user. \\ \hline
+\textbf{Test Steps} & 1. Click 'Docs'. \newline 2. Click 'Add Document'. \newline 3. Enter the domains, external reference, recipient, requestor and dates. \newline 4. Fill in the Notice subject/reference and the Memo subject/reference. \newline 5. Choose a workflow status. \newline 6. Save. \\ \hline
+\textbf{Test Data} & Domain: uat-cmod-01.com \\ \hline
+\textbf{Expected Result} & One case appears in Docs. Expanding it shows two letters: a Notice and a Memo, with the details entered. No per-domain status is asked for (CMOD uses workflow status only). \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{DOC-002: Change a letter's workflow status from the list}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Docs \\ \hline
+\textbf{Role} & Department User (CMOD) \\ \hline
+\textbf{Pre-condition} & A CMOD case with letters exists. \\ \hline
+\textbf{Test Steps} & 1. Expand the case. \newline 2. Use the Status dropdown on one letter to pick a new status. \newline 3. Refresh. \\ \hline
+\textbf{Test Data} & Any status \\ \hline
+\textbf{Expected Result} & The new status is saved and still shown after refresh. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{DOC-003: Edit a case's documents}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Docs \\ \hline
+\textbf{Role} & Department User (CMOD) \\ \hline
+\textbf{Pre-condition} & A CMOD case exists. \\ \hline
+\textbf{Test Steps} & 1. Click the Edit icon on the case row. \newline 2. Change the recipient and the Memo subject. \newline 3. Save. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & Recipient changes on both Notice and Memo. Only the Memo's subject changes; the Notice subject stays the same. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{DOC-004: Delete one letter}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Docs \\ \hline
+\textbf{Role} & Department User (CMOD) \\ \hline
+\textbf{Pre-condition} & A CMOD case with a Notice and Memo exists. \\ \hline
+\textbf{Test Steps} & 1. Expand the case. \newline 2. Click Delete on the Memo. \newline 3. Confirm. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & Only the Memo is removed. The Notice and the case's domains remain. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{DOC-005: Export documents to Excel}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Docs \\ \hline
+\textbf{Role} & Department User (CMOD) \\ \hline
+\textbf{Pre-condition} & Documents exist. \\ \hline
+\textbf{Test Steps} & 1. On Docs, choose the export scope. \newline 2. Click Export. \newline 3. Open the file. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & An Excel file downloads in the same layout as the old 'Masterlist Blocking CMOD' spreadsheet, containing only your department's records. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{DOC-006: CRD user uses per-domain status, not workflow status}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Docs \\ \hline
+\textbf{Role} & Department User (CRD) \\ \hline
+\textbf{Pre-condition} & Logged in as CRD user. \\ \hline
+\textbf{Test Steps} & 1. Click 'Docs' then 'Add Document'. \newline 2. Look at the status fields offered. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & The form asks for a domain status (Requested / Blocked / etc.), not the CMOD workflow status. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsection{Scanning \& Results}
+\subsubsection*{SCN-001: Scan all domains}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Scanning \& Results \\ \hline
+\textbf{Role} & Department User (any) \\ \hline
+\textbf{Pre-condition} & Watchlist has domains; at least one DNS server is enabled. \\ \hline
+\textbf{Test Steps} & 1. Click 'Scan All' at the top. \newline 2. Watch the progress. \newline 3. When finished, click 'Results'. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & A live progress indicator shows the scan running. Once done, Results lists every domain with a Compliant or Violation result per DNS server, with the scan time. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{SCN-002: Scan only selected domains}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Scanning \& Results \\ \hline
+\textbf{Role} & Department User (any) \\ \hline
+\textbf{Pre-condition} & Watchlist has domains. \\ \hline
+\textbf{Test Steps} & 1. Click 'Scan Selected'. \newline 2. Tick 2 domains. \newline 3. Start the scan. \newline 4. Wait for the Scan Results page. \\ \hline
+\textbf{Test Data} & uat-test-01.com, uat-test-02.com \\ \hline
+\textbf{Expected Result} & Only the 2 chosen domains are scanned. The Scan Results page highlights any newly violating or resurfaced domains. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{SCN-003: Read the result of one domain per ISP}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Scanning \& Results \\ \hline
+\textbf{Role} & Department User (any) \\ \hline
+\textbf{Pre-condition} & A scan has completed. \\ \hline
+\textbf{Test Steps} & 1. Open 'Results'. \newline 2. Expand a domain row. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & One line per DNS server shows: Compliant (did not resolve / redirected to block page) or Violation (resolved to an IP address). Status is shown in text, not only by colour. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{SCN-004: Take a screenshot as evidence of a violation}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Scanning \& Results \\ \hline
+\textbf{Role} & Department User (any) \\ \hline
+\textbf{Pre-condition} & A domain shows a Violation on at least one DNS server. \\ \hline
+\textbf{Test Steps} & 1. On Results, expand the violating domain. \newline 2. Click the camera/screenshot icon on the violating server. \newline 3. Wait until it finishes. \newline 4. Click 'View screenshot'. \\ \hline
+\textbf{Test Data} & Any violating domain \\ \hline
+\textbf{Expected Result} & A screenshot of the website opens, framed with the date/time and the ISP + DNS server name as evidence. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{SCN-005: Take screenshots for all violations at once}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Scanning \& Results \\ \hline
+\textbf{Role} & Department User (any) \\ \hline
+\textbf{Pre-condition} & Several violations exist. \\ \hline
+\textbf{Test Steps} & 1. On Results, click 'Take screenshots for all violating\ldots{}'. \newline 2. Wait until finished. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & Screenshots are captured for every violating result and each can be viewed. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{SCN-006: Block-page redirect counts as compliant}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Scanning \& Results \\ \hline
+\textbf{Role} & Department User (any) \\ \hline
+\textbf{Pre-condition} & The ISP's block-page IP has been configured by the system administrator. \\ \hline
+\textbf{Test Steps} & 1. Scan a domain that the ISP redirects to its block page. \newline 2. Check Results. \\ \hline
+\textbf{Test Data} & A domain known to be blocked via redirect \\ \hline
+\textbf{Expected Result} & The result shows Compliant, not Violation. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsection{Domain Lookup}
+\subsubsection*{DOM-001: Search a domain and view its details}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Domain Lookup \\ \hline
+\textbf{Role} & Department User (any) \\ \hline
+\textbf{Pre-condition} & Domain has scan history. \\ \hline
+\textbf{Test Steps} & 1. Open the domain search page. \newline 2. Type the domain name and select it. \newline 3. Look at the Overview tab. \\ \hline
+\textbf{Test Data} & uat-test-01.com \\ \hline
+\textbf{Expected Result} & The domain page shows registrar/creation/expiry info, hosting (IP owner), subdomains, and current results per DNS server. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{DOM-002: View domain history}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Domain Lookup \\ \hline
+\textbf{Role} & Department User (any) \\ \hline
+\textbf{Pre-condition} & Domain has been scanned more than once. \\ \hline
+\textbf{Test Steps} & 1. On the domain page, click the 'History' tab. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & A list/heatmap of past scans per DNS server with dates and results, including links to screenshots where taken. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{DOM-003: Cannot view another department's domain}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Domain Lookup \\ \hline
+\textbf{Role} & Department User (any) \\ \hline
+\textbf{Pre-condition} & A domain exists only in the other department's Watchlist. \\ \hline
+\textbf{Test Steps} & 1. Search for that domain on the domain page. \\ \hline
+\textbf{Test Data} & Domain from other department \\ \hline
+\textbf{Expected Result} & No data from the other department is shown (page reports not found / no data). \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{DOM-004: Refresh domain information}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Domain Lookup \\ \hline
+\textbf{Role} & Department User (any) \\ \hline
+\textbf{Pre-condition} & On a domain's Overview tab. \\ \hline
+\textbf{Test Steps} & 1. Click the refresh button on the domain information panel. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & Registrar and hosting information reloads and shows the latest data. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsection{Notifications}
+\subsubsection*{NTF-001: Get notified when a due date is reached}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Notifications \\ \hline
+\textbf{Role} & Department User (any) \\ \hline
+\textbf{Pre-condition} & A domain was added with a very short Time to Block (e.g. 2 minutes preset). \\ \hline
+\textbf{Test Steps} & 1. Wait for the due time to pass. \newline 2. Look at the bell icon at the top. \newline 3. Click it and click the notification. \\ \hline
+\textbf{Test Data} & Time to Block: shortest preset \\ \hline
+\textbf{Expected Result} & The bell shows an unread count. The notification names the domain and opens its History tab. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{NTF-002: Get notified when a blocked domain comes back}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Notifications \\ \hline
+\textbf{Role} & Department User (any) \\ \hline
+\textbf{Pre-condition} & A domain was Compliant on the previous scan and now resolves again. \\ \hline
+\textbf{Test Steps} & 1. Run a scan. \newline 2. Check the bell icon and the 'Resurfaced' count on Overview. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & A 'resurfaced' notification appears and the Overview 'Resurfaced' count goes up. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{NTF-003: Dismiss a notification}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Notifications \\ \hline
+\textbf{Role} & Department User (any) \\ \hline
+\textbf{Pre-condition} & At least one notification exists. \\ \hline
+\textbf{Test Steps} & 1. Open the bell. \newline 2. Click dismiss on one notification. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & That notification disappears and the unread count goes down. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsection{DNS Servers}
+\subsubsection*{DNS-001: View DNS servers}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & DNS Servers \\ \hline
+\textbf{Role} & Department User (any) \\ \hline
+\textbf{Pre-condition} & Logged in as a department user. \\ \hline
+\textbf{Test Steps} & 1. Click 'DNS Servers'. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & One card per DNS server showing ISP, protocol, address, status and 30-day uptime. There are no Add/Edit/Delete buttons for a normal user. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{DNS-002: Add and test a new DNS server}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & DNS Servers \\ \hline
+\textbf{Role} & Department Admin \\ \hline
+\textbf{Pre-condition} & Logged in as Department Admin. \\ \hline
+\textbf{Test Steps} & 1. Click 'DNS Servers' then 'Add Server'. \newline 2. Enter ISP, name, address and protocol. \newline 3. Click Test. \newline 4. Save. \\ \hline
+\textbf{Test Data} & ISP: UAT ISP \newline Address: 1.1.1.1 \newline Protocol: UDP \\ \hline
+\textbf{Expected Result} & Test shows success with an IP and response time. After saving, a new card appears. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{DNS-003: Disable and re-enable a DNS server}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & DNS Servers \\ \hline
+\textbf{Role} & Department Admin \\ \hline
+\textbf{Pre-condition} & The UAT server exists. \\ \hline
+\textbf{Test Steps} & 1. Switch the server's toggle off. \newline 2. Run Scan All. \newline 3. Switch it back on. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & When disabled, the card shows 'Disabled' and the server is skipped in scans. Its past results remain. Re-enabling returns it to 'Active'. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{DNS-004: Edit and delete a DNS server}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & DNS Servers \\ \hline
+\textbf{Role} & Department Admin \\ \hline
+\textbf{Pre-condition} & The UAT server exists. \\ \hline
+\textbf{Test Steps} & 1. Click Edit on the UAT server, change its name, save. \newline 2. Click Delete and confirm. \\ \hline
+\textbf{Test Data} & New name: UAT ISP Edited \\ \hline
+\textbf{Expected Result} & Name updates on the card. After delete, the card is gone. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsection{Legal Citations}
+\subsubsection*{LEG-001: Verify the Act → Section → Category → Element → Sub-element mapping}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Legal Citations \\ \hline
+\textbf{Role} & Department User (any) \\ \hline
+\textbf{Pre-condition} & Catalogue has data. Tester has the official legal texts at hand. \\ \hline
+\textbf{Test Steps} & 1. Click 'Legal Citations'. \newline 2. For each Act listed, open each Section, then each Category, Element and Sub-element. \newline 3. Compare every level against the official legal text. \newline 4. Note any wrong, missing or misplaced entry (e.g. a Section under the wrong Act, an Element under the wrong Category, a Seksyen recorded as a Peraturan) in Remarks. \\ \hline
+\textbf{Test Data} & All Acts and enactments in the catalogue. \\ \hline
+\textbf{Expected Result} & Every Section belongs to the correct Act, and every Category, Element and Sub-element sits under the correct parent and matches the legal text. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{LEG-002: Add a new instrument and citation}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Legal Citations \\ \hline
+\textbf{Role} & Department Admin \\ \hline
+\textbf{Pre-condition} & Logged in as admin. \\ \hline
+\textbf{Test Steps} & 1. Click 'Add Instrument', enter the name, save. \newline 2. Inside it, add a citation (e.g. 'Seksyen 233'). \newline 3. Check the preview, save. \\ \hline
+\textbf{Test Data} & Instrument: UAT Test Act \\ \hline
+\textbf{Expected Result} & The new Act and section appear and can be picked as an offence in the Watchlist. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsection{Admin - Users}
+\subsubsection*{ADU-001: Department Admin creates a user in own department only}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Admin - Users \\ \hline
+\textbf{Role} & Department Admin \\ \hline
+\textbf{Pre-condition} & Logged in as Department Admin. \\ \hline
+\textbf{Test Steps} & 1. Admin → Users → 'Create User'. \newline 2. Check whether a role or department choice is offered. \newline 3. Save a new user. \\ \hline
+\textbf{Test Data} & uat\_member2 \\ \hline
+\textbf{Expected Result} & No role/department choice is offered. The new user is a normal member of the admin's own department. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{ADU-002: Reset a user's password}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Admin - Users \\ \hline
+\textbf{Role} & Department Admin \\ \hline
+\textbf{Pre-condition} & A member user exists. \\ \hline
+\textbf{Test Steps} & 1. Admin → Users. \newline 2. Click reset password on the user. \newline 3. Copy the temporary password shown. \newline 4. Log in as that user with it. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & A temporary password is shown once. The user can log in with it and is forced to set a new password. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{ADU-003: Department Admin only sees own department's users}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Admin - Users \\ \hline
+\textbf{Role} & Department Admin \\ \hline
+\textbf{Pre-condition} & Users exist in several departments. \\ \hline
+\textbf{Test Steps} & 1. Admin → Users. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & Only users of the admin's own department are listed; no edit option for users. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsection{Admin - Master Data}
+\subsubsection*{ADM-001: Manage Agencies, Recipients and Requestors}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Admin - Master Data \\ \hline
+\textbf{Role} & Department Admin \\ \hline
+\textbf{Pre-condition} & Logged in as admin. \\ \hline
+\textbf{Test Steps} & 1. Admin → 'Agencies' → 'Add Agency', save. \newline 2. Repeat for 'Recipients' and 'Requestors'. \newline 3. Delete the test entries. \\ \hline
+\textbf{Test Data} & UAT Agency / UAT Recipient / UAT Requestor \\ \hline
+\textbf{Expected Result} & Each new entry appears in the matching dropdown in Watchlist/Docs, and disappears after deletion. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{ADM-002: Department Admin cannot open restricted settings}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Admin - Master Data \\ \hline
+\textbf{Role} & Department Admin \\ \hline
+\textbf{Pre-condition} & Logged in as Department Admin. \\ \hline
+\textbf{Test Steps} & 1. Click 'Admin'. \newline 2. Try the 'Departments' and 'Configs' (IP / Scan Settings) sections. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & Restricted sections show a notice that only the system administrator can manage them. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsection{Admin - Configs}
+\subsubsection*{ADC-001: Manage 'Time to Block' durations}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Admin - Configs \\ \hline
+\textbf{Role} & Department Admin \\ \hline
+\textbf{Pre-condition} & Logged in as admin. \\ \hline
+\textbf{Test Steps} & 1. Admin → Configs → Time-to-Block durations. \newline 2. Add '2 minutes'. \newline 3. Check the Time to Block dropdown in Watchlist. \newline 4. Delete it. \\ \hline
+\textbf{Test Data} & Label: 2 minutes / 2 \\ \hline
+\textbf{Expected Result} & The new option appears in the Watchlist dropdown and disappears after deletion. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\clearpage
+\section{Test Summary}
+\begin{longtable}{p{0.335\linewidth}p{0.140\linewidth}p{0.140\linewidth}p{0.196\linewidth}p{0.140\linewidth}}
+\hline
+\textbf{Module} & \textbf{Total} & \textbf{Pass} & \textbf{Conditional Pass} & \textbf{Fail} \\ \hline
+\endhead
+Login \& Account & 5 & & & \\ \hline
+Overview & 3 & & & \\ \hline
+Watchlist & 8 & & & \\ \hline
+Cases & 3 & & & \\ \hline
+Docs & 6 & & & \\ \hline
+Scanning \& Results & 6 & & & \\ \hline
+Domain Lookup & 4 & & & \\ \hline
+Notifications & 3 & & & \\ \hline
+DNS Servers & 4 & & & \\ \hline
+Legal Citations & 2 & & & \\ \hline
+Admin - Users & 3 & & & \\ \hline
+Admin - Master Data & 2 & & & \\ \hline
+Admin - Configs & 1 & & & \\ \hline
+\textbf{Total} & \textbf{50} & & & \\ \hline
+\end{longtable}
+
+\section{Sign-off}
+\begin{longtable}{p{0.248\linewidth}p{0.289\linewidth}p{0.248\linewidth}p{0.165\linewidth}}
+\hline
+\textbf{Role} & \textbf{Name} & \textbf{Signature} & \textbf{Date} \\ \hline
+\endhead
+Prepared by & & & \\[1cm] \hline
+Tested by & & & \\[1cm] \hline
+Reviewed by & & & \\[1cm] \hline
+Approved by & & & \\[1cm] \hline
+\end{longtable}
+
+\end{document}

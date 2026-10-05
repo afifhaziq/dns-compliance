@@ -42,4 +42,6 @@ Blocking Full List_1.xlsx
 Blocking Full List_1.xlsx:Zone.Identifier
 Masterlist Blocking CMOD.xlsx
 Masterlist Blocking CMOD.xlsx:Zone.Identifier
+data/*.xlsx
+~$*.docx
 ssl/*
