@@ -41,12 +41,13 @@ export function AllISPExport() {
       />
       <Button
         variant="outline"
+        size="icon"
         onClick={handleExport}
         disabled={exporting || incompleteCustom}
-        title="Summary, a domain × ISP matrix, and one sheet per ISP"
+        aria-label={exporting ? 'Exporting…' : 'Export not-blocked domains for all ISPs'}
+        title={exporting ? 'Exporting…' : 'Export not-blocked domains for all ISPs (Summary, Matrix, one sheet per ISP)'}
       >
         <DownloadIcon size={16} />
-        {exporting ? 'Exporting…' : 'Export not blocked (all ISPs)'}
       </Button>
     </div>
   )
