@@ -213,7 +213,7 @@ function ConfidenceBadge({ confidence }: { confidence: 'OK' | 'NEEDS_REVIEW' }) 
 function parseInstrumentTitle(raw: string) {
   let title = raw.trim()
   let number = ''
-  const n = title.match(/\s*[(\[]Akta (\d+)[)\]]\s*$/)
+  const n = title.match(/\s*[([]Akta (\d+)[)\]]\s*$/)
   if (n) { number = n[1]; title = title.slice(0, n.index).trim() }
   const y = title.match(/\b(\d{4})\s*$/)
   return { title, number, year: y ? Number(y[1]) : undefined }

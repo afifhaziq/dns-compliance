@@ -31,7 +31,7 @@ export type DnsServerFilterOption = { value: string; label: string }
 // tables. Each caller applies the resulting filter values to its own query
 // (client-side array filtering vs. a server-side fetch param) — this only
 // builds the field config, it doesn't know or care how filtering happens.
-export function buildScanFilterFields(dnsServerOptions: DnsServerFilterOption[]): FilterFieldConfig<string>[] {
+function buildScanFilterFields(dnsServerOptions: DnsServerFilterOption[]): FilterFieldConfig<string>[] {
   const fields: FilterFieldConfig<string>[] = [STATUS_FIELD]
   if (dnsServerOptions.length > 1) {
     fields.push({

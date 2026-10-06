@@ -15,6 +15,10 @@ export default defineConfig([
     'src/components/animate-ui',
     'src/components/motion',
     'src/components/charts',
+    'src/components/unlumen-ui',
+    // animate-ui registry dependencies, installed alongside its components.
+    'src/hooks/use-controlled-state.tsx',
+    'src/hooks/use-is-in-view.tsx',
   ]),
   {
     files: ['**/*.{ts,tsx}'],
@@ -26,6 +30,15 @@ export default defineConfig([
     ],
     languageOptions: {
       globals: globals.browser,
+    },
+    rules: {
+      // `_`-prefixed params/vars are deliberately unused (e.g. braille-loader's
+      // shared frame-renderer signature).
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      // ponytail: warn, not error — flags every fetch-in-effect and
+      // reset-form-on-open effect (~40 sites). They work; moving them to
+      // key-based remounts / a query lib is a refactor, not a lint fix.
+      'react-hooks/set-state-in-effect': 'warn',
     },
   },
   {

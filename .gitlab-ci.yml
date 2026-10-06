@@ -122,7 +122,9 @@ gosec:
   script:
     # Pinned in tools.mod/tools.sum: `go install pkg@version` needs sum.golang.org,
     # which the runner can't reach; checksums committed here need no lookup.
-    - go tool -modfile=tools.mod gosec -exclude-generated -fmt=json -out=gosec-report.json ./...
+    # GOPATH/GOCACHE live inside the project dir (for caching), so `./...` would
+    # otherwise scan every downloaded module too.
+    - go tool -modfile=tools.mod gosec -exclude-generated -exclude-dir=.go -exclude-dir=.gocache -fmt=json -out=gosec-report.json ./...
   artifacts:
     when: always
     paths:

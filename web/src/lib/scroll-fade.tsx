@@ -37,6 +37,7 @@ export interface UseScrollEdgesOptions {
   axis?: 'vertical' | 'horizontal' | 'both'
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- hook and its cue component belong together
 export function useScrollEdges(
   ref: RefObject<HTMLElement | null>,
   { enabled = true, axis = 'vertical' }: UseScrollEdgesOptions = {}

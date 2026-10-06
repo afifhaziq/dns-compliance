@@ -976,7 +976,7 @@ export const VARIANT_CONFIGS: Record<string, VariantConfig> = {
           const isLeft = pc < centerX;
           const isTop = row < centerY;
 
-          let quadrantIndex = 0;
+          let quadrantIndex: number;
           if (isTop && isLeft) quadrantIndex = 0;
           else if (isTop && !isLeft) quadrantIndex = 1;
           else if (!isTop && !isLeft) quadrantIndex = 2;

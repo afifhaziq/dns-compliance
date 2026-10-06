@@ -5,6 +5,7 @@ import { periodRange } from '@/lib/period'
 import { fetchISPLogos } from '@/api/isp-logos'
 import { ISPLogoChip } from '@/components/isp-logo-chip'
 import type { ISPStats, ISPTiming, ScanResult } from '@/api/types'
+import { getISPNames } from '@/lib/isp-names'
 import { AnimateIcon } from '@/components/animate-ui/icons/icon'
 import { ChevronRightIcon } from '@/components/animate-ui/icons/chevron-right'
 import { Gauge } from '@/components/charts/gauge'
@@ -18,10 +19,6 @@ type ISPCardData = {
   pct: number
   avgLatency: number | null
   unblockedThisWeek: number | null
-}
-
-export function getISPNames(results: ScanResult[]): string[] {
-  return Array.from(new Set(results.map(r => r.dns_server.isp))).sort()
 }
 
 async function loadISPCard(isp: string): Promise<ISPCardData> {
