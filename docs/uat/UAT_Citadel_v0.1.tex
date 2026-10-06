@@ -240,6 +240,19 @@ All Roles & Test once with each of the roles above. \\ \hline
 \textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
 \textbf{Remarks} & \newline \\ \hline
 \end{longtable}
+\subsubsection*{OVR-007: Export the blocking register}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Overview \\ \hline
+\textbf{Role} & All Roles \\ \hline
+\textbf{Pre-condition} & Blocked domains with a dated Notice letter exist from 2022 onward. \\ \hline
+\textbf{Test Steps} & 1. On Overview, open the 'Blocking register' tab. \newline 2. Click the Export (download) icon to the right of the A / B / C tabs. \newline 3. Open the downloaded Excel file. \newline 4. Compare the totals with the A, B and C views on the page. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & The file is named 'Jumlah Sekatan Laman Sesawang DDMMYYYY.xlsx' and follows the layout of the 'Jumlah Sekatan Laman Sesawang' workbook. Sheet 'A. Jumlah Sekatan MCMC' lists MCMC blocks by offence for all years, then one section per year (newest first). Sheet 'B. Jumlah Sekatan Agensi' does the same for other agencies by agency and offence. Sheet 'C. Perbandingan' compares MCMC vs Agensi Lain by year, then every agency and offence by year. Each section has Jumlah Sekatan, Peratusan and a Jumlah Keseluruhan row, and the title shows today's date ('Setakat ...'). The C sheet's totals match the page's C · Comparison view. A department user's file only counts their own department's blocks. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
 \subsection{Watchlist}
 \subsubsection*{WL-001: Add a new domain with case details}
 \begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
