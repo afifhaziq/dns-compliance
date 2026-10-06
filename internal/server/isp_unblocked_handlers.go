@@ -59,6 +59,19 @@ func ispScope(w http.ResponseWriter, r *http.Request) (isp string, deptID *uint,
 	return isp, deptID, true
 }
 
+// parsePeriod reads since/until (RFC3339), defaulting to the last 7 days.
+func parsePeriod(r *http.Request) (since, until time.Time) {
+	until = time.Now()
+	since = until.AddDate(0, 0, -7)
+	if t, err := time.Parse(time.RFC3339, r.URL.Query().Get("since")); err == nil {
+		since = t
+	}
+	if t, err := time.Parse(time.RFC3339, r.URL.Query().Get("until")); err == nil {
+		until = t
+	}
+	return since, until
+}
+
 // pageParams reads page/page_size (default 1/50, capped like the other
 // paged endpoints) and returns the [start, end) slice bounds for total rows.
 func pageParams(r *http.Request, total int) (start, end int) {
@@ -81,14 +94,7 @@ func (h *Handlers) ispUnblockedRows(w http.ResponseWriter, r *http.Request) (str
 	if !ok {
 		return "", nil, nil, false
 	}
-	until := time.Now()
-	since := until.AddDate(0, 0, -7)
-	if t, err := time.Parse(time.RFC3339, r.URL.Query().Get("since")); err == nil {
-		since = t
-	}
-	if t, err := time.Parse(time.RFC3339, r.URL.Query().Get("until")); err == nil {
-		until = t
-	}
+	since, until := parsePeriod(r)
 	rows, err := h.store.ISPUnblocked(r.Context(), isp, since, until, deptID)
 	if err != nil {
 		writeInternalError(w, err)
@@ -275,6 +281,71 @@ func (h *Handlers) ExportISPUnblocked(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="unblocked-%s-%s.xlsx"`, safe, now.UTC().Format("2006-01-02")))
 	if err := blockexport.WriteISPUnblockedWorkbook(out, w); err != nil {
+		writeInternalError(w, err)
+	}
+}
+
+// ExportAllISPUnblocked — GET /api/unblocked/export?since=&until= — every
+// ISP's unblocked domains in one workbook: Summary, Matrix, then one sheet
+// per ISP in the per-ISP export's layout. Same scoping as the per-ISP
+// routes. Runs ISPUnblocked twice per ISP (period + the same-length
+// period before, for the Summary's change column).
+func (h *Handlers) ExportAllISPUnblocked(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	var deptID *uint
+	if !user.IsAdmin {
+		if user.DepartmentID == nil {
+			writeError(w, http.StatusForbidden, "user has no department")
+			return
+		}
+		deptID = user.DepartmentID
+	}
+	since, until := parsePeriod(r)
+	prevUntil := since.Add(-time.Nanosecond)
+	prevSince := prevUntil.Add(-until.Sub(since))
+
+	servers, err := h.store.ListDNSServers(r.Context())
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	serverCount := map[string]int{}
+	for _, s := range servers {
+		serverCount[s.ISP]++
+	}
+	isps := make([]string, 0, len(serverCount))
+	for isp := range serverCount {
+		isps = append(isps, isp)
+	}
+	sort.Strings(isps)
+
+	now := time.Now()
+	out := make([]blockexport.ISPExport, 0, len(isps))
+	for _, isp := range isps {
+		rows, err := h.store.ISPUnblocked(r.Context(), isp, since, until, deptID)
+		if err != nil {
+			writeInternalError(w, err)
+			return
+		}
+		prev, err := h.store.ISPUnblocked(r.Context(), isp, prevSince, prevUntil, deptID)
+		if err != nil {
+			writeInternalError(w, err)
+			return
+		}
+		e := blockexport.ISPExport{ISP: isp, ServerCount: serverCount[isp], PreviousCount: len(groupUnblocked(prev, now))}
+		for _, row := range rows {
+			e.Rows = append(e.Rows, blockexport.ISPUnblockedRow{ISP: isp, Row: row, DaysOpen: daysOpen(row.DueDate, row.NoticeDate, now)})
+		}
+		out = append(out, e)
+	}
+
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="unblocked-all-isps-%s.xlsx"`, now.UTC().Format("2006-01-02")))
+	if err := blockexport.WriteAllISPUnblockedWorkbook(out, since, until, w); err != nil {
 		writeInternalError(w, err)
 	}
 }

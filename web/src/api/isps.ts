@@ -50,3 +50,8 @@ export async function fetchISPResurfaced(isp: string, page: number, pageSize: nu
   const data = await api.get<ResurfacedPage>(`/isps/${encodeURIComponent(isp)}/resurfaced?page=${page}&page_size=${pageSize}`)
   return { items: data.items ?? [], total: data.total }
 }
+
+// Every ISP in one workbook: Summary, Matrix, then one sheet per ISP.
+export function exportAllISPUnblocked(since: Date, until: Date): Promise<BlobDownload> {
+  return api.getBlob(`/unblocked/export?${unblockedParams({ since, until })}`)
+}

@@ -285,3 +285,32 @@ func TestExportCaseLetters_OmittedIDsExportsEverythingInScope(t *testing.T) {
 		t.Fatalf("got %d data rows, want 2", len(rows)-1)
 	}
 }
+
+func TestExportAllISPUnblocked_OneSheetPerISP(t *testing.T) {
+	store := &fullMockStore{dnsServers: []db.DNSServer{
+		{ID: 1, ISP: "TM"}, {ID: 2, ISP: "Google"}, {ID: 3, ISP: "Google"},
+	}}
+	cookie := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/unblocked/export", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	f, err := excelize.OpenReader(bytes.NewReader(w.Body.Bytes()))
+	if err != nil {
+		t.Fatalf("OpenReader: %v", err)
+	}
+	defer f.Close()
+	if got := f.GetSheetList(); len(got) != 4 || got[0] != "Summary" || got[1] != "Matrix" || got[2] != "Google" || got[3] != "TM" {
+		t.Fatalf("unexpected sheets: %q", got)
+	}
+	summary, _ := f.GetRows("Summary")
+	if g := summary[4]; g[0] != "Google" || g[1] != "2" {
+		t.Fatalf("expected Google with 2 servers, got %q", g)
+	}
+}

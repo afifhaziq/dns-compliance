@@ -102,6 +102,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			r.Get("/isps/{isp}/timing", h.ISPTiming)
 			r.Get("/isps/{isp}/unblocked", h.ISPUnblocked)
 			r.Get("/isps/{isp}/resurfaced", h.ISPResurfaced)
+			r.Get("/unblocked/export", h.ExportAllISPUnblocked)
 			r.Get("/isps/{isp}/unblocked/export", h.ExportISPUnblocked)
 			r.Get("/trend", h.NationalTrend)
 			r.Get("/resurfaced", h.ResurfacedDomains)

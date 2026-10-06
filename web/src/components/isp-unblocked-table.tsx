@@ -4,7 +4,7 @@ import { exportISPUnblocked, fetchISPUnblocked, type UnblockedQuery } from '@/ap
 import type { UnblockedDomain } from '@/api/types'
 import { downloadBlob } from '@/lib/download'
 import { Table, TableBody, TableRow, TableCell, TableHead, TableHeader } from '@/components/ui/table'
-import { ToggleGroup, ToggleGroupItem } from '@/components/animate-ui/components/radix/toggle-group'
+import { PeriodPicker } from '@/components/period-picker'
 import { DownloadIcon } from '@/components/animate-ui/icons/download'
 import { ChevronRightIcon } from '@/components/animate-ui/icons/chevron-right'
 import { Button } from '@/components/ui/button'
@@ -113,24 +113,7 @@ export function ISPUnblockedTable({
   return (
     <div>
       <div className="flex flex-wrap items-center gap-3 mb-3">
-        <ToggleGroup
-          type="single"
-          value={period}
-          onValueChange={v => { if (v) onPeriodChange(v as Period, from, to) }}
-          variant="outline"
-          aria-label="Period"
-        >
-          <ToggleGroupItem value="week">This week</ToggleGroupItem>
-          <ToggleGroupItem value="last-week">Last week</ToggleGroupItem>
-          <ToggleGroupItem value="custom">Custom</ToggleGroupItem>
-        </ToggleGroup>
-        {period === 'custom' && (
-          <div className="flex items-center gap-2">
-            <Input type="date" aria-label="From" value={from ?? ''} max={to} onChange={e => onPeriodChange('custom', e.target.value, to)} className="w-auto" />
-            <span className="dash-label mb-0">to</span>
-            <Input type="date" aria-label="To" value={to ?? ''} min={from} onChange={e => onPeriodChange('custom', from, e.target.value)} className="w-auto" />
-          </div>
-        )}
+        <PeriodPicker period={period} from={from} to={to} onChange={onPeriodChange} />
         <Input
           type="search"
           placeholder="Search domain or reference no."

@@ -14,6 +14,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/motion/ta
 import { BlockingRegister } from '@/components/blocking-stats'
 import { REGISTER_FILTER_KEYS, type RegisterFilterKey } from '@/api/blocking-stats'
 import { getISPNames, ISPBentoGrid, ISPBentoSkeleton } from '@/components/isp-bento-grid'
+import { AllISPExport } from '@/components/all-isp-export'
 
 export type OverviewSearch = {
   tab?: 'isp' | 'register'
@@ -180,7 +181,10 @@ function DashboardPage() {
               </div>
             )}
             <div className="dash-section mt-4">
-              <p className="section-title mb-3">ISP Compliance Status</p>
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <p className="section-title mb-0">ISP Compliance Status</p>
+                {!loading && hasResults && <AllISPExport />}
+              </div>
               {loading ? (
                 <ISPBentoSkeleton count={4} />
               ) : !hasResults ? (
