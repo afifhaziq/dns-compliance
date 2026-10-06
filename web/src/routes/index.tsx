@@ -126,8 +126,8 @@ function DashboardPage() {
 
       <Tabs value={tab} onValueChange={v => navigate({ search: prev => ({ ...prev, tab: v as OverviewSearch['tab'] }), replace: true })} variant="underline">
         <TabsList>
-          <TabsTrigger value="isp">ISP compliance</TabsTrigger>
           <TabsTrigger value="register">Blocking register</TabsTrigger>
+          <TabsTrigger value="isp">ISP compliance</TabsTrigger>
         </TabsList>
         <TabsContent value="isp">
         {/* Scan metadata only describes this tab, not the blocking register. */}
