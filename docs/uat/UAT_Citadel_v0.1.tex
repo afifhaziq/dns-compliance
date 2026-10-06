@@ -170,7 +170,7 @@ All Roles & Test once with each of the roles above. \\ \hline
 \textbf{Pre-condition} & At least one scan has been completed. \\ \hline
 \textbf{Test Steps} & 1. Click 'Overview' in the navigation bar. \newline 2. Look at the summary numbers, the trend chart and the ISP tiles. \\ \hline
 \textbf{Test Data} & - \\ \hline
-\textbf{Expected Result} & The page shows total domains, compliant vs. violation counts, 'Resurfaced' count, a 30-day trend chart (when there are at least 2 days of data) and one tile per ISP, worst-compliance first. \\ \hline
+\textbf{Expected Result} & The page shows total domains, compliant vs. violation counts, 'Resurfaced' count, a compliance trend chart for the selected period (This week by default) and one tile per ISP, worst-compliance first. \\ \hline
 \textbf{Actual Result} & \newline \newline \\ \hline
 \textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
 \textbf{Remarks} & \newline \\ \hline
@@ -197,6 +197,45 @@ All Roles & Test once with each of the roles above. \\ \hline
 \textbf{Test Steps} & 1. Log in as a CRD user and note the numbers on Overview. \newline 2. Log out, log in as a CMOD user and note the numbers. \newline 3. Compare. \\ \hline
 \textbf{Test Data} & One CRD account, one CMOD account \\ \hline
 \textbf{Expected Result} & Each user sees counts only for their own department's domains. Neither sees the other's domains. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{OVR-004: Change the period of the compliance trend}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Overview \\ \hline
+\textbf{Role} & All Roles \\ \hline
+\textbf{Pre-condition} & Scans have been run on at least 2 days this week and last week. \\ \hline
+\textbf{Test Steps} & 1. On Overview, open the 'ISP compliance' tab. \newline 2. Next to 'Compliance Trend', click 'Last week', then 'This week'. \newline 3. Click 'Custom' and pick a From and To date. \\ \hline
+\textbf{Test Data} & Custom: any 7-day range with scans \\ \hline
+\textbf{Expected Result} & The trend chart redraws for each period. With Custom, the Export button stays disabled until both dates are picked. If the period has fewer than 2 days of scans, the chart is replaced by 'Not enough scans in this period to draw a trend.' \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{OVR-005: Export the ISP weekly report (all ISPs)}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Overview \\ \hline
+\textbf{Role} & All Roles \\ \hline
+\textbf{Pre-condition} & At least one domain still resolves (is not blocked) on some DNS server in the selected period. \\ \hline
+\textbf{Test Steps} & 1. On Overview, open the 'ISP compliance' tab. \newline 2. Next to 'Compliance Trend', pick 'This week'. \newline 3. Click the Export (download) icon beside the period buttons. \newline 4. Open the downloaded Excel file. \\ \hline
+\textbf{Test Data} & - \\ \hline
+\textbf{Expected Result} & The file is named isp\_weekly\_report-YYYY-MM-DD\_HHMM.xlsx (Malaysia time). Sheets: 'Summary' (one row per domain and DNS server that has not blocked it, with Domain, ISP, DNS Server, Scan Date, Notice Date, Due Date, Reference No.), 'DNS Servers' (name, ISP, address, protocol, enabled), then one sheet per ISP. Every sheet has a header row formatted as an Excel table with filter buttons. A department user's file only contains their own department's domains. \\ \hline
+\textbf{Actual Result} & \newline \newline \\ \hline
+\textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
+\textbf{Remarks} & \newline \\ \hline
+\end{longtable}
+\subsubsection*{OVR-006: Export one ISP's not-blocked domains}
+\begin{longtable}{p{0.22\linewidth}p{0.73\linewidth}}
+\hline
+\textbf{Module} & Overview \\ \hline
+\textbf{Role} & All Roles \\ \hline
+\textbf{Pre-condition} & The ISP has at least one domain not blocked in the selected period. \\ \hline
+\textbf{Test Steps} & 1. On Overview, click an ISP tile. \newline 2. On the ISP page, find 'Domains Not Blocked' and pick a period. \newline 3. Click 'Export .xlsx'. \newline 4. Open the downloaded Excel file. \\ \hline
+\textbf{Test Data} & Any ISP \\ \hline
+\textbf{Expected Result} & The file contains one row per domain and DNS server of that ISP only, for the selected period, with DNS server address, resolved IP, scan date, Notice/Due date, reference number, status, days open and screenshot link. It matches the domains listed on the page. \\ \hline
 \textbf{Actual Result} & \newline \newline \\ \hline
 \textbf{Status} & ☐ Pass \quad ☐ Conditional Pass \quad ☐ Fail \\ \hline
 \textbf{Remarks} & \newline \\ \hline
