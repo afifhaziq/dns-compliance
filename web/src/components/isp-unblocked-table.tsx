@@ -19,14 +19,13 @@ const fmtDateTime = (iso: string) => new Date(iso).toLocaleString(undefined, { d
 type SortKey = NonNullable<UnblockedQuery['sort']>
 
 export function ISPUnblockedTable({
-  isp, period, from, to, serverCount, resurfaced, onPeriodChange, onTotal,
+  isp, period, from, to, serverCount, onPeriodChange, onTotal,
 }: {
   isp: string
   period: Period
   from?: string
   to?: string
   serverCount: number
-  resurfaced: Set<string>
   onPeriodChange: (period: Period, from?: string, to?: string) => void
   onTotal: (total: number | null) => void
 }) {
@@ -212,7 +211,7 @@ export function ISPUnblockedTable({
                           <Link to="/domain/$url" params={{ url: d.url }} search={{ tab: 'overview' }} className="ip-value">
                             {d.url}
                           </Link>
-                          {resurfaced.has(d.url) && <span className="dash-label mb-0 label-violation">Resurfaced</span>}
+                          {d.resurfaced && <span className="dash-label mb-0 label-violation">Resurfaced</span>}
                         </div>
                       </TableCell>
                       <TableCell><span className="server-count">{d.servers.length} / {serverCount}</span></TableCell>

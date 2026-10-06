@@ -2369,3 +2369,46 @@ func TestISPUnblocked_LatestInWindowScopedAndSkipsUplifted(t *testing.T) {
 		t.Fatalf("expected owning department to see 1 row, got %+v", rows)
 	}
 }
+
+func TestISPResurfaced_OnlyThatISPsServers(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	a, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "ResurfISPA", Name: "A DNS", Address: "9.9.9.30:53", Protocol: "udp"})
+	b, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "ResurfISPB", Name: "B DNS", Address: "9.9.9.31:53", Protocol: "udp"})
+	dept, _ := s.CreateDepartment(ctx, "ResurfISPDept")
+	both, _ := s.AddURLToWatchlist(ctx, dept.ID, "flip-both.com")
+	onlyB, _ := s.AddURLToWatchlist(ctx, dept.ID, "flip-only-b.com")
+
+	run, _ := s.CreateScanRun(ctx, "manual")
+	t1 := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	for _, x := range []struct {
+		u   db.URL
+		srv uint
+	}{{both, a.ID}, {both, b.ID}, {onlyB, b.ID}} {
+		for _, r := range []db.ScanResult{{Compliant: true, ScannedAt: t1}, {Compliant: false, ScannedAt: t2}} {
+			r.ScanRunID, r.URLID, r.URLValue, r.DNSServerID = run.ID, x.u.ID, x.u.URL, x.srv
+			if err := s.InsertResult(ctx, r); err != nil {
+				t.Fatalf("InsertResult: %v", err)
+			}
+		}
+	}
+
+	got, err := s.ISPResurfaced(ctx, "ResurfISPA", nil, nil)
+	if err != nil {
+		t.Fatalf("ISPResurfaced: %v", err)
+	}
+	if len(got) != 1 || got[0].URLValue != "flip-both.com" || len(got[0].AffectedServers) != 1 || got[0].AffectedServers[0].DNSServerID != a.ID {
+		t.Fatalf("expected only flip-both.com on A DNS, got %+v", got)
+	}
+	if got, _ := s.ISPResurfaced(ctx, "ResurfISPB", nil, nil); len(got) != 2 {
+		t.Fatalf("expected 2 domains for ISP B, got %+v", got)
+	}
+	if got, _ := s.ISPResurfaced(ctx, "ResurfISPB", nil, []string{"flip-only-b.com"}); len(got) != 1 || got[0].URLValue != "flip-only-b.com" {
+		t.Fatalf("expected the url filter to narrow to flip-only-b.com, got %+v", got)
+	}
+	if got, _ := s.ISPResurfaced(ctx, "ResurfISPB", nil, []string{}); len(got) != 0 {
+		t.Fatalf("expected an empty url filter to match nothing, got %+v", got)
+	}
+}

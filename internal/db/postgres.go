@@ -1406,10 +1406,18 @@ func (s *postgresStore) serverUptime(ctx context.Context, dnsServerID uint, sinc
 // per group, rather than a window function (ROW_NUMBER/LAG) — this codebase
 // has previously avoided those for SQLite-test-driver portability reasons
 // (see ispComplianceTiming).
-func (s *postgresStore) resurfacedDomains(ctx context.Context, departmentID *uint) ([]ResurfacedDomain, error) {
+// resurfacedDomains: isp "" = every ISP; otherwise only that ISP's servers
+// (filtered in SQL, so AffectedServers never lists another ISP's). urls nil
+// = every domain; otherwise only those url_values, which lets the latest-
+// scan aggregate use the (url_value, dns_server_id, scanned_at) index
+// instead of scanning all of scan_results.
+func (s *postgresStore) resurfacedDomains(ctx context.Context, departmentID *uint, isp string, urls []string) ([]ResurfacedDomain, error) {
 	latest := s.db.Model(&ScanResult{}).
 		Select("url_value, dns_server_id, MAX(scanned_at) as max_scanned_at").
 		Group("url_value, dns_server_id")
+	if urls != nil {
+		latest = latest.Where("url_value IN ?", urls)
+	}
 
 	previous := s.db.Table("scan_results").
 		Select("scan_results.url_value, scan_results.dns_server_id, MAX(scan_results.scanned_at) as prev_scanned_at").
@@ -1439,6 +1447,9 @@ func (s *postgresStore) resurfacedDomains(ctx context.Context, departmentID *uin
 		Where("latest_sr.compliant = false AND prev_sr.compliant = true")
 	if departmentID != nil {
 		q = q.Joins("JOIN department_urls ON department_urls.url_id = latest_sr.url_id AND department_urls.department_id = ? AND department_urls.enabled = true", *departmentID)
+	}
+	if isp != "" {
+		q = q.Where("dns_servers.isp = ?", isp)
 	}
 
 	var rows []row
@@ -1473,11 +1484,18 @@ func (s *postgresStore) resurfacedDomains(ctx context.Context, departmentID *uin
 }
 
 func (s *postgresStore) ResurfacedDomains(ctx context.Context) ([]ResurfacedDomain, error) {
-	return s.resurfacedDomains(ctx, nil)
+	return s.resurfacedDomains(ctx, nil, "", nil)
 }
 
 func (s *postgresStore) ResurfacedDomainsForDepartment(ctx context.Context, departmentID uint) ([]ResurfacedDomain, error) {
-	return s.resurfacedDomains(ctx, &departmentID)
+	return s.resurfacedDomains(ctx, &departmentID, "", nil)
+}
+
+func (s *postgresStore) ISPResurfaced(ctx context.Context, isp string, departmentID *uint, urls []string) ([]ResurfacedDomain, error) {
+	if urls != nil && len(urls) == 0 {
+		return nil, nil
+	}
+	return s.resurfacedDomains(ctx, departmentID, isp, urls)
 }
 
 // urlDueDateSubquery resolves to a url's DueDate as of its most-recently-

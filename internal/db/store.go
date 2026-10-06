@@ -114,6 +114,10 @@ type ISPStatsStore interface {
 	// every department's watchlist (admin).
 	ISPUnblocked(ctx context.Context, isp string, since, until time.Time, departmentID *uint) ([]ISPUnblockedRow, error)
 	ResurfacedDomains(ctx context.Context) ([]ResurfacedDomain, error)
+	// ISPResurfaced is ResurfacedDomains narrowed to one ISP's servers;
+	// departmentID nil = unscoped (admin); urls nil = every domain, else
+	// only those url_values (cheap: index-backed).
+	ISPResurfaced(ctx context.Context, isp string, departmentID *uint, urls []string) ([]ResurfacedDomain, error)
 	ResurfacedDomainsForDepartment(ctx context.Context, departmentID uint) ([]ResurfacedDomain, error)
 	// SLAActiveURLs returns the normalized URL values of watched domains
 	// still under active SLA tracking: DueDate has passed, and at least one

@@ -404,7 +404,10 @@ export type UnblockedDomain = {
   days_open?: number // days since due_date, else since notice_date
   current_reference_number?: string
   last_scanned_at: string
+  resurfaced: boolean // flipped blocked→resolving in its latest scan on this ISP
   servers: ISPUnblockedServer[]
 }
 
 export type UnblockedPage = { items: UnblockedDomain[]; total: number }
+
+export type ResurfacedPage = { items: ResurfacedDomain[]; total: number }

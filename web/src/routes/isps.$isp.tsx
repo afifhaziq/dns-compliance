@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { Breadcrumbs } from '@/components/breadcrumbs'
 import { fetchISPStats, fetchISPTiming, fetchISPTrend, fetchISPUnblocked } from '@/api/isps'
 import { fetchISPLogos } from '@/api/isp-logos'
-import { fetchResurfacedDomains } from '@/api/results'
-import type { ISPStats, ISPTiming, ISPTrendStat, ResurfacedDomain } from '@/api/types'
+import type { ISPStats, ISPTiming, ISPTrendStat } from '@/api/types'
 import { Table, TableBody, TableRow, TableCell, TableHead, TableHeader } from '@/components/ui/table'
 import { ISPLogoChip } from '@/components/isp-logo-chip'
 import { ISPUnblockedTable } from '@/components/isp-unblocked-table'
+import { ISPResurfacedTable } from '@/components/isp-resurfaced-table'
 import { periodRange, previousRange, type Period } from '@/lib/period'
 import { LineChart } from '@/components/charts/line-chart'
 import { Line } from '@/components/charts/line'
@@ -35,7 +35,7 @@ function ISPDetailPage() {
   const [stats, setStats] = useState<ISPStats | null>(null)
   const [timing, setTiming] = useState<ISPTiming | null>(null)
   const [trend, setTrend] = useState<ISPTrendStat[]>([])
-  const [resurfaced, setResurfaced] = useState<ResurfacedDomain[]>([])
+  const [resurfacedTotal, setResurfacedTotal] = useState<number | null>(null)
   const [logoUrl, setLogoUrl] = useState<string | undefined>()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -46,16 +46,14 @@ function ISPDetailPage() {
     setLoading(true)
     try {
       setError(null)
-      const [statsData, trendData, timingData, resurfacedData] = await Promise.all([
+      const [statsData, trendData, timingData] = await Promise.all([
         fetchISPStats(isp),
         fetchISPTrend(isp, 30),
         fetchISPTiming(isp),
-        fetchResurfacedDomains(),
       ])
       setStats(statsData)
       setTrend(trendData)
       setTiming(timingData)
-      setResurfaced(resurfacedData)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load')
     } finally {
@@ -88,15 +86,6 @@ function ISPDetailPage() {
       replace: true,
     })
   }, [navigate])
-
-  // A domain rolls up multiple servers; only the ones matching this ISP matter here.
-  const resurfacedForThisISP = useMemo(() =>
-    resurfaced
-      .map(d => ({ ...d, affected_servers: d.affected_servers.filter(s => s.isp === isp) }))
-      .filter(d => d.affected_servers.length > 0),
-    [resurfaced, isp]
-  )
-  const resurfacedSet = useMemo(() => new Set(resurfacedForThisISP.map(d => d.url)), [resurfacedForThisISP])
 
   const trendChartData = useMemo(() =>
     trend.map(s => ({
@@ -171,7 +160,7 @@ function ISPDetailPage() {
               )}
               <div>
                 <dt className="dash-label">Resurfaced</dt>
-                <dd className="server-count mt-1" style={{ color: 'var(--ink)', fontSize: '1.125rem' }}>{loading ? '—' : resurfacedForThisISP.length}</dd>
+                <dd className="server-count mt-1" style={{ color: 'var(--ink)', fontSize: '1.125rem' }}>{resurfacedTotal ?? '—'}</dd>
               </div>
             </dl>
           </div>
@@ -217,7 +206,6 @@ function ISPDetailPage() {
               from={from}
               to={to}
               serverCount={servers.length}
-              resurfaced={resurfacedSet}
               onPeriodChange={setPeriod}
               onTotal={setUnblockedTotal}
             />
@@ -289,35 +277,12 @@ function ISPDetailPage() {
             )}
           </div>
 
-          {!loading && resurfacedForThisISP.length > 0 && (
-            <div className="dash-section mt-10">
-              <p className="section-title mb-1">Resurfaced Domains</p>
-              <p className="text-sm text-stone-muted mb-4">Blocked in an earlier scan, resolving again in the latest one.</p>
-              <Table className="server-table" aria-label={`Resurfaced domains on ${isp}`}>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead scope="col">Domain</TableHead>
-                    <TableHead scope="col">Servers</TableHead>
-                    <TableHead scope="col">Resurfaced</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {resurfacedForThisISP.map(d => {
-                    const latest = d.affected_servers.reduce((max, s) => s.resurfaced_at > max ? s.resurfaced_at : max, '')
-                    return (
-                      <TableRow key={d.url}>
-                        <TableCell>
-                          <Link to="/domain/$url" params={{ url: d.url }} search={{ tab: 'overview' }} className="ip-value">{d.url}</Link>
-                        </TableCell>
-                        <TableCell><span className="server-count">{d.affected_servers.map(s => s.dns_server_name).join(', ')}</span></TableCell>
-                        <TableCell><span className="server-count">{latest ? new Date(latest).toLocaleString() : '—'}</span></TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+          {/* Hidden once loaded empty; stays mounted otherwise so it can report its total. */}
+          <div className="dash-section mt-10" hidden={resurfacedTotal === 0}>
+            <p className="section-title mb-1">Resurfaced Domains</p>
+            <p className="text-sm text-stone-muted mb-4">Blocked in an earlier scan, resolving again in the latest one.</p>
+            <ISPResurfacedTable isp={isp} onTotal={setResurfacedTotal} />
+          </div>
         </>
       )}
     </div>

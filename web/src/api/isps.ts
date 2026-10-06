@@ -1,5 +1,5 @@
 import { api, type BlobDownload } from './client'
-import type { ISPStats, ISPTiming, ISPTrendStat, UnblockedPage } from './types'
+import type { ISPStats, ISPTiming, ISPTrendStat, ResurfacedPage, UnblockedPage } from './types'
 
 export async function fetchISPStats(isp: string): Promise<ISPStats> {
   return api.get<ISPStats>(`/isps/${encodeURIComponent(isp)}`)
@@ -43,4 +43,10 @@ export async function fetchISPUnblocked(isp: string, query: UnblockedQuery): Pro
 // Every row in scope, one per (domain, DNS server) — ignores paging.
 export function exportISPUnblocked(isp: string, since: Date, until: Date): Promise<BlobDownload> {
   return api.getBlob(`/isps/${encodeURIComponent(isp)}/unblocked/export?${unblockedParams({ since, until })}`)
+}
+
+// One ISP's resurfaced domains, newest flip first, paged server-side.
+export async function fetchISPResurfaced(isp: string, page: number, pageSize: number): Promise<ResurfacedPage> {
+  const data = await api.get<ResurfacedPage>(`/isps/${encodeURIComponent(isp)}/resurfaced?page=${page}&page_size=${pageSize}`)
+  return { items: data.items ?? [], total: data.total }
 }

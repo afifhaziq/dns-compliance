@@ -1107,6 +1107,9 @@ func (m *fullMockStore) ServerUptimeForDepartment(_ context.Context, _ uint, _, 
 func (m *fullMockStore) ResurfacedDomains(_ context.Context) ([]db.ResurfacedDomain, error) {
 	return nil, nil
 }
+func (m *fullMockStore) ISPResurfaced(_ context.Context, _ string, _ *uint, _ []string) ([]db.ResurfacedDomain, error) {
+	return nil, nil
+}
 func (m *fullMockStore) ResurfacedDomainsForDepartment(_ context.Context, _ uint) ([]db.ResurfacedDomain, error) {
 	return nil, nil
 }

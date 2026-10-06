@@ -27,6 +27,7 @@ type UnblockedDomain struct {
 	DaysOpen               *int                 `json:"days_open,omitempty"` // see daysOpen
 	CurrentReferenceNumber string               `json:"current_reference_number,omitempty"`
 	LastScannedAt          time.Time            `json:"last_scanned_at"`
+	Resurfaced             bool                 `json:"resurfaced"` // flipped blocked→resolving in its latest scan on one of this ISP's servers
 	Servers                []db.ISPUnblockedRow `json:"servers"`
 }
 
@@ -35,10 +36,9 @@ type unblockedResponse struct {
 	Total int               `json:"total"`
 }
 
-// ispUnblockedRows parses {isp} + since/until (RFC3339, default last 7
-// days) and runs the RBAC-scoped store query. ok=false means a response was
-// already written.
-func (h *Handlers) ispUnblockedRows(w http.ResponseWriter, r *http.Request) (string, []db.ISPUnblockedRow, bool) {
+// ispScope parses {isp} and the caller's RBAC scope (deptID nil = admin).
+// ok=false means a response was already written.
+func ispScope(w http.ResponseWriter, r *http.Request) (isp string, deptID *uint, ok bool) {
 	isp, err := url.PathUnescape(chi.URLParam(r, "isp"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid ISP")
@@ -49,13 +49,37 @@ func (h *Handlers) ispUnblockedRows(w http.ResponseWriter, r *http.Request) (str
 		writeError(w, http.StatusUnauthorized, "not authenticated")
 		return "", nil, false
 	}
-	var deptID *uint
 	if !user.IsAdmin {
 		if user.DepartmentID == nil {
 			writeError(w, http.StatusForbidden, "user has no department")
 			return "", nil, false
 		}
 		deptID = user.DepartmentID
+	}
+	return isp, deptID, true
+}
+
+// pageParams reads page/page_size (default 1/50, capped like the other
+// paged endpoints) and returns the [start, end) slice bounds for total rows.
+func pageParams(r *http.Request, total int) (start, end int) {
+	page, pageSize := 1, 50
+	if n, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && n > 0 {
+		page = n
+	}
+	if n, err := strconv.Atoi(r.URL.Query().Get("page_size")); err == nil && n > 0 && n <= maxDomainSummaryPageSize {
+		pageSize = n
+	}
+	start = min((page-1)*pageSize, total)
+	return start, min(start+pageSize, total)
+}
+
+// ispUnblockedRows parses {isp} + since/until (RFC3339, default last 7
+// days) and runs the RBAC-scoped store query. ok=false means a response was
+// already written.
+func (h *Handlers) ispUnblockedRows(w http.ResponseWriter, r *http.Request) (string, *uint, []db.ISPUnblockedRow, bool) {
+	isp, deptID, ok := ispScope(w, r)
+	if !ok {
+		return "", nil, nil, false
 	}
 	until := time.Now()
 	since := until.AddDate(0, 0, -7)
@@ -68,9 +92,9 @@ func (h *Handlers) ispUnblockedRows(w http.ResponseWriter, r *http.Request) (str
 	rows, err := h.store.ISPUnblocked(r.Context(), isp, since, until, deptID)
 	if err != nil {
 		writeInternalError(w, err)
-		return "", nil, false
+		return "", nil, nil, false
 	}
-	return isp, rows, true
+	return isp, deptID, rows, true
 }
 
 // daysOpen is whole days since the due date, or since the Notice date when
@@ -117,7 +141,7 @@ func groupUnblocked(rows []db.ISPUnblockedRow, now time.Time) []UnblockedDomain 
 // Grouped, filtered and paged in Go: the row count is bounded by one ISP's
 // violating domains in one period (low thousands), not scan history.
 func (h *Handlers) ISPUnblocked(w http.ResponseWriter, r *http.Request) {
-	_, rows, ok := h.ispUnblockedRows(w, r)
+	isp, deptID, rows, ok := h.ispUnblockedRows(w, r)
 	if !ok {
 		return
 	}
@@ -165,17 +189,55 @@ func (h *Handlers) ISPUnblocked(w http.ResponseWriter, r *http.Request) {
 		return less(i, j)
 	})
 
-	page, pageSize := 1, 50
-	if n, err := strconv.Atoi(qs.Get("page")); err == nil && n > 0 {
-		page = n
+	start, end := pageParams(r, len(items))
+	page := items[start:end]
+
+	// Resurfaced flag for this page only: the unfiltered resurfaced query
+	// scans all of scan_results (~2s on CRD-sized data).
+	urls := make([]string, len(page))
+	for i, d := range page {
+		urls[i] = d.URL
 	}
-	if n, err := strconv.Atoi(qs.Get("page_size")); err == nil && n > 0 && n <= maxDomainSummaryPageSize {
-		pageSize = n
+	resurfaced, err := h.store.ISPResurfaced(r.Context(), isp, deptID, urls)
+	if err != nil {
+		writeInternalError(w, err)
+		return
 	}
-	total := len(items)
-	start := min((page-1)*pageSize, total)
-	end := min(start+pageSize, total)
-	writeJSON(w, http.StatusOK, unblockedResponse{Items: items[start:end], Total: total})
+	isResurfaced := make(map[string]bool, len(resurfaced))
+	for _, d := range resurfaced {
+		isResurfaced[d.URLValue] = true
+	}
+	for i := range page {
+		page[i].Resurfaced = isResurfaced[page[i].URL]
+	}
+	writeJSON(w, http.StatusOK, unblockedResponse{Items: page, Total: len(items)})
+}
+
+// ISPResurfaced — GET /api/isps/{isp}/resurfaced?page=&page_size= — the
+// ISP page's Resurfaced table: domains whose latest scan on one of this
+// ISP's servers flipped blocked→resolving, newest flip first, paged.
+// /api/resurfaced stays unpaged for the Overview count and scan-results.
+func (h *Handlers) ISPResurfaced(w http.ResponseWriter, r *http.Request) {
+	isp, deptID, ok := ispScope(w, r)
+	if !ok {
+		return
+	}
+	domains, err := h.store.ISPResurfaced(r.Context(), isp, deptID, nil)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	sort.Slice(domains, func(i, j int) bool {
+		if !domains[i].ResurfacedAt.Equal(domains[j].ResurfacedAt) {
+			return domains[i].ResurfacedAt.After(domains[j].ResurfacedAt)
+		}
+		return domains[i].URLValue < domains[j].URLValue
+	})
+	start, end := pageParams(r, len(domains))
+	writeJSON(w, http.StatusOK, struct {
+		Items []db.ResurfacedDomain `json:"items"`
+		Total int                   `json:"total"`
+	}{domains[start:end], len(domains)})
 }
 
 // timeLess orders by t (desc or asc) with nil always last.
@@ -195,7 +257,7 @@ func timeLess(a, b *time.Time, desc bool) bool {
 // ExportISPUnblocked — GET /api/isps/{isp}/unblocked/export?since=&until=
 // — every row in scope, one per (domain, DNS server), unpaged.
 func (h *Handlers) ExportISPUnblocked(w http.ResponseWriter, r *http.Request) {
-	isp, rows, ok := h.ispUnblockedRows(w, r)
+	isp, _, rows, ok := h.ispUnblockedRows(w, r)
 	if !ok {
 		return
 	}
