@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/afif/dns-tracking/internal/db"
@@ -311,5 +312,31 @@ func TestExportAllISPUnblocked_OneSheetPerISP(t *testing.T) {
 	}
 	if srv, _ := f.GetRows("DNS Servers"); len(srv) != 4 {
 		t.Fatalf("expected 3 DNS server rows, got %q", srv)
+	}
+}
+
+func TestExportBlockingRegister_ABCSheets(t *testing.T) {
+	store := &fullMockStore{}
+	cookie := adminCookie(store)
+	r := setupRouter(store, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/blocking-stats/export", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if cd := w.Header().Get("Content-Disposition"); !strings.Contains(cd, "Jumlah Sekatan Laman Sesawang ") {
+		t.Fatalf("unexpected filename: %q", cd)
+	}
+	f, err := excelize.OpenReader(bytes.NewReader(w.Body.Bytes()))
+	if err != nil {
+		t.Fatalf("OpenReader: %v", err)
+	}
+	defer f.Close()
+	if got := f.GetSheetList(); len(got) != 3 {
+		t.Fatalf("unexpected sheets: %q", got)
 	}
 }

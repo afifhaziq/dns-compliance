@@ -24,9 +24,11 @@ import { Button } from '@/components/ui/button'
 import { ButtonGroup, ButtonGroupText } from '@/components/ui/button-group'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ChevronDownIcon } from 'lucide-react'
+import { DownloadIcon } from '@/components/animate-ui/icons/download'
+import { downloadBlob } from '@/lib/download'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { ChartTooltip, TooltipBox, TooltipContent } from '@/components/charts/tooltip'
-import { fetchBlockingStats, REGISTER_FILTER_KEYS, type BlockingStatRow, type RegisterFilterKey } from '../api/blocking-stats'
+import { exportBlockingRegister, fetchBlockingStats, REGISTER_FILTER_KEYS, type BlockingStatRow, type RegisterFilterKey } from '../api/blocking-stats'
 
 // Mirrors the source workbook's scope (2022 onward, MCMC vs everyone else).
 const FIRST_YEAR = 2022
@@ -35,16 +37,9 @@ const MCMC = 'MCMC'
 // anything else on an MCMC-owned case is stray/legacy data, not a sixth category.
 const MCMC_CATEGORIES = ['Lucah', 'Sumbang', 'Palsu', 'Jelik', 'Mengancam']
 const isMcmcCategory = (offence: string) => MCMC_CATEGORIES.some(c => c.toLowerCase() === offence.toLowerCase())
-// The workbook credits a block to the agency whose law the offence falls under,
-// not the one that handled it: MCMC's five categories are MCMC's whatever the
-// Agensi, and gambling MCMC handled is listed under PDRM. Applied once on load
-// so every preset and filter sees the same attribution.
-const OFFENCE_OWNER: Record<string, string> = { judi: 'PDRM' }
-const attribute = (r: BlockingStatRow): BlockingStatRow => {
-  if (isMcmcCategory(r.offence)) return { ...r, agency: MCMC }
-  const owner = r.agency === MCMC ? OFFENCE_OWNER[r.offence.toLowerCase()] : undefined
-  return owner ? { ...r, agency: owner } : r
-}
+// The server already credits each block to the agency whose law the offence
+// falls under (db.MergeOffenceCasing), so every preset and filter sees the
+// same attribution as the Excel export.
 const fmt = (n: number) => n.toLocaleString()
 const pct = (n: number, total: number) => (total ? `${((n / total) * 100).toFixed(2)}%` : '—')
 
@@ -546,11 +541,14 @@ function Explorer({ rows, allYears }: { rows: BlockingStatRow[]; allYears: numbe
 
   return (
     <>
-      <Tabs value={preset ?? ''} onValueChange={applyPreset} variant="segment" className="mb-3">
-        <TabsList>
-          {PRESETS.map(p => <TabsTrigger key={p.id} value={p.id} indicatorClassName="">{p.label}</TabsTrigger>)}
-        </TabsList>
-      </Tabs>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <Tabs value={preset ?? ''} onValueChange={applyPreset} variant="segment">
+          <TabsList>
+            {PRESETS.map(p => <TabsTrigger key={p.id} value={p.id} indicatorClassName="">{p.label}</TabsTrigger>)}
+          </TabsList>
+        </Tabs>
+        <RegisterExport />
+      </div>
       {/* Filters decide what is counted, Group by how it's split: one sentence-like row, Clear last. */}
       <div className="flex flex-wrap items-center gap-1.5 mb-8">
         <TooltipProvider>
@@ -593,6 +591,40 @@ function Explorer({ rows, allYears }: { rows: BlockingStatRow[]; allYears: numbe
         </>
       )}
     </>
+  )
+}
+
+// Downloads the whole register (sheets A, B, C — not the current filters) in
+// the layout of the "Jumlah Sekatan Laman Sesawang" workbook.
+function RegisterExport() {
+  const [exporting, setExporting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const handleExport = async () => {
+    setExporting(true)
+    setError(null)
+    try {
+      const { blob, filename } = await exportBlockingRegister()
+      downloadBlob(blob, filename ?? 'Jumlah Sekatan Laman Sesawang.xlsx')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Export failed')
+    } finally {
+      setExporting(false)
+    }
+  }
+  return (
+    <div className="flex items-center gap-3">
+      {error && <p className="error-message mb-0">{error}</p>}
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={handleExport}
+        disabled={exporting}
+        aria-label={exporting ? 'Exporting…' : 'Export blocking register'}
+        title={exporting ? 'Exporting…' : 'Export blocking register (sheets A, B, C)'}
+      >
+        <DownloadIcon size={16} />
+      </Button>
+    </div>
   )
 }
 
@@ -692,7 +724,7 @@ export function BlockingRegister() {
     fetchBlockingStats().then(setRows, e => setError(e instanceof Error ? e.message : 'Failed to load'))
   }, [])
 
-  const scoped = useMemo(() => (rows ?? []).filter(r => r.year >= FIRST_YEAR).map(attribute), [rows])
+  const scoped = useMemo(() => (rows ?? []).filter(r => r.year >= FIRST_YEAR), [rows])
   const years = useMemo(() => [...new Set(scoped.map(r => r.year))].sort(), [scoped])
 
   if (error) return <p className="text-sm mt-4">{error}</p>

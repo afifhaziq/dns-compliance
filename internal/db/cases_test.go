@@ -1061,3 +1061,23 @@ func TestMergeOffenceCasing(t *testing.T) {
 		t.Fatalf("MOTAC display name = %v, want the global-plurality lowercase variant", names)
 	}
 }
+
+// MCMC's five categories count as MCMC whoever handled them; gambling MCMC
+// handled counts as PDRM; and re-attributed rows merge into their bucket.
+func TestMergeOffenceCasingAttributesAgency(t *testing.T) {
+	got := db.MergeOffenceCasing([]db.BlockingStatRow{
+		{Year: 2025, Agency: "PDRM", Offence: "lucah", Count: 2},
+		{Year: 2025, Agency: "MCMC", Offence: "Lucah", Count: 3},
+		{Year: 2025, Agency: "MCMC", Offence: "Judi", Count: 4},
+		{Year: 2025, Agency: "PDRM", Offence: "Judi", Count: 1},
+		{Year: 2025, Agency: "KPKT", Offence: "Judi", Count: 7},
+	})
+	byKey := map[string]int{}
+	for _, r := range got {
+		byKey[r.Agency+"/"+r.Offence] = r.Count
+	}
+	want := map[string]int{"MCMC/Lucah": 5, "PDRM/Judi": 5, "KPKT/Judi": 7}
+	if fmt.Sprint(byKey) != fmt.Sprint(want) {
+		t.Fatalf("got %v, want %v", byKey, want)
+	}
+}

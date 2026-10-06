@@ -167,6 +167,7 @@ func RegisterRoutes(r chi.Router, store db.Store, scanner *Scanner, broadcaster 
 			// Cases view's data source — see ListCaseSummaries.
 			r.Get("/case-summaries", h.ListCaseSummaries)
 			r.Get("/blocking-stats", h.BlockingStats)
+			r.Get("/blocking-stats/export", h.ExportBlockingRegister)
 			r.Get("/case-summaries/export", h.ExportCaseSummaries)
 
 			// Reachable by a super admin OR a department admin — DNS servers

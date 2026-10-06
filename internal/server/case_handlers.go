@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/afif/dns-tracking/internal/blockexport"
 	"github.com/afif/dns-tracking/internal/db"
 	"github.com/afif/dns-tracking/internal/urlnorm"
 	"github.com/go-chi/chi/v5"
@@ -894,4 +896,34 @@ func (h *Handlers) BlockingStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, rows)
+}
+
+// ExportBlockingRegister (GET /api/blocking-stats/export) — the blocking
+// register as an .xlsx in the MCMC stats workbook's A/B/C layout
+// (blockexport.WriteBlockingRegisterWorkbook). Same scoping as BlockingStats.
+func (h *Handlers) ExportBlockingRegister(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	var dept *uint
+	if !user.IsAdmin {
+		if user.DepartmentID == nil {
+			writeError(w, http.StatusForbidden, "user has no department")
+			return
+		}
+		dept = user.DepartmentID
+	}
+	rows, err := h.store.BlockingStats(r.Context(), dept)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load blocking stats")
+		return
+	}
+	now := time.Now()
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="Jumlah Sekatan Laman Sesawang %s.xlsx"`, now.In(time.FixedZone("MYT", 8*60*60)).Format("02012006")))
+	if err := blockexport.WriteBlockingRegisterWorkbook(rows, now, w); err != nil {
+		writeInternalError(w, err)
+	}
 }

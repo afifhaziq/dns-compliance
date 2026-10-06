@@ -656,6 +656,8 @@ func (s *postgresStore) BlockingStats(ctx context.Context, departmentID *uint) (
 // picking it per-bucket let the winning casing flip from one year to the
 // next for the same agency, which just re-split the offence in the
 // frontend's own (agency, offence)-string grouping instead of fixing it.
+// It also applies attributedAgency, so a bucket's agency is the one the
+// register (and its Excel export) credits the block to.
 // Exported for unit testing without a database (parallels
 // db.DailyComplianceLevel).
 func MergeOffenceCasing(rows []BlockingStatRow) []BlockingStatRow {
@@ -692,12 +694,13 @@ func MergeOffenceCasing(rows []BlockingStatRow) []BlockingStatRow {
 	merged := make(map[key]*BlockingStatRow, len(rows))
 	for _, r := range rows {
 		lower := strings.ToLower(r.Offence)
-		k := key{r.Year, r.Agency, lower}
+		agency := attributedAgency(r.Agency, lower)
+		k := key{r.Year, agency, lower}
 		if existing, ok := merged[k]; ok {
 			existing.Count += r.Count
 			continue
 		}
-		merged[k] = &BlockingStatRow{Year: r.Year, Agency: r.Agency, Offence: displayName[lower], Count: r.Count}
+		merged[k] = &BlockingStatRow{Year: r.Year, Agency: agency, Offence: displayName[lower], Count: r.Count}
 		order = append(order, k)
 	}
 	out := make([]BlockingStatRow, 0, len(order))
@@ -705,6 +708,26 @@ func MergeOffenceCasing(rows []BlockingStatRow) []BlockingStatRow {
 		out = append(out, *merged[k])
 	}
 	return out
+}
+
+// MCMCCategories are the only offence categories the MCMC stats workbook
+// classifies MCMC blocks under, in its row order.
+var MCMCCategories = []string{"Lucah", "Sumbang", "Palsu", "Jelik", "Mengancam"}
+
+// attributedAgency credits a block to the agency whose law the offence falls
+// under, not the one that handled it, as the MCMC stats workbook does: the
+// five MCMC categories are MCMC's whatever the Agensi, and gambling MCMC
+// handled is listed under PDRM. lowerOffence must be lowercased.
+func attributedAgency(agency, lowerOffence string) string {
+	for _, c := range MCMCCategories {
+		if strings.ToLower(c) == lowerOffence {
+			return "MCMC"
+		}
+	}
+	if agency == "MCMC" && lowerOffence == "judi" {
+		return "PDRM"
+	}
+	return agency
 }
 
 // AppendOriginalURL adds one more cited text to a CaseURL.OriginalURL. A case
