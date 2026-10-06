@@ -2305,3 +2305,67 @@ func TestListDepartmentURLs_DerivesCurrentReferenceAndRequestingDepartments(t *t
 		t.Errorf("RequestingDepartments = %v, want [CMOD CRD]", got)
 	}
 }
+
+func TestISPUnblocked_LatestInWindowScopedAndSkipsUplifted(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	srv, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "UnblockedISP", Name: "UB DNS", Address: "9.9.9.20:53", Protocol: "udp"})
+	other, _ := s.CreateDNSServer(ctx, db.DNSServer{ISP: "OtherISP", Name: "Other DNS", Address: "9.9.9.21:53", Protocol: "udp"})
+	dept, _ := s.CreateDepartment(ctx, "UBDept")
+	dept2, _ := s.CreateDepartment(ctx, "UBDept2")
+	open, _ := s.AddURLToWatchlist(ctx, dept.ID, "still-open.com")
+	fixed, _ := s.AddURLToWatchlist(ctx, dept.ID, "fixed-in-week.com")
+	uplifted, _ := s.AddURLToWatchlist(ctx, dept.ID, "uplifted.com")
+	openCase, err := s.CreateCase(ctx, dept.ID, open.ID, "requested", db.CaseCreateOptions{})
+	if err != nil {
+		t.Fatalf("CreateCase: %v", err)
+	}
+	noticeDate := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := s.AddCaseLetter(ctx, db.CaseLetter{CaseID: openCase.ID, Type: "Notice", LetterDate: &noticeDate}); err != nil {
+		t.Fatalf("AddCaseLetter: %v", err)
+	}
+	if _, err := s.CreateCase(ctx, dept.ID, uplifted.ID, "uplift", db.CaseCreateOptions{}); err != nil {
+		t.Fatalf("CreateCase: %v", err)
+	}
+
+	run, _ := s.CreateScanRun(ctx, "manual")
+	before := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+	mon := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
+	wed := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+	insert := func(u db.URL, srvID uint, compliant bool, at time.Time) {
+		t.Helper()
+		if err := s.InsertResult(ctx, db.ScanResult{ScanRunID: run.ID, URLID: u.ID, URLValue: u.URL, DNSServerID: srvID, Compliant: compliant, ResolvedIP: "1.2.3.4", ScannedAt: at}); err != nil {
+			t.Fatalf("InsertResult: %v", err)
+		}
+	}
+	insert(open, srv.ID, true, before) // compliant before the window doesn't count
+	insert(open, srv.ID, false, wed)
+	insert(open, other.ID, false, wed) // another ISP's server
+	insert(fixed, srv.ID, false, mon)
+	insert(fixed, srv.ID, true, wed) // latest in window is compliant
+	insert(uplifted, srv.ID, false, wed)
+
+	since := time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC)
+	until := time.Date(2026, 10, 4, 23, 59, 59, 0, time.UTC)
+	rows, err := s.ISPUnblocked(ctx, "UnblockedISP", since, until, nil)
+	if err != nil {
+		t.Fatalf("ISPUnblocked: %v", err)
+	}
+	if len(rows) != 1 || rows[0].URL != "still-open.com" || rows[0].DNSServerID != srv.ID {
+		t.Fatalf("expected only still-open.com on UB DNS, got %+v", rows)
+	}
+	if rows[0].NoticeDate == nil || !rows[0].NoticeDate.Equal(noticeDate) {
+		t.Fatalf("expected the Notice letter date, got %v", rows[0].NoticeDate)
+	}
+	if rows[0].Status != "requested" || rows[0].DepartmentName != "UBDept" || rows[0].DNSServerAddress != "9.9.9.20:53" {
+		t.Fatalf("missing case/server metadata: %+v", rows[0])
+	}
+
+	if rows, _ := s.ISPUnblocked(ctx, "UnblockedISP", since, until, &dept2.ID); len(rows) != 0 {
+		t.Fatalf("expected other department to see nothing, got %+v", rows)
+	}
+	if rows, _ := s.ISPUnblocked(ctx, "UnblockedISP", since, until, &dept.ID); len(rows) != 1 {
+		t.Fatalf("expected owning department to see 1 row, got %+v", rows)
+	}
+}

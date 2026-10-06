@@ -1111,6 +1111,9 @@ func (m *fullMockStore) ResurfacedDomains(_ context.Context) ([]db.ResurfacedDom
 func (m *fullMockStore) ResurfacedDomainsForDepartment(_ context.Context, _ uint) ([]db.ResurfacedDomain, error) {
 	return nil, nil
 }
+func (m *fullMockStore) ISPUnblocked(_ context.Context, _ string, _, _ time.Time, _ *uint) ([]db.ISPUnblockedRow, error) {
+	return nil, nil
+}
 func (m *fullMockStore) SLAActiveURLs(_ context.Context, _ int) ([]string, error) {
 	return nil, nil
 }

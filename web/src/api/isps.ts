@@ -1,5 +1,5 @@
-import { api } from './client'
-import type { ISPStats, ISPTiming, ISPTrendStat } from './types'
+import { api, type BlobDownload } from './client'
+import type { ISPStats, ISPTiming, ISPTrendStat, UnblockedPage } from './types'
 
 export async function fetchISPStats(isp: string): Promise<ISPStats> {
   return api.get<ISPStats>(`/isps/${encodeURIComponent(isp)}`)
@@ -13,4 +13,34 @@ export async function fetchISPTrend(isp: string, sinceDays = 30): Promise<ISPTre
 
 export async function fetchISPTiming(isp: string): Promise<ISPTiming> {
   return api.get<ISPTiming>(`/isps/${encodeURIComponent(isp)}/timing`)
+}
+
+export type UnblockedQuery = {
+  since: Date
+  until: Date
+  q?: string
+  sort?: 'days_open' | 'url' | 'notice_date'
+  dir?: 'asc' | 'desc'
+  page?: number
+  pageSize?: number
+}
+
+function unblockedParams({ since, until, q, sort, dir, page, pageSize }: UnblockedQuery): string {
+  const p = new URLSearchParams({ since: since.toISOString(), until: until.toISOString() })
+  if (q) p.set('q', q)
+  if (sort) p.set('sort', sort)
+  if (dir) p.set('dir', dir)
+  if (page) p.set('page', String(page))
+  if (pageSize) p.set('page_size', String(pageSize))
+  return p.toString()
+}
+
+export async function fetchISPUnblocked(isp: string, query: UnblockedQuery): Promise<UnblockedPage> {
+  const data = await api.get<UnblockedPage>(`/isps/${encodeURIComponent(isp)}/unblocked?${unblockedParams(query)}`)
+  return { items: data.items ?? [], total: data.total }
+}
+
+// Every row in scope, one per (domain, DNS server) — ignores paging.
+export function exportISPUnblocked(isp: string, since: Date, until: Date): Promise<BlobDownload> {
+  return api.getBlob(`/isps/${encodeURIComponent(isp)}/unblocked/export?${unblockedParams({ since, until })}`)
 }

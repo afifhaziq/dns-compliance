@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { fetchISPStats, fetchISPTiming, fetchISPTrend } from '@/api/isps'
+import { fetchISPStats, fetchISPTiming, fetchISPTrend, fetchISPUnblocked } from '@/api/isps'
+import { periodRange } from '@/lib/period'
 import { fetchISPLogos } from '@/api/isp-logos'
 import { ISPLogoChip } from '@/components/isp-logo-chip'
 import type { ISPStats, ISPTiming, ScanResult } from '@/api/types'
@@ -16,6 +17,7 @@ type ISPCardData = {
   trend: TrendPoint[]
   pct: number
   avgLatency: number | null
+  unblockedThisWeek: number | null
 }
 
 export function getISPNames(results: ScanResult[]): string[] {
@@ -23,10 +25,11 @@ export function getISPNames(results: ScanResult[]): string[] {
 }
 
 async function loadISPCard(isp: string): Promise<ISPCardData> {
-  const [stats, timing, trendData] = await Promise.all([
+  const [stats, timing, trendData, unblocked] = await Promise.all([
     fetchISPStats(isp),
     fetchISPTiming(isp),
     fetchISPTrend(isp, 30),
+    fetchISPUnblocked(isp, { ...periodRange('week'), pageSize: 1 }).catch(() => null),
   ])
 
   const totalCompliant = stats.servers.reduce((sum, s) => sum + s.compliant, 0)
@@ -41,7 +44,7 @@ async function loadISPCard(isp: string): Promise<ISPCardData> {
     compliance: t.total > 0 ? Math.round((t.compliant / t.total) * 100) : 0,
   }))
 
-  return { isp, stats, timing, trend, pct, avgLatency }
+  return { isp, stats, timing, trend, pct, avgLatency, unblockedThisWeek: unblocked?.total ?? null }
 }
 
 export function ISPBentoSkeleton({ count }: { count: number }) {
@@ -87,7 +90,7 @@ export function ISPBentoGrid({ results }: { results: ScanResult[] }) {
 }
 
 function ISPCard({ data, logoUrl }: { data: ISPCardData; logoUrl?: string }) {
-  const { isp, stats, timing, trend, pct, avgLatency } = data
+  const { isp, stats, timing, trend, pct, avgLatency, unblockedThisWeek } = data
   const serverCount = stats.servers.length
 
   return (
@@ -125,18 +128,12 @@ function ISPCard({ data, logoUrl }: { data: ISPCardData; logoUrl?: string }) {
           <p className="server-count">{avgLatency != null ? `${avgLatency.toFixed(1)} ms` : '—'}</p>
           <p className="dash-label mb-0">Avg latency</p>
         </div>
-        {stats.most_violated_domain && (
+        {unblockedThisWeek != null && (
           <div className="text-right">
-            <Link
-              to="/domain/$url"
-              params={{ url: stats.most_violated_domain }}
-              search={{ tab: 'overview' }}
-              className="server-count"
-              style={{ overflowWrap: 'anywhere' }}
-            >
-              {stats.most_violated_domain}
+            <Link to="/isps/$isp" params={{ isp }} className="server-count">
+              {unblockedThisWeek.toLocaleString()}
             </Link>
-            <p className="dash-label mb-0">Most violated</p>
+            <p className="dash-label mb-0">Not blocked this week</p>
           </div>
         )}
       </div>

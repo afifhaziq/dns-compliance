@@ -1741,6 +1741,83 @@ func (s *postgresStore) ispComplianceTiming(ctx context.Context, isp string, dep
 	}, nil
 }
 
+func (s *postgresStore) ISPUnblocked(ctx context.Context, isp string, since, until time.Time, departmentID *uint) ([]ISPUnblockedRow, error) {
+	latest := s.db.Model(&ScanResult{}).
+		Select("url_value, dns_server_id, MAX(scanned_at) as max_scanned_at").
+		Where("scanned_at >= ? AND scanned_at <= ?", since, until).
+		Group("url_value, dns_server_id")
+	q := s.db.WithContext(ctx).
+		Table("scan_results").
+		Select(`scan_results.url_id, scan_results.url_value AS url,
+			scan_results.dns_server_id, dns_servers.name AS dns_server_name,
+			dns_servers.address AS dns_server_address, dns_servers.protocol AS dns_server_protocol,
+			scan_results.resolved_ip, scan_results.resolved_org, scan_results.resolved_asn,
+			scan_results.screenshot_url, scan_results.scanned_at`).
+		Joins("JOIN (?) AS latest ON scan_results.url_value = latest.url_value AND scan_results.dns_server_id = latest.dns_server_id AND scan_results.scanned_at = latest.max_scanned_at", latest).
+		Joins("JOIN dns_servers ON dns_servers.id = scan_results.dns_server_id").
+		Where("dns_servers.isp = ? AND scan_results.compliant = false", isp)
+	if departmentID != nil {
+		q = q.Where("EXISTS (SELECT 1 FROM department_urls du WHERE du.url_id = scan_results.url_id AND du.department_id = ? AND du.enabled = true)", *departmentID)
+	} else {
+		q = q.Where("EXISTS (SELECT 1 FROM department_urls du WHERE du.url_id = scan_results.url_id AND du.enabled = true)")
+	}
+	var rows []ISPUnblockedRow
+	if err := q.Order("scan_results.url_value, dns_servers.name").Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	// Latest-case fields in a second pass, only for the violating urls:
+	// joining urlEntryQuery into the query above makes Postgres re-run its
+	// watchlist aggregate once per scan row (~80s on CRD-sized data).
+	idSet := make(map[uint]bool)
+	for _, r := range rows {
+		idSet[r.URLID] = true
+	}
+	ids := make([]uint, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	type caseRow struct {
+		URLEntry
+		OriginalURL    string
+		DepartmentName string
+		NoticeDate     *time.Time
+	}
+	byURL := make(map[uint]caseRow, len(ids))
+	const chunk = 5000 // stay well under Postgres's 65535 bind-parameter limit
+	for i := 0; i < len(ids); i += chunk {
+		var batch []caseRow
+		err := s.db.WithContext(ctx).
+			Table("(?) AS e", s.urlEntryQuery(ctx, departmentID).Where("urls.id IN ?", ids[i:min(i+chunk, len(ids))])).
+			Select(`e.*, cu.original_url, departments.name AS department_name,
+				(SELECT cl.letter_date FROM case_letters cl
+				 WHERE cl.case_id = e.case_id AND cl.type = 'Notice' AND cl.letter_date IS NOT NULL
+				 ORDER BY cl.letter_date DESC LIMIT 1) AS notice_date`).
+			Joins("LEFT JOIN case_urls cu ON cu.case_id = e.case_id AND cu.url_id = e.id").
+			Joins("LEFT JOIN cases ON cases.id = e.case_id").
+			Joins("LEFT JOIN departments ON departments.id = cases.department_id").
+			Scan(&batch).Error
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range batch {
+			byURL[c.ID] = c
+		}
+	}
+
+	out := rows[:0]
+	for _, r := range rows {
+		c := byURL[r.URLID]
+		if c.Status == "uplift" || c.Status == "suspended" {
+			continue
+		}
+		r.CaseID, r.Status, r.NoticeDate, r.DueDate = c.CaseID, c.Status, c.NoticeDate, c.DueDate
+		r.CurrentReferenceNumber, r.OriginalURL, r.DepartmentName = c.CurrentReferenceNumber, c.OriginalURL, c.DepartmentName
+		out = append(out, r)
+	}
+	return out, nil
+}
+
 func (s *postgresStore) ISPComplianceTiming(ctx context.Context, isp string) (ISPTimingResult, error) {
 	return s.ispComplianceTiming(ctx, isp, nil)
 }

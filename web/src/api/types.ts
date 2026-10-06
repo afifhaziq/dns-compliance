@@ -384,3 +384,30 @@ export type GridPreference = {
   page_size?: number
   updated_at?: string
 }
+
+export type ISPUnblockedServer = {
+  dns_server_id: number
+  dns_server_name: string
+  dns_server_address: string
+  dns_server_protocol: string
+  resolved_ip: string
+  resolved_org: string
+  resolved_asn: number
+  screenshot_url: string
+  scanned_at: string
+}
+
+export type UnblockedDomain = {
+  url_id: number
+  url: string
+  case_id?: number
+  status?: string
+  notice_date?: string // latest case's Notice letter date (ISP notified)
+  due_date?: string
+  days_open?: number // days since due_date, else since notice_date
+  current_reference_number?: string
+  last_scanned_at: string
+  servers: ISPUnblockedServer[]
+}
+
+export type UnblockedPage = { items: UnblockedDomain[]; total: number }

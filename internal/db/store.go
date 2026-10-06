@@ -108,6 +108,11 @@ type ISPStatsStore interface {
 	NationalTrendForDepartment(ctx context.Context, since, until time.Time, departmentID uint) ([]ISPTrendStat, error)
 	ServerUptime(ctx context.Context, dnsServerID uint, since, until time.Time) ([]ServerUptimeStat, error)
 	ServerUptimeForDepartment(ctx context.Context, dnsServerID uint, since, until time.Time, departmentID uint) ([]ServerUptimeStat, error)
+	// ISPUnblocked returns the domains still resolving on isp's servers as
+	// of each (domain, server)'s latest scan in [since, until], excluding
+	// domains whose latest case is uplifted/suspended. departmentID nil =
+	// every department's watchlist (admin).
+	ISPUnblocked(ctx context.Context, isp string, since, until time.Time, departmentID *uint) ([]ISPUnblockedRow, error)
 	ResurfacedDomains(ctx context.Context) ([]ResurfacedDomain, error)
 	ResurfacedDomainsForDepartment(ctx context.Context, departmentID uint) ([]ResurfacedDomain, error)
 	// SLAActiveURLs returns the normalized URL values of watched domains

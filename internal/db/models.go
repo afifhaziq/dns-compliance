@@ -376,6 +376,34 @@ type ServerUptimeStat struct {
 	Up  bool   `json:"up"`
 }
 
+// ISPUnblockedRow is one (domain, DNS server) pair whose latest scan in a
+// period still resolved (Compliant=false) on one of an ISP's servers, plus
+// the domain's latest-case metadata. Backs GET /api/isps/{isp}/unblocked
+// (grouped per domain) and its .xlsx export (one row each). Not a table.
+type ISPUnblockedRow struct {
+	URLID                  uint       `json:"url_id"`
+	URL                    string     `json:"url"`
+	OriginalURL            string     `json:"original_url,omitempty"`
+	DNSServerID            uint       `json:"dns_server_id"`
+	DNSServerName          string     `json:"dns_server_name"`
+	DNSServerAddress       string     `json:"dns_server_address"`
+	DNSServerProtocol      string     `json:"dns_server_protocol"`
+	ResolvedIP             string     `json:"resolved_ip"`
+	ResolvedOrg            string     `json:"resolved_org"`
+	ResolvedASN            uint       `json:"resolved_asn"`
+	ScreenshotURL          string     `json:"screenshot_url"`
+	ScannedAt              time.Time  `json:"scanned_at"`
+	CaseID                 *uint      `json:"case_id,omitempty"`
+	Status                 string     `json:"status,omitempty"`
+	// NoticeDate is the latest case's Notice letter date: when the ISP was
+	// notified. Filled by the app's Letter Date fields and by the CRD/CMOD
+	// imports ("Tarikh Maklum IASP (Blocked)" / "Letter Date").
+	NoticeDate             *time.Time `json:"notice_date,omitempty"`
+	DueDate                *time.Time `json:"due_date,omitempty"`
+	CurrentReferenceNumber string     `json:"current_reference_number,omitempty"`
+	DepartmentName         string     `json:"department_name,omitempty"`
+}
+
 // DomainTiming is how long one domain took (or has been waiting) to be
 // blocked by an ISP, measured from its order date. Blocked=false means
 // still open — DaysToBlock is then "days waited so far", not a final figure.
