@@ -7,9 +7,8 @@ export async function fetchResults(): Promise<ScanResult[]> {
   return Array.isArray(data) ? data : []
 }
 
-export async function fetchNationalTrend(sinceDays = 30): Promise<ISPTrendStat[]> {
-  const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString()
-  const res = await fetch(`/api/trend?since=${encodeURIComponent(since)}`)
+export async function fetchNationalTrend(since: Date, until: Date): Promise<ISPTrendStat[]> {
+  const res = await fetch(`/api/trend?since=${encodeURIComponent(since.toISOString())}&until=${encodeURIComponent(until.toISOString())}`)
   if (!res.ok) throw new Error(`Failed to load trend: ${res.status}`)
   const data = await res.json()
   return Array.isArray(data) ? data : []

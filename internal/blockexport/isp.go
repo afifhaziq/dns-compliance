@@ -95,45 +95,52 @@ func writeISPUnblockedSheet(f *excelize.File, sheet string, rows []ISPUnblockedR
 
 // ISPExport is one ISP's slice of the all-ISP export.
 type ISPExport struct {
-	ISP           string
-	ServerCount   int
-	Rows          []ISPUnblockedRow // one per (domain, DNS server)
-	PreviousCount int               // domains not blocked in the same-length period before
-}
-
-func (e ISPExport) domainCount() int {
-	seen := map[uint]bool{}
-	for _, r := range e.Rows {
-		seen[r.Row.URLID] = true
-	}
-	return len(seen)
+	ISP  string
+	Rows []ISPUnblockedRow // one per (domain, DNS server)
 }
 
 // WriteAllISPUnblockedWorkbook writes the all-ISP export: a Summary sheet
-// (one row per ISP), a Matrix sheet (one row per domain, one column per
-// ISP), then one sheet per ISP in the per-ISP export's exact layout so it
-// can be copied out and sent to that ISP as-is.
-func WriteAllISPUnblockedWorkbook(isps []ISPExport, since, until time.Time, w io.Writer) error {
+// (one row per domain × DNS server it's not blocked on), a DNS Servers
+// sheet with each server's details, then one sheet per ISP in the per-ISP export's
+// exact layout so it can be copied out and sent to that ISP as-is.
+func WriteAllISPUnblockedWorkbook(servers []db.DNSServer, isps []ISPExport, w io.Writer) error {
 	f := excelize.NewFile()
 	defer f.Close()
 	st, err := newExportStyles(f)
 	if err != nil {
 		return err
 	}
+	servers = append([]db.DNSServer(nil), servers...)
+	sort.SliceStable(servers, func(i, j int) bool {
+		if servers[i].ISP != servers[j].ISP {
+			return servers[i].ISP < servers[j].ISP
+		}
+		return servers[i].Name < servers[j].Name
+	})
 	if err := f.SetSheetName("Sheet1", "Summary"); err != nil {
 		return err
 	}
-	if err := writeSummarySheet(f, isps, since, until, st); err != nil {
+	if err := writeSummarySheet(f, isps, st); err != nil {
 		return err
 	}
-	if _, err := f.NewSheet("Matrix"); err != nil {
-		return err
-	}
-	if err := writeMatrixSheet(f, isps, st); err != nil {
-		return err
-	}
-	used := map[string]bool{"summary": true, "matrix": true}
+	total := 0
 	for _, e := range isps {
+		total += len(e.Rows)
+	}
+	if err := addTable(f, "Summary", 1, 7, total); err != nil {
+		return err
+	}
+	if _, err := f.NewSheet("DNS Servers"); err != nil {
+		return err
+	}
+	if err := writeServersSheet(f, servers); err != nil {
+		return err
+	}
+	if err := addTable(f, "DNS Servers", 2, 5, len(servers)); err != nil {
+		return err
+	}
+	used := map[string]bool{"summary": true, "dns servers": true}
+	for i, e := range isps {
 		name := sheetName(e.ISP, used)
 		if _, err := f.NewSheet(name); err != nil {
 			return err
@@ -141,108 +148,74 @@ func WriteAllISPUnblockedWorkbook(isps []ISPExport, since, until time.Time, w io
 		if err := writeISPUnblockedSheet(f, name, e.Rows, st); err != nil {
 			return err
 		}
+		if err := addTable(f, name, i+3, len(ispUnblockedHeaders), len(e.Rows)); err != nil {
+			return err
+		}
 	}
 	return f.Write(w)
 }
 
-func writeSummarySheet(f *excelize.File, isps []ISPExport, since, until time.Time, st exportStyles) error {
-	const sheet = "Summary"
-	// Period on its own rows above the table: the table header is row 4.
-	meta := [][]any{{"Period from", since.In(myt)}, {"Period to", until.In(myt)}}
-	for i, m := range meta {
-		cell, _ := excelize.CoordinatesToCellName(1, i+1)
-		if err := f.SetSheetRow(sheet, cell, &m); err != nil {
-			return err
-		}
-		c, _ := excelize.CoordinatesToCellName(2, i+1)
-		if err := f.SetCellStyle(sheet, c, c, st.dateTime); err != nil {
-			return err
-		}
-	}
-	headers := []any{"ISP", "DNS Servers", "Domains Not Blocked", "Domain × Server Rows", "Previous Period", "Change", "Oldest Notice Date"}
-	if err := f.SetSheetRow(sheet, "A4", &headers); err != nil {
-		return err
-	}
-	bold, err := f.NewStyle(&excelize.Style{Font: &excelize.Font{Bold: true}})
-	if err != nil {
-		return err
-	}
-	if err := f.SetCellStyle(sheet, "A1", "A2", bold); err != nil {
-		return err
-	}
-	if err := f.SetCellStyle(sheet, "A4", "G4", bold); err != nil {
-		return err
-	}
-	for i, e := range isps {
-		var oldest *time.Time
-		for _, r := range e.Rows {
-			if n := r.Row.NoticeDate; n != nil && (oldest == nil || n.Before(*oldest)) {
-				oldest = n
-			}
-		}
-		domains := e.domainCount()
-		row := []any{e.ISP, e.ServerCount, domains, len(e.Rows), e.PreviousCount, domains - e.PreviousCount, optTime(oldest)}
-		cell, _ := excelize.CoordinatesToCellName(1, i+5)
-		if err := f.SetSheetRow(sheet, cell, &row); err != nil {
-			return err
-		}
-		c, _ := excelize.CoordinatesToCellName(7, i+5)
-		if err := f.SetCellStyle(sheet, c, c, st.date); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func writeMatrixSheet(f *excelize.File, isps []ISPExport, st exportStyles) error {
-	const sheet = "Matrix"
-	type domain struct {
-		url    string
-		notice *time.Time
-		on     map[string]bool
-	}
-	byURL := map[string]*domain{}
-	var order []string
-	for _, e := range isps {
-		for _, r := range e.Rows {
-			d, ok := byURL[r.Row.URL]
-			if !ok {
-				d = &domain{url: r.Row.URL, notice: r.Row.NoticeDate, on: map[string]bool{}}
-				byURL[r.Row.URL] = d
-				order = append(order, r.Row.URL)
-			}
-			d.on[e.ISP] = true
-		}
-	}
-	sort.Strings(order)
-
-	headers := []any{"Domain", "Notice Date", "ISPs Not Blocking"}
-	for _, e := range isps {
-		headers = append(headers, e.ISP)
-	}
+func writeServersSheet(f *excelize.File, servers []db.DNSServer) error {
+	const sheet = "DNS Servers"
+	headers := []any{"DNS Server", "ISP", "Address", "Protocol", "Enabled"}
 	if err := applyHeaderStyle(f, sheet, len(headers)); err != nil {
 		return err
 	}
 	if err := f.SetSheetRow(sheet, "A1", &headers); err != nil {
 		return err
 	}
-	for i, url := range order {
-		d := byURL[url]
-		row := []any{d.url, optTime(d.notice), len(d.on)}
-		for _, e := range isps {
-			if d.on[e.ISP] {
-				row = append(row, "Not blocked")
-			} else {
-				row = append(row, "")
-			}
+	for i, s := range servers {
+		enabled := "No"
+		if s.Enabled {
+			enabled = "Yes"
 		}
+		row := []any{s.Name, s.ISP, s.Address, s.Protocol, enabled}
 		cell, _ := excelize.CoordinatesToCellName(1, i+2)
 		if err := f.SetSheetRow(sheet, cell, &row); err != nil {
 			return err
 		}
-		c, _ := excelize.CoordinatesToCellName(2, i+2)
-		if err := f.SetCellStyle(sheet, c, c, st.date); err != nil {
+	}
+	return nil
+}
+
+// writeSummarySheet is one row per (domain, DNS server) the domain is not
+// blocked on, sorted by domain, then ISP, then server name.
+func writeSummarySheet(f *excelize.File, isps []ISPExport, st exportStyles) error {
+	const sheet = "Summary"
+	var rows []ISPUnblockedRow
+	for _, e := range isps {
+		rows = append(rows, e.Rows...)
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		a, b := rows[i], rows[j]
+		if a.Row.URL != b.Row.URL {
+			return a.Row.URL < b.Row.URL
+		}
+		if a.ISP != b.ISP {
+			return a.ISP < b.ISP
+		}
+		return a.Row.DNSServerName < b.Row.DNSServerName
+	})
+
+	headers := []any{"Domain", "ISP", "DNS Server", "Scan Date", "Notice Date", "Due Date", "Reference No."}
+	if err := applyHeaderStyle(f, sheet, len(headers)); err != nil {
+		return err
+	}
+	if err := f.SetSheetRow(sheet, "A1", &headers); err != nil {
+		return err
+	}
+	for i, x := range rows {
+		r := x.Row
+		row := []any{r.URL, x.ISP, r.DNSServerName, r.ScannedAt.In(myt), optTime(r.NoticeDate), optTime(r.DueDate), r.CurrentReferenceNumber}
+		cell, _ := excelize.CoordinatesToCellName(1, i+2)
+		if err := f.SetSheetRow(sheet, cell, &row); err != nil {
 			return err
+		}
+		for col, style := range map[int]int{4: st.dateTime, 5: st.date, 6: st.date} {
+			c, _ := excelize.CoordinatesToCellName(col, i+2)
+			if err := f.SetCellStyle(sheet, c, c, style); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

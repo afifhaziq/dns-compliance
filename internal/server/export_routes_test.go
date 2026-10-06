@@ -306,11 +306,10 @@ func TestExportAllISPUnblocked_OneSheetPerISP(t *testing.T) {
 		t.Fatalf("OpenReader: %v", err)
 	}
 	defer f.Close()
-	if got := f.GetSheetList(); len(got) != 4 || got[0] != "Summary" || got[1] != "Matrix" || got[2] != "Google" || got[3] != "TM" {
+	if got := f.GetSheetList(); len(got) != 4 || got[0] != "Summary" || got[1] != "DNS Servers" || got[2] != "Google" || got[3] != "TM" {
 		t.Fatalf("unexpected sheets: %q", got)
 	}
-	summary, _ := f.GetRows("Summary")
-	if g := summary[4]; g[0] != "Google" || g[1] != "2" {
-		t.Fatalf("expected Google with 2 servers, got %q", g)
+	if srv, _ := f.GetRows("DNS Servers"); len(srv) != 4 {
+		t.Fatalf("expected 3 DNS server rows, got %q", srv)
 	}
 }

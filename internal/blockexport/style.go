@@ -1,6 +1,7 @@
 package blockexport
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/xuri/excelize/v2"
@@ -28,6 +29,21 @@ func applyHeaderStyle(f *excelize.File, sheet string, numCols int) error {
 	}
 	return f.SetPanes(sheet, &excelize.Panes{
 		Freeze: true, YSplit: 1, TopLeftCell: "A2", ActivePane: "bottomLeft",
+	})
+}
+
+// addTable turns a sheet's header row + dataRows rows into an Excel table
+// (filter buttons, banded rows). Excel rejects a header-only table, so an
+// empty sheet gets one blank data row.
+func addTable(f *excelize.File, sheet string, n, numCols, dataRows int) error {
+	end, err := excelize.CoordinatesToCellName(numCols, max(dataRows, 1)+1)
+	if err != nil {
+		return err
+	}
+	return f.AddTable(sheet, &excelize.Table{
+		Range:     "A1:" + end,
+		Name:      fmt.Sprintf("Table%d", n),
+		StyleName: "TableStyleMedium2",
 	})
 }
 

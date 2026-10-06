@@ -3,7 +3,7 @@ import { Input } from '@/components/ui/input'
 import type { Period } from '@/lib/period'
 
 // This week / Last week / Custom (two inclusive dates). Shared by the ISP
-// page's unblocked table and the Overview's all-ISP export.
+// page's unblocked table and the Overview's trend chart + all-ISP export.
 export function PeriodPicker({ period, from, to, onChange }: {
   period: Period
   from?: string

@@ -15,6 +15,8 @@ import { BlockingRegister } from '@/components/blocking-stats'
 import { REGISTER_FILTER_KEYS, type RegisterFilterKey } from '@/api/blocking-stats'
 import { getISPNames, ISPBentoGrid, ISPBentoSkeleton } from '@/components/isp-bento-grid'
 import { AllISPExport } from '@/components/all-isp-export'
+import { PeriodPicker } from '@/components/period-picker'
+import { periodRange, type Period } from '@/lib/period'
 
 export type OverviewSearch = {
   tab?: 'isp' | 'register'
@@ -48,21 +50,25 @@ function DashboardPage() {
   const [resurfaced, setResurfaced] = useState<ResurfacedDomain[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // One period drives both the trend chart and the all-ISP export.
+  const [period, setPeriod] = useState<Period>('week')
+  const [from, setFrom] = useState<string | undefined>()
+  const [to, setTo] = useState<string | undefined>()
+  const incompleteCustom = period === 'custom' && !(from && to)
+  const range = useMemo(() => periodRange(period, from, to), [period, from, to])
 
   const load = useCallback(async () => {
     try {
       setError(null)
-      const [raw, urls, requested, trendData, resurfacedData] = await Promise.all([
+      const [raw, urls, requested, resurfacedData] = await Promise.all([
         fetchResults(),
         fetchUrlCount(),
         fetchUrlsRequestedThisMonth(),
-        fetchNationalTrend(30),
         fetchResurfacedDomains(),
       ])
       setResults(raw)
       setUrlCount(urls)
       setRequestedThisMonth(requested)
-      setTrend(trendData)
       setResurfaced(resurfacedData)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load')
@@ -72,6 +78,15 @@ function DashboardPage() {
   }, [])
 
   useEffect(() => { load() }, [load, refreshSignal])
+
+  useEffect(() => {
+    if (incompleteCustom) return
+    let cancelled = false
+    fetchNationalTrend(range.since, range.until)
+      .then(d => { if (!cancelled) setTrend(d) })
+      .catch(() => { if (!cancelled) setTrend([]) })
+    return () => { cancelled = true }
+  }, [range, incompleteCustom, refreshSignal])
 
   const isps = useMemo(() => getISPNames(results), [results])
   const lastScan = useMemo(() => lastScanTime(groupResults(results)), [results])
@@ -149,9 +164,22 @@ function DashboardPage() {
                     <p className="dash-label">Resurfaced</p>
                   </div>
                 </div>
-                {trendChartData.length >= 2 && (
-                  <div className="mt-4">
-                    <p className="section-title mb-3">Compliance Trend (last 30 days)</p>
+                <div className="mt-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                    <p className="section-title mb-0">Compliance Trend</p>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <PeriodPicker
+                        period={period}
+                        from={from}
+                        to={to}
+                        onChange={(p, f, t) => { setPeriod(p); setFrom(f); setTo(t) }}
+                      />
+                      <AllISPExport since={range.since} until={range.until} disabled={incompleteCustom} />
+                    </div>
+                  </div>
+                  {trendChartData.length < 2 ? (
+                    <p className="dash-label">Not enough scans in this period to draw a trend.</p>
+                  ) : (
                     <LineChart
                       data={trendChartData}
                       xDataKey="date"
@@ -176,15 +204,12 @@ function DashboardPage() {
                         }]}
                       />
                     </LineChart>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             )}
             <div className="dash-section mt-4">
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                <p className="section-title mb-0">ISP Compliance Status</p>
-                {!loading && hasResults && <AllISPExport />}
-              </div>
+              <p className="section-title mb-3">ISP Compliance Status</p>
               {loading ? (
                 <ISPBentoSkeleton count={4} />
               ) : !hasResults ? (

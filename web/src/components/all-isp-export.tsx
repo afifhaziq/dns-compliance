@@ -1,28 +1,28 @@
 import { useState } from 'react'
 import { exportAllISPUnblocked } from '@/api/isps'
 import { downloadBlob } from '@/lib/download'
-import { periodRange, type Period } from '@/lib/period'
-import { PeriodPicker } from '@/components/period-picker'
 import { DownloadIcon } from '@/components/animate-ui/icons/download'
 import { Button } from '@/components/ui/button'
 
-// Overview toolbar: download every ISP's not-blocked domains for a period
-// as one workbook (Summary, Matrix, one sheet per ISP).
-export function AllISPExport() {
-  const [period, setPeriod] = useState<Period>('week')
-  const [from, setFrom] = useState<string | undefined>()
-  const [to, setTo] = useState<string | undefined>()
+// "2026-10-06_1720" in GMT+8, matching the server's filename.
+function gmt8Stamp(): string {
+  const iso = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString()
+  return `${iso.slice(0, 10)}_${iso.slice(11, 13)}${iso.slice(14, 16)}`
+}
+
+// Overview: download every ISP's not-blocked domains for the period picked
+// beside the compliance trend as one workbook (Summary, DNS Servers, one
+// sheet per ISP).
+export function AllISPExport({ since, until, disabled }: { since: Date; until: Date; disabled?: boolean }) {
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const incompleteCustom = period === 'custom' && !(from && to)
 
   const handleExport = async () => {
     setExporting(true)
     setError(null)
     try {
-      const { since, until } = periodRange(period, from, to)
       const { blob, filename } = await exportAllISPUnblocked(since, until)
-      downloadBlob(blob, filename ?? `unblocked-all-isps-${new Date().toISOString().slice(0, 10)}.xlsx`)
+      downloadBlob(blob, filename ?? `isp_weekly_report-${gmt8Stamp()}.xlsx`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Export failed')
     } finally {
@@ -31,24 +31,18 @@ export function AllISPExport() {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <>
       {error && <p className="error-message mb-0">{error}</p>}
-      <PeriodPicker
-        period={period}
-        from={from}
-        to={to}
-        onChange={(p, f, t) => { setPeriod(p); setFrom(f); setTo(t) }}
-      />
       <Button
         variant="outline"
         size="icon"
         onClick={handleExport}
-        disabled={exporting || incompleteCustom}
+        disabled={exporting || disabled}
         aria-label={exporting ? 'Exporting…' : 'Export not-blocked domains for all ISPs'}
-        title={exporting ? 'Exporting…' : 'Export not-blocked domains for all ISPs (Summary, Matrix, one sheet per ISP)'}
+        title={exporting ? 'Exporting…' : 'Export not-blocked domains for all ISPs (Summary, DNS Servers, one sheet per ISP)'}
       >
         <DownloadIcon size={16} />
       </Button>
-    </div>
+    </>
   )
 }
