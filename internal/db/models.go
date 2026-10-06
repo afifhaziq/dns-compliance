@@ -113,9 +113,12 @@ type Session struct {
 // touches URL or ScanResult, so scan history is preserved even once no
 // department watches a domain anymore. Its OnDelete:CASCADE only fires on
 // the admin-only "purge a domain" path that deletes the URL row itself.
+// URLID carries its own index: the PK leads with department_id, so the many
+// "watched by any department" lookups (WHERE url_id = ?) can't use it —
+// ~20s per ISP on /isps/{isp}/unblocked once 34k urls were enabled.
 type DepartmentURL struct {
 	DepartmentID uint      `gorm:"primaryKey;autoIncrement:false" json:"department_id"`
-	URLID        uint      `gorm:"primaryKey;autoIncrement:false" json:"url_id"`
+	URLID        uint      `gorm:"primaryKey;autoIncrement:false;index" json:"url_id"`
 	URL          URL       `gorm:"foreignKey:URLID;constraint:OnDelete:CASCADE" json:"-"`
 	Enabled      bool      `gorm:"not null;default:true" json:"enabled"`
 	CreatedAt    time.Time `json:"created_at"`

@@ -18,15 +18,13 @@ type ISPCardData = {
   trend: TrendPoint[]
   pct: number
   avgLatency: number | null
-  unblockedThisWeek: number | null
 }
 
 async function loadISPCard(isp: string): Promise<ISPCardData> {
-  const [stats, timing, trendData, unblocked] = await Promise.all([
+  const [stats, timing, trendData] = await Promise.all([
     fetchISPStats(isp),
     fetchISPTiming(isp),
     fetchISPTrend(isp, 30),
-    fetchISPUnblocked(isp, { ...periodRange('week'), pageSize: 1 }).catch(() => null),
   ])
 
   const totalCompliant = stats.servers.reduce((sum, s) => sum + s.compliant, 0)
@@ -41,7 +39,7 @@ async function loadISPCard(isp: string): Promise<ISPCardData> {
     compliance: t.total > 0 ? Math.round((t.compliant / t.total) * 100) : 0,
   }))
 
-  return { isp, stats, timing, trend, pct, avgLatency, unblockedThisWeek: unblocked?.total ?? null }
+  return { isp, stats, timing, trend, pct, avgLatency }
 }
 
 export function ISPBentoSkeleton({ count }: { count: number }) {
@@ -62,10 +60,19 @@ export function ISPBentoGrid({ results }: { results: ScanResult[] }) {
   const isps = useMemo(() => getISPNames(results), [results])
   const [cards, setCards] = useState<ISPCardData[]>([])
   const [logos, setLogos] = useState<Record<string, string>>({})
+  // Fetched separately: /unblocked builds the full per-domain list (seconds on
+  // CRD-sized data), so it fills in after the cards render rather than gating them.
+  const [unblocked, setUnblocked] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
+    setUnblocked({})
+    for (const isp of isps) {
+      fetchISPUnblocked(isp, { ...periodRange('week'), pageSize: 1 })
+        .then(page => setUnblocked(prev => ({ ...prev, [isp]: page.total })))
+        .catch(() => {})
+    }
     const [loaded, ispLogos] = await Promise.all([
       Promise.all(isps.map(loadISPCard)),
       fetchISPLogos().catch(() => []),
@@ -81,13 +88,15 @@ export function ISPBentoGrid({ results }: { results: ScanResult[] }) {
 
   return (
     <div className="bento-grid">
-      {cards.map(card => <ISPCard key={card.isp} data={card} logoUrl={logos[card.isp]} />)}
+      {cards.map(card => (
+        <ISPCard key={card.isp} data={card} logoUrl={logos[card.isp]} unblockedThisWeek={unblocked[card.isp]} />
+      ))}
     </div>
   )
 }
 
-function ISPCard({ data, logoUrl }: { data: ISPCardData; logoUrl?: string }) {
-  const { isp, stats, timing, trend, pct, avgLatency, unblockedThisWeek } = data
+function ISPCard({ data, logoUrl, unblockedThisWeek }: { data: ISPCardData; logoUrl?: string; unblockedThisWeek?: number }) {
+  const { isp, stats, timing, trend, pct, avgLatency } = data
   const serverCount = stats.servers.length
 
   return (
