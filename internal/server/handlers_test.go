@@ -370,7 +370,6 @@ func (m *fullMockStore) ListDepartmentURLs(_ context.Context, departmentID uint)
 				entry := db.URLEntry{ID: u.ID, URL: u.URL, Enabled: du.Enabled, CreatedAt: u.CreatedAt}
 				if c := m.latestCaseForURL(u.ID); c != nil {
 					entry.DueDate = c.DueDate
-					entry.RequestedAt = c.RequestedAt
 					for _, cu := range m.caseURLs {
 						if cu.CaseID == c.ID && cu.URLID == u.ID {
 							entry.Status = cu.Status
@@ -1425,9 +1424,6 @@ func (m *fullMockStore) UpdateCaseFields(_ context.Context, _ uint, caseID uint,
 		if fields.DueDate != nil {
 			m.cases[i].DueDate = *fields.DueDate
 		}
-		if fields.RequestedAt != nil {
-			m.cases[i].RequestedAt = *fields.RequestedAt
-		}
 		return true, nil
 	}
 	return false, nil
@@ -1585,7 +1581,7 @@ func (m *fullMockStore) listCaseSummaries(departmentID *uint) []db.CaseSummary {
 		if departmentID != nil && c.DepartmentID != *departmentID {
 			continue
 		}
-		cs := db.CaseSummary{ID: c.ID, DueDate: c.DueDate, RequestedAt: c.RequestedAt, CreatedAt: c.CreatedAt}
+		cs := db.CaseSummary{ID: c.ID, DueDate: c.DueDate, CreatedAt: c.CreatedAt}
 		for _, l := range m.caseLetters {
 			if l.CaseID != c.ID {
 				continue

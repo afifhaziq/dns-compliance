@@ -104,9 +104,6 @@ func FlattenCRDRows(cases []db.CaseSummary, letters []db.CaseLetterEntry) []CRDR
 		}
 
 		year := c.CreatedAt.Year()
-		if c.RequestedAt != nil {
-			year = c.RequestedAt.Year()
-		}
 		if notice != nil && notice.LetterDate != nil {
 			year = notice.LetterDate.Year()
 		}

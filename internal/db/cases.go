@@ -101,9 +101,6 @@ func (s *postgresStore) UpdateCaseFields(ctx context.Context, departmentID, case
 	if fields.DueDate != nil {
 		updates["due_date"] = *fields.DueDate
 	}
-	if fields.RequestedAt != nil {
-		updates["requested_at"] = *fields.RequestedAt
-	}
 	if len(updates) == 0 {
 		return true, nil // exists, but nothing in the body to apply
 	}
@@ -292,7 +289,7 @@ func (s *postgresStore) caseSummaryQuery(ctx context.Context, departmentID *uint
 		Table("cases").
 		Select(`cases.id, cases.department_id,
 			(SELECT d.name FROM departments d WHERE d.id = cases.department_id) as department_name,
-			cases.due_date, cases.requested_at, cases.created_at,
+			cases.due_date, cases.created_at,
 			notice.id as notice_letter_id, notice.subject as notice_subject,
 			notice.workflow_status as notice_workflow_status,
 			notice.reference_number_external as notice_reference_number_external,

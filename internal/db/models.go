@@ -21,7 +21,7 @@ type DNSServer struct {
 // happens in the handler/store layer, not via a DB trigger.
 //
 // URL is purely domain identity now — no case metadata. Agency/Status/
-// DueDate/RequestedAt moved to Case (see Case's doc comment): a domain can
+// DueDate moved to Case (see Case's doc comment): a domain can
 // carry many cases over its history (reblocked under a new reference), so a
 // scalar column on URL could only ever hold the latest one. URLEntry still
 // exposes these under the same JSON field names for frontend compatibility,
@@ -144,7 +144,6 @@ type URLEntry struct {
 	// for a status edit via PATCH /api/cases/{id}, since Status itself is
 	// read-only/derived. Nil for a url with zero cases.
 	CaseID                 *uint      `json:"case_id,omitempty"`
-	RequestedAt            *time.Time `json:"requested_at,omitempty"`
 	CreatedAt              time.Time  `json:"created_at"`
 	CurrentReferenceNumber string     `json:"current_reference_number,omitempty"`
 	RequestingDepartments  []string   `gorm:"-" json:"requesting_departments,omitempty"`
@@ -639,18 +638,17 @@ type URLOffence struct {
 // Case is one row per real-world case/request — the same role ScanRun
 // already plays for ScanResult. Letter-grain facts (reference numbers,
 // subject, OIC, workflow status...) still live on CaseLetter, since the
-// source data's real grain is one row per letter/document. DueDate/
-// RequestedAt live here as the case-level defaults shared by every URL the
-// case covers (formerly scalar columns on URL, before a domain could carry
-// more than one case). Status is NOT here — it's per-domain, see
-// CaseURL.Status. Agency is NOT here either (moved 2026-09-15, see
-// CaseURL.AgencyID) — a single reference number can legitimately cover
-// domains requested by different agencies: verified against the real CRD
-// import, 8 reference numbers (including 4 with an exact 100/100 split
-// across 800 domains, PDRM's gambling-law citation vs MCMC's obscenity-law
-// citation) each genuinely bundle two unrelated agencies' requests under
-// one shared MCMC tracking number, so a scalar column on Case can't
-// represent that losslessly.
+// source data's real grain is one row per letter/document. DueDate lives
+// here as the case-level default shared by every URL the case covers
+// (formerly scalar columns on URL, before a domain could carry more than one
+// case). Status is NOT here — it's per-domain, see CaseURL.Status. Agency is
+// NOT here either (moved 2026-09-15, see CaseURL.AgencyID) — a single
+// reference number can legitimately cover domains requested by different
+// agencies: verified against the real CRD import, 8 reference numbers
+// (including 4 with an exact 100/100 split across 800 domains, PDRM's
+// gambling-law citation vs MCMC's obscenity-law citation) each genuinely
+// bundle two unrelated agencies' requests under one shared MCMC tracking
+// number, so a scalar column on Case can't represent that losslessly.
 type Case struct {
 	ID           uint       `gorm:"primaryKey" json:"id"`
 	DepartmentID uint       `gorm:"not null;index" json:"department_id"`
@@ -659,21 +657,22 @@ type Case struct {
 
 	// DueDate is the takedown-order SLA deadline (carries time-of-day — some
 	// orders require blocking within 6h/24h).
-	DueDate     *time.Time `json:"due_date,omitempty"`
-	RequestedAt *time.Time `json:"requested_at,omitempty"`
+	DueDate *time.Time `json:"due_date,omitempty"`
+	// No RequestedAt (dropped 2026-10-06): no UI ever set it. When the ISP
+	// was notified is the Notice letter's LetterDate; when the request came
+	// in is the letter's ReceivedAt.
 }
 
 // CaseFields is a partial update to a Case's shared fields, mirroring the
 // double-pointer clear-vs-untouched contract the old URLCaseFields used:
 // outer nil = don't touch, outer non-nil pointing at a nil inner = clear,
-// outer non-nil pointing at &v = set. DueDate/RequestedAt need this
-// three-state contract since neither has a natural empty-value sentinel to
+// outer non-nil pointing at &v = set. DueDate needs this three-state
+// contract since it has no natural empty-value sentinel to
 // mean "clear". No Status field here — see CaseURL.Status and
 // UpdateCaseURLStatus. No AgencyID either — see CaseURL.AgencyID and
 // UpdateCaseURLAgency (moved off Case 2026-09-15).
 type CaseFields struct {
-	DueDate     **time.Time
-	RequestedAt **time.Time
+	DueDate **time.Time
 }
 
 // CaseCreateOptions carries the optional fields CreateCase can set at
@@ -787,7 +786,6 @@ type CaseSummary struct {
 	DepartmentID                   uint                `json:"department_id"`
 	DepartmentName                 string              `json:"department_name"`
 	DueDate                        *time.Time          `json:"due_date,omitempty"`
-	RequestedAt                    *time.Time          `json:"requested_at,omitempty"`
 	CreatedAt                      time.Time           `json:"created_at"`
 	NoticeLetterID                 *uint               `json:"notice_letter_id,omitempty"`
 	NoticeSubject                  string              `json:"notice_subject,omitempty"`

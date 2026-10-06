@@ -473,13 +473,12 @@ Table cases {
   department_id integer     [not null, note: 'indexed -- which department this case came from']
   created_at    timestamptz
   due_date      timestamptz [null, note: 'takedown-order SLA deadline, carries time-of-day']
-  requested_at  timestamptz [null]
 
   Note: '''
     One row per real-world case/request, same role scan_runs already plays
     for scan_results. Letter-grain facts (ref numbers, subject, OIC,
     workflow status...) still live on case_letters, since the sheet's real
-    grain is one row per letter/document. due_date/requested_at (2026-08-20)
+    grain is one row per letter/document. due_date (2026-08-20)
     are the case-level defaults shared by every url the case
     covers -- formerly scalar columns on urls, moved here since a domain
     can carry more than one case over its history. Set at creation
@@ -493,6 +492,9 @@ Table cases {
     "JK KPN(PR) 168/6" covering 9,206 rows suggests some values are a
     generic/fallback reference reused across unrelated entries, not a
     genuine single batch. See docs/cmod-blocking-list-migration-clarifications.md.
+      requested_at was dropped 2026-10-06: never set by any UI; the
+    Notice letter's letter_date (ISP notified) and received_at (request
+    came in) already hold those dates.
   '''
 }
 Ref: cases.department_id > departments.id

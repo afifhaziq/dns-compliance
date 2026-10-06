@@ -97,7 +97,7 @@ func Connect(dialector gorm.Dialector) (*gorm.DB, error) {
 	if err := backfillURLReferenceNumbersIntoCases(database); err != nil {
 		return nil, fmt.Errorf("backfilling urls.reference_number into cases: %w", err)
 	}
-	// Case (not URL) now owns Agency/Status/DueDate/RequestedAt — a domain
+	// Case (not URL) now owns Agency/Status/DueDate — a domain
 	// can carry many cases over its history, so a scalar column on urls
 	// could only ever hold the latest one (see URL's doc comment in
 	// models.go). BackfillURLCaseMetadataIntoCases moves any already-set
@@ -134,6 +134,16 @@ func Connect(dialector gorm.Dialector) (*gorm.DB, error) {
 		}
 		if err := database.Migrator().DropColumn(&Case{}, "agency_id"); err != nil {
 			return nil, fmt.Errorf("dropping cases.agency_id: %w", err)
+		}
+	}
+
+	// cases.requested_at dropped 2026-10-06: no UI ever set it (0 of 15,661
+	// rows populated), and it duplicated dates the letters already hold —
+	// the Notice's letter_date (ISP notified) and received_at (request came
+	// in). Plain idempotent drop, no data to move.
+	if database.Migrator().HasColumn(&Case{}, "requested_at") {
+		if err := database.Migrator().DropColumn(&Case{}, "requested_at"); err != nil {
+			return nil, fmt.Errorf("dropping cases.requested_at: %w", err)
 		}
 	}
 

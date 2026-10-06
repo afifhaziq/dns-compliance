@@ -250,21 +250,6 @@ func TestUpdateCaseFields_SetAndClear(t *testing.T) {
 		t.Fatalf("expected DueDate to be set, got %+v", got)
 	}
 
-	// Updating only RequestedAt must not clobber the fields set above.
-	requestedAt := time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC)
-	requestedAtPtr := &requestedAt
-	found, err = store.UpdateCaseFields(ctx, dept.ID, c.ID, db.CaseFields{RequestedAt: &requestedAtPtr})
-	if err != nil || !found {
-		t.Fatalf("UpdateCaseFields(requested_at only): found=%v err=%v", found, err)
-	}
-	got, _ = store.GetCase(ctx, c.ID)
-	if got.RequestedAt == nil || !got.RequestedAt.Equal(requestedAt) {
-		t.Fatalf("expected requested_at to be set, got %+v", got)
-	}
-	if got.DueDate == nil || !got.DueDate.Equal(due) {
-		t.Fatalf("expected due_date to remain untouched, got %+v", got)
-	}
-
 	// Clear DueDate (outer non-nil, inner nil).
 	var nilDueDate *time.Time
 	found, err = store.UpdateCaseFields(ctx, dept.ID, c.ID, db.CaseFields{DueDate: &nilDueDate})

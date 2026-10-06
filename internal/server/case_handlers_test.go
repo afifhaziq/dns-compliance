@@ -432,7 +432,7 @@ func TestUpdateCase_OwningDepartmentSetsFields(t *testing.T) {
 	r := setupRouter(store, nil)
 
 	body, _ := json.Marshal(map[string]interface{}{
-		"due_date": "2026-01-15T00:00:00Z", "requested_at": "2026-01-01T00:00:00Z",
+		"due_date": "2026-01-15T00:00:00Z",
 	})
 	req := httptest.NewRequest(http.MethodPatch, "/api/cases/1", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -444,8 +444,8 @@ func TestUpdateCase_OwningDepartmentSetsFields(t *testing.T) {
 		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
 	}
 	c := store.cases[0]
-	if c.DueDate == nil || c.RequestedAt == nil {
-		t.Fatalf("expected due_date/requested_at to be set, got %+v", c)
+	if c.DueDate == nil {
+		t.Fatalf("expected due_date to be set, got %+v", c)
 	}
 }
 
@@ -533,18 +533,18 @@ func TestUpdateCase_StatusOnlyUpdateDoesNotRescheduleDueDate(t *testing.T) {
 	}
 }
 
-func TestUpdateCase_ClearsDueDateAndRequestedAtWithSentinels(t *testing.T) {
+func TestUpdateCase_ClearsDueDateWithSentinel(t *testing.T) {
 	due := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 	store := &fullMockStore{
-		cases: []db.Case{{ID: 1, DepartmentID: 1, DueDate: &due, RequestedAt: &due}},
+		cases: []db.Case{{ID: 1, DepartmentID: 1, DueDate: &due}},
 	}
 	cookie := deptCookie(store, 1)
 	r := setupRouter(store, nil)
 
-	// "" clears due_date/requested_at — same sentinel convention the old
+	// "" clears due_date — same sentinel convention the old
 	// PATCH /api/urls/{id} used.
 	body, _ := json.Marshal(map[string]interface{}{
-		"due_date": "", "requested_at": "",
+		"due_date": "",
 	})
 	req := httptest.NewRequest(http.MethodPatch, "/api/cases/1", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -556,8 +556,8 @@ func TestUpdateCase_ClearsDueDateAndRequestedAtWithSentinels(t *testing.T) {
 		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
 	}
 	c := store.cases[0]
-	if c.DueDate != nil || c.RequestedAt != nil {
-		t.Fatalf("expected due_date/requested_at to be cleared, got %+v", c)
+	if c.DueDate != nil {
+		t.Fatalf("expected due_date to be cleared, got %+v", c)
 	}
 }
 
@@ -576,7 +576,7 @@ func TestUpdateCase_NonOwningDepartment404(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
-	if store.cases[0].DueDate != nil || store.cases[0].RequestedAt != nil {
+	if store.cases[0].DueDate != nil {
 		t.Fatalf("expected case to remain untouched, got %+v", store.cases[0])
 	}
 }

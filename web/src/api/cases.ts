@@ -28,18 +28,16 @@ export function createCase(
 
 export type CaseFields = {
   dueDate?: string | null
-  requestedAt?: string | null
 }
 
 // Partial update of a case's shared fields (PATCH /api/cases/{id}) — only
-// keys present in `fields` are sent. Pass null to clear a field: due_date/
-// requested_at clear via "" — same clear-sentinel convention the old PATCH
+// keys present in `fields` are sent. Pass null to clear a field: due_date
+// clears via "" — same clear-sentinel convention the old PATCH
 // /api/urls/{id} used (see setUrlFields's prior implementation in urls.ts).
 // No status here — it's per-url, see updateCaseURLStatus.
 export async function updateCase(caseId: number, fields: CaseFields): Promise<void> {
   const body: Record<string, string | number> = {}
   if (fields.dueDate !== undefined) body.due_date = fields.dueDate ?? ''
-  if (fields.requestedAt !== undefined) body.requested_at = fields.requestedAt ?? ''
   await api.patch<void>(`/cases/${caseId}`, body)
 }
 
@@ -157,9 +155,9 @@ export type CaseLetterFieldsUpdate = Partial<{
 // Partial update of one CaseLetter's fields (PATCH
 // /api/cases/{caseId}/letters/{letterId}) — only keys present in `fields`
 // are sent. Date fields clear via null -> "" (same sentinel convention as
-// updateCase's dueDate/requestedAt above); string fields clear via "";
+// updateCase's dueDate above); string fields clear via "";
 // oicUserId clears via null -> 0 (a number, never a real user id — same
-// null -> sentinel-value convention as updateCase's dueDate/requestedAt
+// null -> sentinel-value convention as updateCase's dueDate
 // above, just with 0 instead of "" since this field is numeric).
 export async function updateCaseLetter(caseId: number, letterId: number, fields: CaseLetterFieldsUpdate): Promise<void> {
   const body: Record<string, string | number> = {}

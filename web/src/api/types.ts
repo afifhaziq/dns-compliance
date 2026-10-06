@@ -74,13 +74,12 @@ export type URLEntry = {
   // PATCH /api/cases/{case_id}/urls/{id} (updateCaseURLStatus), since
   // `status` itself is a derived, read-only field.
   case_id?: number
-  requested_at?: string
   created_at: string
 }
 
 // One row of GET /api/cases/*url — mirrors db.CaseWithLetters (Case
 // embedded + Letters + this url's own Status/Agency from its CaseURL join).
-// due_date/requested_at are the case-level defaults shared by every URL the
+// due_date is the case-level default shared by every URL the
 // case covers (db.Case); agency_id/agency_name and status are this url's own
 // CaseURL fields, independent per url within the same case (2026-09-15 —
 // agency moved off Case for the same reason status always was: a case can
@@ -90,7 +89,6 @@ export type Case = {
   department_id: number
   created_at: string
   due_date?: string
-  requested_at?: string
   agency_id?: number
   agency_name?: string
   status: string
@@ -139,7 +137,6 @@ export type CaseSummary = {
   department_id: number
   department_name: string
   due_date?: string
-  requested_at?: string
   created_at: string
   notice_letter_id?: number
   notice_subject?: string

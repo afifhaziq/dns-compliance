@@ -587,7 +587,6 @@ func (s *postgresStore) urlEntryQuery(ctx context.Context, departmentID *uint) *
 			latest_case.due_date, latest_case_url.agency_id, agencies.name as agency_name,
 			(SELECT cu2.status FROM case_urls cu2
 			 WHERE cu2.case_id = latest_case.id AND cu2.url_id = urls.id) as status,
-			latest_case.requested_at,
 			(SELECT cl.workflow_status FROM case_letters cl
 			 WHERE cl.case_id = latest_case.id AND cl.type IN ('Notice', 'Notice (Uplift)')
 			 ORDER BY (cl.type = 'Notice') DESC, cl.letter_date DESC LIMIT 1) as workflow_status,

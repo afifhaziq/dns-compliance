@@ -117,16 +117,14 @@ func TestFlattenCRDRows_StatusTitleCased(t *testing.T) {
 }
 
 func TestFlattenCRDRows_YearFallbackChain(t *testing.T) {
-	requestedAt := ptrTime(2022, 3, 1)
 	cases := []db.CaseSummary{{
-		ID:          1,
-		RequestedAt: requestedAt,
-		CreatedAt:   time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC),
-		Domains:     []db.CaseSummaryDomain{{URL: "a.com", Status: "requested"}},
+		ID:        1,
+		CreatedAt: time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC),
+		Domains:   []db.CaseSummaryDomain{{URL: "a.com", Status: "requested"}},
 	}}
-	rows := FlattenCRDRows(cases, nil) // no Notice letter -> falls back to RequestedAt
-	if rows[0].Tahun != 2022 {
-		t.Fatalf("Tahun = %d, want 2022 (RequestedAt fallback)", rows[0].Tahun)
+	rows := FlattenCRDRows(cases, nil) // no Notice letter -> falls back to CreatedAt
+	if rows[0].Tahun != 2021 {
+		t.Fatalf("Tahun = %d, want 2021 (CreatedAt fallback)", rows[0].Tahun)
 	}
 }
 

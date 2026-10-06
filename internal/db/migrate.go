@@ -286,7 +286,7 @@ func BackfillErrorClass(ctx context.Context, database *gorm.DB) error {
 const BackfillURLCaseMetadataBatchSize = 500
 
 // BackfillURLCaseMetadataIntoCases moves the legacy case-metadata still on
-// urls (due_date/agency_id/status/requested_at — superseded by Case owning
+// urls (due_date/agency_id/status — superseded by Case owning
 // these fields, see URL's doc comment in models.go) into one Case per URL
 // per distinct watching department, before those columns are dropped (see
 // db.Connect). Only touches URL rows with at least one of the four fields
@@ -297,15 +297,14 @@ const BackfillURLCaseMetadataBatchSize = 500
 // to and is skipped with a logged warning, non-fatal — same "log and skip"
 // philosophy BackfillURLValues/backfillURLReferenceNumbersIntoCases (db.go)
 // already use. Must run after AutoMigrate (Case needs its new
-// AgencyID/Status/DueDate/RequestedAt columns already added) and before the
+// AgencyID/Status/DueDate columns already added) and before the
 // old urls columns are dropped.
 func BackfillURLCaseMetadataIntoCases(ctx context.Context, database *gorm.DB) error {
 	type legacyURLRow struct {
-		ID          uint
-		DueDate     *time.Time
-		AgencyID    *uint
-		Status      string
-		RequestedAt *time.Time
+		ID       uint
+		DueDate  *time.Time
+		AgencyID *uint
+		Status   string
 	}
 
 	lastID := uint(0)
@@ -313,9 +312,9 @@ func BackfillURLCaseMetadataIntoCases(ctx context.Context, database *gorm.DB) er
 		var rows []legacyURLRow
 		err := database.WithContext(ctx).
 			Table("urls").
-			Select("urls.id, urls.due_date, urls.agency_id, urls.status, urls.requested_at").
+			Select("urls.id, urls.due_date, urls.agency_id, urls.status").
 			Where("urls.id > ?", lastID).
-			Where("urls.due_date IS NOT NULL OR urls.agency_id IS NOT NULL OR urls.status <> '' OR urls.requested_at IS NOT NULL").
+			Where("urls.due_date IS NOT NULL OR urls.agency_id IS NOT NULL OR urls.status <> ''").
 			Where("NOT EXISTS (SELECT 1 FROM case_urls WHERE case_urls.url_id = urls.id)").
 			Order("urls.id asc").
 			Limit(BackfillURLCaseMetadataBatchSize).
@@ -349,7 +348,6 @@ func BackfillURLCaseMetadataIntoCases(ctx context.Context, database *gorm.DB) er
 				c := Case{
 					DepartmentID: deptID,
 					DueDate:      row.DueDate,
-					RequestedAt:  row.RequestedAt,
 				}
 				if err := database.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 					if err := tx.Create(&c).Error; err != nil {
